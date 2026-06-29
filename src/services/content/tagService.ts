@@ -410,13 +410,25 @@ export async function attachTag(
       validateUUID(taggedBy, 'taggedBy');
     }
 
+    // ── Resolve profile_id for tagged_by ─────────────────────────────────
+    // content_tag.tagged_by FK → profiles.profile_id, so we use the
+    // authenticated profile_id directly — NOT teacher_details.teacher_id.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const profileId = sessionData?.session?.user?.id;
+    const resolvedTaggedBy = profileId ?? taggedBy ?? null;
+
+    // ── Validation log ──────────────────────────────────────────────────
+    console.log('Authenticated profile ID:', profileId ?? 'N/A');
+    console.log('Payload tagged_by:', resolvedTaggedBy);
+    console.log('profileId === tagged_by:', profileId != null && resolvedTaggedBy === profileId);
+
     // ── Insert — let FK or unique violation bubble up naturally ──────
     const { data, error } = await supabase
       .from('content_tag')
       .insert({
         content_id: contentId,
         tag_id: tagId,
-        tagged_by: taggedBy ?? null,
+        tagged_by: resolvedTaggedBy,
       })
       .select()
       .single<DbContentTag>();
@@ -530,11 +542,23 @@ export async function replaceTags(
       return { success: true, data: [] };
     }
 
-    // ── 2. Insert new tag associations ──────────────────────────────────
+    // ── 2. Resolve profile_id for tagged_by ─────────────────────────────
+    // content_tag.tagged_by FK → profiles.profile_id, so we use the
+    // authenticated profile_id directly — NOT teacher_details.teacher_id.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const profileId = sessionData?.session?.user?.id;
+    const resolvedTaggedBy = profileId ?? taggedBy ?? null;
+
+    // ── Validation log ──────────────────────────────────────────────────
+    console.log('Authenticated profile ID:', profileId ?? 'N/A');
+    console.log('Payload tagged_by:', resolvedTaggedBy);
+    console.log('profileId === tagged_by:', profileId != null && resolvedTaggedBy === profileId);
+
+    // ── 3. Insert new tag associations ──────────────────────────────────
     const junctionRows = tagIds.map((tagId) => ({
       content_id: contentId,
       tag_id: tagId,
-      tagged_by: taggedBy ?? null,
+      tagged_by: resolvedTaggedBy,
     }));
 
     const { data, error: insertError } = await supabase

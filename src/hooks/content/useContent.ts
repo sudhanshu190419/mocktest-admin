@@ -134,6 +134,21 @@ export function useCreateContent() {
 
   return useMutation<Content, Error, CreateContentParams>({
     mutationFn: async (input) => {
+      console.group('CONTENT CREATE DEBUG — useCreateContent hook');
+      console.log('Input received from Dev Console:');
+      console.log('  instituteId:', input.instituteId);
+      console.log('  teacherId:', input.teacherId);
+      console.log('  chapterId:', input.chapterId);
+      console.log('  contentType:', input.contentType);
+      console.log('  title:', input.title);
+      console.log('  pageCount:', input.pageCount);
+      console.log('  durationSeconds:', input.durationSeconds);
+      console.log('  isFreePreview:', input.isFreePreview);
+      console.log('  file provided:', !!input.file);
+      console.log('  thumbnailFile provided:', !!input.thumbnailFile);
+      console.log('--- PASSING THROUGH TO createContent() unchanged ---');
+      console.groupEnd();
+
       const result = await createContent(input);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to create content.');

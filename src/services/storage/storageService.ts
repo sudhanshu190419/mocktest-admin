@@ -542,7 +542,7 @@ export async function uploadResource(
 
     // Build path from resource template + caller-provided path params.
     // If the template has {sanitisedFileName}, derive it from the file name.
-    let resolvedPathParams = { ...pathParams };
+    const resolvedPathParams = { ...pathParams };
     if (!resolvedPathParams.sanitisedFileName && config.pathTemplate.includes('{sanitisedFileName}')) {
       resolvedPathParams.sanitisedFileName = sanitizeFileName(originalFileName);
     }

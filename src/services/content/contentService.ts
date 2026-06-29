@@ -28,6 +28,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { resolveCurrentTeacherId } from './teacherResolver';
 import {
   uploadFile as storageUploadFile,
   deleteFile as storageDeleteFile,
@@ -510,6 +511,28 @@ export async function createContent(
     // ── 1. Generate content ID ─────────────────────────────────────────
     const contentId = generateUUID();
 
+    // ── 1.5 Resolve teacher_id from authenticated user ───────────────────
+    // The caller passes the profile_id as teacherId. We must resolve the
+    // actual teacher_details.teacher_id to satisfy RLS policies that join
+    // on teacher_details.profile_id = auth.uid().
+    // Uses the shared teacherResolver — the Content module's single source
+    // of truth for the profile_id → teacher_details.teacher_id mapping.
+    const resolved = await resolveCurrentTeacherId();
+
+    if (!resolved) {
+      return {
+        success: false,
+        error: 'No teacher profile exists for the authenticated user.',
+      };
+    }
+
+    const resolvedTeacherId = resolved.teacherId;
+
+    // ── Validation log ──────────────────────────────────────────────────
+    console.log('Profile ID:', resolved.profileId);
+    console.log('Resolved Teacher ID:', resolvedTeacherId);
+    console.log('Final Payload Teacher ID:', resolvedTeacherId);
+
     // ── 2. Upload file ──────────────────────────────────────────────────
     const uploadResult = await storageUploadFile({
       file,
@@ -526,16 +549,31 @@ export async function createContent(
     const { bucket: storageBucket, storagePath, fileSize: fileSizeBytes, mimeType } =
       uploadResult.data!;
 
+    // ── 2.5 Resolve subject_id from chapter ──────────────────────────────
+    const { data: chapterRow, error: chapterErr } = await supabase
+      .from('chapters')
+      .select('subject_id')
+      .eq('chapter_id', chapterId)
+      .single();
+
+    if (chapterErr || !chapterRow) {
+      // Upload already happened — roll back the file to avoid orphaned storage
+      await storageDeleteFile(storageBucket, storagePath);
+      return {
+        success: false,
+        error: `Chapter not found or invalid: ${chapterId}. Cannot resolve subject_id.`,
+      };
+    }
+
     // ── 3. Insert DB record ─────────────────────────────────────────────
-    // Derive subjectId from chapter (the DB trigger/application should
-    // resolve this, but we build a minimal insert here)
     const originalFileName = file instanceof File ? file.name : 'upload';
 
     const dbRecord: Record<string, unknown> = {
       content_id: contentId,
       institute_id: instituteId,
-      teacher_id: teacherId,
+      teacher_id: resolvedTeacherId,
       chapter_id: chapterId,
+      subject_id: chapterRow.subject_id,
       title: title.trim(),
       description: description ?? null,
       content_type: contentType,
