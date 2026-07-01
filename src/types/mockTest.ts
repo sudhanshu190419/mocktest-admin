@@ -814,6 +814,8 @@ export interface CreateMockTestInput {
   description?: string | null;
   /** Total duration in minutes. Range: 1–600. */
   durationMin: number;
+  /** Total marks for this test. Defaults to 0 when not provided. */
+  totalMarks?: number;
   /** Minimum score to pass. NULL = no threshold. */
   passingMarks?: number | null;
   /** Defaults to `0` when not provided. */
@@ -1493,6 +1495,10 @@ export interface MockResultFilters {
   minRank?: number;
   /** Maximum rank. */
   maxRank?: number;
+  /** Minimum percentage threshold. */
+  percentageMin?: number;
+  /** Maximum percentage threshold. */
+  percentageMax?: number;
   /** Results generated after this timestamp. */
   generatedAfter?: string;
   /** Results generated before this timestamp. */
@@ -1517,6 +1523,22 @@ export interface MockResultSortOptions {
     | 'generatedAt'
     | 'releasedAt';
   sortDirection?: SortDirection;
+}
+
+/**
+ * Input for releasing a result.
+ */
+export interface ReleaseResultInput {
+  /** UUID of the result to release. */
+  resultId: string;
+}
+
+/**
+ * Input for hiding a result.
+ */
+export interface HideResultInput {
+  /** UUID of the result to hide. */
+  resultId: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

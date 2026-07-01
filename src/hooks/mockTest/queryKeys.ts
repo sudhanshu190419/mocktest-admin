@@ -27,6 +27,12 @@ import type { PaginationParams } from '../../types/academic';
 import type {
   QuestionFilters,
   QuestionSortOptions,
+  MockAttemptFilters,
+  MockAttemptSortOptions,
+  MockAnswerFilters,
+  MockAnswerSortOptions,
+  MockResultFilters,
+  MockResultSortOptions,
 } from '../../types/mockTest';
 import type {
   MockTestServiceFilters,
@@ -181,6 +187,95 @@ export const mockTestKeys = {
     /** Key for a single question assignment by test ID and question ID. */
     detail: (testId: string, questionId: string) =>
       [...mockTestKeys.mockTestQuestions.details(), testId, questionId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Publish
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Attempts
+  // ═════════════════════════════════════════════════════════════════════════
+
+  attempts: {
+    /** Root key for all attempt queries. */
+    all: () => [...mockTestKeys.all, 'attempts'] as const,
+
+    /** Key for every attempt list query. */
+    lists: () => [...mockTestKeys.attempts.all(), 'list'] as const,
+
+    /** Key for a specific attempt list query with its params. */
+    list: (
+      filters?: MockAttemptFilters,
+      sort?: MockAttemptSortOptions,
+      pagination?: PaginationParams,
+    ) => [...mockTestKeys.attempts.lists(), filters, sort, pagination] as const,
+
+    /** Key for every attempt detail query. */
+    details: () => [...mockTestKeys.attempts.all(), 'detail'] as const,
+
+    /** Key for a single attempt by ID. */
+    detail: (id: string) => [...mockTestKeys.attempts.details(), id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Answers
+  // ═════════════════════════════════════════════════════════════════════════
+
+  answers: {
+    /** Root key for all answer queries. */
+    all: () => [...mockTestKeys.all, 'answers'] as const,
+
+    /** Key for every answer list query. */
+    lists: () => [...mockTestKeys.answers.all(), 'list'] as const,
+
+    /** Key for a specific answer list query (keyed by attemptId). */
+    list: (attemptId?: string) => [...mockTestKeys.answers.lists(), attemptId] as const,
+
+    /** Key for every answer detail query. */
+    details: () => [...mockTestKeys.answers.all(), 'detail'] as const,
+
+    /** Key for a single answer by ID. */
+    detail: (id: string) => [...mockTestKeys.answers.details(), id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Answer Options
+  // ═════════════════════════════════════════════════════════════════════════
+
+  answerOptions: {
+    /** Root key for all answer option queries. */
+    all: () => [...mockTestKeys.all, 'answerOptions'] as const,
+
+    /** Key for every answer option list query. */
+    lists: () => [...mockTestKeys.answerOptions.all(), 'list'] as const,
+
+    /** Key for a specific answer option list (keyed by answerId). */
+    list: (answerId?: string) => [...mockTestKeys.answerOptions.lists(), answerId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Results
+  // ═════════════════════════════════════════════════════════════════════════
+
+  results: {
+    /** Root key for all result queries. */
+    all: () => [...mockTestKeys.all, 'results'] as const,
+
+    /** Key for every result list query. */
+    lists: () => [...mockTestKeys.results.all(), 'list'] as const,
+
+    /** Key for a specific result list query. */
+    list: (
+      filters?: MockResultFilters,
+      sort?: MockResultSortOptions,
+    ) => [...mockTestKeys.results.lists(), filters, sort] as const,
+
+    /** Key for every result detail query. */
+    details: () => [...mockTestKeys.results.all(), 'detail'] as const,
+
+    /** Key for a single result by ID or attempt ID. */
+    detail: (id: string) => [...mockTestKeys.results.details(), id] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════

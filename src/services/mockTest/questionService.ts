@@ -31,6 +31,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { resolveCurrentTeacherId } from '../content/teacherResolver';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -377,18 +378,36 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
     validateUUID(input.instituteId, 'instituteId');
     validateUUID(input.subjectId, 'subjectId');
     validateUUID(input.chapterId, 'chapterId');
-    validateUUID(input.createdBy, 'createdBy');
+    // We do NOT validate input.createdBy as a UUID here because we override
+    // it with the resolved teacher_details.teacher_id below.
 
     if (input.parentQuestionId) {
       validateUUID(input.parentQuestionId, 'parentQuestionId');
     }
 
-    // ── Build DB record ────────────────────────────────────────────────
+    // ── Resolve teacher ID ────────────────────────────────────────────────
+    // The RLS policy requires created_by = get_my_teacher_id(), which returns
+    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
+    // We must resolve the teacher_id from the current session.
+    const resolved = await resolveCurrentTeacherId();
+    if (!resolved) {
+      return {
+        success: false,
+        error:
+          'Cannot create question: no teacher profile found for the current user. ' +
+          'Ensure the authenticated user has a corresponding teacher_details record.',
+      };
+    }
+
+    const teacherId: string = resolved.teacherId;
+    const profileId: string = resolved.profileId;
+
+    // ── Build DB record (created_by uses teacher_details.teacher_id) ───────
     const dbRecord: Record<string, unknown> = {
       institute_id: input.instituteId,
       subject_id: input.subjectId,
       chapter_id: input.chapterId,
-      created_by: input.createdBy,
+      created_by: teacherId,
       parent_question_id: input.parentQuestionId ?? null,
       question_type: input.questionType,
       difficulty: input.difficulty,
@@ -399,6 +418,19 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
       negative_marks: input.negativeMarks ?? 0,
     };
 
+    // ── RLS debug logging ────────────────────────────────────────────────
+    console.group('QUESTION CREATE DEBUG');
+
+    console.log('Authenticated profile ID (profiles.profile_id):', profileId);
+    console.log('Resolved teacher_details.teacher_id:', teacherId);
+    console.log('Payload created_by:', dbRecord.created_by);
+    console.log('created_by === profileId:', dbRecord.created_by === profileId);
+    console.log('created_by === teacherId:', dbRecord.created_by === teacherId);
+    console.log('✅ created_by uses teacher_details.teacher_id (RLS-compliant)');
+    console.log('Payload:', dbRecord);
+
+    console.groupEnd();
+
     // ── Insert ─────────────────────────────────────────────────────────
     const { data, error } = await supabase
       .from('questions')
@@ -407,6 +439,13 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
       .single<DbQuestion>();
 
     if (error) {
+      console.group('QUESTION CREATE ERROR');
+      console.log('code:', error.code);
+      console.log('message:', error.message);
+      console.log('details:', error.details ?? '—');
+      console.log('hint:', error.hint ?? '—');
+      console.groupEnd();
+
       // Unique violation or FK constraint
       if (error.code === '23503') {
         return {

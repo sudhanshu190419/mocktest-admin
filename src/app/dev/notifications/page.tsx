@@ -2,43 +2,32 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import QuestionsPanel from '@/components/dev/question-bank/QuestionsPanel';
-import type { QuestionsDebugInfo } from '@/components/dev/question-bank/QuestionsPanel';
-import QuestionOptionsPanel from '@/components/dev/question-bank/QuestionOptionsPanel';
-import type { OptionsDebugInfo } from '@/components/dev/question-bank/QuestionOptionsPanel';
-import ExplanationsPanel from '@/components/dev/question-bank/ExplanationsPanel';
-import type { ExplanationsDebugInfo } from '@/components/dev/question-bank/ExplanationsPanel';
-import ImagesPanel from '@/components/dev/question-bank/ImagesPanel';
-import type { ImagesDebugInfo } from '@/components/dev/question-bank/ImagesPanel';
+import NotificationsPanel from '@/components/dev/notifications/NotificationsPanel';
+import type { NotificationsDebugInfo } from '@/components/dev/notifications/NotificationsPanel';
 import DebugPanel from '@/components/dev/DebugPanel';
 import StatusBadge from '@/components/dev/StatusBadge';
 import LoadingIndicator from '@/components/dev/LoadingIndicator';
 import SessionInfo from '@/components/dev/SessionInfo';
 
-type QuestionBankEntity = 'dashboard' | 'questions' | 'options' | 'explanations' | 'images';
+type NotificationEntity = 'dashboard' | 'notifications';
 
 const ENTITY_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
-  questions: 'Questions',
-  options: 'Question Options',
-  explanations: 'Explanations',
-  images: 'Images',
+  notifications: 'Notifications Console',
 };
 
-type AnyDebugInfo = QuestionsDebugInfo | OptionsDebugInfo | ExplanationsDebugInfo | ImagesDebugInfo;
-
-export default function QuestionBankPage() {
+export default function NotificationsPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
 
-  const [activeEntity, setActiveEntity] = useState<QuestionBankEntity>('dashboard');
-  const [debugInfo, setDebugInfo] = useState<AnyDebugInfo | null>(null);
+  const [activeEntity, setActiveEntity] = useState<NotificationEntity>('dashboard');
+  const [debugInfo, setDebugInfo] = useState<NotificationsDebugInfo | null>(null);
 
   const handleSelectEntity = useCallback((entity: string) => {
-    setActiveEntity(entity as QuestionBankEntity);
+    setActiveEntity(entity as NotificationEntity);
     setDebugInfo(null);
   }, []);
 
-  const handleDebugInfo = useCallback((info: AnyDebugInfo) => {
+  const handleDebugInfo = useCallback((info: NotificationsDebugInfo) => {
     setDebugInfo(info);
   }, []);
 
@@ -48,18 +37,11 @@ export default function QuestionBankPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {activeEntity !== 'dashboard' && (
-            <button
-              type="button"
-              onClick={() => handleSelectEntity('dashboard')}
-              className="rounded bg-gray-800 px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
-            >
-              ← Back
-            </button>
-          )}
           <div>
-            <h1 className="text-lg font-semibold text-gray-100">{ENTITY_LABELS[activeEntity]}</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Question Bank — CRUD, options, explanations, images</p>
+            <h1 className="text-lg font-semibold text-gray-100">Notifications</h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Notification Engine — create, read, mark, delete, announce
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -79,60 +61,60 @@ export default function QuestionBankPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() => handleSelectEntity('questions')}
+              onClick={() => handleSelectEntity('notifications')}
               className="rounded-lg border border-gray-700 bg-gray-900 p-4 hover:border-gray-500 hover:bg-gray-800 transition-colors text-left"
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl">❓</span>
+                <span className="text-2xl">🔔</span>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-100">Questions</h3>
+                  <h3 className="text-sm font-semibold text-gray-100">Notifications Console</h3>
                   <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-                    CRUD, filters, pagination, search, sorting, lifecycle (publish/archive/restore)
+                    All notifications, unread, create, bulk, mark read, delete, filters, pagination
                   </p>
                 </div>
               </div>
             </button>
             <button
               type="button"
-              onClick={() => handleSelectEntity('options')}
+              onClick={() => handleSelectEntity('notifications')}
               className="rounded-lg border border-gray-700 bg-gray-900 p-4 hover:border-gray-500 hover:bg-gray-800 transition-colors text-left"
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl">🔘</span>
+                <span className="text-2xl">📢</span>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-100">Question Options</h3>
+                  <h3 className="text-sm font-semibold text-gray-100">Announcements</h3>
                   <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-                    CRUD, replace all, reorder, MCQ/MSQ/TF validation
+                    List, publish, target by role, filters
                   </p>
                 </div>
               </div>
             </button>
             <button
               type="button"
-              onClick={() => handleSelectEntity('explanations')}
+              onClick={() => handleSelectEntity('notifications')}
               className="rounded-lg border border-gray-700 bg-gray-900 p-4 hover:border-gray-500 hover:bg-gray-800 transition-colors text-left"
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl">💡</span>
+                <span className="text-2xl">✉️</span>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-100">Explanations</h3>
+                  <h3 className="text-sm font-semibold text-gray-100">Create Notification</h3>
                   <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-                    CRUD, upsert, video URL, numerical answer + tolerance
+                    Single notification, bulk send, custom types, priorities
                   </p>
                 </div>
               </div>
             </button>
             <button
               type="button"
-              onClick={() => handleSelectEntity('images')}
+              onClick={() => handleSelectEntity('notifications')}
               className="rounded-lg border border-gray-700 bg-gray-900 p-4 hover:border-gray-500 hover:bg-gray-800 transition-colors text-left"
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl">🖼️</span>
+                <span className="text-2xl">📋</span>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-100">Images</h3>
+                  <h3 className="text-sm font-semibold text-gray-100">Dashboard</h3>
                   <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-                    Upload, replace, delete, reorder, preview, alt text
+                    Stats: total, unread, read, announcements, today, high priority
                   </p>
                 </div>
               </div>
@@ -141,18 +123,15 @@ export default function QuestionBankPage() {
         </div>
       )}
 
-      {/* ── Panels ─────────────────────────────────────────────────────────── */}
-      {activeEntity === 'questions' && <QuestionsPanel onDebugInfo={handleDebugInfo} />}
-      {activeEntity === 'options' && <QuestionOptionsPanel onDebugInfo={handleDebugInfo} />}
-      {activeEntity === 'explanations' && <ExplanationsPanel onDebugInfo={handleDebugInfo} />}
-      {activeEntity === 'images' && <ImagesPanel onDebugInfo={handleDebugInfo} />}
+      {/* ── Notifications Console ─────────────────────────────────────────── */}
+      {activeEntity === 'notifications' && <NotificationsPanel onDebugInfo={handleDebugInfo} />}
 
       {/* ── Debug Panel ───────────────────────────────────────────────────── */}
       <DebugPanel
         lastOperation={lastOperation}
         lastResponse={debugInfo?.lastApiResponse ?? undefined}
         info={[
-          { label: 'Entity', value: ENTITY_LABELS[activeEntity] },
+          { label: 'Entity', value: 'Notifications' },
           { label: 'Loading', value: debugInfo ? String(debugInfo.loading) : '—' },
           { label: 'Mutation Loading', value: debugInfo ? String(debugInfo.mutationLoading) : '—' },
           { label: 'Selected Record', value: debugInfo?.selectedRecord ?? '—' },

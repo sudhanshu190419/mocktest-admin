@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { label: 'Mock Tests', href: '/dev/mock-tests', icon: '📝' },
   { label: 'Attempts', href: '/dev/attempts', icon: '🔄' },
   { label: 'Results', href: '/dev/results', icon: '📊' },
+  { label: 'Analytics', href: '/dev/analytics', icon: '📈' },
+  { label: 'Notifications', href: '/dev/notifications', icon: '🔔' },
   { label: 'Settings', href: '/dev/settings', icon: '⚙️' },
 ];
 

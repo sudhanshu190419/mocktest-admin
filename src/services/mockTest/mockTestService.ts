@@ -38,6 +38,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { resolveCurrentTeacherId } from '../content/teacherResolver';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -351,8 +352,7 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
 /**
  * Create a new mock test.
  *
- * The `totalMarks` is set to 0 on creation (marks are populated when questions
- * are added in a separate step). The `status` defaults to `'draft'`.
+ * The `status` defaults to `'draft'`.
  *
  * @param input - The mock test creation payload.
  *
@@ -363,6 +363,7 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
  *   streamId: 'uuid-here',
  *   title: 'NEET 2025 Full Syllabus Mock #3',
  *   durationMin: 180,
+ *   totalMarks: 100,
  * });
  */
 export async function createMockTest(input: CreateMockTestInput): Promise<ApiResponse<MockTest>> {
@@ -392,25 +393,54 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
       return { success: false, error: 'durationMin must be greater than 0.' };
     }
 
+    // ── Validate totalMarks ────────────────────────────────────────────
+    if (input.totalMarks == null || input.totalMarks <= 0) {
+      return { success: false, error: 'Total marks must be greater than 0.' };
+    }
+
+    // ── Validate passingMarks vs totalMarks ────────────────────────────
+    if (input.passingMarks != null && input.passingMarks > input.totalMarks) {
+      return {
+        success: false,
+        error: 'Passing marks cannot exceed total marks.',
+      };
+    }
+
     // ── Validate UUID formats ──────────────────────────────────────────
     validateUUID(input.instituteId, 'instituteId');
-    validateUUID(input.teacherId, 'teacherId');
+    // We do NOT validate input.teacherId as a UUID here because we override
+    // it with the resolved teacher_details.teacher_id below.
     validateUUID(input.streamId, 'streamId');
 
     if (input.subjectId) {
       validateUUID(input.subjectId, 'subjectId');
     }
 
-    // ── Build DB record ────────────────────────────────────────────────
+    // ── Resolve teacher ID ────────────────────────────────────────────────
+    // The RLS policy requires teacher_id = get_my_teacher_id(), which returns
+    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
+    const resolved = await resolveCurrentTeacherId();
+    if (!resolved) {
+      return {
+        success: false,
+        error:
+          'Cannot create mock test: no teacher profile found for the current user. ' +
+          'Ensure the authenticated user has a corresponding teacher_details record.',
+      };
+    }
+
+    const teacherId: string = resolved.teacherId;
+
+    // ── Build DB record (teacher_id uses teacher_details.teacher_id) ───────
     const dbRecord: Record<string, unknown> = {
       institute_id: input.instituteId,
-      teacher_id: input.teacherId,
+      teacher_id: teacherId,
       stream_id: input.streamId,
       subject_id: input.subjectId ?? null,
       title: input.title.trim(),
       description: input.description ?? null,
       duration_min: input.durationMin,
-      total_marks: 1,
+      total_marks: input.totalMarks,
       passing_marks: input.passingMarks ?? null,
       negative_marking: input.negativeMarking ?? 0,
       attempt_limit: input.attemptLimit ?? null,

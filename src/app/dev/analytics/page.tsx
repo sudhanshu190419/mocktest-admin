@@ -2,16 +2,16 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import ResultsPanel from '@/components/dev/results/ResultsPanel';
-import type { ResultsDebugInfo } from '@/components/dev/results/ResultsPanel';
+import AnalyticsPanel from '@/components/dev/analytics/AnalyticsPanel';
+import type { AnalyticsDebugInfo } from '@/components/dev/analytics/AnalyticsPanel';
 import DebugPanel from '@/components/dev/DebugPanel';
 import StatusBadge from '@/components/dev/StatusBadge';
 import LoadingIndicator from '@/components/dev/LoadingIndicator';
 import SessionInfo from '@/components/dev/SessionInfo';
 
-type AnyDebugInfo = ResultsDebugInfo;
+type AnyDebugInfo = AnalyticsDebugInfo;
 
-export default function ResultsPage() {
+export default function AnalyticsPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
 
   const [debugInfo, setDebugInfo] = useState<AnyDebugInfo | null>(null);
@@ -20,15 +20,15 @@ export default function ResultsPage() {
     setDebugInfo(info);
   }, []);
 
-  const lastOperation = debugInfo ? debugInfo.lastHookCalled : 'Results view';
+  const lastOperation = debugInfo ? debugInfo.lastHookCalled : 'Analytics view';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-gray-100">Results</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Result Engine — view, search, release, hide, delete results</p>
+            <h1 className="text-lg font-semibold text-gray-100">Analytics</h1>
+            <p className="text-xs text-gray-500 mt-0.5">Analytics Engine — student, teacher, institute, mock test analytics</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -42,7 +42,7 @@ export default function ResultsPage() {
 
       <SessionInfo />
 
-      <ResultsPanel onDebugInfo={handleDebugInfo} />
+      <AnalyticsPanel onDebugInfo={handleDebugInfo} />
 
       <DebugPanel
         lastOperation={lastOperation}
@@ -50,7 +50,7 @@ export default function ResultsPage() {
         info={[
           { label: 'Loading', value: debugInfo ? String(debugInfo.loading) : '—' },
           { label: 'Mutation Loading', value: debugInfo ? String(debugInfo.mutationLoading) : '—' },
-          { label: 'Selected Result', value: debugInfo?.selectedRecord ?? '—' },
+          { label: 'Selected Entity', value: debugInfo?.selectedEntity ?? '—' },
           { label: 'Cache Status', value: debugInfo?.cacheStatus ?? '—' },
           { label: 'Query Status', value: debugInfo?.queryStatus ?? '—' },
           { label: 'Last Hook', value: debugInfo?.lastHookCalled ?? '—' },
