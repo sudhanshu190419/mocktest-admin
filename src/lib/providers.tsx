@@ -18,6 +18,7 @@ import { Provider as ReduxProvider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeStore } from '../store';
 import type { ReactNode } from 'react';
+import { AuthProvider } from '@/context/AuthContext';
 
 // ─── React Query Configuration ──────────────────────────────────────────────
 
@@ -74,7 +75,11 @@ export default function Providers({ children }: ProvidersProps) {
 
   return (
     <ReduxProvider store={store}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </QueryClientProvider>
     </ReduxProvider>
   );
 }
