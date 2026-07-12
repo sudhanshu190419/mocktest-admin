@@ -89,8 +89,19 @@ interface ReorderItem {
 
 /**
  * Option entry used by the bulk replace workflow.
+ *
+ * Existing options carry their `optionId` for UPDATE. Newly added options
+ * omit `optionId`, triggering an INSERT with a fresh database-generated UUID.
+ * This preserves the FK chain to `question_option_images` — images attached
+ * to an existing option survive edits because the option row is never deleted
+ * and re-created; only its content fields (text, correctness, order) change.
  */
 interface ReplaceOptionEntry {
+  /**
+   * UUID of an existing option row. Present for options loaded from the
+   * database; absent for newly added options in the editor.
+   */
+  optionId?: string;
   /** Option text in plain text or Markdown. */
   optionText: string;
   /** TRUE if this is a correct answer. */
@@ -215,10 +226,6 @@ export async function createQuestionOption(
       return { success: false, error: 'instituteId is required.' };
     }
 
-    if (!input.optionText?.trim()) {
-      return { success: false, error: 'Option text is required.' };
-    }
-
     if (input.orderSequence < 1) {
       return { success: false, error: 'orderSequence must be 1 or greater.' };
     }
@@ -228,10 +235,12 @@ export async function createQuestionOption(
     validateUUID(input.instituteId, 'instituteId');
 
     // ── Build DB record ────────────────────────────────────────────────
+    // optionText is optional — NULL maps to the DB's nullable option_text
+    // column (see migration 023), supporting image-only options.
     const dbRecord: Record<string, unknown> = {
       question_id: input.questionId,
       institute_id: input.instituteId,
-      option_text: input.optionText.trim(),
+      option_text: input.optionText?.trim() || null,
       is_correct: input.isCorrect ?? false,
       order_sequence: input.orderSequence,
     };
@@ -462,15 +471,10 @@ export async function replaceQuestionOptions(
     }
 
     // --- Content validation ---
-    for (let i = 0; i < options.length; i++) {
-      const opt = options[i];
-      if (!opt.optionText?.trim()) {
-        return {
-          success: false,
-          error: `Option at position ${i + 1} has empty text. All options must have text content.`,
-        };
-      }
-    }
+    // optionText is optional — empty/null values are allowed for image-only
+    // options (the DB column is nullable as of migration 023). At least one
+    // option in the set must have text OR images (enforced at the application
+    // layer in the caller).
 
     // --- Correct-option validation ---
     const correctCount = options.filter((o) => o.isCorrect).length;
@@ -515,40 +519,140 @@ export async function replaceQuestionOptions(
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    //  Execution (atomic via Supabase transaction-equivalent approach)
+    //  Execution — diff-based: UPDATE existing, INSERT new, DELETE removed
     // ═══════════════════════════════════════════════════════════════════
+    //
+    // Rationale: the old DELETE-ALL + INSERT-ALL approach destroyed option
+    // row identities, causing the ON DELETE CASCADE FK on
+    // question_option_images.option_id to silently delete all option images
+    // on every text edit. By updating existing rows in place, we preserve
+    // the FK chain and option images survive unchanged.
 
-    // Step 1: Delete all existing options for this question
-    const { error: deleteError } = await supabase
+    // Step 1: Fetch existing option IDs and order_sequences to distinguish
+    // UPDATE from INSERT and to compute safe temporary values for the
+    // two-pass swap (see Step 3a).
+    const { data: existingRows, error: fetchError } = await supabase
       .from('question_options')
-      .delete()
+      .select('option_id, order_sequence')
       .eq('question_id', questionId);
 
-    if (deleteError) {
-      return { success: false, error: extractErrorMessage(deleteError) };
+    if (fetchError) {
+      return { success: false, error: extractErrorMessage(fetchError) };
     }
 
-    // Step 2: Insert new options
-    const dbRecords = options.map((opt) => ({
-      question_id: questionId,
-      institute_id: instituteId,
-      option_text: opt.optionText.trim(),
-      is_correct: opt.isCorrect,
-      order_sequence: opt.orderSequence,
-    }));
+    const existingOptionIds = new Set((existingRows ?? []).map((r) => r.option_id));
 
-    const { data, error: insertError } = await supabase
-      .from('question_options')
-      .insert(dbRecords)
-      .select()
-      .order('order_sequence', { ascending: true });
+    // Compute the current maximum order_sequence so we can generate
+    // temporary values that are guaranteed to be unique and satisfy
+    // CHECK (order_sequence >= 1).
+    const currentMaxSequence = (existingRows ?? []).reduce(
+      (max, row) => Math.max(max, row.order_sequence),
+      0,
+    );
+    const incomingOptionIds = new Set(
+      options.filter((o) => o.optionId).map((o) => o.optionId!),
+    );
 
-    if (insertError) {
-      return { success: false, error: extractErrorMessage(insertError) };
+    // Step 2: DELETE options that were removed from the set
+    // Only options the caller explicitly removed are deleted.
+    // Because the FK is ON DELETE CASCADE, their associated
+    // question_option_images rows are cleaned up by the database.
+    const removedIds = [...existingOptionIds].filter(
+      (id) => !incomingOptionIds.has(id),
+    );
+
+    if (removedIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('question_options')
+        .delete()
+        .in('option_id', removedIds);
+
+      if (deleteError) {
+        // FK violation: option has student answers
+        if (deleteError.code === '23503') {
+          return {
+            success: false,
+            error:
+              'Cannot remove an option that has been selected in student answers. ' +
+              'Create a new question version instead.',
+          };
+        }
+        return { success: false, error: extractErrorMessage(deleteError) };
+      }
     }
 
-    const mapped = (data ?? []).map(mapQuestionOption);
-    return { success: true, data: mapped };
+    // Step 3: UPDATE existing options in place (preserves option_id and all FK children)
+    const toUpdate = options.filter(
+      (o) => o.optionId && existingOptionIds.has(o.optionId),
+    );
+
+    if (toUpdate.length > 0) {
+      // 3a. First pass: set temporary positive order_sequences that are
+      //     safely above every existing value. This avoids both the
+      //     UNIQUE constraint (question_id, order_sequence) AND satisfies
+      //     the CHECK constraint (order_sequence >= 1).
+      //
+      //     Strategy: temp = currentMax + 1000 + opt.orderSequence
+      //     - Always >= 1 (currentMax >= 0, orderSequence >= 1, sum >= 1001)
+      //     - Unique per option (orderSequence is unique in the incoming set)
+      //     - Never collides with existing or final values (all > currentMax)
+      for (const opt of toUpdate) {
+        const { error: tmpError } = await supabase
+          .from('question_options')
+          .update({
+            order_sequence: currentMaxSequence + 1000 + opt.orderSequence,
+          })
+          .eq('option_id', opt.optionId);
+
+        if (tmpError) {
+          return { success: false, error: extractErrorMessage(tmpError) };
+        }
+      }
+
+      // 3b. Second pass: set the correct values including final order_sequence
+      for (const opt of toUpdate) {
+        const { error: updateError } = await supabase
+          .from('question_options')
+          .update({
+            option_text: opt.optionText?.trim() || null,
+            is_correct: opt.isCorrect,
+            order_sequence: opt.orderSequence,
+          })
+          .eq('option_id', opt.optionId);
+
+        if (updateError) {
+          return { success: false, error: extractErrorMessage(updateError) };
+        }
+      }
+    }
+
+    // Step 4: INSERT brand-new options (those without an optionId, or whose
+    //         optionId wasn't found in the database — e.g. temp IDs from the
+    //         OptionEditor like "opt-1234567890").
+    const toInsert = options.filter(
+      (o) => !o.optionId || !existingOptionIds.has(o.optionId),
+    );
+
+    if (toInsert.length > 0) {
+      const dbRecords = toInsert.map((opt) => ({
+        question_id: questionId,
+        institute_id: instituteId,
+        option_text: opt.optionText?.trim() || null,
+        is_correct: opt.isCorrect,
+        order_sequence: opt.orderSequence,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('question_options')
+        .insert(dbRecords);
+
+      if (insertError) {
+        return { success: false, error: extractErrorMessage(insertError) };
+      }
+    }
+
+    // Step 5: Return all current options (fresh from DB, ordered)
+    return getQuestionOptions(questionId);
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }

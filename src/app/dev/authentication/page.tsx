@@ -31,10 +31,10 @@ export default function AuthenticationPage() {
   const { login, register, logout, refreshSession, user, loading, error, isAuthenticated } = useAuth();
 
   // ── Form state ─────────────────────────────────────────────────────
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPhone, setLoginPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regName, setRegName] = useState('');
   const [regRole, setRegRole] = useState<'student' | 'teacher' | 'admin'>('student');
@@ -51,15 +51,15 @@ export default function AuthenticationPage() {
   // ── Handlers ───────────────────────────────────────────────────────
   const handleLogin = useCallback(async () => {
     setDebugLastAction({ name: 'login', success: null });
-    const result = await login(loginEmail, loginPassword);
+    const result = await login(loginPhone, loginPassword);
     setDebugLastAction({ name: 'login', success: result.success, data: result, error: !result.success ? result.error : null });
-  }, [login, loginEmail, loginPassword]);
+  }, [login, loginPhone, loginPassword]);
 
   const handleRegister = useCallback(async () => {
     setDebugLastAction({ name: 'register', success: null });
-    const result = await register(regEmail, regPassword, regName);
+    const result = await register(regPhone, regPassword, regName);
     setDebugLastAction({ name: 'register', success: result.success, data: result, error: !result.success ? result.error : null });
-  }, [register, regEmail, regPassword, regName]);
+  }, [register, regPhone, regPassword, regName]);
 
   const handleLogout = useCallback(async () => {
     setDebugLastAction({ name: 'logout', success: null });
@@ -144,15 +144,15 @@ export default function AuthenticationPage() {
       )}
 
       {/* ── Login ───────────────────────────────────────────────────── */}
-      <SectionCard title="Login" description="Authenticate with email and password">
+      <SectionCard title="Login" description="Authenticate with phone and password">
         <div className="space-y-3">
           <div className="space-y-2">
-            <label className="block text-[11px] text-gray-500 uppercase tracking-wider">Email</label>
+            <label className="block text-[11px] text-gray-500 uppercase tracking-wider">Mobile Number</label>
             <input
-              type="email"
-              value={loginEmail}
-              onChange={(e) => setLoginEmail(e.target.value)}
-              placeholder="user@example.com"
+              type="tel"
+              value={loginPhone}
+              onChange={(e) => setLoginPhone(e.target.value)}
+              placeholder="+919876543210"
               className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-600"
             />
           </div>
@@ -168,7 +168,7 @@ export default function AuthenticationPage() {
           </div>
           <button
             type="button"
-            disabled={loading || !loginEmail || !loginPassword}
+            disabled={loading || !loginPhone || !loginPassword}
             onClick={handleLogin}
             className="rounded bg-blue-700 px-4 py-2 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -192,12 +192,12 @@ export default function AuthenticationPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-[11px] text-gray-500 uppercase tracking-wider">Email</label>
+              <label className="block text-[11px] text-gray-500 uppercase tracking-wider">Mobile Number</label>
               <input
-                type="email"
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.target.value)}
-                placeholder="user@example.com"
+                type="tel"
+                value={regPhone}
+                onChange={(e) => setRegPhone(e.target.value)}
+                placeholder="+919876543210"
                 className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-600"
               />
             </div>
@@ -241,7 +241,7 @@ export default function AuthenticationPage() {
           </div>
           <button
             type="button"
-            disabled={loading || !regEmail || !regPassword || !regName}
+            disabled={loading || !regPhone || !regPassword || !regName}
             onClick={handleRegister}
             className="rounded bg-green-800 px-4 py-2 text-xs font-medium text-green-100 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >

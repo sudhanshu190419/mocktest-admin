@@ -29,6 +29,12 @@
  * 4. **Debug logging.** All operations log to the console in development
  *    using console.group patterns consistent with the existing services.
  *
+ * 5. **Batch operations use PostgreSQL RPCs.** `releaseMockResults` and
+ *    `unreleaseMockResults` call Postgres functions via `supabase.rpc()`
+ *    so that `released_at` is always set to `now()` on the database server,
+ *    never the client clock. This satisfies the CHECK constraint:
+ *      `released_at >= generated_at`
+ *
  * @module mockResultService
  */
 
@@ -70,6 +76,23 @@ interface DbMockResult {
   is_released: boolean;
   generated_at: string;
   released_at: string | null;
+}
+
+// ─── RPC Response Shapes ───────────────────────────────────────────────────
+
+interface DbReleaseCount {
+  updated_count: number;
+}
+
+interface DbReleaseStatus {
+  total_results: number;
+  released_results: number;
+  unreleased_results: number;
+  all_released: boolean;
+  earliest_generated: string | null;
+  latest_generated: string | null;
+  first_released_at: string | null;
+  last_released_at: string | null;
 }
 
 // ─── Sort Field Map ────────────────────────────────────────────────────────
@@ -120,6 +143,58 @@ function mapMockResult(db: DbMockResult): MockResult {
  */
 function mapSortField(sortBy: MockResultSortOptions['sortBy']): string {
   return SORT_FIELD_MAP[sortBy ?? 'generatedAt'] ?? 'generated_at';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Public Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Aggregate release status for all results belonging to a mock test.
+ *
+ * Returned by `getReleaseStatus()`.
+ */
+export interface MockTestReleaseStatus {
+  /** Total number of result rows for the test. */
+  totalResults: number;
+  /** Number of results with is_released = true. */
+  releasedResults: number;
+  /** Number of results with is_released = false. */
+  unreleasedResults: number;
+  /** TRUE when all results are released. */
+  allReleased: boolean;
+  /** Earliest generated_at across all results. */
+  earliestGenerated: string | null;
+  /** Latest generated_at across all results. */
+  latestGenerated: string | null;
+  /** Earliest released_at across all results (when first result was released). */
+  firstReleasedAt: string | null;
+  /** Latest released_at across all results (when last result was released). */
+  lastReleasedAt: string | null;
+}
+
+/**
+ * Maps a raw snake_case RPC status row to a camelCase `MockTestReleaseStatus`.
+ */
+function mapReleaseStatus(db: DbReleaseStatus): MockTestReleaseStatus {
+  return {
+    totalResults: db.total_results,
+    releasedResults: db.released_results,
+    unreleasedResults: db.unreleased_results,
+    allReleased: db.all_released,
+    earliestGenerated: db.earliest_generated,
+    latestGenerated: db.latest_generated,
+    firstReleasedAt: db.first_released_at,
+    lastReleasedAt: db.last_released_at,
+  };
+}
+
+/**
+ * Result of a batch release or unrelease operation.
+ */
+export interface BatchReleaseResult {
+  /** Number of mock_results rows that were updated. */
+  updatedCount: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -500,9 +575,13 @@ export async function getInstituteResults(
 }
 
 /**
- * Release a result, making it visible to the student.
+ * Release a single result, making it visible to the student.
  *
  * Sets `is_released = TRUE` and `released_at = NOW()`.
+ *
+ * For batch operations (release all results for a test), use
+ * `releaseMockResults()` instead, which calls the PostgreSQL RPC function
+ * and guarantees the timestamp comes from the database server.
  *
  * @param resultId - UUID of the result to release.
  */
@@ -547,7 +626,9 @@ export async function releaseResult(
 }
 
 /**
- * Hide a result, setting is_released = FALSE.
+ * Hide a single result, setting is_released = FALSE.
+ *
+ * For batch operations, use `unreleaseMockResults()` instead.
  *
  * @param resultId - UUID of the result to hide.
  */
@@ -731,6 +812,199 @@ export async function getResults(
   } catch (err) {
     console.group('RESULT SERVICE');
     console.log('Operation: getResults');
+    console.log('Error:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Batch Release / Unrelease (via PostgreSQL RPC)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// These methods use supabase.rpc() to call Postgres functions so that
+// released_at is always set to now() on the database server, never the
+// client clock. This satisfies the CHECK constraint:
+//   (is_released = true AND released_at IS NOT NULL)
+//    OR (is_released = false AND released_at IS NULL)
+//
+// Admin-only: RLS policies on mock_results ensure only admin users
+// can update the is_released / released_at columns.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Release all currently unreleased results for a mock test.
+ *
+ * Calls the `release_test_results` PostgreSQL RPC function which sets:
+ *   is_released = TRUE
+ *   released_at = NOW()   (database server timestamp)
+ *
+ * Only rows WHERE is_released = FALSE are updated, satisfying the CHECK
+ * constraint `ck_mock_results_is_released`.
+ *
+ * @param testId - UUID of the mock test whose results to release.
+ *
+ * @returns ApiResponse with the count of rows updated.
+ *
+ * @see supabase/migrations/035_mock_test_result_release.sql
+ */
+export async function releaseMockResults(
+  testId: string,
+): Promise<ApiResponse<BatchReleaseResult>> {
+  try {
+    console.group('RESULT SERVICE');
+    console.log('Operation: releaseMockResults');
+    console.log('Payload:', { testId });
+
+    validateUUID(testId, 'testId');
+
+    const { data, error } = await supabase.rpc('release_test_results', {
+      p_test_id: testId,
+    });
+
+    console.log('Response:', { success: !error, data, error });
+    console.groupEnd();
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const result = (data as DbReleaseCount[])?.[0];
+    return {
+      success: true,
+      data: { updatedCount: result?.updated_count ?? 0 },
+    };
+  } catch (err) {
+    console.group('RESULT SERVICE');
+    console.log('Operation: releaseMockResults');
+    console.log('Error:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
+ * Unrelease (hide) all currently released results for a mock test.
+ *
+ * Calls the `unrelease_test_results` PostgreSQL RPC function which sets:
+ *   is_released = FALSE
+ *   released_at = NULL
+ *
+ * This satisfies the CHECK constraint because both fields are set together
+ * to the "not released" state.
+ *
+ * @param testId - UUID of the mock test whose results to hide.
+ *
+ * @returns ApiResponse with the count of rows updated.
+ *
+ * @see supabase/migrations/035_mock_test_result_release.sql
+ */
+export async function unreleaseMockResults(
+  testId: string,
+): Promise<ApiResponse<BatchReleaseResult>> {
+  try {
+    console.group('RESULT SERVICE');
+    console.log('Operation: unreleaseMockResults');
+    console.log('Payload:', { testId });
+
+    validateUUID(testId, 'testId');
+
+    const { data, error } = await supabase.rpc('unrelease_test_results', {
+      p_test_id: testId,
+    });
+
+    console.log('Response:', { success: !error, data, error });
+    console.groupEnd();
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const result = (data as DbReleaseCount[])?.[0];
+    return {
+      success: true,
+      data: { updatedCount: result?.updated_count ?? 0 },
+    };
+  } catch (err) {
+    console.group('RESULT SERVICE');
+    console.log('Operation: unreleaseMockResults');
+    console.log('Error:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
+ * Get the aggregate release status for all results belonging to a mock test.
+ *
+ * Calls the `get_test_release_status` PostgreSQL RPC function which returns
+ * counts, all_released flag, and date ranges.
+ *
+ * @param testId - UUID of the mock test.
+ *
+ * @returns ApiResponse with MockTestReleaseStatus.
+ *
+ * @see supabase/migrations/035_mock_test_result_release.sql
+ */
+export async function getReleaseStatus(
+  testId: string,
+): Promise<ApiResponse<MockTestReleaseStatus>> {
+  try {
+    console.group('RESULT SERVICE');
+    console.log('Operation: getReleaseStatus');
+    console.log('Payload:', { testId });
+
+    // TEMP DEBUG: Log before UUID validation
+    console.log('[SERVICE] incoming testId =', testId);
+
+    validateUUID(testId, 'testId');
+
+    // TEMP DEBUG: UUID validation passed
+    console.log('[SERVICE] UUID validation passed');
+
+    // TEMP DEBUG: Log RPC request
+    console.log('[RPC REQUEST]', testId);
+
+    const { data, error } = await supabase.rpc('get_test_release_status', {
+      p_test_id: testId,
+    });
+
+    // TEMP DEBUG: Log RPC response
+    console.log('[RPC RESPONSE]', { data, error });
+
+    console.log('Response:', { success: !error, data, error });
+    console.groupEnd();
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const row = (data as DbReleaseStatus[])?.[0];
+    if (!row) {
+      // No results exist yet for this test
+      return {
+        success: true,
+        data: {
+          totalResults: 0,
+          releasedResults: 0,
+          unreleasedResults: 0,
+          allReleased: false,
+          earliestGenerated: null,
+          latestGenerated: null,
+          firstReleasedAt: null,
+          lastReleasedAt: null,
+        },
+      };
+    }
+
+    // TEMP DEBUG: Log mapped release status before returning
+    const mapped = mapReleaseStatus(row);
+    console.log('[MAPPED RELEASE STATUS]', mapped);
+
+    return { success: true, data: mapped };
+  } catch (err) {
+    console.group('RESULT SERVICE');
+    console.log('Operation: getReleaseStatus');
     console.log('Error:', (err as Record<string, unknown>).message);
     console.groupEnd();
     return { success: false, error: extractErrorMessage(err) };

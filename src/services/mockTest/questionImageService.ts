@@ -42,7 +42,7 @@ const MAX_IMAGES_PER_QUESTION = 10;
 
 /** Valid image role values for placement within a question. */
 const VALID_IMAGE_ROLES = [
-  'stem',
+  'question',
   'option_a',
   'option_b',
   'option_c',
@@ -292,7 +292,7 @@ export async function getQuestionImageById(
  *   questionId: 'question-uuid',
  *   instituteId: 'institute-uuid',
  *   file: imageFile,
- *   imageRole: 'stem',
+ *   imageRole: 'question',
  *   altText: 'Diagram showing Newton's First Law',
  * });
  */
@@ -653,7 +653,7 @@ export async function reorderQuestionImages(
  *   'question-uuid',
  *   'institute-uuid',
  *   [
- *     { file: img1, imageRole: 'stem', orderSequence: 1 },
+ *     { file: img1, imageRole: 'question', orderSequence: 1 },
  *     { file: img2, imageRole: 'explanation', orderSequence: 2 },
  *   ],
  * );

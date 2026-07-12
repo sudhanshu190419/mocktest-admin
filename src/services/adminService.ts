@@ -90,7 +90,7 @@ export const adminService = {
         return {
           id: item.teacher_id,
           profileId: item.profile_id,
-          name: prof.full_name || 'Unknown Faculty',
+          name: prof.name || 'Unknown Faculty',
           department: item.department || 'General',
           designation: item.designation || 'Lecturer',
           avatar: prof.avatar_url || '',

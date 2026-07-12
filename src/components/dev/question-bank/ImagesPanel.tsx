@@ -28,7 +28,7 @@ interface ImagesPanelProps {
   onDebugInfo?: (info: ImagesDebugInfo) => void;
 }
 
-const IMAGE_ROLES = ['stem', 'option_a', 'option_b', 'option_c', 'option_d', 'explanation'];
+const IMAGE_ROLES = ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'explanation'];
 
 export default function ImagesPanel({ onDebugInfo }: ImagesPanelProps) {
   const { user } = useAuth();
@@ -41,7 +41,7 @@ export default function ImagesPanel({ onDebugInfo }: ImagesPanelProps) {
   // Upload form
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadAltText, setUploadAltText] = useState('');
-  const [uploadImageRole, setUploadImageRole] = useState('stem');
+  const [uploadImageRole, setUploadImageRole] = useState('question');
   const [uploadOrderSequence, setUploadOrderSequence] = useState(1);
 
   // Replace metadata

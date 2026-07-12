@@ -118,6 +118,42 @@ export type AttemptStatus = 'in_progress' | 'submitted' | 'timed_out' | 'abandon
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Frozen image metadata within a question snapshot.
+ *
+ * Contains storage references (not signed URLs) for images associated
+ * with the question stem or explanation at snapshot time.
+ */
+export interface QuestionSnapshotImage {
+  /** Supabase Storage bucket name. */
+  storageBucket: string;
+  /** Object path within `storageBucket`. Signed URL generated dynamically. */
+  storagePath: string;
+  /** Where this image is used: `question` or `explanation`. */
+  imageRole: string;
+  /** Accessibility description. */
+  altText: string | null;
+  /** 1-indexed display order within the question. */
+  orderSequence: number;
+}
+
+/**
+ * Frozen option image metadata within a question snapshot option.
+ *
+ * Contains storage references (not signed URLs) for images attached
+ * to a specific option at snapshot time.
+ */
+export interface QuestionSnapshotOptionImage {
+  /** Supabase Storage bucket name. */
+  storageBucket: string;
+  /** Object path within `storageBucket`. Signed URL generated dynamically. */
+  storagePath: string;
+  /** Accessibility description. */
+  altText: string | null;
+  /** 1-indexed display order within the option. */
+  displayOrder: number;
+}
+
+/**
  * Frozen option snapshot within a question snapshot.
  *
  * Contains the option data as it existed at test publish time.
@@ -133,18 +169,21 @@ export interface QuestionSnapshotOption {
   isCorrect: boolean;
   /** 1-indexed display order within the question. */
   orderSequence: number;
+  /** Images attached to this option at snapshot time. Empty array if none. */
+  images: QuestionSnapshotOptionImage[];
 }
 
 /**
  * Frozen copy of a question at test publish time.
  *
  * Serialised into `mock_test_questions.question_snapshot` by the publish
- * Edge Function. The test engine reads from this snapshot rather than the
+ * workflow. The test engine reads from this snapshot rather than the
  * live `questions` table, ensuring immutability for in-progress and future
  * attempts even if the underlying question is edited post-publish.
  *
- * Does NOT include explanation — that is served post-submission from
- * `question_explanations`.
+ * Includes all data required to render a test: stem, type, difficulty,
+ * subject/chapter, scoring, all answer options with correct answers,
+ * numerical answer (if applicable), explanation, and image metadata.
  */
 export interface QuestionSnapshot {
   /** Schema version for future migration support. Start at 1. */
@@ -155,6 +194,12 @@ export interface QuestionSnapshot {
   questionText: string;
   /** Question type discriminator. */
   questionType: QuestionType;
+  /** Difficulty level at snapshot time. */
+  difficulty: DifficultyLevel;
+  /** Subject this question belongs to at snapshot time. */
+  subjectId: string | null;
+  /** Chapter this question belongs to at snapshot time. */
+  chapterId: string | null;
   /** Marks awarded for a correct answer. */
   marks: number;
   /** Negative marks deducted for a wrong answer. 0 means no negative marking. */
@@ -165,6 +210,12 @@ export interface QuestionSnapshot {
   correctNumericalAnswer: number | null;
   /** Acceptable margin of error for numerical answers. NULL = exact match. */
   numericalTolerance: number | null;
+  /** Explanation text at snapshot time. NULL if no explanation was authored. */
+  explanationText: string | null;
+  /** Explanation video URL at snapshot time. NULL if no video was provided. */
+  explanationVideoUrl: string | null;
+  /** Stem/explanation images at snapshot time. Empty array if none. */
+  images: QuestionSnapshotImage[];
 }
 
 /**
@@ -332,6 +383,42 @@ export interface CreateQuestionInput {
   marks?: number;
   /** Defaults to `0` when not provided. */
   negativeMarks?: number;
+  /**
+   * Options (with optional images) to create alongside the question.
+   * When provided, the service creates options and uploads images atomically.
+   * When omitted, options can be added later via replaceQuestionOptions().
+   */
+  options?: CreateOptionEntry[];
+
+  /**
+   * Step-by-step explanation text. Optional at creation; can be added
+   * or edited later on the Edit page.
+   */
+  explanationText?: string | null;
+
+  /**
+   * Video solution URL. Optional at creation.
+   */
+  explanationVideoUrl?: string | null;
+
+  /**
+   * Correct numerical answer (only relevant for numerical type questions).
+   * The service converts this string to a number when inserting.
+   */
+  correctNumericalAnswer?: number | null;
+
+  /**
+   * Numerical tolerance for approximate matching. NULL = exact match.
+   */
+  numericalTolerance?: number | null;
+
+  /**
+   * Stem/explanation images to upload for this question.
+   * Images are uploaded after the question is created, before options are
+   * processed. Each image is uploaded via questionImageService and linked
+   * to the question_images table.
+   */
+  images?: CreateQuestionImageEntry[];
 }
 
 /**
@@ -357,6 +444,11 @@ export interface UpdateQuestionInput {
   marks?: number;
   /** Only mutable when status is `draft` or `pending_approval`. */
   negativeMarks?: number;
+  /**
+   * Option image operations to perform as part of the update.
+   * Supports add, delete, replace, and reorder actions.
+   */
+  optionImageOps?: OptionImageOperation[];
 }
 
 /**
@@ -397,6 +489,22 @@ export interface QuestionSortOptions {
     | 'updatedAt'
     | 'approvedAt';
   sortDirection?: SortDirection;
+}
+
+/**
+ * Image file and metadata for creating a stem/explanation question image.
+ *
+ * Mirrors the fields expected by questionImageService.uploadQuestionImage().
+ */
+export interface CreateQuestionImageEntry {
+  /** The image file to upload. */
+  file: File | Blob | ArrayBuffer;
+  /** Where this image is used. Must match the PostgreSQL `image_role` enum: `question` or `explanation`. */
+  imageRole: string;
+  /** Accessibility description. */
+  altText?: string | null;
+  /** 1-indexed display order within the question. */
+  displayOrder?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -467,6 +575,139 @@ export interface UpdateQuestionOptionInput {
   isCorrect?: boolean;
   orderSequence?: number;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QuestionDetail (Question + Options + Option Images)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lightweight option image info embedded within a question option response.
+ *
+ * This is a subset of the full `OptionImage` type from the service layer,
+ * included here so consumers never need to import service types.
+ */
+export interface QuestionOptionImageInfo {
+  /** Primary key of the option image. */
+  optionImageId: string;
+  /** Supabase Storage bucket name. */
+  storageBucket: string;
+  /** Object path within `storageBucket`. */
+  storagePath: string;
+  /** Accessibility description. NULL during draft authoring. */
+  altText: string | null;
+  /** 1-indexed display order within the option. */
+  displayOrder: number;
+}
+
+/**
+ * A question option with its associated images.
+ *
+ * Extends the fields of `QuestionOption` and adds an `images` array so that
+ * the frontend receives a fully nested structure in a single response.
+ */
+export interface QuestionOptionWithImages {
+  /** Primary key. */
+  optionId: string;
+  /** Parent question (FK → public.questions). */
+  questionId: string;
+  /** Institute that owns this option (FK → public.institutes). */
+  instituteId: string;
+  /** The option content in plain text or Markdown. */
+  optionText: string;
+  /** TRUE if this is a correct answer. */
+  isCorrect: boolean;
+  /** 1-indexed display order within the question. */
+  orderSequence: number;
+  /** UTC timestamp of row creation. */
+  createdAt: string;
+  /** Images associated with this option, ordered by display_order. */
+  images: QuestionOptionImageInfo[];
+}
+
+/**
+ * A question with its options and option images fully resolved.
+ *
+ * Returned by `getQuestion()` — the frontend receives everything in a
+ * single response without making additional service calls.
+ */
+export interface QuestionDetail extends Question {
+  /** Options for this question, each containing its images. */
+  options: QuestionOptionWithImages[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Option Image Integration Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Image file and metadata for creating an option image.
+ */
+export interface CreateOptionImageEntry {
+  /** The image file to upload. */
+  file: File | Blob | ArrayBuffer;
+  /** Accessibility description. */
+  altText?: string | null;
+  /** 1-indexed display order. Defaults to next available sequence. */
+  displayOrder?: number;
+}
+
+/**
+ * An option entry for question creation that may include images.
+ */
+export interface CreateOptionEntry {
+  /** Option content in plain text or Markdown. */
+  optionText: string;
+  /** TRUE if this is a correct answer. Defaults to `false`. */
+  isCorrect?: boolean;
+  /** 1-indexed display order. */
+  orderSequence: number;
+  /** Optional images to upload for this option. */
+  images?: CreateOptionImageEntry[];
+}
+
+/**
+ * Discriminated image operation for updating option images.
+ *
+ * Each operation targets a single option and performs one action.
+ * The `action` field determines which other fields are required.
+ */
+export type OptionImageOperation =
+  | {
+      action: 'add';
+      /** The option to add the image to. */
+      optionId: string;
+      /** The image file to upload. */
+      file: File | Blob | ArrayBuffer;
+      /** Accessibility description. */
+      altText?: string | null;
+      /** 1-indexed display order. Defaults to next available sequence. */
+      displayOrder?: number;
+    }
+  | {
+      action: 'delete';
+      /** The option that owns the image. */
+      optionId: string;
+      /** The ID of the image to delete. */
+      imageId: string;
+    }
+  | {
+      action: 'replace';
+      /** The option that owns the image. */
+      optionId: string;
+      /** The ID of the image to replace. */
+      imageId: string;
+      /** The new image file. */
+      file: File | Blob | ArrayBuffer;
+      /** Updated accessibility description (optional). */
+      altText?: string | null;
+    }
+  | {
+      action: 'reorder';
+      /** The option whose images should be reordered. */
+      optionId: string;
+      /** The new ordering: array of { imageId, displayOrder } pairs. */
+      imageOrder: Array<{ imageId: string; displayOrder: number }>;
+    };
 
 /**
  * Filters available when querying question options.
@@ -617,9 +858,9 @@ export interface QuestionImage {
   /** Object path within `storageBucket`. Signed URL generated dynamically. */
   storagePath: string;
   /**
-   * Describes where this image is used:
-   * - `stem`:      Embedded in question text.
-   * - `option_a`–`option_d`: Embedded in a specific option.
+   * Describes where this image is used.
+   * Must match the PostgreSQL `image_role` enum:
+   * - `question`:   Embedded in question text.
    * - `explanation`: Used in the solution walkthrough.
    */
   imageRole: string;
@@ -802,8 +1043,13 @@ export interface MockTest {
 export interface CreateMockTestInput {
   /** Institute that owns this test. */
   instituteId: string;
-  /** Teacher creating this test. */
-  teacherId: string;
+  /**
+   * Teacher creating this test.
+   * NOTE: This field is overridden server-side by resolveCurrentTeacherId().
+   * The frontend should NOT send this — it's kept optional for backwards
+   * compatibility with existing callers that pass an empty string.
+   */
+  teacherId?: string;
   /** Exam stream this test is designed for. */
   streamId: string;
   /** Subject for single-subject tests. NULL for full-syllabus. */

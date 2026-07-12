@@ -387,11 +387,14 @@ export type StorageResourceType =
   | 'content_video'
   | 'content_thumbnail'
   | 'question_image'
+  | 'question_option_image'
   | 'student_submission'
   | 'profile_image'
   | 'certificate'
   | 'product_image'
-  | 'institute_logo';
+  | 'institute_logo'
+  | 'pyq_question_paper_pdf'
+  | 'pyq_solution_paper_pdf';
 
 /**
  * Complete configuration for a single storage resource type.
@@ -445,6 +448,11 @@ export const PRODUCT_IMAGES_BUCKET = 'product-images' as const;
  * Bucket for institute logos.
  */
 export const INSTITUTE_LOGOS_BUCKET = 'institute-logos' as const;
+
+/**
+ * Bucket for PYQ paper PDFs (question papers and solutions).
+ */
+export const PYQ_PDFS_BUCKET = 'pyq-pdfs' as const;
 
 // ─── Resource-Specific MIME Allowlists ─────────────────────────────────────
 
@@ -515,6 +523,17 @@ export const QUESTION_IMAGE_PATH_TEMPLATE =
   'questions/{instituteId}/{questionId}/{imageId}.{ext}' as const;
 
 /**
+ * Template for question option image storage paths.
+ *
+ * Path pattern:
+ *   questions/{instituteId}/{questionId}/options/{optionId}/{optionImageId}.{ext}
+ *
+ * @example `questions/inst-a1b2/q-x4y5z6/options/opt-m7n8/oi-abcd1234.png`
+ */
+export const QUESTION_OPTION_IMAGE_PATH_TEMPLATE =
+  'questions/{instituteId}/{questionId}/options/{optionId}/{optionImageId}.{ext}' as const;
+
+/**
  * Template for profile image storage paths.
  *
  * Path pattern:
@@ -547,6 +566,44 @@ export const PRODUCT_IMAGE_PATH_TEMPLATE =
  */
 export const INSTITUTE_LOGO_PATH_TEMPLATE =
   'institutes/{instituteId}/logo/{sanitisedFileName}' as const;
+
+/**
+ * Template for PYQ question paper PDF storage paths.
+ *
+ * Path pattern:
+ *   institutes/{instituteId}/pyq-packages/{packageId}/papers/{paperId}/question-paper.pdf
+ *
+ * @example `institutes/inst-a1b2/pyq-packages/pkg-x4y5/papers/ppr-m7n8/question-paper.pdf`
+ */
+export const PYQ_QUESTION_PAPER_PATH_TEMPLATE =
+  'institutes/{instituteId}/pyq-packages/{packageId}/papers/{paperId}/question-paper.pdf' as const;
+
+/**
+ * Template for PYQ solution PDF storage paths.
+ *
+ * Path pattern:
+ *   institutes/{instituteId}/pyq-packages/{packageId}/papers/{paperId}/solution.pdf
+ *
+ * @example `institutes/inst-a1b2/pyq-packages/pkg-x4y5/papers/ppr-m7n8/solution.pdf`
+ */
+export const PYQ_SOLUTION_PAPER_PATH_TEMPLATE =
+  'institutes/{instituteId}/pyq-packages/{packageId}/papers/{paperId}/solution.pdf' as const;
+
+/**
+ * Maximum file size for PYQ paper PDFs (100 MB).
+ * Same limit as content PDFs.
+ */
+export const PYQ_PAPER_MAX_SIZE_BYTES = 104_857_600;
+
+/**
+ * Allowed MIME types for PYQ paper PDFs.
+ */
+export const PYQ_PAPER_MIME_TYPES = ['application/pdf'] as const;
+
+/**
+ * File extensions accepted for PYQ paper PDFs.
+ */
+export const PYQ_PAPER_EXTENSIONS = ['.pdf'] as const;
 
 // ─── Resource Config Map ───────────────────────────────────────────────────
 
@@ -592,6 +649,14 @@ export const RESOURCE_CONFIG_MAP: Record<StorageResourceType, ResourceConfig> = 
     signedUrlExpirySeconds: DOCUMENT_DOWNLOAD_EXPIRY_SECONDS,
     pathTemplate: QUESTION_IMAGE_PATH_TEMPLATE,
   },
+  question_option_image: {
+    bucket: QUESTION_IMAGES_BUCKET,
+    allowedMimeTypes: QUESTION_IMAGE_MIME_TYPES,
+    allowedExtensions: QUESTION_IMAGE_EXTENSIONS,
+    maxFileSizeBytes: QUESTION_IMAGE_MAX_SIZE_BYTES,
+    signedUrlExpirySeconds: DOCUMENT_DOWNLOAD_EXPIRY_SECONDS,
+    pathTemplate: QUESTION_OPTION_IMAGE_PATH_TEMPLATE,
+  },
   student_submission: {
     bucket: STUDENT_SUBMISSIONS,
     allowedMimeTypes: PDF_MIME_TYPES,
@@ -626,6 +691,22 @@ export const RESOURCE_CONFIG_MAP: Record<StorageResourceType, ResourceConfig> = 
     allowedExtensions: STANDARD_IMAGE_EXTENSIONS,
     maxFileSizeBytes: STANDARD_IMAGE_MAX_SIZE_BYTES,
     pathTemplate: INSTITUTE_LOGO_PATH_TEMPLATE,
+  },
+  pyq_question_paper_pdf: {
+    bucket: PYQ_PDFS_BUCKET,
+    allowedMimeTypes: PYQ_PAPER_MIME_TYPES,
+    allowedExtensions: PYQ_PAPER_EXTENSIONS,
+    maxFileSizeBytes: PYQ_PAPER_MAX_SIZE_BYTES,
+    signedUrlExpirySeconds: DOCUMENT_DOWNLOAD_EXPIRY_SECONDS,
+    pathTemplate: PYQ_QUESTION_PAPER_PATH_TEMPLATE,
+  },
+  pyq_solution_paper_pdf: {
+    bucket: PYQ_PDFS_BUCKET,
+    allowedMimeTypes: PYQ_PAPER_MIME_TYPES,
+    allowedExtensions: PYQ_PAPER_EXTENSIONS,
+    maxFileSizeBytes: PYQ_PAPER_MAX_SIZE_BYTES,
+    signedUrlExpirySeconds: DOCUMENT_DOWNLOAD_EXPIRY_SECONDS,
+    pathTemplate: PYQ_SOLUTION_PAPER_PATH_TEMPLATE,
   },
 };
 

@@ -4,6 +4,7 @@ export interface TeacherProfile {
   email: string;
   phone: string;
   role: 'teacher' | 'admin' | 'student';
+  accountStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | 'inactive';
   department: string;
   designation: string;
   rating: number;
@@ -156,6 +157,7 @@ export const MOCK_TEACHER: TeacherProfile = {
   email: 'arvind.sharma@edtech.org',
   phone: '+91 (982) 341-8920',
   role: 'teacher',
+  accountStatus: 'approved',
   department: 'Physics & Applied Mechanics',
   designation: 'Senior Faculty & HOD',
   rating: 4.92,
@@ -206,6 +208,7 @@ export const EMPTY_TEACHER: TeacherProfile = {
   email: '',
   phone: '',
   role: 'teacher',
+  accountStatus: 'approved',
   department: 'General Science',
   designation: 'Faculty Mentor',
   rating: 5.0,

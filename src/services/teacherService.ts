@@ -78,6 +78,18 @@ export const teacherService = {
         .select('*, student_details(*, profiles(*))')
         .eq('batch_id', batchId);
 
+      // DEBUG: Log raw Supabase response before mapping
+      console.log('=== RAW SUPABASE RESPONSE (getStudentRoster) ===');
+      console.log('Error:', error ? { message: error.message, code: error.code, details: error.details, hint: error.hint } : null);
+      console.log('Data count:', data?.length ?? 0);
+      if (data && data.length > 0) {
+        console.log('First student raw:', JSON.stringify(data[0], null, 2));
+        console.log('Full raw data:', JSON.stringify(data, null, 2));
+      } else {
+        console.log('No data returned');
+      }
+      console.log('=== END RAW SUPABASE RESPONSE ===');
+
       if (error || !data) return [];
 
       return data.map((item: any, index: number) => {
@@ -86,8 +98,8 @@ export const teacherService = {
 
         return {
           id: stu.student_id || `stu-${index}`,
-          name: prof.full_name || 'Anonymous Student',
-          rollNumber: stu.enrollment_number || 'STU-GEN',
+          name: prof.name || 'Anonymous Student',
+          rollNumber: stu.enrollment_no || 'STU-GEN',
           avatar: prof.avatar_url || '',
           attendanceRate: index === 0 ? '98.2%' : index === 1 ? '96.5%' : index === 2 ? '91.0%' : index === 3 ? '88.4%' : '82.5%',
           avgScore: index === 0 ? '92.4%' : index === 1 ? '89.1%' : index === 2 ? '84.6%' : index === 3 ? '78.2%' : '71.5%',

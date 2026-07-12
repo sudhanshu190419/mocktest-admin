@@ -6,7 +6,8 @@
  *
  * ## Responsibilities
  *
- * - Expose `login`, `register`, `logout`, and `refreshSession` functions
+ * - Expose `login`, `register`, `logout`, `verifyOtp`, `resendOtp`,
+ *   `resetPassword`, and `refreshSession` functions
  * - Read Redux state (`user`, `loading`, `error`, `isAuthenticated`)
  * - Dispatch the appropriate Redux actions after each auth operation
  * - Handle errors uniformly and clear previous errors before new operations
@@ -15,22 +16,6 @@
  *
  * This hook does **not** contain any UI logic — screens consume the exposed
  * state and call the provided functions.
- *
- * ## Usage
- *
- * ```tsx
- * function LoginForm() {
- *   const { login, user, loading, error } = useAuth();
- *
- *   const handleLogin = async () => {
- *     const result = await login(email, password);
- *     if (result.success) {
- *       // Navigation is handled automatically by AuthNavigator
- *       // based on Redux state changes.
- *     }
- *   };
- * }
- * ```
  *
  * @module useAuth
  */
@@ -55,6 +40,9 @@ import {
   signIn as authSignIn,
   signUp as authSignUp,
   signOut as authSignOut,
+  verifyOtp as authVerifyOtp,
+  resendOtp as authResendOtp,
+  updatePassword as authUpdatePassword,
   refreshSession as authRefreshSession,
   getSession,
 } from '../services/authService';
@@ -63,7 +51,7 @@ import type { UserProfile } from '../types/auth';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /**
- * Result returned by `login()` and `register()`.
+ * Result returned by `login()`, `register()`, and other auth actions.
  *
  * Consumers check `success` to decide whether to navigate or display
  * feedback — they never need to inspect raw Supabase errors.
@@ -72,19 +60,21 @@ export type AuthHookResult =
   | { success: true; warning?: string }
   | { success: false; error: string };
 
+/**
+ * Result returned by `register()` — includes the phone number so the
+ * OTP verification screen can proceed without the user re-entering it.
+ */
+export type RegisterHookResult = AuthHookResult & { phone?: string };
+
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 /**
  * Reusable auth orchestration hook.
- *
- * Provides four actions (`login`, `register`, `logout`, `refreshSession`)
- * and four pieces of reactive state (`user`, `loading`, `error`,
- * `isAuthenticated`) — everything a screen needs for auth flows.
  */
 export function useAuth() {
   const dispatch = useAppDispatch();
 
-  // ── Reactive state ───────────────────────────────────────────────────-
+  // ── Reactive state ────────────────────────────────────────────────────
 
   const user = useAppSelector(selectUser);
   const loading = useAppSelector(selectIsLoading);
@@ -92,25 +82,18 @@ export function useAuth() {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
   // Guard to prevent concurrent auth operations from racing.
-  // Using a ref (not state) avoids unnecessary re-renders and is
-  // consistent with the Redux `loading` flag.
   const pendingRef = useRef(false);
 
-  // ── Actions ──────────────────────────────────────────────────────────-
+  // ── Actions ──────────────────────────────────────────────────────────
 
   /**
-   * Sign in an existing user.
+   * Sign in an existing user with phone + password.
    *
    * On success the Redux store is updated with the full `SessionData` via
    * `setSession` (which also populates `user` and `isAuthenticated`).
-   * `AuthNavigator` reacts to the state change and navigates to the App
-   * Stack automatically.
-   *
-   * @param email    - The user's email address.
-   * @param password - The user's password.
    */
   const login = useCallback(
-    async (email: string, password: string): Promise<AuthHookResult> => {
+    async (phone: string, password: string): Promise<AuthHookResult> => {
       if (pendingRef.current) {
         return { success: false, error: 'An authentication operation is already in progress.' };
       }
@@ -120,21 +103,19 @@ export function useAuth() {
       dispatch(clearError());
 
       try {
-        const result = await authSignIn({ email, password });
+        const result = await authSignIn({ phone, password });
 
         if (!result.success) {
           dispatch(setError(result.error ?? 'Sign in failed.'));
           return { success: false, error: result.error ?? 'Sign in failed.' };
         }
 
-        // Sign-in succeeded — fetch the full session (includes profile
-        // from the `profiles` table with the authoritative role).
+        // Fetch the full session (includes profile from the `profiles` table)
         const sessionResult = await getSession();
 
         if (sessionResult.success && sessionResult.data) {
           dispatch(setSession(sessionResult.data));
         } else if (result.data) {
-          // Fallback: session fetch failed but we have the user profile.
           dispatch(setUser(result.data));
         }
 
@@ -152,24 +133,20 @@ export function useAuth() {
   );
 
   /**
-   * Register a new user account.
+   * Register a new user account with phone + password.
    *
-   * If email confirmation is enabled in the Supabase project settings,
-   * the user will **not** receive a session immediately — the hook
-   * returns `success: true` and the screen can display a confirmation
-   * message.  The `user` is still populated from the sign-up response so
-   * the UI can show the user's name.
+   * Supabase sends an SMS OTP to the phone. The user must verify it
+   * via `verifyOtp()` to complete registration.
    *
-   * @param email    - The new user's email address.
-   * @param password - The new user's password (minimum 6 characters).
-   * @param name - The user's display / full name.
+   * Returns the phone number in the result so the screen can navigate
+   * to the OTP verification screen with it.
    */
   const register = useCallback(
     async (
-      email: string,
+      phone: string,
       password: string,
       name: string,
-    ): Promise<AuthHookResult> => {
+    ): Promise<RegisterHookResult> => {
       if (pendingRef.current) {
         return { success: false, error: 'An authentication operation is already in progress.' };
       }
@@ -179,19 +156,152 @@ export function useAuth() {
       dispatch(clearError());
 
       try {
-        const result = await authSignUp({ email, password, name });
+        // Role is NOT sent from the frontend — the database trigger
+        // (handle_new_user()) defaults to 'student' when not provided.
+        const result = await authSignUp({ phone, password, name });
 
         if (!result.success) {
           dispatch(setError(result.error ?? 'Registration failed.'));
           return { success: false, error: result.error ?? 'Registration failed.' };
         }
 
-        // Populate the user immediately so the UI can react.
-        // The session will be established once the user confirms their
-        // email (if confirmation is enabled) or through AuthProvider.
-        if (result.data) {
-          dispatch(setUser(result.data));
+        return { success: true, phone };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+        dispatch(setError(message));
+        return { success: false, error: message };
+      } finally {
+        dispatch(setLoading(false));
+        pendingRef.current = false;
+      }
+    },
+    [dispatch],
+  );
+
+  /**
+   * Verify an SMS OTP.
+   *
+   * Used in both the registration flow (after signUp) and the forgot
+   * password flow (after requesting an OTP).
+   *
+   * @param phone  - The phone number the OTP was sent to.
+   * @param token  - The OTP code.
+   * @param options - Optional settings:
+   *   - `updateSession` (default `true`): When `false`, the Redux store
+   *     is NOT updated with the user's session. This is used in the
+   *     forgot-password flow where we only need the OTP verified so the
+   *     user can set a new password — updating the session would trigger
+   *     automatic navigation to the App stack.
+   */
+  const verifyOtp = useCallback(
+    async (
+      phone: string,
+      token: string,
+      options?: { updateSession?: boolean },
+    ): Promise<AuthHookResult> => {
+      const updateSession = options?.updateSession ?? true;
+
+      if (pendingRef.current) {
+        return { success: false, error: 'An authentication operation is already in progress.' };
+      }
+
+      pendingRef.current = true;
+      dispatch(setLoading(true));
+      dispatch(clearError());
+
+      try {
+        const result = await authVerifyOtp({ phone, token });
+
+        if (!result.success) {
+          dispatch(setError(result.error ?? 'OTP verification failed.'));
+          return { success: false, error: result.error ?? 'OTP verification failed.' };
         }
+
+        // OTP verified — update the store with the user profile
+        // (skipped for forgot-password flow to prevent automatic navigation)
+        if (updateSession && result.data) {
+          const sessionResult = await getSession();
+          if (sessionResult.success && sessionResult.data) {
+            dispatch(setSession(sessionResult.data));
+          } else {
+            dispatch(setUser(result.data));
+          }
+        }
+
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+        dispatch(setError(message));
+        return { success: false, error: message };
+      } finally {
+        dispatch(setLoading(false));
+        pendingRef.current = false;
+      }
+    },
+    [dispatch],
+  );
+
+  /**
+   * Resend the SMS OTP to the user's phone.
+   */
+  const resendOtp = useCallback(
+    async (phone: string): Promise<AuthHookResult> => {
+      if (pendingRef.current) {
+        return { success: false, error: 'An authentication operation is already in progress.' };
+      }
+
+      pendingRef.current = true;
+      dispatch(setLoading(true));
+      dispatch(clearError());
+
+      try {
+        const result = await authResendOtp(phone);
+
+        if (!result.success) {
+          dispatch(setError(result.error ?? 'Failed to resend OTP.'));
+          return { success: false, error: result.error ?? 'Failed to resend OTP.' };
+        }
+
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+        dispatch(setError(message));
+        return { success: false, error: message };
+      } finally {
+        dispatch(setLoading(false));
+        pendingRef.current = false;
+      }
+    },
+    [dispatch],
+  );
+
+  /**
+   * Reset the user's password (after OTP verification in forgot password flow).
+   *
+   * On success, signs the user out and clears the session so they must
+   * sign in again with their new password.
+   */
+  const resetPassword = useCallback(
+    async (newPassword: string): Promise<AuthHookResult> => {
+      if (pendingRef.current) {
+        return { success: false, error: 'An authentication operation is already in progress.' };
+      }
+
+      pendingRef.current = true;
+      dispatch(setLoading(true));
+      dispatch(clearError());
+
+      try {
+        const result = await authUpdatePassword(newPassword);
+
+        if (!result.success) {
+          dispatch(setError(result.error ?? 'Password update failed.'));
+          return { success: false, error: result.error ?? 'Password update failed.' };
+        }
+
+        // Password updated — sign out so the user signs in again
+        await authSignOut();
+        dispatch(reduxLogout());
 
         return { success: true };
       } catch (err) {
@@ -208,11 +318,6 @@ export function useAuth() {
 
   /**
    * Sign out the current user.
-   *
-   * Calls `authService.signOut()` and then dispatches the Redux `logout`
-   * action, which resets `user`, `session`, `isAuthenticated`, and
-   * `error` back to defaults while preserving `initialized = true` so
-   * the navigation tree reacts immediately.
    */
   const logout = useCallback(async (): Promise<void> => {
     if (pendingRef.current) return;
@@ -223,9 +328,7 @@ export function useAuth() {
     try {
       await authSignOut();
     } catch {
-      // Even if the network request fails, we clear local state so the
-      // user is not stranded.  The Supabase session will be invalidated
-      // on the server side eventually.
+      // Even if the network request fails, we clear local state.
     } finally {
       dispatch(reduxLogout());
       dispatch(setLoading(false));
@@ -235,10 +338,6 @@ export function useAuth() {
 
   /**
    * Force-refresh the current session tokens.
-   *
-   * Useful after a 401 response — call this and, if it succeeds, retry
-   * the failed request.  The Redux store is updated with the new
-   * `SessionData` automatically.
    */
   const refreshSession = useCallback(async (): Promise<AuthHookResult> => {
     if (pendingRef.current) {
@@ -253,7 +352,6 @@ export function useAuth() {
       const result = await authRefreshSession();
 
       if (!result.success) {
-        // Session refresh failed — the user must sign in again.
         dispatch(reduxLogout());
         return { success: false, error: result.error ?? 'Session refresh failed.' };
       }
@@ -274,7 +372,7 @@ export function useAuth() {
     }
   }, [dispatch]);
 
-  // ── Public API ───────────────────────────────────────────────────────-
+  // ── Public API ───────────────────────────────────────────────────────
 
   return {
     // State
@@ -286,6 +384,9 @@ export function useAuth() {
     // Actions
     login,
     register,
+    verifyOtp,
+    resendOtp,
+    resetPassword,
     logout,
     refreshSession,
   } as const;

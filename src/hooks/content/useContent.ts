@@ -1,24 +1,23 @@
 /**
- * Content Hooks
+ * Content Management Hooks
  *
  * React Query hooks wrapping the contentService API calls.
- * Provides cached queries and mutations with automatic cache invalidation,
- * covering full CRUD, lifecycle transitions, and file upload operations.
+ * Provides cached queries and mutations with automatic cache invalidation.
  *
  * ## Exports
  *
- * | Hook                    | Type     | Description                              |
- * |-------------------------|----------|------------------------------------------|
- * | `useContents`           | Query    | Paginated, filterable content list       |
- * | `useContent`            | Query    | Single content item by ID                |
- * | `useCreateContent`      | Mutation | Create content with file upload          |
- * | `useUpdateContent`      | Mutation | Update content metadata / replace file   |
- * | `useDeleteContent`      | Mutation | Hard-delete content and storage files    |
- * | `usePublishContent`     | Mutation | Submit content for review (draft→pending)|
- * | `useApproveContent`     | Mutation | Approve content (pending→approved)       |
- * | `useRejectContent`      | Mutation | Reject content (pending→rejected)        |
- * | `useArchiveContent`     | Mutation | Archive content (approved→archived)      |
- * | `useRestoreContent`     | Mutation | Restore from archive (archived→draft)    |
+ * | Hook                   | Type     | Description                              |
+ * |------------------------|----------|------------------------------------------|
+ * | `useContentList`       | Query    | Paginated, filterable content list       |
+ * | `useContent`           | Query    | Single content by ID                     |
+ * | `useCreateContent`     | Mutation | Create new content with file upload      |
+ * | `useUpdateContent`     | Mutation | Update content metadata/file             |
+ * | `useDeleteContent`     | Mutation | Delete content                           |
+ * | `usePublishContent`    | Mutation | Submit for review (draft → pending_review) |
+ * | `useApproveContent`    | Mutation | Approve content (pending_review → approved) |
+ * | `useRejectContent`     | Mutation | Reject content (pending_review → rejected) |
+ * | `useArchiveContent`    | Mutation | Archive content (approved → archived)    |
+ * | `useRestoreContent`    | Mutation | Restore content (archived → draft)       |
  *
  * @module hooks/content/useContent
  */
@@ -37,44 +36,33 @@ import {
   archiveContent,
   restoreContent,
 } from '../../services/content/contentService';
-import type {
-  Content,
-  ContentFilters,
-  ContentSortOptions,
-  PaginatedResponse,
-  PaginationParams,
-} from '../../types/content';
-import type {
-  CreateContentParams,
-  ContentQueryFilters,
-  UpdateContentParams,
-} from '../../services/content/contentService';
+import type { Content, ContentFilters, ContentSortOptions } from '../../types/content';
+import type { PaginatedResponse, PaginationParams } from '../../types/academic';
+import type { CreateContentParams, UpdateContentParams } from '../../services/content/contentService';
 
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
  * Fetch a paginated, filtered, and sorted list of content items.
  *
- * Supports filtering by institute, chapter, subject, content type, status,
- * and search (title/description). Pagination defaults to page 1, pageSize 20.
- *
  * @param filters    - Optional filter criteria.
  * @param sort       - Optional sort configuration.
  * @param pagination - Optional pagination parameters.
  *
  * @example
- * const { data, isLoading } = useContents(
- *   { instituteId: 'uuid', contentType: 'pdf', status: 'approved' },
+ * const { data, isLoading } = useContentList(
+ *   { instituteId: 'uuid', status: 'approved' },
  *   { sortBy: 'createdAt', sortDirection: 'desc' },
+ *   { page: 1, pageSize: 20 },
  * );
  */
-export function useContents(
-  filters?: ContentQueryFilters,
+export function useContentList(
+  filters?: ContentFilters,
   sort?: ContentSortOptions,
   pagination?: PaginationParams,
 ) {
   return useQuery<PaginatedResponse<Content>>({
-    queryKey: contentKeys.contents.list(filters, sort, pagination),
+    queryKey: contentKeys.content.list(filters, sort, pagination),
     queryFn: async () => {
       const result = await getContents(filters, sort, pagination);
       if (!result.success) {
@@ -95,7 +83,7 @@ export function useContents(
  */
 export function useContent(contentId: string | undefined | null) {
   return useQuery<Content>({
-    queryKey: contentKeys.contents.detail(contentId!),
+    queryKey: contentKeys.content.detail(contentId!),
     queryFn: async () => {
       const result = await getContentById(contentId!);
       if (!result.success) {
@@ -110,98 +98,54 @@ export function useContent(contentId: string | undefined | null) {
 // ─── Mutations ──────────────────────────────────────────────────────────────
 
 /**
- * Create new content with a file upload.
+ * Create new content with file upload.
  *
- * On success, invalidates all content list queries so the new item
- * appears in list views.
- *
- * @example
- * const { mutate, isPending } = useCreateContent();
- *
- * const handleCreate = () => {
- *   mutate({
- *     instituteId: 'uuid',
- *     teacherId: 'uuid',
- *     chapterId: 'uuid',
- *     title: 'Thermodynamics Notes',
- *     contentType: 'pdf',
- *     file: selectedFile,
- *   });
- * };
+ * On success, invalidates all content list queries.
  */
 export function useCreateContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, CreateContentParams>({
-    mutationFn: async (input) => {
-      console.group('CONTENT CREATE DEBUG — useCreateContent hook');
-      console.log('Input received from Dev Console:');
-      console.log('  instituteId:', input.instituteId);
-      console.log('  teacherId:', input.teacherId);
-      console.log('  chapterId:', input.chapterId);
-      console.log('  contentType:', input.contentType);
-      console.log('  title:', input.title);
-      console.log('  pageCount:', input.pageCount);
-      console.log('  durationSeconds:', input.durationSeconds);
-      console.log('  isFreePreview:', input.isFreePreview);
-      console.log('  file provided:', !!input.file);
-      console.log('  thumbnailFile provided:', !!input.thumbnailFile);
-      console.log('--- PASSING THROUGH TO createContent() unchanged ---');
-      console.groupEnd();
-
-      const result = await createContent(input);
+    mutationFn: async (params) => {
+      const result = await createContent(params);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to create content.');
       }
       return result.data!;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Update an existing content item's metadata and/or replace its file.
+ * Update content metadata and optionally replace the file/thumbnail.
  *
- * On success, invalidates both the affected detail query and all list
- * queries to ensure consistency.
- *
- * @example
- * const { mutate, isPending } = useUpdateContent();
- *
- * const handleUpdate = () => {
- *   mutate(
- *     { id: contentId, input: { title: 'Updated Title' } },
- *   );
- * };
+ * On success, invalidates both the affected detail query and all list queries.
  */
 export function useUpdateContent() {
   const queryClient = useQueryClient();
 
-  return useMutation<Content, Error, { id: string; input: UpdateContentParams }>({
-    mutationFn: async ({ id, input }) => {
-      const result = await updateContent(id, input);
+  return useMutation<Content, Error, { id: string; params: UpdateContentParams }>({
+    mutationFn: async ({ id, params }) => {
+      const result = await updateContent(id, params);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to update content.');
       }
       return result.data!;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(variables.id) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Permanently delete content and its associated storage files.
+ * Delete content (hard delete — use archive for safe retirement).
  *
  * On success, removes the detail cache entry and invalidates all list queries.
- *
- * @example
- * const { mutate, isPending } = useDeleteContent();
- * mutate(contentId);
  */
 export function useDeleteContent() {
   const queryClient = useQueryClient();
@@ -214,151 +158,123 @@ export function useDeleteContent() {
       }
     },
     onSuccess: (_data, id) => {
-      queryClient.removeQueries({ queryKey: contentKeys.contents.detail(id) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+      queryClient.removeQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Lifecycle Mutations
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
- * Submit content for admin review.
+ * Submit content for admin review (draft → pending_review).
  *
- * Status transition: `draft` → `pending_review`
- *
- * On success, invalidates both the detail and list caches so the UI
- * reflects the new status immediately.
+ * On success, invalidates the affected detail and all list queries.
  */
 export function usePublishContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, string>({
-    mutationFn: async (contentId) => {
-      const result = await publishContent(contentId);
+    mutationFn: async (id) => {
+      const result = await publishContent(id);
       if (!result.success) {
-        throw new Error(result.error ?? 'Failed to publish content.');
+        throw new Error(result.error ?? 'Failed to submit content for review.');
       }
       return result.data!;
     },
-    onSuccess: (_data, contentId) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(contentId) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Approve content during review, making it visible to students.
+ * Approve content (pending_review → approved).
  *
- * Status transition: `pending_review` → `approved`
- * Sets `published_at` to the current timestamp.
- *
- * On success, invalidates the detail and list caches. Also invalidates
- * related approval queries since approval decisions affect the approval
- * request state.
+ * On success, invalidates the affected detail and all list queries.
  */
 export function useApproveContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, string>({
-    mutationFn: async (contentId) => {
-      const result = await approveContent(contentId);
+    mutationFn: async (id) => {
+      const result = await approveContent(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to approve content.');
       }
       return result.data!;
     },
-    onSuccess: (_data, contentId) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(contentId) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
-      queryClient.invalidateQueries({ queryKey: contentKeys.approvals.lists() });
-      queryClient.invalidateQueries({ queryKey: contentKeys.approvals.pending() });
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Reject content during review.
+ * Reject content (pending_review → rejected).
  *
- * Status transition: `pending_review` → `rejected`
- *
- * Full review remarks should be stored via the approval service.
- * This mutation only updates the content table status.
- *
- * On success, invalidates the detail, list, and approval caches.
+ * On success, invalidates the affected detail and all list queries.
  */
 export function useRejectContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, string>({
-    mutationFn: async (contentId) => {
-      const result = await rejectContent(contentId);
+    mutationFn: async (id) => {
+      const result = await rejectContent(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to reject content.');
       }
       return result.data!;
     },
-    onSuccess: (_data, contentId) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(contentId) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
-      queryClient.invalidateQueries({ queryKey: contentKeys.approvals.lists() });
-      queryClient.invalidateQueries({ queryKey: contentKeys.approvals.pending() });
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Archive (retire) approved content.
+ * Archive content (approved → archived).
  *
- * Status transition: `approved` → `archived`
- *
- * Storage files are NOT deleted. Archived content is excluded from all
- * student-facing queries via RLS.
- *
- * On success, invalidates the detail and list caches.
+ * On success, invalidates the affected detail and all list queries.
  */
 export function useArchiveContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, string>({
-    mutationFn: async (contentId) => {
-      const result = await archiveContent(contentId);
+    mutationFn: async (id) => {
+      const result = await archiveContent(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to archive content.');
       }
       return result.data!;
     },
-    onSuccess: (_data, contentId) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(contentId) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }
 
 /**
- * Restore archived content back to draft for revision.
+ * Restore archived content (archived → draft).
  *
- * Status transition: `archived` → `draft`
- *
- * On success, invalidates the detail and list caches.
+ * On success, invalidates the affected detail and all list queries.
  */
 export function useRestoreContent() {
   const queryClient = useQueryClient();
 
   return useMutation<Content, Error, string>({
-    mutationFn: async (contentId) => {
-      const result = await restoreContent(contentId);
+    mutationFn: async (id) => {
+      const result = await restoreContent(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to restore content.');
       }
       return result.data!;
     },
-    onSuccess: (_data, contentId) => {
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.detail(contentId) });
-      queryClient.invalidateQueries({ queryKey: contentKeys.contents.lists() });
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
     },
   });
 }

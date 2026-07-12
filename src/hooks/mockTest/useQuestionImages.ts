@@ -110,7 +110,7 @@ export function useQuestionImages(questionId: string | undefined | null) {
  *   questionId: 'question-uuid',
  *   instituteId: 'institute-uuid',
  *   file: imageFile,
- *   imageRole: 'stem',
+ *   imageRole: 'question',
  *   altText: 'Diagram showing Newton's First Law',
  * });
  */
@@ -222,7 +222,7 @@ export function useDeleteQuestionImage() {
  *   questionId: 'question-uuid',
  *   instituteId: 'institute-uuid',
  *   entries: [
- *     { file: img1, imageRole: 'stem', altText: 'Diagram 1', orderSequence: 1 },
+ *     { file: img1, imageRole: 'question', altText: 'Diagram 1', orderSequence: 1 },
  *     { file: img2, imageRole: 'explanation', altText: 'Diagram 2', orderSequence: 2 },
  *   ],
  * });

@@ -1,0 +1,429 @@
+/**
+ * Admin Query Key Factory
+ *
+ * Centralised, stable query key definitions for the Admin Dashboard module.
+ * Every hook in this module derives its keys from this factory so that
+ * cache invalidation is always consistent.
+ *
+ * Follows the same pattern as hooks/mockTest/queryKeys.ts.
+ *
+ * @module hooks/admin/queryKeys
+ */
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  adminKeys — Admin Dashboard
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const adminKeys = {
+  all: ['admin'] as const,
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Dashboard
+  // ═════════════════════════════════════════════════════════════════════════
+
+  dashboard: {
+    /** Root key for all dashboard queries. */
+    all: () => [...adminKeys.all, 'dashboard'] as const,
+
+    /** Key for every dashboard data query (broad invalidation). */
+    lists: () => [...adminKeys.dashboard.all(), 'list'] as const,
+
+    /** Key for a specific dashboard data query (keyed by instituteId). */
+    list: (instituteId?: string | null) =>
+      [...adminKeys.dashboard.lists(), instituteId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Teachers (admin view)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  teachers: {
+    all: () => [...adminKeys.all, 'teachers'] as const,
+    lists: () => [...adminKeys.teachers.all(), 'list'] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...adminKeys.teachers.lists(), filters] as const,
+    details: () => [...adminKeys.teachers.all(), 'detail'] as const,
+    detail: (id: string) => [...adminKeys.teachers.details(), id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Students (admin view)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  students: {
+    all: () => [...adminKeys.all, 'students'] as const,
+    lists: () => [...adminKeys.students.all(), 'list'] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...adminKeys.students.lists(), filters] as const,
+    details: () => [...adminKeys.students.all(), 'detail'] as const,
+    detail: (id: string) => [...adminKeys.students.details(), id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Approvals (admin view)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  approvals: {
+    all: () => [...adminKeys.all, 'approvals'] as const,
+    lists: () => [...adminKeys.approvals.all(), 'list'] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...adminKeys.approvals.lists(), filters] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Live Classes (admin view)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  liveClasses: {
+    all: () => [...adminKeys.all, 'liveClasses'] as const,
+    lists: () => [...adminKeys.liveClasses.all(), 'list'] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...adminKeys.liveClasses.lists(), filters] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Question Approval (admin Question Approval module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  questionApproval: {
+    /** Root key for all question approval queries. */
+    all: () => [...adminKeys.all, 'questionApproval'] as const,
+
+    /** Key for every question approval list query (broad invalidation). */
+    lists: () => [...adminKeys.questionApproval.all(), 'list'] as const,
+
+    /** Key for a specific paginated question approval list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.questionApproval.lists(), filters, pagination] as const,
+
+    /** Key for every question approval detail query. */
+    details: () => [...adminKeys.questionApproval.all(), 'detail'] as const,
+
+    /** Key for a single question approval detail by questionId. */
+    detail: (questionId: string) =>
+      [...adminKeys.questionApproval.details(), questionId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.questionApproval.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.questionApproval.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Teacher Lifecycle (admin Teacher Management)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  teacherLifecycle: {
+    /** Root key for all teacher lifecycle queries. */
+    all: () => [...adminKeys.all, 'teacherLifecycle'] as const,
+
+    /** Key for every teacher lifecycle list query (broad invalidation). */
+    lists: () => [...adminKeys.teacherLifecycle.all(), 'list'] as const,
+
+    /** Key for a specific paginated teacher list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.teacherLifecycle.lists(), filters, pagination] as const,
+
+    /** Key for every teacher lifecycle detail query. */
+    details: () => [...adminKeys.teacherLifecycle.all(), 'detail'] as const,
+
+    /** Key for a single teacher detail by profileId. */
+    detail: (profileId: string) =>
+      [...adminKeys.teacherLifecycle.details(), profileId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.teacherLifecycle.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.teacherLifecycle.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Student Lifecycle (admin Student Management)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  studentLifecycle: {
+    /** Root key for all student lifecycle queries. */
+    all: () => [...adminKeys.all, 'studentLifecycle'] as const,
+
+    /** Key for every student lifecycle list query (broad invalidation). */
+    lists: () => [...adminKeys.studentLifecycle.all(), 'list'] as const,
+
+    /** Key for a specific paginated student list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.studentLifecycle.lists(), filters, pagination] as const,
+
+    /** Key for every student lifecycle detail query. */
+    details: () => [...adminKeys.studentLifecycle.all(), 'detail'] as const,
+
+    /** Key for a single student detail by profileId. */
+    detail: (profileId: string) =>
+      [...adminKeys.studentLifecycle.details(), profileId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.studentLifecycle.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.studentLifecycle.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Student Assignment (admin Batch Student Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchStudentAssignment: {
+    /** Root key for all batch student assignment queries. */
+    all: () => [...adminKeys.all, 'batchStudentAssignment'] as const,
+
+    /** Key for every assigned-students list query (broad invalidation). */
+    assigned: () => [...adminKeys.batchStudentAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned students of a specific batch. */
+    assignedList: (batchId: string) =>
+      [...adminKeys.batchStudentAssignment.assigned(), batchId] as const,
+
+    /** Key for every available-students list query. */
+    available: () => [...adminKeys.batchStudentAssignment.all(), 'available'] as const,
+
+    /** Key for available students for a specific batch. */
+    availableList: (batchId: string) =>
+      [...adminKeys.batchStudentAssignment.available(), batchId] as const,
+
+    /** Key for every batch assignment stats query. */
+    stats: () => [...adminKeys.batchStudentAssignment.all(), 'stats'] as const,
+
+    /** Key for assignment stats of a specific batch. */
+    statsList: (batchId: string) =>
+      [...adminKeys.batchStudentAssignment.stats(), batchId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Management (admin Batch Management module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchManagement: {
+    /** Root key for all batch management queries. */
+    all: () => [...adminKeys.all, 'batchManagement'] as const,
+
+    /** Key for every batch list query (broad invalidation). */
+    lists: () => [...adminKeys.batchManagement.all(), 'list'] as const,
+
+    /** Key for a specific paginated batch list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.batchManagement.lists(), filters, pagination] as const,
+
+    /** Key for every batch detail query. */
+    details: () => [...adminKeys.batchManagement.all(), 'detail'] as const,
+
+    /** Key for a single batch detail by batchId. */
+    detail: (batchId: string) =>
+      [...adminKeys.batchManagement.details(), batchId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.batchManagement.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.batchManagement.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Test Management (admin Mock Test Management module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Test Assignment (admin Mock Test Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  mockTestAssignment: {
+    /** Root key for all mock test assignment queries. */
+    all: () => [...adminKeys.all, 'mockTestAssignment'] as const,
+
+    /** Key for every assigned-tests list query (broad invalidation). */
+    assigned: () => [...adminKeys.mockTestAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned tests of a specific batch. */
+    assignedTests: (batchId: string) =>
+      [...adminKeys.mockTestAssignment.assigned(), batchId] as const,
+
+    /** Key for every available-tests list query. */
+    available: () => [...adminKeys.mockTestAssignment.all(), 'available'] as const,
+
+    /** Key for available tests for a specific batch. */
+    availableTests: (batchId: string) =>
+      [...adminKeys.mockTestAssignment.available(), batchId] as const,
+
+    /** Key for assignment stats of a specific batch. */
+    stats: (batchId: string) =>
+      [...adminKeys.mockTestAssignment.all(), 'stats', batchId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Teacher Assignment (admin Batch Teacher Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchTeacherAssignment: {
+    /** Root key for all batch teacher assignment queries. */
+    all: () => [...adminKeys.all, 'batchTeacherAssignment'] as const,
+
+    /** Key for every assigned-teacher query (broad invalidation). */
+    assigned: () => [...adminKeys.batchTeacherAssignment.all(), 'assigned'] as const,
+
+    /** Key for the assigned teacher of a specific batch. */
+    assignedTeacher: (batchId: string) =>
+      [...adminKeys.batchTeacherAssignment.assigned(), batchId] as const,
+
+    /** Key for every available-teachers list query. */
+    available: () => [...adminKeys.batchTeacherAssignment.all(), 'available'] as const,
+
+    /** Key for available teachers for a specific batch. */
+    availableTeachers: (batchId: string) =>
+      [...adminKeys.batchTeacherAssignment.available(), batchId] as const,
+
+    /** Key for teacher assignment stats. */
+    stats: () => [...adminKeys.batchTeacherAssignment.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Mock Test Management (admin Mock Test Management module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  mockTestManagement: {
+    /** Root key for all mock test management queries. */
+    all: () => [...adminKeys.all, 'mockTestManagement'] as const,
+
+    /** Key for every mock test list query (broad invalidation). */
+    lists: () => [...adminKeys.mockTestManagement.all(), 'list'] as const,
+
+    /** Key for a specific paginated mock test list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.mockTestManagement.lists(), filters, pagination] as const,
+
+    /** Key for every mock test detail query. */
+    details: () => [...adminKeys.mockTestManagement.all(), 'detail'] as const,
+
+    /** Key for a single mock test detail by testId. */
+    detail: (testId: string) =>
+      [...adminKeys.mockTestManagement.details(), testId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.mockTestManagement.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.mockTestManagement.all(), 'stats'] as const,
+
+    /** Key for every test questions query (broad invalidation). */
+    questions: (testId: string) =>
+      [...adminKeys.mockTestManagement.detail(testId), 'questions'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Course Management (admin Course Management module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  courseManagement: {
+    /** Root key for all course management queries. */
+    all: () => [...adminKeys.all, 'courseManagement'] as const,
+
+    /** Key for every course list query (broad invalidation). */
+    lists: () => [...adminKeys.courseManagement.all(), 'list'] as const,
+
+    /** Key for a specific paginated course list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.courseManagement.lists(), filters, pagination] as const,
+
+    /** Key for every course detail query. */
+    details: () => [...adminKeys.courseManagement.all(), 'detail'] as const,
+
+    /** Key for a single course detail by courseId. */
+    detail: (courseId: string) =>
+      [...adminKeys.courseManagement.details(), courseId] as const,
+
+    /** Key for dashboard counts. */
+    counts: () => [...adminKeys.courseManagement.all(), 'counts'] as const,
+
+    /** Key for statistics. */
+    stats: () => [...adminKeys.courseManagement.all(), 'stats'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Course Teacher Assignment (admin Course Teacher Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  courseTeacherAssignment: {
+    /** Root key for all course teacher assignment queries. */
+    all: () => [...adminKeys.all, 'courseTeacherAssignment'] as const,
+
+    /** Key for every assigned-teachers list query (broad invalidation). */
+    assigned: () => [...adminKeys.courseTeacherAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned teachers of a specific course. */
+    assignedTeachers: (courseId: string) =>
+      [...adminKeys.courseTeacherAssignment.assigned(), courseId] as const,
+
+    /** Key for every available-teachers list query. */
+    available: () => [...adminKeys.courseTeacherAssignment.all(), 'available'] as const,
+
+    /** Key for available teachers for a specific course. */
+    availableTeachers: (courseId: string) =>
+      [...adminKeys.courseTeacherAssignment.available(), courseId] as const,
+
+    /** Key for assignment stats of a specific course. */
+    stats: (courseId: string) =>
+      [...adminKeys.courseTeacherAssignment.all(), 'stats', courseId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Course Batch Assignment (admin Course Batch Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  courseBatchAssignment: {
+    /** Root key for all course batch assignment queries. */
+    all: () => [...adminKeys.all, 'courseBatchAssignment'] as const,
+
+    /** Key for every assigned-batches list query (broad invalidation). */
+    assigned: () => [...adminKeys.courseBatchAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned batches of a specific course. */
+    assignedBatches: (courseId: string) =>
+      [...adminKeys.courseBatchAssignment.assigned(), courseId] as const,
+
+    /** Key for every available-batches list query. */
+    available: () => [...adminKeys.courseBatchAssignment.all(), 'available'] as const,
+
+    /** Key for available batches for a specific course. */
+    availableBatches: (courseId: string) =>
+      [...adminKeys.courseBatchAssignment.available(), courseId] as const,
+
+    /** Key for assignment stats of a specific course. */
+    stats: (courseId: string) =>
+      [...adminKeys.courseBatchAssignment.all(), 'stats', courseId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Course Content Assignment (admin Course Content Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  courseContentAssignment: {
+    /** Root key for all course content assignment queries. */
+    all: () => [...adminKeys.all, 'courseContentAssignment'] as const,
+
+    /** Key for every assigned-content list query (broad invalidation). */
+    assigned: () => [...adminKeys.courseContentAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned content of a specific course. */
+    assignedContent: (courseId: string) =>
+      [...adminKeys.courseContentAssignment.assigned(), courseId] as const,
+
+    /** Key for every available-content list query. */
+    available: () => [...adminKeys.courseContentAssignment.all(), 'available'] as const,
+
+    /** Key for available content for a specific course. */
+    availableContent: (courseId: string) =>
+      [...adminKeys.courseContentAssignment.available(), courseId] as const,
+
+    /** Key for assignment stats of a specific course. */
+    stats: (courseId: string) =>
+      [...adminKeys.courseContentAssignment.all(), 'stats', courseId] as const,
+  },
+};

@@ -368,13 +368,25 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
  */
 export async function createMockTest(input: CreateMockTestInput): Promise<ApiResponse<MockTest>> {
   try {
+    // ── Resolve teacher ID first ──────────────────────────────────────────
+    // The RLS policy requires teacher_id = get_my_teacher_id(), which returns
+    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
+    // This is resolved server-side so the frontend doesn't need to send it.
+    const resolved = await resolveCurrentTeacherId();
+    if (!resolved) {
+      return {
+        success: false,
+        error:
+          'Cannot create mock test: no teacher profile found for the current user. ' +
+          'Ensure the authenticated user has a corresponding teacher_details record.',
+      };
+    }
+
+    const teacherId: string = resolved.teacherId;
+
     // ── Validate required fields ───────────────────────────────────────
     if (!input.instituteId) {
       return { success: false, error: 'instituteId is required.' };
-    }
-
-    if (!input.teacherId) {
-      return { success: false, error: 'teacherId is required.' };
     }
 
     if (!input.streamId) {
@@ -408,28 +420,11 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
 
     // ── Validate UUID formats ──────────────────────────────────────────
     validateUUID(input.instituteId, 'instituteId');
-    // We do NOT validate input.teacherId as a UUID here because we override
-    // it with the resolved teacher_details.teacher_id below.
     validateUUID(input.streamId, 'streamId');
 
     if (input.subjectId) {
       validateUUID(input.subjectId, 'subjectId');
     }
-
-    // ── Resolve teacher ID ────────────────────────────────────────────────
-    // The RLS policy requires teacher_id = get_my_teacher_id(), which returns
-    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
-    const resolved = await resolveCurrentTeacherId();
-    if (!resolved) {
-      return {
-        success: false,
-        error:
-          'Cannot create mock test: no teacher profile found for the current user. ' +
-          'Ensure the authenticated user has a corresponding teacher_details record.',
-      };
-    }
-
-    const teacherId: string = resolved.teacherId;
 
     // ── Build DB record (teacher_id uses teacher_details.teacher_id) ───────
     const dbRecord: Record<string, unknown> = {

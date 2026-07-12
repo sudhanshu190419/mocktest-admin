@@ -1,17 +1,25 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
 import { MOCK_TEACHER, EMPTY_TEACHER } from '@/data/mockData';
+import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacherIdentity';
 import type { TeacherProfile } from '@/data/mockData';
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   teacherProfile: TeacherProfile | null;
+  instituteId: string | null;
   loading: boolean;
   isDemoMode: boolean;
-  signIn: (emailOrId: string, pass: string) => Promise<{ error: string | null }>;
-  registerTeacher: (email: string, pass: string, facultyId: string, fullName: string, department: string) => Promise<{ error: string | null }>;
+  needsOtpVerification: boolean;
+  pendingPhone: string | null;
+  signIn: (phone: string, pass: string) => Promise<{ error: string | null }>;
+  registerTeacher: (phone: string, pass: string, facultyId: string, fullName: string, department: string) => Promise<{ error: string | null }>;
+  verifyRegistrationOtp: (token: string) => Promise<{ error: string | null }>;
+  resendRegistrationOtp: () => Promise<{ error: string | null }>;
+  cancelOtpVerification: () => void;
   signInAsDemo: () => void;
   signOut: () => Promise<void>;
   updateSpecialization: (specialization: string) => void;
@@ -26,6 +34,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+
   const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('EDTECH_DEMO_MODE') === 'true';
@@ -33,14 +43,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   });
 
+  // OTP Verification State
+  const [needsOtpVerification, setNeedsOtpVerification] = useState(false);
+  const [pendingPhone, setPendingPhone] = useState<string | null>(null);
+  const [pendingRegistration, setPendingRegistration] = useState<{
+    phone: string;
+    password: string;
+    facultyId: string;
+    fullName: string;
+    department: string;
+  } | null>(null);
+
+  // ─── Error Extraction ────────────────────────────────────────────────
+
+  /**
+   * Safely extracts a human-readable message from any error value.
+   * Normalises AuthError, PostgrestError, and plain Error instances.
+   */
+  const extractErrorMessage = (error: unknown): string => {
+    if (error instanceof AuthError) {
+      return error.message;
+    }
+    if (error instanceof PostgrestError) {
+      return error.message;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    if (typeof error === 'object' && error !== null) {
+      const obj = error as Record<string, unknown>;
+      if (typeof obj.message === 'string') {
+        return obj.message;
+      }
+      // Fallback: stringify the error object itself
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return String(error);
+      }
+    }
+    return String(error) || 'An unexpected authentication error occurred.';
+  };
+
   const loadTeacherProfileDetails = async (userId: string) => {
     try {
       // 1. Fetch public profile
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
+        .eq('profile_id', userId)
         .single();
+
+      if (profileData) {
+        setInstituteId(profileData.institute_id ?? null);
+      }
+
+      // Clear any stale identity cache before re-resolving
+      clearTeacherIdentityCache();
 
       if (profileData && profileData.role !== 'teacher') {
         console.warn(`User role is ${profileData?.role}, not teacher!`);
@@ -57,22 +116,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (teacherErr || !teacherData) {
         // Fallback to empty/default profile if teacher_details record is not seeded yet
+        // Use the auth user ID as a fallback so content creation (createdBy) still works
         setTeacherProfile({
           ...baseProfile,
+          id: userId,
           role: profileData?.role || 'teacher',
-          name: profileData?.full_name || baseProfile.name,
+          accountStatus: profileData?.account_status || 'approved',
+          name: profileData?.name || baseProfile.name,
           email: profileData?.email || baseProfile.email,
         });
+
+        // Cache identity with profileId only (no teacher_details record yet)
+        if (userId) {
+          setCachedIdentity({
+            profileId: userId,
+            teacherId: userId,
+            instituteId: profileData?.institute_id ?? null,
+          });
+        }
       } else {
         // Map backend schema to TeacherProfile shape
         setTeacherProfile({
           ...baseProfile,
           id: teacherData.teacher_id,
           role: profileData?.role || 'teacher',
-          name: profileData?.full_name || teacherData.teacher_id,
+          accountStatus: profileData?.account_status || 'approved',
+          name: profileData?.name || teacherData.teacher_id,
           department: teacherData.department || baseProfile.department,
           designation: teacherData.designation || baseProfile.designation,
           bio: teacherData.bio || baseProfile.bio,
+        });
+
+        // Cache the full teacher identity for all downstream services
+        setCachedIdentity({
+          profileId: userId,
+          teacherId: teacherData.teacher_id,
+          instituteId: teacherData.institute_id ?? profileData?.institute_id ?? null,
         });
       }
     } catch (err) {
@@ -81,14 +160,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signIn = async (emailOrId: string, pass: string): Promise<{ error: string | null }> => {
+  const signIn = async (phone: string, pass: string): Promise<{ error: string | null }> => {
     setLoading(true);
-    const loginEmail = emailOrId.includes('@') ? emailOrId : `${emailOrId.toLowerCase()}@edtech.org`;
     
     let result: { data: any; error: any };
     try {
       result = await supabase.auth.signInWithPassword({
-        email: loginEmail,
+        phone,
         password: pass || 'defaultPass123',
       });
     } catch (netError: any) {
@@ -101,13 +179,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data, error } = result;
 
     if (error) {
-      const lowerId = emailOrId.toLowerCase();
-      const isSimId = lowerId.includes('t-sim-101') || lowerId.includes('a-sim-001') || lowerId.includes('demo') || lowerId === 'teacher' || lowerId === 'admin';
+      const lowerPhone = phone.toLowerCase();
+      const isSimId = lowerPhone.includes('demo') || lowerPhone === 'teacher' || lowerPhone === 'admin';
 
       if (isSimId || error.message === 'offline test mock' || error.message === 'Failed to fetch') {
         // Offline fallback mock sign in for simulation accounts and test suites
         setIsDemoMode(true);
-        if (lowerId.includes('t-sim-101') || lowerId === 'teacher') {
+        if (lowerPhone === 'teacher') {
           setTeacherProfile({
             ...MOCK_TEACHER,
             id: 'tch-8492-phy',
@@ -115,7 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             designation: 'Senior Physics Studio Head',
           });
           localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
-        } else if (lowerId.includes('a-sim-001') || lowerId === 'admin') {
+        } else if (lowerPhone === 'admin') {
           setTeacherProfile({
             ...MOCK_TEACHER,
             id: 'admin-101',
@@ -137,8 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       return { 
         error: !process.env.NEXT_PUBLIC_SUPABASE_URL 
-          ? 'Database connection failed. To test locally in Demo Mode, please use "t-sim-101" or "a-sim-001" as the Faculty ID.'
-          : (error.message || 'Database connection error')
+          ? 'Database connection failed. To test locally in Demo Mode, please use "demo" as the Faculty ID.'
+          : extractErrorMessage(error)
       };
     }
 
@@ -156,7 +234,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const registerTeacher = async (
-    email: string,
+    phone: string,
     pass: string,
     facultyId: string,
     fullName: string,
@@ -164,34 +242,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ error: string | null }> => {
     setLoading(true);
     try {
-      // Fetch default demo institute ID
-      let instituteId = '00000000-0000-0000-0000-000000000000';
-      try {
-        const { data: instData } = await supabase
-          .from('institutes')
-          .select('institute_id')
-          .eq('slug', 'demo-institute')
-          .limit(1);
-        if (instData && instData[0]) {
-          instituteId = instData[0].institute_id;
-        }
-      } catch (err) {
-        console.warn('Failed to fetch default institute ID, using fallback uuid:', err);
-      }
-
-      const loginEmail = email || `${facultyId.toLowerCase()}@edtech.org`;
       let result;
       try {
         result = await supabase.auth.signUp({
-          email: loginEmail,
+          phone,
           password: pass || 'defaultPass123',
           options: {
             data: {
               full_name: fullName,
               role: 'teacher',
               faculty_id: facultyId,
-              department: department,
-              institute_id: instituteId
+              department: department
             }
           }
         });
@@ -209,10 +270,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...baseProfile,
         id: facultyId,
         role: 'teacher',
+        accountStatus: 'pending',
         name: fullName || facultyId,
         department: department || baseProfile.department,
         designation: 'Senior Faculty Mentor',
-        email: loginEmail,
+        phone,
         needsOnboarding: true
       };
 
@@ -224,42 +286,159 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem('EDTECH_DEMO_MODE', 'true');
           localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
           localStorage.setItem('EDTECH_CUSTOM_FACULTY', JSON.stringify(newProfile));
+          setNeedsOtpVerification(false);
+          setPendingPhone(null);
+          setPendingRegistration(null);
           setLoading(false);
           return { error: null };
         } else {
           // Show actual network or database registration error
-          console.error('Registration failed with database error:', error.message);
+          const errorMsg = extractErrorMessage(error);
+          console.error('Registration failed:', errorMsg, error);
           setLoading(false);
-          return { error: error.message };
+          return { error: errorMsg };
         }
       }
 
-      // If signUp succeeds, insert a corresponding teacher_details row
-      if (data?.user) {
-        try {
-          await supabase
-            .from('teacher_details')
-            .insert({
-              profile_id: data.user.id,
-              specialization: department,
-              qualification: 'Not specified'
-            });
-        } catch (dbErr: any) {
-          console.error('Failed to create teacher_details record in database:', dbErr.message);
-        }
-      }
-
-      // If signUp succeeds:
-      setIsDemoMode(false);
-      localStorage.removeItem('EDTECH_DEMO_MODE');
-      localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
+      // SignUp succeeded — store pending data for OTP verification
+      // Don't insert teacher_details yet; wait for OTP verification
+      setPendingRegistration({ phone, password: pass, facultyId, fullName, department });
+      setPendingPhone(phone);
+      setNeedsOtpVerification(true);
       
       setLoading(false);
       return { error: null };
     } catch (err: any) {
       setLoading(false);
-      return { error: err.message || 'Registration failed' };
+      return { error: extractErrorMessage(err) };
     }
+  };
+
+  /**
+   * Verify the SMS OTP to complete registration.
+   * After verification, inserts the teacher_details record and loads the profile.
+   */
+  const verifyRegistrationOtp = async (token: string): Promise<{ error: string | null }> => {
+    if (!pendingRegistration) {
+      return { error: 'No pending registration found. Please register again.' };
+    }
+
+    const { phone, password, facultyId, fullName, department } = pendingRegistration;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: 'sms',
+      });
+
+      if (error) {
+        setLoading(false);
+        return { error: extractErrorMessage(error) };
+      }
+
+      if (!data.user) {
+        setLoading(false);
+        return { error: 'Verification succeeded but no user data was returned.' };
+      }
+
+      // OTP verified — now insert teacher_details
+      // Store faculty_id, department, and designation in their dedicated
+      // columns.  specialization is left NULL for its actual purpose
+      // (subject expertise, not organisational department).
+      console.log('[verifyRegistrationOtp] Entering teacher_details INSERT block');
+      const insertPayload = {
+        profile_id: data.user.id,
+        faculty_id: facultyId,
+        department: department,
+        designation: 'Senior Faculty Mentor',
+        qualification: 'Not specified'
+      };
+      console.log('[verifyRegistrationOtp] Payload:', JSON.stringify(insertPayload, null, 2));
+
+      let insertResult;
+      try {
+        insertResult = await supabase
+          .from('teacher_details')
+          .insert(insertPayload);
+        console.log('[verifyRegistrationOtp] Supabase response:', JSON.stringify(insertResult, null, 2));
+
+        if (insertResult.error) {
+          console.error('[verifyRegistrationOtp] ❌ Postgrest error on INSERT:', {
+            message: insertResult.error.message,
+            details: insertResult.error.details,
+            hint: insertResult.error.hint,
+            code: insertResult.error.code
+          });
+        } else {
+          console.log('[verifyRegistrationOtp] ✅ teacher_details INSERT succeeded');
+        }
+      } catch (dbErr: any) {
+        console.error('[verifyRegistrationOtp] ❌ Network/exception error on INSERT:', {
+          name: dbErr.name,
+          message: dbErr.message,
+          stack: dbErr.stack,
+          cause: dbErr.cause
+        });
+      }
+
+      // Set the session and load profile
+      setIsDemoMode(false);
+      localStorage.removeItem('EDTECH_DEMO_MODE');
+      localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
+      setSession(data.session ?? null);
+      setUser(data.user);
+
+      await loadTeacherProfileDetails(data.user.id);
+
+      // Clear pending state
+      setNeedsOtpVerification(false);
+      setPendingPhone(null);
+      setPendingRegistration(null);
+      setLoading(false);
+      return { error: null };
+    } catch (err: any) {
+      setLoading(false);
+      return { error: extractErrorMessage(err) };
+    }
+  };
+
+  /**
+   * Resend the SMS OTP.
+   */
+  const resendRegistrationOtp = async (): Promise<{ error: string | null }> => {
+    if (!pendingPhone) {
+      return { error: 'No phone number found. Please register again.' };
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: pendingPhone,
+        options: { shouldCreateUser: false },
+      });
+
+      if (error) {
+        setLoading(false);
+        return { error: extractErrorMessage(error) };
+      }
+
+      setLoading(false);
+      return { error: null };
+    } catch (err: any) {
+      setLoading(false);
+      return { error: extractErrorMessage(err) };
+    }
+  };
+
+  /**
+   * Cancel OTP verification and go back to registration.
+   */
+  const cancelOtpVerification = () => {
+    setNeedsOtpVerification(false);
+    setPendingPhone(null);
+    setPendingRegistration(null);
   };
 
   const signInAsDemo = () => {
@@ -280,6 +459,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('EDTECH_DEMO_MODE');
     localStorage.removeItem('EDTECH_SIM_ROLE');
     localStorage.removeItem('EDTECH_CUSTOM_FACULTY');
+    // Clear the teacher identity cache so downstream services re-resolve
+    clearTeacherIdentityCache();
     setLoading(false);
   };
 
@@ -421,10 +602,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       session,
       user,
       teacherProfile,
+      instituteId,
       loading,
       isDemoMode,
+      needsOtpVerification,
+      pendingPhone,
       signIn,
       registerTeacher,
+      verifyRegistrationOtp,
+      resendRegistrationOtp,
+      cancelOtpVerification,
       signInAsDemo,
       signOut,
       updateSpecialization,

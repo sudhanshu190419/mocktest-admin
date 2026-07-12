@@ -1,0 +1,2189 @@
+'use client';
+
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { useBatchDetail } from '@/hooks/admin/useBatchManagement';
+import {
+  useAssignedStudents,
+  useAvailableStudents,
+  useAssignStudents,
+  useRemoveStudent,
+  useRemoveStudents,
+} from '@/hooks/admin/useBatchStudentAssignment';
+import type { AssignedStudent, AvailableStudent } from '@/services/admin/batchStudentAssignmentService';
+import {
+  useAssignedTeacher,
+  useAvailableTeachers,
+  useAssignTeacher,
+  useRemoveTeacher,
+} from '@/hooks/admin/useBatchTeacherAssignment';
+import type { AssignedTeacher, AvailableTeacher } from '@/services/admin/batchTeacherAssignmentService';
+import {
+  useAssignedMockTests,
+  useAvailableMockTests,
+  useMockTestAssignmentStats,
+  useAssignMockTests,
+  useRemoveMockTest,
+  useRemoveMockTests,
+  useUpdateMockTestAssignment,
+} from '@/hooks/admin/useMockTestAssignment';
+import type { AssignedMockTest } from '@/services/admin/mockTestAssignmentService';
+import type { MockTest } from '@/types/mockTest';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/LoadingSkeleton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { DataTable } from '@/components/ui/DataTable';
+import type { Column } from '@/components/ui/DataTable';
+import {
+  Users,
+  CalendarBlank,
+  Clock,
+  IdentificationCard,
+  ChalkboardTeacher,
+  BookOpen,
+  Buildings,
+  Exam,
+  Student,
+  Tag,
+  UserCircle,
+  User,
+  Archive,
+  Envelope,
+  Phone,
+  XCircle,
+  CheckCircle,
+  Trash,
+  PlusCircle,
+} from '@phosphor-icons/react';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Constants
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STATUS_LABELS: Record<string, string> = {
+  upcoming: 'Upcoming',
+  active: 'Active',
+  completed: 'Completed',
+  archived: 'Archived',
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+function formatDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatDateTime(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w.charAt(0))
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Skeleton
+// ═══════════════════════════════════════════════════════════════════════════
+
+function DetailPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Overview skeleton */}
+      <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+        <Skeleton className="mb-4 h-5 w-48" />
+        <Skeleton className="mb-2 h-4 w-full" />
+        <Skeleton className="mb-4 h-4 w-3/4" />
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-6 w-20 rounded-full" />
+          ))}
+        </div>
+      </div>
+
+      {/* Two-column skeleton */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+              <Skeleton className="mb-4 h-4 w-32" />
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, j) => (
+                  <Skeleton key={j} className="h-4 w-full" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+              <Skeleton className="mb-4 h-4 w-24" />
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <Skeleton key={j} className="h-4 w-full" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Info Row Component
+// ═══════════════════════════════════════════════════════════════════════════
+
+function InfoRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          {label}
+        </p>
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 break-words">
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Stat Card Component
+// ═══════════════════════════════════════════════════════════════════════════
+
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  color: string;
+}) {
+  const colorMap: Record<string, string> = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800',
+    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800',
+    amber: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800',
+    purple: 'bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800',
+    indigo: 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800',
+    gray: 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-700',
+  };
+
+  return (
+    <div className={`rounded-lg border p-4 ${colorMap[color] ?? colorMap.blue}`}>
+      <div className="mb-2">{icon}</div>
+      <p className="text-2xl font-bold">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wider opacity-70 mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Main Page
+// ═══════════════════════════════════════════════════════════════════════════
+
+export default function BatchDetailPage() {
+  const params = useParams();
+  const batchId = params.id as string;
+
+  const { data: batch, isLoading, isError, error, refetch } = useBatchDetail(batchId);
+
+  // ── Capacity Utilization ───────────────────────────────────────────────
+  const utilizationPercent = useMemo(() => {
+    if (!batch || batch.capacity === null || batch.capacity <= 0) return null;
+    return Math.round((batch.studentCount / batch.capacity) * 100 * 100) / 100;
+  }, [batch]);
+
+  // ── Student Assignment State ──────────────────────────────────────────
+  const [studentSearch, setStudentSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [selectedAssignedIds, setSelectedAssignedIds] = useState<Set<string>>(new Set());
+  const [selectedAvailableIds, setSelectedAvailableIds] = useState<Set<string>>(new Set());
+
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'assign' | 'remove-single' | 'remove-bulk'
+    | 'teacher-assign' | 'teacher-remove'
+    | 'mock-assign' | 'mock-remove-single' | 'mock-remove-bulk' | 'mock-edit';
+    studentId?: string;
+    studentName?: string;
+    count?: number;
+    teacherId?: string;
+    teacherName?: string;
+    assignmentId?: string;
+    mockTestId?: string;
+    mockTestTitle?: string;
+  } | null>(null);
+
+  const [actionFeedback, setActionFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const clearFeedback = useCallback(() => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 4000);
+  }, []);
+
+  // Search debounce
+  useEffect(() => {
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => setDebouncedSearch(studentSearch), 400);
+    return () => {
+      if (searchRef.current) clearTimeout(searchRef.current);
+    };
+  }, [studentSearch]);
+
+  // Clean up feedback timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    };
+  }, []);
+
+  // ── Teacher Assignment State ─────────────────────────────────────────
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [debouncedTeacherSearch, setDebouncedTeacherSearch] = useState('');
+  const teacherSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Teacher search debounce
+  useEffect(() => {
+    if (teacherSearchRef.current) clearTimeout(teacherSearchRef.current);
+    teacherSearchRef.current = setTimeout(() => setDebouncedTeacherSearch(teacherSearch), 400);
+    return () => {
+      if (teacherSearchRef.current) clearTimeout(teacherSearchRef.current);
+    };
+  }, [teacherSearch]);
+
+  // ── Mock Test Assignment State ──────────────────────────────────────
+  const [mockTestSearch, setMockTestSearch] = useState('');
+  const [debouncedMockTestSearch, setDebouncedMockTestSearch] = useState('');
+  const mockTestSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [selectedAssignedMockTestIds, setSelectedAssignedMockTestIds] = useState<Set<string>>(new Set());
+  const [selectedAvailableMockTestIds, setSelectedAvailableMockTestIds] = useState<Set<string>>(new Set());
+
+  // Edit assignment state
+  const [editAssignment, setEditAssignment] = useState<{
+    open: boolean;
+    assignmentId: string;
+    title: string;
+    availableFrom: string;
+    availableUntil: string;
+    attemptLimit: string;
+  }>({
+    open: false,
+    assignmentId: '',
+    title: '',
+    availableFrom: '',
+    availableUntil: '',
+    attemptLimit: '',
+  });
+
+  // Assign options state (editable fields in confirm dialog)
+  const [assignOptions, setAssignOptions] = useState<{
+    availableFrom: string;
+    availableUntil: string;
+    attemptLimit: string;
+  }>({
+    availableFrom: '',
+    availableUntil: '',
+    attemptLimit: '',
+  });
+
+  // Mock test search debounce
+  useEffect(() => {
+    if (mockTestSearchRef.current) clearTimeout(mockTestSearchRef.current);
+    mockTestSearchRef.current = setTimeout(() => setDebouncedMockTestSearch(mockTestSearch), 400);
+    return () => {
+      if (mockTestSearchRef.current) clearTimeout(mockTestSearchRef.current);
+    };
+  }, [mockTestSearch]);
+
+  // ── Query Hooks ───────────────────────────────────────────────────────
+  const {
+    data: assignedStudents,
+    isLoading: assignedLoading,
+    isError: assignedError,
+  } = useAssignedStudents(batchId);
+
+  const {
+    data: availableStudents,
+    isLoading: availableLoading,
+  } = useAvailableStudents(batchId, debouncedSearch || undefined);
+
+  const {
+    data: assignedTeacher,
+    isLoading: teacherLoading,
+  } = useAssignedTeacher(batchId);
+
+  const {
+    data: availableTeachers,
+    isLoading: availableTeachersLoading,
+  } = useAvailableTeachers(batchId, debouncedTeacherSearch || undefined);
+
+  // ── Mock Test Query Hooks ────────────────────────────────────────────
+  const {
+    data: assignedMockTests,
+    isLoading: assignedMockTestsLoading,
+  } = useAssignedMockTests(batchId);
+
+  const {
+    data: availableMockTests,
+    isLoading: availableMockTestsLoading,
+  } = useAvailableMockTests(batchId, debouncedMockTestSearch || undefined);
+
+  const {
+    data: mockTestStats,
+    isLoading: mockTestStatsLoading,
+  } = useMockTestAssignmentStats(batchId);
+
+  // ── Mutation Hooks ────────────────────────────────────────────────────
+  const assignMutation = useAssignStudents();
+  const removeStudentMutation = useRemoveStudent();
+  const removeStudentsMutation = useRemoveStudents();
+  const assignTeacherMutation = useAssignTeacher();
+  const removeTeacherMutation = useRemoveTeacher();
+  const assignMockTestsMutation = useAssignMockTests();
+  const removeMockTestMutation = useRemoveMockTest();
+  const removeMockTestsMutation = useRemoveMockTests();
+  const updateMockTestAssignmentMutation = useUpdateMockTestAssignment();
+
+  // ── Computed Values ───────────────────────────────────────────────────
+  const isAtCapacity = batch?.capacity !== null && batch?.capacity !== undefined
+    && (batch?.studentCount ?? 0) >= batch.capacity;
+  const availableSeats = batch?.capacity !== null && batch?.capacity !== undefined
+    ? Math.max(0, batch.capacity - (batch?.studentCount ?? 0))
+    : null;
+
+  // ── Mock Test Handlers ────────────────────────────────────────────────
+  const handleConfirmMockAssign = async () => {
+    if (!selectedAvailableMockTestIds.size) return;
+
+    const options: {
+      availableFrom?: string | null;
+      availableUntil?: string | null;
+      attemptLimit?: number | null;
+    } = {};
+
+    if (assignOptions.availableFrom) {
+      options.availableFrom = new Date(assignOptions.availableFrom).toISOString();
+    }
+    if (assignOptions.availableUntil) {
+      options.availableUntil = new Date(assignOptions.availableUntil).toISOString();
+    }
+    if (assignOptions.attemptLimit) {
+      options.attemptLimit = parseInt(assignOptions.attemptLimit, 10);
+    }
+
+    const result = await assignMockTestsMutation.mutateAsync({
+      batchId,
+      testIds: Array.from(selectedAvailableMockTestIds),
+      options: Object.keys(options).length > 0 ? options : undefined,
+    });
+
+    if (result.success) {
+      const count = result.data?.assigned ?? selectedAvailableMockTestIds.size;
+      setActionFeedback({
+        type: 'success',
+        message: `${count} mock test(s) assigned to this batch successfully.`,
+      });
+      setSelectedAvailableMockTestIds(new Set());
+      setAssignOptions({ availableFrom: '', availableUntil: '', attemptLimit: '' });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to assign mock tests.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  const handleConfirmMockRemoveSingle = async () => {
+    if (!confirmAction?.assignmentId) return;
+
+    const result = await removeMockTestMutation.mutateAsync({
+      batchId,
+      assignmentId: confirmAction.assignmentId,
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `"${confirmAction.mockTestTitle ?? 'Mock test'}" removed from this batch.`,
+      });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove mock test.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  const handleConfirmMockRemoveBulk = async () => {
+    if (!selectedAssignedMockTestIds.size) return;
+
+    const result = await removeMockTestsMutation.mutateAsync({
+      batchId,
+      assignmentIds: Array.from(selectedAssignedMockTestIds),
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `${selectedAssignedMockTestIds.size} mock test(s) removed from this batch.`,
+      });
+      setSelectedAssignedMockTestIds(new Set());
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove mock tests.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  const handleConfirmMockEdit = async () => {
+    if (!editAssignment.assignmentId) return;
+
+    const input: {
+      availableFrom?: string | null;
+      availableUntil?: string | null;
+      attemptLimit?: number | null;
+    } = {};
+
+    if (editAssignment.availableFrom) {
+      input.availableFrom = new Date(editAssignment.availableFrom).toISOString();
+    }
+    if (editAssignment.availableUntil) {
+      input.availableUntil = new Date(editAssignment.availableUntil).toISOString();
+    }
+    if (editAssignment.attemptLimit) {
+      input.attemptLimit = parseInt(editAssignment.attemptLimit, 10);
+    }
+
+    if (Object.keys(input).length === 0) {
+      setEditAssignment({ ...editAssignment, open: false });
+      return;
+    }
+
+    const result = await updateMockTestAssignmentMutation.mutateAsync({
+      assignmentId: editAssignment.assignmentId,
+      input,
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `Assignment "${editAssignment.title}" updated successfully.`,
+      });
+      setEditAssignment({ open: false, assignmentId: '', title: '', availableFrom: '', availableUntil: '', attemptLimit: '' });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to update assignment.',
+      });
+    }
+    clearFeedback();
+  };
+
+  // ── Computed Values (Teacher Confirm Dialog) ──────────────────────────
+  const assignTeacherTitle = assignedTeacher
+    ? 'Replace Teacher'
+    : 'Assign Teacher';
+  const assignTeacherMessage = assignedTeacher
+    ? `This batch already has an assigned teacher ("${assignedTeacher.teacherName}"). Replacing the teacher will transfer future batch responsibility. Continue?`
+    : `Assign "${confirmAction?.teacherName ?? 'this teacher'}" to this batch?`;
+  const assignTeacherConfirmLabel = assignedTeacher ? 'Replace' : 'Assign';
+
+  // ── Handler: Assign Selected Students ─────────────────────────────────
+  const handleConfirmAssign = async () => {
+    if (!selectedAvailableIds.size) return;
+
+    const result = await assignMutation.mutateAsync({
+      batchId,
+      studentIds: Array.from(selectedAvailableIds),
+    });
+
+    if (result.success) {
+      const count = result.data?.assigned ?? selectedAvailableIds.size;
+      setActionFeedback({
+        type: 'success',
+        message: `${count} student(s) assigned to this batch successfully.`,
+      });
+      setSelectedAvailableIds(new Set());
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to assign students.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  // ── Handler: Remove Single Student ────────────────────────────────────
+  const handleConfirmRemoveSingle = async () => {
+    if (!confirmAction?.studentId) return;
+
+    const result = await removeStudentMutation.mutateAsync({
+      batchId,
+      studentId: confirmAction.studentId,
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `"${confirmAction.studentName ?? 'Student'}" removed from this batch.`,
+      });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove student.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  // ── Handler: Assign Teacher ─────────────────────────────────────────
+  const handleConfirmAssignTeacher = async () => {
+    if (!confirmAction?.teacherId) return;
+
+    const result = await assignTeacherMutation.mutateAsync({
+      batchId,
+      teacherId: confirmAction.teacherId,
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `"${confirmAction.teacherName ?? 'Teacher'}" assigned to this batch.`,
+      });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to assign teacher.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  // ── Handler: Remove Teacher ──────────────────────────────────────────
+  const handleConfirmRemoveTeacher = async () => {
+    const result = await removeTeacherMutation.mutateAsync({ batchId });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: 'Teacher removed from this batch.',
+      });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove teacher.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  // ── Handler: Bulk Remove Students ─────────────────────────────────────
+  const handleConfirmRemoveBulk = async () => {
+    if (!selectedAssignedIds.size) return;
+
+    const result = await removeStudentsMutation.mutateAsync({
+      batchId,
+      studentIds: Array.from(selectedAssignedIds),
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `${selectedAssignedIds.size} student(s) removed from this batch.`,
+      });
+      setSelectedAssignedIds(new Set());
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove students.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  // ── Confirm Dialog Router ─────────────────────────────────────────────
+  const handleConfirm = async () => {
+    if (!confirmAction) return;
+    switch (confirmAction.type) {
+      case 'assign':
+        await handleConfirmAssign();
+        break;
+      case 'remove-single':
+        await handleConfirmRemoveSingle();
+        break;
+      case 'remove-bulk':
+        await handleConfirmRemoveBulk();
+        break;
+      case 'teacher-assign':
+        await handleConfirmAssignTeacher();
+        break;
+      case 'teacher-remove':
+        await handleConfirmRemoveTeacher();
+        break;
+      case 'mock-assign':
+        await handleConfirmMockAssign();
+        break;
+      case 'mock-remove-single':
+        await handleConfirmMockRemoveSingle();
+        break;
+      case 'mock-remove-bulk':
+        await handleConfirmMockRemoveBulk();
+        break;
+      case 'mock-edit':
+        await handleConfirmMockEdit();
+        break;
+    }
+  };
+
+  const getConfirmDialogProps = () => {
+    if (!confirmAction) {
+      return { open: false, title: '', message: '', variant: 'default' as const };
+    }
+
+    switch (confirmAction.type) {
+      case 'assign':
+        return {
+          open: true,
+          title: 'Assign Students',
+          message: `Assign ${confirmAction.count ?? selectedAvailableIds.size} selected student(s) to this batch?`,
+          confirmLabel: 'Assign',
+          variant: 'default' as const,
+        };
+      case 'remove-single':
+        return {
+          open: true,
+          title: 'Remove Student',
+          message: `Remove "${confirmAction.studentName ?? 'this student'}" from this batch? They can be re-assigned later.`,
+          confirmLabel: 'Remove',
+          variant: 'danger' as const,
+        };
+      case 'remove-bulk':
+        return {
+          open: true,
+          title: 'Remove Students',
+          message: `Remove ${confirmAction.count ?? selectedAssignedIds.size} selected student(s) from this batch? They can be re-assigned later.`,
+          confirmLabel: 'Remove All',
+          variant: 'danger' as const,
+        };
+      case 'teacher-assign':
+        return {
+          open: true,
+          title: assignTeacherTitle,
+          message: assignTeacherMessage,
+          confirmLabel: assignTeacherConfirmLabel,
+          variant: 'default' as const,
+        };
+      case 'teacher-remove':
+        return {
+          open: true,
+          title: 'Remove Teacher',
+          message: `Remove "${confirmAction.teacherName ?? 'the assigned teacher'}" from this batch? A new teacher can be assigned later.`,
+          confirmLabel: 'Remove',
+          variant: 'danger' as const,
+        };
+      case 'mock-assign':
+        return {
+          open: true,
+          title: 'Assign Mock Tests',
+          message: `Assign ${confirmAction.count ?? selectedAvailableMockTestIds.size} selected mock test(s) to this batch?`,
+          confirmLabel: 'Assign',
+          variant: 'default' as const,
+        };
+      case 'mock-remove-single':
+        return {
+          open: true,
+          title: 'Remove Mock Test',
+          message: `Remove "${confirmAction.mockTestTitle ?? 'this mock test'}" from this batch? It can be re-assigned later.`,
+          confirmLabel: 'Remove',
+          variant: 'danger' as const,
+        };
+      case 'mock-remove-bulk':
+        return {
+          open: true,
+          title: 'Remove Mock Tests',
+          message: `Remove ${confirmAction.count ?? selectedAssignedMockTestIds.size} selected mock test(s) from this batch? They can be re-assigned later.`,
+          confirmLabel: 'Remove All',
+          variant: 'danger' as const,
+        };
+      default:
+        return {
+          open: true,
+          title: 'Confirm Action',
+          message: 'Are you sure you want to proceed?',
+          confirmLabel: 'Confirm',
+          variant: 'default' as const,
+        };
+    }
+  };
+
+  const confirmProps = getConfirmDialogProps();
+  const isConfirmLoading =
+    (confirmAction?.type === 'assign' && assignMutation.isPending) ||
+    (confirmAction?.type === 'remove-single' && removeStudentMutation.isPending) ||
+    (confirmAction?.type === 'remove-bulk' && removeStudentsMutation.isPending) ||
+    (confirmAction?.type === 'teacher-assign' && assignTeacherMutation.isPending) ||
+    (confirmAction?.type === 'teacher-remove' && removeTeacherMutation.isPending) ||
+    (confirmAction?.type === 'mock-assign' && assignMockTestsMutation.isPending) ||
+    (confirmAction?.type === 'mock-remove-single' && removeMockTestMutation.isPending) ||
+    (confirmAction?.type === 'mock-remove-bulk' && removeMockTestsMutation.isPending);
+
+  // ── Assigned Students Columns ─────────────────────────────────────────
+  const assignedColumns: Column<AssignedStudent>[] = useMemo(() => [
+    {
+      key: 'studentName',
+      header: 'Name',
+      render: (item) => (
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-[10px] font-bold text-white shadow-sm">
+            {getInitials(item.studentName)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+              {item.studentName}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'enrollmentNo',
+      header: 'Enrollment No',
+      render: (item) => (
+        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+          {item.enrollmentNo ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'targetYear',
+      header: 'Target Year',
+      render: (item) => (
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {item.targetYear ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'joinedAt',
+      header: 'Joined Date',
+      render: (item) => (
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {formatDate(item.joinedAt)}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (item) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmAction({
+              type: 'remove-single',
+              studentId: item.studentId,
+              studentName: item.studentName,
+            });
+          }}
+          disabled={removeStudentMutation.isPending || removeStudentsMutation.isPending}
+          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+        >
+          {removeStudentMutation.isPending &&
+          confirmAction?.type === 'remove-single' &&
+          confirmAction?.studentId === item.studentId ? (
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <Trash size={12} />
+          )}
+          Remove
+        </button>
+      ),
+    },
+  ], [removeStudentMutation.isPending, removeStudentsMutation.isPending, confirmAction]);
+
+  // ── Assigned Mock Test Columns ───────────────────────────────────────
+  const assignedMockTestColumns: Column<AssignedMockTest>[] = useMemo(() => [
+    { key: 'title', header: 'Title', render: (item) => (
+      <span className="font-medium text-gray-900 dark:text-gray-100">{item.title}</span>
+    )},
+    { key: 'subject', header: 'Subject', render: (item) => item.subject ?? '—' },
+    { key: 'type', header: 'Type', render: (item) => (
+      <span className="capitalize">{item.type}</span>
+    )},
+    { key: 'duration', header: 'Duration', render: (item) => `${item.duration} min` },
+    { key: 'totalMarks', header: 'Marks', render: (item) => item.totalMarks },
+    {
+      key: 'availableFrom',
+      header: 'Available From',
+      render: (item) => (item.availableFrom ? formatDateTime(item.availableFrom) : '—'),
+    },
+    {
+      key: 'availableUntil',
+      header: 'Available Until',
+      render: (item) => (item.availableUntil ? formatDateTime(item.availableUntil) : '—'),
+    },
+    {
+      key: 'attemptLimit',
+      header: 'Attempts',
+      render: (item) => (item.attemptLimit !== null ? String(item.attemptLimit) : '∞'),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (item) => <StatusBadge status={item.status} showDot={true} />,
+    },
+    {
+      key: 'assignedAt',
+      header: 'Assigned Date',
+      render: (item) => formatDate(item.assignedAt),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (item) => (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditAssignment({
+                open: true,
+                assignmentId: item.assignmentId,
+                title: item.title,
+                availableFrom: item.availableFrom
+                  ? new Date(item.availableFrom).toISOString().slice(0, 16)
+                  : '',
+                availableUntil: item.availableUntil
+                  ? new Date(item.availableUntil).toISOString().slice(0, 16)
+                  : '',
+                attemptLimit: item.attemptLimit !== null ? String(item.attemptLimit) : '',
+              });
+            }}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+            </svg>
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmAction({
+                type: 'mock-remove-single',
+                assignmentId: item.assignmentId,
+                mockTestTitle: item.title,
+              });
+            }}
+            disabled={removeMockTestMutation.isPending || removeMockTestsMutation.isPending}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+          >
+            <Trash size={12} />
+            Remove
+          </button>
+        </div>
+      ),
+    },
+  ], [removeMockTestMutation.isPending, removeMockTestsMutation.isPending]);
+
+  // ── Available Mock Tests Columns ──────────────────────────────────────
+  const availableMockTestColumns: Column<MockTest>[] = useMemo(() => [
+    {
+      key: 'title',
+      header: 'Title',
+      render: (item) => (
+        <span className="font-medium text-gray-900 dark:text-gray-100">{item.title}</span>
+      ),
+    },
+    { key: 'subjectId', header: 'Subject', render: () => '—' },
+    { key: 'testType', header: 'Type', render: (item) => (
+      <span className="capitalize">{item.testType}</span>
+    )},
+    { key: 'durationMin', header: 'Duration', render: (item) => `${item.durationMin} min` },
+    { key: 'totalMarks', header: 'Marks', render: (item) => item.totalMarks },
+    {
+      key: 'publishedAt',
+      header: 'Published',
+      render: (item) => (item.publishedAt ? formatDate(item.publishedAt) : '—'),
+    },
+  ], []);
+
+  // ── Available Students Columns ────────────────────────────────────────
+  const availableColumns: Column<AvailableStudent>[] = useMemo(() => [
+    {
+      key: 'studentName',
+      header: 'Name',
+      render: (item) => (
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[10px] font-bold text-white shadow-sm">
+            {getInitials(item.studentName)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+              {item.studentName}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'enrollmentNo',
+      header: 'Enrollment No',
+      render: (item) => (
+        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+          {item.enrollmentNo ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'targetYear',
+      header: 'Target Year',
+      render: (item) => (
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {item.targetYear ?? '—'}
+        </span>
+      ),
+    },
+  ], []);
+
+  // ═════════════════════════════════════════════════════════════════════
+  //  Loading State
+  // ═════════════════════════════════════════════════════════════════════
+  if (isLoading) {
+    return (
+      <div>
+        <PageHeader
+          title="Batch Details"
+          breadcrumbs={[
+            { label: 'Admin', href: '/admin' },
+            { label: 'Batch Management', href: '/admin/batches' },
+            { label: 'Loading...' },
+          ]}
+        />
+        <DetailPageSkeleton />
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  //  Error State
+  // ═════════════════════════════════════════════════════════════════════
+  if (isError || !batch) {
+    return (
+      <div>
+        <PageHeader
+          title="Batch Details"
+          breadcrumbs={[
+            { label: 'Admin', href: '/admin' },
+            { label: 'Batch Management', href: '/admin/batches' },
+            { label: 'Error' },
+          ]}
+        />
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+          <div className="flex flex-col items-center gap-4 py-8 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <XCircle size={28} weight="duotone" className="text-red-500" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-red-800 dark:text-red-300">
+                Failed to load batch details
+              </p>
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                {error instanceof Error ? error.message : 'The batch could not be found or an error occurred.'}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Link
+                href="/admin/batches"
+                className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-700 dark:bg-gray-900 dark:text-red-400"
+              >
+                ← Back to Batch List
+              </Link>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-100 px-4 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  //  Render — Batch Data Loaded
+  // ═════════════════════════════════════════════════════════════════════
+
+  return (
+    <div className="space-y-6">
+      {/* ════════════════════════════════════════════════════════════════
+          Section 1: Page Header
+         ════════════════════════════════════════════════════════════════ */}
+      <PageHeader
+        title={batch.batchName}
+        description={`${batch.batchCode} · ${STATUS_LABELS[batch.status] ?? batch.status} · ${batch.streamName ?? 'No Stream'}`}
+        breadcrumbs={[
+          { label: 'Admin', href: '/admin' },
+          { label: 'Batch Management', href: '/admin/batches' },
+          { label: batch.batchName },
+        ]}
+        actions={
+          <Link
+            href="/admin/batches"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            ← Back to List
+          </Link>
+        }
+      />
+
+      {/* ════════════════════════════════════════════════════════════════
+          Section 2: Batch Overview
+         ════════════════════════════════════════════════════════════════ */}
+      <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          {/* Name + Status */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">
+                {batch.batchName}
+              </h2>
+              <StatusBadge status={batch.status} showDot={true} />
+            </div>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Code: {batch.batchCode} · {batch.academicYear}
+            </p>
+          </div>
+
+          {/* Quick stats */}
+          <div className="flex flex-wrap gap-4 sm:flex-shrink-0">
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{batch.studentCount}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Students</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                {batch.capacity !== null ? batch.capacity : '∞'}
+              </p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Capacity</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                {batch.mockTestCount}
+              </p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Mock Tests</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Metadata badges */}
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+            <Tag size={12} />
+            {batch.streamName ?? '—'}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-[11px] font-medium text-purple-700 dark:bg-purple-900/20 dark:text-purple-400">
+            <ChalkboardTeacher size={12} />
+            {batch.teacherName ?? 'Not Assigned'}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+            <CalendarBlank size={12} />
+            {batch.startDate} — {batch.endDate}
+          </span>
+        </div>
+
+        {/* Timestamps */}
+        <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-gray-400">
+          <span className="inline-flex items-center gap-1">
+            <CalendarBlank size={12} />
+            Created {formatDate(batch.createdAt)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Clock size={12} />
+            Updated {formatDate(batch.updatedAt)}
+          </span>
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════
+          Two-Column Layout
+         ════════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+        {/* ─── LEFT COLUMN (2/3) ────────────────────────────────────── */}
+        <div className="space-y-6 lg:col-span-2">
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 2 (continued): Batch Information
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Batch Information
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">Basic details, stream, and timeline</p>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              <InfoRow
+                icon={<Tag size={18} />}
+                label="Batch Name"
+                value={batch.batchName}
+              />
+              <InfoRow
+                icon={<IdentificationCard size={18} />}
+                label="Batch Code"
+                value={batch.batchCode}
+              />
+              <InfoRow
+                icon={<BookOpen size={18} />}
+                label="Status"
+                value={<StatusBadge status={batch.status} showDot={true} />}
+              />
+              <InfoRow
+                icon={<Buildings size={18} />}
+                label="Stream"
+                value={batch.streamName ?? '—'}
+              />
+              <InfoRow
+                icon={<BookOpen size={18} />}
+                label="Academic Year"
+                value={batch.academicYear}
+              />
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="Start Date"
+                value={formatDate(batch.startDate)}
+              />
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="End Date"
+                value={formatDate(batch.endDate)}
+              />
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="Created Date"
+                value={formatDate(batch.createdAt)}
+              />
+              <InfoRow
+                icon={<Clock size={18} />}
+                label="Updated Date"
+                value={formatDateTime(batch.updatedAt)}
+              />
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 4: Teacher Information
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Teacher Information
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">Assigned teacher details</p>
+            {batch.teacher ? (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                <InfoRow
+                  icon={<User size={18} />}
+                  label="Teacher Name"
+                  value={batch.teacher.name}
+                />
+                <InfoRow
+                  icon={<IdentificationCard size={18} />}
+                  label="Teacher ID"
+                  value={
+                    <span className="font-mono text-xs">{batch.teacher.teacherId}</span>
+                  }
+                />
+                <InfoRow
+                  icon={<Envelope size={18} />}
+                  label="Email"
+                  value={batch.teacher.email ?? 'Not available'}
+                />
+                <InfoRow
+                  icon={<Phone size={18} />}
+                  label="Phone"
+                  value={batch.teacher.phone ?? 'Not available'}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                icon={<ChalkboardTeacher size={32} weight="thin" />}
+                title="Not assigned"
+                description="No teacher has been assigned to this batch yet."
+              />
+            )}
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 8a: Teacher Assignment
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Teacher Assignment
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">
+              {assignedTeacher
+                ? `Currently assigned: ${assignedTeacher.teacherName}`
+                : 'No teacher currently assigned to this batch'
+              }
+            </p>
+
+            {/* ─── Assigned Teacher Card ──────────────────────────────── */}
+            {teacherLoading ? (
+              <div className="mb-4 space-y-2">
+                <Skeleton className="h-16 w-full" />
+              </div>
+            ) : assignedTeacher ? (
+              <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/20">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-sm font-bold text-white shadow-sm">
+                      {getInitials(assignedTeacher.teacherName)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {assignedTeacher.teacherName}
+                      </p>
+                      <p className="text-xs text-gray-500 font-mono mt-0.5">
+                        {assignedTeacher.facultyId ?? '—'}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                        {assignedTeacher.department && (
+                          <span>{assignedTeacher.department}</span>
+                        )}
+                        {assignedTeacher.designation && (
+                          <span className="text-gray-400">·</span>
+                        )}
+                        {assignedTeacher.designation && (
+                          <span>{assignedTeacher.designation}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirmAction({
+                          type: 'teacher-remove',
+                          teacherName: assignedTeacher.teacherName,
+                        })
+                      }
+                      disabled={removeTeacherMutation.isPending}
+                      className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                      {removeTeacherMutation.isPending ? (
+                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <Trash size={12} />
+                      )}
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {/* Contact info */}
+                <div className="mt-3 flex flex-wrap gap-4 border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                  {assignedTeacher.email && (
+                    <span className="inline-flex items-center gap-1">
+                      <Envelope size={12} />
+                      {assignedTeacher.email}
+                    </span>
+                  )}
+                  {assignedTeacher.phone && (
+                    <span className="inline-flex items-center gap-1">
+                      <Phone size={12} />
+                      {assignedTeacher.phone}
+                    </span>
+                  )}
+                  {assignedTeacher.assignedAt && (
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarBlank size={12} />
+                      Assigned {formatDate(assignedTeacher.assignedAt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <EmptyState
+                  icon={<ChalkboardTeacher size={28} weight="thin" />}
+                  title="No teacher assigned"
+                  description="Assign a teacher to this batch to manage academic delivery."
+                />
+              </div>
+            )}
+
+            {/* ─── Available Teachers ──────────────────────────────────── */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Available Teachers
+                </h4>
+              </div>
+              <div className="mb-3">
+                <SearchBar
+                  value={teacherSearch}
+                  onChange={setTeacherSearch}
+                  placeholder="Search by name or faculty ID..."
+                  className="w-full"
+                />
+              </div>
+
+              {availableTeachersLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 dark:border-gray-700">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <div className="flex-1">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="mt-1 h-3 w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (availableTeachers ?? []).length === 0 ? (
+                <EmptyState
+                  icon={<ChalkboardTeacher size={28} weight="thin" />}
+                  title={debouncedTeacherSearch ? 'No matching teachers' : 'No teachers available'}
+                  description={
+                    debouncedTeacherSearch
+                      ? 'Try a different search term.'
+                      : 'No active teachers are available in this institute.'
+                  }
+                />
+              ) : (
+                <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                  {(availableTeachers ?? []).map((teacher: AvailableTeacher) => (
+                    <div
+                      key={teacher.teacherId}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/30"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-[10px] font-bold text-white shadow-sm">
+                          {getInitials(teacher.teacherName)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {teacher.teacherName}
+                          </p>
+                          <p className="text-xs text-gray-500 font-mono truncate">
+                            {teacher.facultyId ?? '—'}
+                            {teacher.department && (
+                              <span className="text-gray-400 font-sans"> · {teacher.department}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmAction({
+                            type: 'teacher-assign',
+                            teacherId: teacher.teacherId,
+                            teacherName: teacher.teacherName,
+                          })
+                        }
+                        disabled={
+                          (assignTeacherMutation.isPending &&
+                            confirmAction?.type === 'teacher-assign' &&
+                            confirmAction?.teacherId === teacher.teacherId) ||
+                          removeTeacherMutation.isPending
+                        }
+                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-40 shrink-0 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                      >
+                        {assignTeacherMutation.isPending &&
+                        confirmAction?.type === 'teacher-assign' &&
+                        confirmAction?.teacherId === teacher.teacherId ? (
+                          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                        ) : (
+                          <PlusCircle size={12} />
+                        )}
+                        {assignedTeacher ? 'Replace' : 'Assign'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 9: Mock Test Assignment
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Mock Test Assignment
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">Assign and manage mock tests for this batch</p>
+
+            {/* ─── Action feedback ──────────────────────────────────── */}
+            {actionFeedback && (
+              <div
+                className={`mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
+                  actionFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                    : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                }`}
+              >
+                {actionFeedback.type === 'success' ? (
+                  <CheckCircle size={16} weight="duotone" />
+                ) : (
+                  <XCircle size={16} weight="duotone" />
+                )}
+                {actionFeedback.message}
+              </div>
+            )}
+
+            {/* ─── SECTION 3: Assignment Statistics ──────────────────── */}
+            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <StatCard
+                icon={<Exam size={22} weight="duotone" />}
+                label="Assigned Tests"
+                value={mockTestStats?.assigned ?? 0}
+                color="blue"
+              />
+              <StatCard
+                icon={<CheckCircle size={22} weight="duotone" />}
+                label="Active Tests"
+                value={mockTestStats?.active ?? 0}
+                color="emerald"
+              />
+              <StatCard
+                icon={<CalendarBlank size={22} weight="duotone" />}
+                label="Upcoming Tests"
+                value={mockTestStats?.upcoming ?? 0}
+                color="indigo"
+              />
+              <StatCard
+                icon={<Archive size={22} weight="duotone" />}
+                label="Expired Tests"
+                value={mockTestStats?.expired ?? 0}
+                color="amber"
+              />
+            </div>
+
+            {/* ─── SECTION 1: Assigned Mock Tests ────────────────────── */}
+            <div className="mb-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Assigned ({assignedMockTests?.length ?? 0})
+                </h4>
+                {selectedAssignedMockTestIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'mock-remove-bulk',
+                        count: selectedAssignedMockTestIds.size,
+                      })
+                    }
+                    disabled={removeMockTestsMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+                  >
+                    {removeMockTestsMutation.isPending ? (
+                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <Trash size={12} />
+                    )}
+                    Remove Selected ({selectedAssignedMockTestIds.size})
+                  </button>
+                )}
+              </div>
+              <DataTable
+                columns={assignedMockTestColumns}
+                data={assignedMockTests ?? []}
+                keyExtractor={(item) => item.assignmentId}
+                isLoading={assignedMockTestsLoading}
+                selectedIds={selectedAssignedMockTestIds}
+                onSelectionChange={setSelectedAssignedMockTestIds}
+                emptyState={
+                  <EmptyState
+                    icon={<Exam size={28} weight="thin" />}
+                    title="No mock tests assigned"
+                    description="Assign published mock tests to this batch using the panel below."
+                  />
+                }
+                className="min-h-[200px]"
+              />
+            </div>
+
+            {/* ─── SECTION 2: Available Mock Tests ────────────────────── */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Available Mock Tests ({availableMockTests?.length ?? 0})
+                </h4>
+                {selectedAvailableMockTestIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'mock-assign',
+                        count: selectedAvailableMockTestIds.size,
+                      })
+                    }
+                    disabled={assignMockTestsMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                  >
+                    {assignMockTestsMutation.isPending ? (
+                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <PlusCircle size={12} />
+                    )}
+                    Assign Selected ({selectedAvailableMockTestIds.size})
+                  </button>
+                )}
+              </div>
+
+              <div className="mb-3">
+                <SearchBar
+                  value={mockTestSearch}
+                  onChange={setMockTestSearch}
+                  placeholder="Search by title or subject..."
+                  className="w-full"
+                />
+              </div>
+
+              <DataTable
+                columns={availableMockTestColumns}
+                data={availableMockTests ?? []}
+                keyExtractor={(item) => item.testId}
+                isLoading={availableMockTestsLoading}
+                selectedIds={selectedAvailableMockTestIds}
+                onSelectionChange={setSelectedAvailableMockTestIds}
+                emptyState={
+                  <EmptyState
+                    icon={<Exam size={28} weight="thin" />}
+                    title={debouncedMockTestSearch ? 'No matching tests' : 'No tests available'}
+                    description={
+                      debouncedMockTestSearch
+                        ? 'Try a different search term.'
+                        : 'All eligible published mock tests are already assigned to this batch.'
+                    }
+                  />
+                }
+                className="min-h-[200px]"
+              />
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 6: Students Summary
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Students Summary
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">Enrolled students in this batch</p>
+            <div className="flex items-center gap-4">
+              <StatCard
+                icon={<Users size={22} weight="duotone" />}
+                label="Total Students"
+                value={batch.studentCount}
+                color="blue"
+              />
+              {batch.assignedStudents.length > 0 && (
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 mb-2">Recently enrolled</p>
+                  <div className="space-y-1.5">
+                    {batch.assignedStudents.slice(0, 5).map((s) => (
+                      <div
+                        key={s.studentId}
+                        className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-1.5 dark:border-gray-700 dark:bg-gray-800/20"
+                      >
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-[8px] font-bold text-white">
+                          {s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
+                            {s.name}
+                          </p>
+                          <p className="text-[10px] text-gray-400">
+                            Enrolled {formatDate(s.enrolledOn)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {batch.assignedStudents.length > 5 && (
+                      <p className="text-[10px] text-center text-gray-400 pt-1">
+                        +{batch.assignedStudents.length - 5} more students
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {batch.assignedStudents.length === 0 && (
+              <p className="text-xs text-gray-400 mt-2">
+                No students are currently enrolled in this batch.
+              </p>
+            )}
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 8: Student Assignment
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Student Assignment
+              </h3>
+              {/* Capacity indicator */}
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Users size={14} />
+                <span>
+                  {batch.studentCount}
+                  {batch.capacity !== null ? ` / ${batch.capacity}` : ''} students
+                </span>
+                {availableSeats !== null && (
+                  <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                    {availableSeats} seat{availableSeats !== 1 ? 's' : ''} available
+                  </span>
+                )}
+              </div>
+            </div>
+            <p className="mb-4 text-xs text-gray-500">Assign or remove students from this batch</p>
+
+            {/* Action feedback banners */}
+            {actionFeedback && (
+              <div
+                className={`mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
+                  actionFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                    : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                }`}
+              >
+                {actionFeedback.type === 'success' ? (
+                  <CheckCircle size={16} weight="duotone" />
+                ) : (
+                  <XCircle size={16} weight="duotone" />
+                )}
+                {actionFeedback.message}
+              </div>
+            )}
+
+            {/* Two-panel layout */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* ─── LEFT: Assigned Students ────────────────────────── */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Assigned ({assignedStudents?.length ?? 0})
+                  </h4>
+                  {selectedAssignedIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirmAction({
+                          type: 'remove-bulk',
+                          count: selectedAssignedIds.size,
+                        })
+                      }
+                      disabled={removeStudentsMutation.isPending}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                      {removeStudentsMutation.isPending ? (
+                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <Trash size={12} />
+                      )}
+                      Remove Selected ({selectedAssignedIds.size})
+                    </button>
+                  )}
+                </div>
+                <DataTable
+                  columns={assignedColumns}
+                  data={assignedStudents ?? []}
+                  keyExtractor={(item) => item.studentId}
+                  isLoading={assignedLoading}
+                  selectedIds={selectedAssignedIds}
+                  onSelectionChange={setSelectedAssignedIds}
+                  emptyState={
+                    <EmptyState
+                      icon={<UserCircle size={28} weight="thin" />}
+                      title="No students assigned"
+                      description="No students have been assigned to this batch yet."
+                    />
+                  }
+                  className="min-h-[200px]"
+                />
+              </div>
+
+              {/* ─── RIGHT: Available Students ──────────────────────── */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Available ({availableStudents?.length ?? 0})
+                  </h4>
+                  {selectedAvailableIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirmAction({
+                          type: 'assign',
+                          count: selectedAvailableIds.size,
+                        })
+                      }
+                      disabled={isAtCapacity || assignMutation.isPending}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                      title={isAtCapacity ? 'Batch capacity reached.' : undefined}
+                    >
+                      {assignMutation.isPending ? (
+                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <PlusCircle size={12} />
+                      )}
+                      Assign Selected ({selectedAvailableIds.size})
+                    </button>
+                  )}
+                </div>
+
+                {/* Search */}
+                <div className="mb-3">
+                  <SearchBar
+                    value={studentSearch}
+                    onChange={setStudentSearch}
+                    placeholder="Search by name or enrollment..."
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Capacity warning */}
+                {isAtCapacity && (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    Batch capacity reached. Remove some students before assigning new ones.
+                  </div>
+                )}
+
+                <DataTable
+                  columns={availableColumns}
+                  data={availableStudents ?? []}
+                  keyExtractor={(item) => item.studentId}
+                  isLoading={availableLoading}
+                  selectedIds={selectedAvailableIds}
+                  onSelectionChange={setSelectedAvailableIds}
+                  emptyState={
+                    <EmptyState
+                      icon={<UserCircle size={28} weight="thin" />}
+                      title={debouncedSearch ? 'No matching students' : 'No students available'}
+                      description={
+                        debouncedSearch
+                          ? 'Try a different search term.'
+                          : 'All eligible students are already assigned to this batch.'
+                      }
+                    />
+                  }
+                  className="min-h-[200px]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 7: Recent Activity
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Recent Activity
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">Latest batch activity</p>
+            <EmptyState
+              icon={<Clock size={32} weight="thin" />}
+              title="No recent batch activity"
+              description="Activity will appear once students take mock tests or teachers take actions in this batch."
+            />
+          </div>
+        </div>
+
+        {/* ─── RIGHT COLUMN (1/3) ────────────────────────────────────── */}
+        <div className="space-y-6">
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 3: Capacity Statistics
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Capacity Statistics
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">Seat utilisation overview</p>
+            <div className="grid grid-cols-1 gap-4">
+              <StatCard
+                icon={<Users size={22} weight="duotone" />}
+                label="Capacity"
+                value={batch.capacity !== null ? batch.capacity : 'Unlimited'}
+                color="blue"
+              />
+              <StatCard
+                icon={<Student size={22} weight="duotone" />}
+                label="Enrolled Students"
+                value={batch.studentCount}
+                color="emerald"
+              />
+              <StatCard
+                icon={<User size={22} weight="duotone" />}
+                label="Available Seats"
+                value={batch.availableSeats !== null ? batch.availableSeats : 'Unlimited'}
+                color={batch.availableSeats !== null && batch.availableSeats <= 0 ? 'amber' : 'indigo'}
+              />
+              <StatCard
+                icon={<Buildings size={22} weight="duotone" />}
+                label="Utilization"
+                value={utilizationPercent !== null ? `${utilizationPercent}%` : 'N/A'}
+                color={
+                  utilizationPercent !== null
+                    ? utilizationPercent >= 90
+                      ? 'amber'
+                      : utilizationPercent >= 70
+                        ? 'emerald'
+                        : 'gray'
+                    : 'gray'
+                }
+              />
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 5: Batch Statistics
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Batch Statistics
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">Usage overview</p>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              <InfoRow
+                icon={<Exam size={18} />}
+                label="Assigned Mock Tests"
+                value={batch.mockTestCount}
+              />
+              <InfoRow
+                icon={<Users size={18} />}
+                label="Active Students"
+                value={batch.studentCount}
+              />
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="Created Date"
+                value={formatDate(batch.createdAt)}
+              />
+              <InfoRow
+                icon={<Clock size={18} />}
+                label="Last Updated"
+                value={formatDateTime(batch.updatedAt)}
+              />
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Batch Schedule
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Batch Schedule
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">Academic timeline</p>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="Academic Year"
+                value={batch.academicYear}
+              />
+              <InfoRow
+                icon={<CalendarBlank size={18} />}
+                label="Start Date"
+                value={formatDate(batch.startDate)}
+              />
+              <InfoRow
+                icon={<Archive size={18} />}
+                label="End Date"
+                value={formatDate(batch.endDate)}
+              />
+            </div>
+
+            {/* Progress indicator */}
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+                <span>Progress</span>
+                <span>{formatDate(batch.startDate)} — {formatDate(batch.endDate)}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    batch.status === 'archived'
+                      ? 'bg-gray-400'
+                      : batch.status === 'completed'
+                        ? 'bg-blue-500'
+                        : batch.status === 'active'
+                          ? 'bg-emerald-500'
+                          : 'bg-amber-400'
+                  }`}
+                  style={{
+                    width:
+                      batch.status === 'archived'
+                        ? '100%'
+                        : batch.status === 'completed'
+                          ? '100%'
+                          : '50%',
+                  }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] text-gray-400 text-center">
+                {STATUS_LABELS[batch.status] ?? batch.status}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════
+          Confirm Dialog
+         ════════════════════════════════════════════════════════════════ */}
+      <ConfirmDialog
+        open={confirmProps.open && confirmAction?.type !== 'mock-assign'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirm}
+        title={confirmProps.title}
+        message={confirmProps.message}
+        confirmLabel={confirmProps.confirmLabel}
+        variant={confirmProps.variant}
+        loading={isConfirmLoading}
+      />
+
+      {/* ════════════════════════════════════════════════════════════════
+          Assign Mock Tests — Options Dialog
+         ════════════════════════════════════════════════════════════════ */}
+      {confirmAction?.type === 'mock-assign' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmAction(null)} />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Assign Mock Tests
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Assign {confirmAction.count ?? selectedAvailableMockTestIds.size} selected mock test(s) to this batch.
+              Configure availability settings below (all optional).
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Available From
+                </label>
+                <input
+                  type="datetime-local"
+                  value={assignOptions.availableFrom}
+                  onChange={(e) => setAssignOptions({ ...assignOptions, availableFrom: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Available Until
+                </label>
+                <input
+                  type="datetime-local"
+                  value={assignOptions.availableUntil}
+                  onChange={(e) => setAssignOptions({ ...assignOptions, availableUntil: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Attempt Limit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Unlimited"
+                  value={assignOptions.attemptLimit}
+                  onChange={(e) => setAssignOptions({ ...assignOptions, attemptLimit: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmAction(null);
+                  setAssignOptions({ availableFrom: '', availableUntil: '', attemptLimit: '' });
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMockAssign}
+                disabled={assignMockTestsMutation.isPending}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                {assignMockTestsMutation.isPending ? 'Processing...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          Edit Assignment Modal
+         ════════════════════════════════════════════════════════════════ */}
+      {editAssignment.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditAssignment({ ...editAssignment, open: false })} />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Edit Assignment
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Update availability settings for "{editAssignment.title}".
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Available From
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editAssignment.availableFrom}
+                  onChange={(e) => setEditAssignment({ ...editAssignment, availableFrom: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Available Until
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editAssignment.availableUntil}
+                  onChange={(e) => setEditAssignment({ ...editAssignment, availableUntil: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Attempt Limit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Unlimited"
+                  value={editAssignment.attemptLimit}
+                  onChange={(e) => setEditAssignment({ ...editAssignment, attemptLimit: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEditAssignment({ ...editAssignment, open: false })}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMockEdit}
+                disabled={updateMockTestAssignmentMutation.isPending}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                {updateMockTestAssignmentMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

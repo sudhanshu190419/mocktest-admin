@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { 
-  EnvelopeSimple, 
+  Phone, 
   LockKey, 
   ArrowRight, 
   CircleNotch, 
@@ -11,39 +11,63 @@ import {
   User,
   Buildings,
   MagicWand,
-  ArrowLeft
+  ArrowLeft,
+  ArrowClockwise,
+  CheckCircle
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
 
 export const LoginView: React.FC = () => {
-  const { signIn, registerTeacher } = useAuth();
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const { signIn, registerTeacher, verifyRegistrationOtp, resendRegistrationOtp, cancelOtpVerification, needsOtpVerification, pendingPhone } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'otp'>('login');
   
   // Login State
-  const [emailOrId, setEmailOrId] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   
   // Register State
   const [fullName, setFullName] = useState('');
   const [facultyId, setFacultyId] = useState('');
   const [department, setDepartment] = useState('Physics & Applied Mechanics');
-  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
+
+  // OTP State
+  const [otpCode, setOtpCode] = useState('');
+  const [countdown, setCountdown] = useState(0);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Auto-switch to OTP mode when registration sends OTP
+  React.useEffect(() => {
+    if (needsOtpVerification && pendingPhone) {
+      setAuthMode('otp');
+      setSuccessMsg('OTP sent to ' + pendingPhone);
+      setCountdown(60);
+    }
+  }, [needsOtpVerification, pendingPhone]);
+
+  // Countdown timer for OTP resend
+  React.useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setInterval(() => setCountdown((c) => c - 1), 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailOrId.trim() || !password.trim()) {
-      setErrorMsg('Please enter both your Faculty ID/Email and password.');
+    if (!phoneNumber.trim() || !password.trim()) {
+      setErrorMsg('Please enter both your mobile number and password.');
       return;
     }
 
     setIsSubmitting(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
-    const { error } = await signIn(emailOrId, password);
+    const { error } = await signIn(phoneNumber, password);
     if (error) {
       setErrorMsg(error);
     }
@@ -52,16 +76,17 @@ export const LoginView: React.FC = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !facultyId.trim() || !regPassword.trim()) {
-      setErrorMsg('Please complete Full Name, Faculty ID, and Password.');
+    if (!fullName.trim() || !facultyId.trim() || !regPhone.trim() || !regPassword.trim()) {
+      setErrorMsg('Please complete Full Name, Faculty ID, Mobile Number, and Password.');
       return;
     }
 
     setIsSubmitting(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     const { error } = await registerTeacher(
-      regEmail.trim() || `${facultyId.toLowerCase()}@edtech.org`,
+      regPhone.trim(),
       regPassword,
       facultyId.trim(),
       fullName.trim(),
@@ -70,8 +95,52 @@ export const LoginView: React.FC = () => {
 
     if (error) {
       setErrorMsg(error);
+      setIsSubmitting(false);
+    } else {
+      setIsSubmitting(false);
+      // OTP is sent — effect will switch to OTP mode
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode.trim()) {
+      setErrorMsg('Please enter the OTP code sent to your phone.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const { error } = await verifyRegistrationOtp(otpCode.trim());
+    if (error) {
+      setErrorMsg(error);
+      setSuccessMsg(null);
     }
     setIsSubmitting(false);
+  };
+
+  const handleResendOtp = async () => {
+    setIsSubmitting(true);
+    setErrorMsg(null);
+
+    const { error } = await resendRegistrationOtp();
+    if (error) {
+      setErrorMsg(error);
+    } else {
+      setSuccessMsg('New OTP sent to ' + pendingPhone);
+      setCountdown(60);
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleCancelOtp = () => {
+    cancelOtpVerification();
+    setAuthMode('register');
+    setOtpCode('');
+    setSuccessMsg(null);
+    setErrorMsg(null);
   };
 
   const handleAutoGenId = () => {
@@ -82,8 +151,8 @@ export const LoginView: React.FC = () => {
                        department.toLowerCase().includes('bio') ? 'bio' : 'cs';
     const newId = `t-${randomNum}-${deptPrefix}`;
     setFacultyId(newId);
-    if (!regEmail) {
-      setRegEmail(`${newId}@edtech.org`);
+    if (!regPhone) {
+      setRegPhone('+91');
     }
   };
 
@@ -147,17 +216,27 @@ export const LoginView: React.FC = () => {
             {/* Form Header */}
             <div>
               <span className="text-xs font-bold font-mono tracking-wider uppercase text-primary-800 bg-primary-100 px-3 py-1 rounded-full">
-                {authMode === 'login' ? 'Faculty Access' : 'New Faculty Onboarding'}
+                {authMode === 'login' ? 'Faculty Access' : authMode === 'otp' ? 'Verify OTP' : 'New Faculty Onboarding'}
               </span>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight mt-3">
-                {authMode === 'login' ? 'Sign In to Portal' : 'Register Faculty ID'}
+                {authMode === 'login' ? 'Sign In to Portal' : authMode === 'otp' ? 'Enter Verification Code' : 'Register Faculty ID'}
               </h2>
               <p className="text-xs sm:text-sm text-text-muted mt-1 leading-relaxed">
                 {authMode === 'login' 
-                  ? 'Enter your Faculty ID or institutional email to access your teacher dashboard.'
+                  ? 'Enter your registered mobile number to access your teacher dashboard.'
+                  : authMode === 'otp' 
+                  ? 'Enter the 6-digit code sent to your registered mobile number.'
                   : 'Initialize your teacher profile and obtain instant workspace authorization.'}
               </p>
             </div>
+
+            {/* Success Banner */}
+            {successMsg && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-start gap-2.5">
+                <span className="font-bold">✓</span>
+                <span>{successMsg}</span>
+              </div>
+            )}
 
             {/* Error Banner */}
             {errorMsg && (
@@ -167,20 +246,84 @@ export const LoginView: React.FC = () => {
               </div>
             )}
 
-            {/* MODE 1: LOGIN FORM */}
-            {authMode === 'login' ? (
+            {/* MODE 3: OTP VERIFICATION FORM */}
+            {authMode === 'otp' ? (
+              <form onSubmit={handleVerifyOtp} className="space-y-5">
+                {/* Phone Display */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-border text-center">
+                  <p className="text-[11px] text-text-muted uppercase tracking-wider font-bold mb-1">Code sent to</p>
+                  <p className="text-sm font-bold text-text-primary font-mono">{pendingPhone}</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                    OTP Code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit OTP"
+                    required
+                    maxLength={6}
+                    className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 border border-border text-center text-lg font-bold tracking-[0.5em] text-text-primary placeholder:text-slate-300 outline-none focus:border-primary-800 focus:bg-white focus:ring-4 focus:ring-primary-800/10 transition-all font-mono"
+                  />
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || otpCode.length < 4}
+                    className="w-full py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-70 text-white font-bold text-sm tracking-wide shadow-xl flex items-center justify-center gap-2.5 transition-all duration-300"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <CircleNotch size={18} className="animate-spin text-white" />
+                        <span>Verifying Code...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={18} weight="fill" />
+                        <span>Verify & Complete Registration</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Resend & Cancel */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    disabled={isSubmitting || countdown > 0}
+                    onClick={handleResendOtp}
+                    className="flex items-center gap-1.5 text-xs font-bold text-primary-800 hover:text-primary-900 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ArrowClockwise size={14} weight="bold" className={countdown > 0 ? 'animate-spin' : ''} />
+                    {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelOtp}
+                    className="text-xs font-medium text-red-600 hover:text-red-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : authMode === 'login' ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                    Faculty ID / Institutional Email
+                    Mobile Number
                   </label>
                   <div className="relative flex items-center">
-                    <IdentificationCard size={20} className="absolute left-4 text-text-muted" />
+                    <Phone size={20} className="absolute left-4 text-text-muted" />
                     <input
-                      type="text"
-                      value={emailOrId}
-                      onChange={(e) => setEmailOrId(e.target.value)}
-                      placeholder="t-8492-phy or arvind@edtech.org"
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="+919876543210"
                       required
                       className="w-full pl-12 pr-4 py-3 rounded-2xl bg-slate-50 border border-border text-sm font-medium text-text-primary placeholder:text-slate-400 outline-none focus:border-primary-800 focus:bg-white focus:ring-4 focus:ring-primary-800/10 transition-all font-mono"
                     />
@@ -297,15 +440,16 @@ export const LoginView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1">
-                    Institutional Email (Optional)
+                    Mobile Number
                   </label>
                   <div className="relative flex items-center">
-                    <EnvelopeSimple size={18} className="absolute left-3.5 text-text-muted" />
+                    <Phone size={18} className="absolute left-3.5 text-text-muted" />
                     <input
-                      type="email"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="rajeshwar@edtech.org"
+                      type="tel"
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      placeholder="+919876543210"
+                      required
                       className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-border text-xs font-medium text-text-primary placeholder:text-slate-400 outline-none focus:border-primary-800 focus:bg-white font-mono"
                     />
                   </div>

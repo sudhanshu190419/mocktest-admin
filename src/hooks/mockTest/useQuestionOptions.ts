@@ -49,8 +49,18 @@ export interface UpdateOptionParams {
   displayOrder?: number;
 }
 
-/** Entry for the bulk replace workflow. */
+/**
+ * Entry for the bulk replace workflow.
+ *
+ * Existing options carry their `optionId` so the service can UPDATE the
+ * existing row instead of DELETE + re-INSERT. This preserves the FK chain
+ * to `question_option_images` — images attached to an existing option
+ * survive edits because the option row identity never changes.
+ * Newly added options (created in the OptionEditor) omit `optionId`.
+ */
 export interface ReplaceOptionEntry {
+  /** UUID of the existing DB row. Omit for newly added options. */
+  optionId?: string;
   optionText: string;
   isCorrect: boolean;
   orderSequence: number;

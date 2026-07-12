@@ -32,6 +32,24 @@ import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
 import { resolveCurrentTeacherId } from '../content/teacherResolver';
+import {
+  getOptionImages,
+  uploadOptionImage,
+  deleteOptionImage,
+  replaceOptionImage,
+  reorderOptionImages,
+} from '../questionOptionImageService';
+import {
+  uploadQuestionImage,
+  deleteQuestionImage,
+} from './questionImageService';
+import {
+  createQuestionOption,
+  getQuestionOptions,
+} from './questionOptionService';
+import {
+  deleteFile as storageDeleteFile,
+} from '../storage/storageService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -41,6 +59,8 @@ import type {
 import type {
   Question,
   QuestionStatus,
+  QuestionDetail,
+  QuestionOptionWithImages,
   CreateQuestionInput,
   UpdateQuestionInput,
   QuestionFilters,
@@ -458,7 +478,161 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapQuestion(data) };
+    const createdQuestion = mapQuestion(data);
+
+    // ── Post-insert: explanation → stem images → options → option images ──
+    // All steps are wrapped in a single try/catch so any failure triggers
+    // a full rollback that leaves the database as if nothing happened.
+
+    const questionId = createdQuestion.questionId;
+    // createdExplanationId tracked for documentation; rollback handled by
+    // ON DELETE CASCADE from the questions FK constraint.
+    const uploadedStemImageIds: string[] = [];
+    const createdOptionIds: string[] = [];
+    const uploadedImageIds: string[] = [];
+
+    try {
+      // ── Phase 1: Insert explanation (if any fields provided) ────────────
+      const hasExplanationContent =
+        input.explanationText?.trim() ||
+        input.explanationVideoUrl?.trim() ||
+        input.correctNumericalAnswer != null ||
+        input.numericalTolerance != null;
+
+      if (hasExplanationContent) {
+        const explRecord: Record<string, unknown> = {
+          question_id: questionId,
+          institute_id: input.instituteId,
+          explanation_text: input.explanationText?.trim() ?? null,
+          explanation_video_url: input.explanationVideoUrl?.trim() ?? null,
+          correct_numerical_answer: input.correctNumericalAnswer ?? null,
+          numerical_tolerance: input.numericalTolerance ?? null,
+        };
+
+        const { data: explData, error: explError } = await supabase
+          .from('question_explanations')
+          .insert(explRecord)
+          .select()
+          .single();
+
+        if (explError) {
+          throw new Error(`Failed to create explanation: ${explError.message}`);
+        }
+
+      }
+
+      // ── Phase 2: Upload stem/explanation images (if any) ────────────────
+      if (input.images && input.images.length > 0) {
+        for (let i = 0; i < input.images.length; i++) {
+          const imageEntry = input.images[i];
+          const imgResult = await uploadQuestionImage({
+            questionId,
+            instituteId: input.instituteId,
+            file: imageEntry.file,
+            imageRole: imageEntry.imageRole,
+            altText: imageEntry.altText,
+            orderSequence: imageEntry.displayOrder ?? i + 1,
+          });
+
+          if (!imgResult.success || !imgResult.data) {
+            throw new Error(`Stem image upload failed: ${imgResult.error}`);
+          }
+
+          uploadedStemImageIds.push(imgResult.data.imageId);
+        }
+      }
+
+      // ── Phase 2: Create options with option images (if any) ────────────
+      if (input.options && input.options.length > 0) {
+        for (const optionEntry of input.options) {
+          // Create the option
+          const optResult = await createQuestionOption({
+            questionId,
+            instituteId: input.instituteId,
+            optionText: optionEntry.optionText,
+            isCorrect: optionEntry.isCorrect,
+            orderSequence: optionEntry.orderSequence,
+          });
+
+          if (!optResult.success || !optResult.data) {
+            throw new Error(optResult.error ?? 'Failed to create option.');
+          }
+
+          const optionId = optResult.data.optionId;
+          createdOptionIds.push(optionId);
+
+          // Upload images for this option if any
+          if (optionEntry.images && optionEntry.images.length > 0) {
+            for (const imageEntry of optionEntry.images) {
+              const imgResult = await uploadOptionImage({
+                optionId,
+                questionId,
+                instituteId: input.instituteId,
+                file: imageEntry.file,
+                altText: imageEntry.altText,
+                displayOrder: imageEntry.displayOrder,
+              });
+
+              if (!imgResult.success || !imgResult.data) {
+                throw new Error(`Option image upload failed: ${imgResult.error}`);
+              }
+
+              uploadedImageIds.push(imgResult.data.optionImageId);
+            }
+          }
+        }
+      }
+    } catch (optError: any) {
+      // ── Full rollback: delete everything created so far ────────────────
+      // The goal is to leave the database as if the request never happened.
+
+      // 1. Delete uploaded stem images (storage files + question_images rows)
+      for (const imageId of uploadedStemImageIds) {
+        try {
+          await deleteQuestionImage(imageId);
+        } catch {
+          // Best-effort — continue with remaining cleanup
+        }
+      }
+
+      // 2. Delete uploaded option images (storage files + question_option_images rows)
+      for (const imageId of uploadedImageIds) {
+        try {
+          await deleteOptionImage(imageId);
+        } catch {
+          // Best-effort
+        }
+      }
+
+      // 3. Delete created options
+      for (const optId of createdOptionIds) {
+        try {
+          await supabase
+            .from('question_options')
+            .delete()
+            .eq('option_id', optId);
+        } catch {
+          // Best-effort
+        }
+      }
+
+      // 4. Delete the question row itself (prevents orphan ghost questions)
+      try {
+        await supabase
+          .from('questions')
+          .delete()
+          .eq('question_id', createdQuestion.questionId);
+      } catch {
+        // Best-effort
+      }
+
+      return {
+        success: false,
+        error: `Question created but image setup failed: ${optError.message}`,
+      };
+    }
+
+    return { success: true, data: createdQuestion };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -545,38 +719,93 @@ export async function updateQuestion(
       dbRecord.negative_marks = input.negativeMarks;
     }
 
-    // ── If nothing to update, return current ────────────────────────────
-    if (Object.keys(dbRecord).length === 0) {
-      return getQuestionById(questionId);
-    }
+    let metadataUpdated = false;
 
-    // ── Update ─────────────────────────────────────────────────────────
-    const { data, error } = await supabase
-      .from('questions')
-      .update(dbRecord)
-      .eq('question_id', questionId)
-      .select()
-      .single<DbQuestion>();
+    // ── Update question metadata if there are changes ────────────────────
+    if (Object.keys(dbRecord).length > 0) {
+      const { data, error } = await supabase
+        .from('questions')
+        .update(dbRecord)
+        .eq('question_id', questionId)
+        .select()
+        .single<DbQuestion>();
 
-    if (error) {
-      // PGRST116 = question not found
-      if (error.code === 'PGRST116') {
-        return { success: false, error: `Question not found: ${questionId}` };
+      if (error) {
+        // PGRST116 = question not found
+        if (error.code === 'PGRST116') {
+          return { success: false, error: `Question not found: ${questionId}` };
+        }
+
+        // FK violation on subject, chapter, or teacher reference
+        if (error.code === '23503') {
+          return {
+            success: false,
+            error:
+              'Cannot update this question. The referenced subject or chapter does not exist.',
+          };
+        }
+
+        return { success: false, error: extractErrorMessage(error) };
       }
 
-      // FK violation on subject, chapter, or teacher reference
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot update this question. The referenced subject or chapter does not exist.',
-        };
-      }
-
-      return { success: false, error: extractErrorMessage(error) };
+      metadataUpdated = true;
     }
 
-    return { success: true, data: mapQuestion(data) };
+    // ── Process option image operations ─────────────────────────────────
+    if (input.optionImageOps && input.optionImageOps.length > 0) {
+      // Fetch the current question to resolve instituteId
+      const currentQ = await getQuestionById(questionId);
+      const instituteId = currentQ.success && currentQ.data
+        ? currentQ.data.instituteId
+        : '';
+
+      for (const op of input.optionImageOps) {
+        switch (op.action) {
+          case 'add': {
+            const result = await uploadOptionImage({
+              optionId: op.optionId,
+              questionId,
+              instituteId,
+              file: op.file,
+              altText: op.altText,
+              displayOrder: op.displayOrder,
+            });
+            if (!result.success) {
+              return { success: false, error: `Failed to add option image: ${result.error}` };
+            }
+            break;
+          }
+          case 'delete': {
+            const result = await deleteOptionImage(op.imageId);
+            if (!result.success) {
+              return { success: false, error: `Failed to delete option image: ${result.error}` };
+            }
+            break;
+          }
+          case 'replace': {
+            const result = await replaceOptionImage(op.imageId, {
+              file: op.file,
+              altText: op.altText !== undefined ? op.altText : undefined,
+              questionId,
+            });
+            if (!result.success) {
+              return { success: false, error: `Failed to replace option image: ${result.error}` };
+            }
+            break;
+          }
+          case 'reorder': {
+            const result = await reorderOptionImages(op.optionId, op.imageOrder);
+            if (!result.success) {
+              return { success: false, error: `Failed to reorder option images: ${result.error}` };
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Return updated question ─────────────────────────────────────────
+    return getQuestionById(questionId);
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -604,13 +833,61 @@ export async function deleteQuestion(questionId: string): Promise<ApiResponse<vo
   try {
     validateUUID(questionId, 'questionId');
 
+    // ── Clean up option images before deleting the question ─────────────
+    // Fetch all options for this question to get their option IDs
+    const { data: options } = await supabase
+      .from('question_options')
+      .select('option_id')
+      .eq('question_id', questionId);
+
+    const optionIds = (options ?? []).map((o) => o.option_id);
+
+    if (optionIds.length > 0) {
+      // Fetch all option images for these options
+      const { data: optionImages } = await supabase
+        .from('question_option_images')
+        .select('*')
+        .in('option_id', optionIds);
+
+      // Delete storage files for all option images (best-effort)
+      for (const img of optionImages ?? []) {
+        try {
+          await storageDeleteFile(img.storage_bucket, img.storage_path);
+        } catch {
+          // Best-effort — continue cleaning up
+        }
+      }
+
+      // Delete the option_images DB rows (they cascade on option delete,
+      // but we do it explicitly to avoid FK issues if cascade is not set)
+      const { error: imgDeleteError } = await supabase
+        .from('question_option_images')
+        .delete()
+        .in('option_id', optionIds);
+
+      if (imgDeleteError) {
+        return { success: false, error: `Failed to delete option images: ${extractErrorMessage(imgDeleteError)}` };
+      }
+
+      // Delete all options for this question
+      const { error: optDeleteError } = await supabase
+        .from('question_options')
+        .delete()
+        .eq('question_id', questionId);
+
+      if (optDeleteError) {
+        return { success: false, error: `Failed to delete options: ${extractErrorMessage(optDeleteError)}` };
+      }
+    }
+
+    // ── Delete the question itself ──────────────────────────────────────
     const { error } = await supabase
       .from('questions')
       .delete()
       .eq('question_id', questionId);
 
     if (error) {
-      // Foreign-key violation (question has dependent rows)
+      // Foreign-key violation (question has dependent rows beyond options)
       if (error.code === '23503') {
         return {
           success: false,
@@ -688,6 +965,246 @@ export async function archiveQuestion(questionId: string): Promise<ApiResponse<Q
  */
 export async function restoreQuestion(questionId: string): Promise<ApiResponse<Question>> {
   return transitionStatus(questionId, 'draft');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  getQuestion() — Full question detail with nested options and images
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch a question with all its options and option images fully resolved.
+ *
+ * The frontend receives a single nested response:
+ *   question
+ *     ├── options[]
+ *     │     └── images[]
+ *
+ * without making additional service calls.
+ *
+ * @param questionId - The UUID of the question to retrieve.
+ *
+ * @example
+ * const result = await getQuestion('uuid-here');
+ * if (result.success) {
+ *   console.log(result.data.questionText);
+ *   console.log(result.data.options[0].images); // OptionImageInfo[]
+ * }
+ */
+export async function getQuestion(questionId: string): Promise<ApiResponse<QuestionDetail>> {
+  try {
+    validateUUID(questionId, 'questionId');
+
+    // ── 1. Fetch the question ───────────────────────────────────────────
+    const questionResult = await getQuestionById(questionId);
+    if (!questionResult.success || !questionResult.data) {
+      return { success: false, error: questionResult.error ?? `Question not found: ${questionId}` };
+    }
+
+    // ── 2. Fetch options for the question ───────────────────────────────
+    const optionsResult = await getQuestionOptions(questionId);
+    if (!optionsResult.success) {
+      return { success: false, error: `Failed to fetch options: ${optionsResult.error}` };
+    }
+
+    const options = optionsResult.data ?? [];
+
+    // ── 3. Fetch option images for all options in a single query ────────
+    const optionIds = options.map((o) => o.optionId);
+    let imageMap = new Map<string, Array<{
+      optionImageId: string;
+      storageBucket: string;
+      storagePath: string;
+      altText: string | null;
+      displayOrder: number;
+    }>>();
+
+    if (optionIds.length > 0) {
+      const { data: images, error: imgError } = await supabase
+        .from('question_option_images')
+        .select('*')
+        .in('option_id', optionIds)
+        .order('display_order', { ascending: true });
+
+      if (imgError) {
+        return { success: false, error: `Failed to fetch option images: ${extractErrorMessage(imgError)}` };
+      }
+
+      // Group images by option_id
+      for (const img of images ?? []) {
+        const existing = imageMap.get(img.option_id) ?? [];
+        existing.push({
+          optionImageId: img.option_image_id,
+          storageBucket: img.storage_bucket,
+          storagePath: img.storage_path,
+          altText: img.alt_text,
+          displayOrder: img.display_order,
+        });
+        imageMap.set(img.option_id, existing);
+      }
+    }
+
+    // ── 4. Assemble the nested response ─────────────────────────────────
+    const optionsWithImages: QuestionOptionWithImages[] = options.map((opt) => ({
+      optionId: opt.optionId,
+      questionId: opt.questionId,
+      instituteId: opt.instituteId,
+      optionText: opt.optionText,
+      isCorrect: opt.isCorrect,
+      orderSequence: opt.orderSequence,
+      createdAt: opt.createdAt,
+      images: imageMap.get(opt.optionId) ?? [],
+    }));
+
+    const detail: QuestionDetail = {
+      ...questionResult.data,
+      options: optionsWithImages,
+    };
+
+    return { success: true, data: detail };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  duplicateQuestion() — Full question duplication
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Duplicate a question along with its options and option image metadata.
+ *
+ * The new question is created as a `draft` with `parentQuestionId` pointing
+ * to the source question. The duplication workflow:
+ *
+ *   1. Fetch the source question with its options and option images.
+ *   2. Create a new question with the same metadata.
+ *   3. Create new options with the same text and ordering.
+ *   4. Option image DB rows are duplicated with the same storage paths
+ *      (storage files are NOT re-uploaded — the duplicate references the
+ *      same storage objects, avoiding storage costs and upload time).
+ *
+ * **Storage limitation:** The duplicated option images reference the same
+ * Supabase Storage objects as the original. If the original question is
+ * later deleted, its storage files will be removed, breaking the
+ * duplicate's images. For production use with long-lived duplicates,
+ * consider copying storage files. This limitation applies equally to stem
+ * image duplication in the current codebase.
+ *
+ * @param questionId - The UUID of the question to duplicate.
+ *
+ * @example
+ * const result = await duplicateQuestion('uuid-here');
+ * if (result.success) {
+ *   console.log(result.data.questionId); // new question ID
+ * }
+ */
+export async function duplicateQuestion(questionId: string): Promise<ApiResponse<QuestionDetail>> {
+  try {
+    validateUUID(questionId, 'questionId');
+
+    // ── 1. Fetch the full source question with options and images ───────
+    const sourceResult = await getQuestion(questionId);
+    if (!sourceResult.success || !sourceResult.data) {
+      return { success: false, error: sourceResult.error ?? `Source question not found: ${questionId}` };
+    }
+
+    const source = sourceResult.data;
+
+    // ── 2. Create a new question based on the source ────────────────────
+    const createResult = await createQuestion({
+      instituteId: source.instituteId,
+      subjectId: source.subjectId,
+      chapterId: source.chapterId,
+      createdBy: source.createdBy,
+      parentQuestionId: questionId, // Link duplicate to source
+      questionType: source.questionType,
+      difficulty: source.difficulty,
+      status: 'draft',
+      questionText: source.questionText,
+      marks: source.marks,
+      negativeMarks: source.negativeMarks,
+      // Do NOT pass options here — we handle them manually below
+    });
+
+    if (!createResult.success || !createResult.data) {
+      return { success: false, error: `Failed to create duplicate question: ${createResult.error}` };
+    }
+
+    const newQuestionId = createResult.data.questionId;
+    const newInstituteId = source.instituteId;
+
+    // ── 3. Duplicate options (with image metadata) ──────────────────────
+    const newOptionIds: string[] = [];
+    const duplicatedImageIds: string[] = [];
+
+    try {
+      for (const srcOption of source.options) {
+        // Create the new option
+        const optResult = await createQuestionOption({
+          questionId: newQuestionId,
+          instituteId: newInstituteId,
+          optionText: srcOption.optionText,
+          isCorrect: srcOption.isCorrect,
+          orderSequence: srcOption.orderSequence,
+        });
+
+        if (!optResult.success || !optResult.data) {
+          throw new Error(optResult.error ?? 'Failed to create duplicate option.');
+        }
+
+        const newOptionId = optResult.data.optionId;
+        newOptionIds.push(newOptionId);
+
+        // Duplicate option image DB rows (reference same storage files)
+        for (const srcImage of srcOption.images) {
+          const { data: insertedImage, error: insertImgError } = await supabase
+            .from('question_option_images')
+            .insert({
+              option_id: newOptionId,
+              institute_id: newInstituteId,
+              storage_bucket: srcImage.storageBucket,
+              storage_path: srcImage.storagePath,
+              alt_text: srcImage.altText,
+              display_order: srcImage.displayOrder,
+            })
+            .select()
+            .single();
+
+          if (insertImgError) {
+            throw new Error(`Failed to duplicate option image: ${extractErrorMessage(insertImgError)}`);
+          }
+
+          duplicatedImageIds.push(insertedImage.option_image_id);
+        }
+      }
+    } catch (dupError: any) {
+      // ── Rollback: clean up duplicated images and options ──────────────
+      for (const imgId of duplicatedImageIds) {
+        try {
+          await deleteOptionImage(imgId);
+        } catch {
+          // Best-effort
+        }
+      }
+      for (const optId of newOptionIds) {
+        try {
+          await supabase.from('question_options').delete().eq('option_id', optId);
+        } catch {
+          // Best-effort
+        }
+      }
+
+      return {
+        success: false,
+        error: `Question duplicated but option setup failed: ${dupError.message}`,
+      };
+    }
+
+    // ── 4. Return the new full question detail ──────────────────────────
+    return getQuestion(newQuestionId);
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

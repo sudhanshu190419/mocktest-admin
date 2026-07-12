@@ -9,7 +9,7 @@
  * ## Responsibilities
  *
  * - Pre-publish validation (entity existence, state, consistency)
- * - Snapshot generation (architecture reserved, not yet implemented)
+ * - Snapshot generation (freeze question data at publish time)
  * - Publish workflow orchestration
  * - Unpublish with guard (only when no attempts exist)
  *
@@ -32,12 +32,24 @@
  */
 
 import { supabase } from '../../config/supabase';
-import { extractErrorMessage } from '../../utils/supabase';
+import { extractErrorMessage, validateUUID } from '../../utils/supabase';
 import { getMockTestById, publishMockTest } from './mockTestService';
 import { getMockTestQuestions } from './mockTestQuestionService';
 import { getQuestions } from './questionService';
+import { getQuestionOptions } from './questionOptionService';
+import { getQuestionExplanation } from './questionExplanationService';
+import { getQuestionImages } from './questionImageService';
+import { getOptionImages } from '../questionOptionImageService';
 import type { ApiResponse } from '../../types/academic';
-import type { MockTest, MockTestStatus, Question } from '../../types/mockTest';
+import type {
+  MockTest,
+  MockTestStatus,
+  Question,
+  QuestionSnapshot,
+  QuestionSnapshotOption,
+  QuestionSnapshotImage,
+  QuestionSnapshotOptionImage,
+} from '../../types/mockTest';
 
 // ─── Public Types ───────────────────────────────────────────────────────────
 
@@ -107,6 +119,9 @@ export interface PublishSummary {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const VALID_PRE_PUBLISH_STATUSES: MockTestStatus[] = ['draft', 'pending_approval'];
+
+/** The current schema version for question snapshots. Bump when the shape changes. */
+const SNAPSHOT_VERSION = 1;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Public API
@@ -359,53 +374,216 @@ export async function validateMockTestReady(
 }
 
 /**
+ * Build a frozen QuestionSnapshot for a single question at publish time.
+ *
+ * Loads the question's current options, explanation (if any), stem images,
+ * and option images, then serialises everything into a self-contained
+ * snapshot that is stored in `mock_test_questions.question_snapshot`.
+ *
+ * @param question - The full Question object from the question bank.
+ * @returns A fully populated QuestionSnapshot, or an error if critical
+ *          data could not be loaded.
+ */
+async function buildQuestionSnapshot(
+  question: Question,
+): Promise<ApiResponse<QuestionSnapshot>> {
+  try {
+    const questionId = question.questionId;
+
+    // ── Load options (best-effort — numerical questions have none) ────
+    const optionsResult = await getQuestionOptions(questionId);
+    const dbOptions = optionsResult.success && optionsResult.data ? optionsResult.data : [];
+
+    // Load option images for each option
+    const snapshotOptions: QuestionSnapshotOption[] = await Promise.all(
+      dbOptions.map(async (opt) => {
+        const optImagesResult = await getOptionImages(opt.optionId);
+        const optImages = optImagesResult.success && optImagesResult.data ? optImagesResult.data : [];
+
+        const snapshotOptImages: QuestionSnapshotOptionImage[] = optImages.map((img) => ({
+          storageBucket: img.storageBucket,
+          storagePath: img.storagePath,
+          altText: img.altText,
+          displayOrder: img.displayOrder,
+        }));
+
+        return {
+          optionId: opt.optionId,
+          optionText: opt.optionText,
+          isCorrect: opt.isCorrect,
+          orderSequence: opt.orderSequence,
+          images: snapshotOptImages,
+        };
+      }),
+    );
+
+    // ── Load explanation (best-effort — may not exist) ────────────────
+    let explanationText: string | null = null;
+    let explanationVideoUrl: string | null = null;
+    let correctNumericalAnswer: number | null = null;
+    let numericalTolerance: number | null = null;
+
+    const explResult = await getQuestionExplanation(questionId);
+    if (explResult.success && explResult.data) {
+      explanationText = explResult.data.explanationText;
+      explanationVideoUrl = explResult.data.explanationVideoUrl;
+      correctNumericalAnswer = explResult.data.correctNumericalAnswer;
+      numericalTolerance = explResult.data.numericalTolerance;
+    }
+
+    // ── Load stem/explanation images ───────────────────────────────────
+    const imagesResult = await getQuestionImages(questionId);
+    const dbImages = imagesResult.success && imagesResult.data ? imagesResult.data : [];
+
+    const snapshotImages: QuestionSnapshotImage[] = dbImages.map((img) => ({
+      storageBucket: img.storageBucket,
+      storagePath: img.storagePath,
+      imageRole: img.imageRole,
+      altText: img.altText,
+      orderSequence: img.orderSequence,
+    }));
+
+    // ── Build the snapshot ─────────────────────────────────────────────
+    const snapshot: QuestionSnapshot = {
+      snapshotVersion: SNAPSHOT_VERSION,
+      questionId,
+      questionText: question.questionText,
+      questionType: question.questionType,
+      difficulty: question.difficulty,
+      subjectId: question.subjectId,
+      chapterId: question.chapterId,
+      marks: question.marks,
+      negativeMarks: question.negativeMarks,
+      options: snapshotOptions,
+      correctNumericalAnswer,
+      numericalTolerance,
+      explanationText,
+      explanationVideoUrl,
+      images: snapshotImages,
+    };
+
+    return { success: true, data: snapshot };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
  * Generate frozen question snapshots for all assignments in a mock test.
  *
- * **ARCHITECTURE RESERVATION** — This function is a placeholder and does
- * NOT yet implement snapshot generation. Once implemented, it will:
- *
- * 1. Fetch all assigned questions with their current stem, options,
- *    marks, and negative marks from the question bank.
- * 2. Serialise each into a `QuestionSnapshot` (see types/mockTest.ts).
- * 3. Store the snapshot JSON in each row's `question_snapshot` column.
+ * This function:
+ * 1. Fetches all assigned questions with their current stem, options,
+ *    marks, negative marks, explanations, and images from the question bank.
+ * 2. Serialises each into a `QuestionSnapshot` (see types/mockTest.ts).
+ * 3. Stores the snapshot JSON in each `mock_test_questions.question_snapshot` column.
  * 4. This ensures the test is immutable even if the source question is
- *    later edited.
+ *    later edited post-publish.
  *
  * This function is called by `publishMockTestWorkflow()` before the
  * status transition, so snapshots are written before the test is
  * marked as published.
  *
- * @param _testId - The UUID of the mock test (reserved for future use).
+ * @param testId - The UUID of the mock test to snapshot.
  */
 export async function generateQuestionSnapshots(
-  _testId: string,
+  testId: string,
 ): Promise<ApiResponse<{ message: string }>> {
-  // Snapshot generation is not yet implemented.
-  // The architecture is reserved here so that the publish workflow
-  // can be wired up now and the snapshot logic added later without
-  // changing the orchestration layer.
-  //
-  // Expected implementation:
-  //   1. Get all assignments via getMockTestQuestions(testId)
-  //   2. Get all questions via getQuestions({ ids: [...] })
-  //   3. For each assignment, build a QuestionSnapshot:
-  //      - Question stem, type, marks, negative marks
-  //      - Options (via questionOptionService when available)
-  //      - Numerical answer (via questionExplanationService when available)
-  //   4. Update each row with supabase.from('mock_test_questions')
-  //        .update({ question_snapshot: snapshot })
-  //        .eq('test_id', testId)
-  //        .eq('question_id', questionId)
-  //
-  // See: src/types/mockTest.ts → QuestionSnapshot interface
+  try {
+    validateUUID(testId, 'testId');
 
-  return {
-    success: true,
-    data: {
-      message: 'Snapshot generation is reserved for future implementation. ' +
-        'No snapshots were generated.',
-    },
-  };
+    // ── 1. Get all assignments for this test ───────────────────────────
+    const assignmentsResult = await getMockTestQuestions(testId, 'orderSequence', 'asc');
+    if (!assignmentsResult.success || !assignmentsResult.data) {
+      return {
+        success: false,
+        error: `Failed to fetch assignments for test ${testId}: ${assignmentsResult.error ?? 'Unknown error'}`,
+      };
+    }
+
+    const assignments = assignmentsResult.data;
+    if (assignments.length === 0) {
+      return {
+        success: false,
+        error: `Cannot generate snapshots: test ${testId} has no assigned questions.`,
+      };
+    }
+
+    // ── 2. Get all referenced questions ────────────────────────────────
+    const questionIds = assignments.map((a) => a.questionId);
+    const questionsResult = await getQuestions(
+      { ids: questionIds },
+      undefined,
+      { page: 1, pageSize: questionIds.length },
+    );
+
+    if (!questionsResult.success || !questionsResult.data) {
+      return {
+        success: false,
+        error: `Failed to fetch questions for test ${testId}: ${questionsResult.error ?? 'Unknown error'}`,
+      };
+    }
+
+    const questions = questionsResult.data.data as Question[];
+    const questionMap = new Map<string, Question>();
+    for (const q of questions) {
+      questionMap.set(q.questionId, q);
+    }
+
+    // ── 3. Build a snapshot for each assignment and persist ────────────
+    let snapshotCount = 0;
+    const errors: string[] = [];
+
+    for (const assignment of assignments) {
+      const question = questionMap.get(assignment.questionId);
+      if (!question) {
+        errors.push(`Question ${assignment.questionId} not found in question bank.`);
+        continue;
+      }
+
+      const snapshotResult = await buildQuestionSnapshot(question);
+      if (!snapshotResult.success || !snapshotResult.data) {
+        errors.push(
+          `Failed to build snapshot for question ${assignment.questionId}: ${snapshotResult.error ?? 'Unknown error'}`,
+        );
+        continue;
+      }
+
+      const snapshot = snapshotResult.data;
+
+      // ── 4. UPDATE the mock_test_questions row with the snapshot ──────
+      const { error: updateError } = await supabase
+        .from('mock_test_questions')
+        .update({ question_snapshot: snapshot as unknown })
+        .eq('test_id', testId)
+        .eq('question_id', assignment.questionId);
+
+      if (updateError) {
+        errors.push(
+          `Failed to persist snapshot for question ${assignment.questionId}: ${extractErrorMessage(updateError)}`,
+        );
+        continue;
+      }
+
+      snapshotCount++;
+    }
+
+    // ── 5. Report results ──────────────────────────────────────────────
+    if (errors.length > 0) {
+      return {
+        success: false,
+        error: `Snapshot generation completed with ${errors.length} error(s):\n${errors.join('\n')}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        message: `Successfully generated ${snapshotCount} question snapshot(s) for test ${testId}.`,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
 }
 
 /**
@@ -413,7 +591,7 @@ export async function generateQuestionSnapshots(
  *
  * Orchestrates the complete publish lifecycle:
  * 1. `validateMockTestReady()` — comprehensive pre-flight checks
- * 2. `generateQuestionSnapshots()` — freeze question data (placeholder)
+ * 2. `generateQuestionSnapshots()` — freeze question data
  * 3. `mockTestService.publishMockTest()` — perform the actual status
  *    transition to `published`
  *
@@ -455,7 +633,7 @@ export async function publishMockTestWorkflow(
     const previousStatus = report.details.status as MockTestStatus;
     const questionCount = report.details.questionCount;
 
-    // ── Step 2: Generate snapshots (placeholder) ───────────────────────
+    // ── Step 2: Generate snapshots ─────────────────────────────────────
     const snapshotResult = await generateQuestionSnapshots(testId);
     if (!snapshotResult.success) {
       return {

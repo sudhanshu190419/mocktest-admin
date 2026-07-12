@@ -14,8 +14,11 @@
  * | `useMockTestResults`       | Query    | Paginated results for a mock test        |
  * | `useInstituteResults`      | Query    | Paginated results for an institute       |
  * | `useResults`               | Query    | Paginated, filterable results list       |
- * | `useReleaseResult`         | Mutation | Release a result (set is_released=true)  |
- * | `useHideResult`            | Mutation | Hide a result (set is_released=false)    |
+ * | `useReleaseResult`         | Mutation | Release a single result                  |
+ * | `useHideResult`            | Mutation | Hide a single result                     |
+ * | `useReleaseMockResults`    | Mutation | Release ALL unreleased results for a test|
+ * | `useUnreleaseMockResults`  | Mutation | Unrelease ALL released results for a test|
+ * | `useMockTestReleaseStatus` | Query    | Release status summary for a test        |
  * | `useDeleteResult`          | Mutation | Delete a result (dev console only)       |
  *
  * @module hooks/mockTest/useMockResults
@@ -33,6 +36,9 @@ import {
   releaseResult,
   hideResult,
   deleteResult,
+  releaseMockResults,
+  unreleaseMockResults,
+  getReleaseStatus,
 } from '../../services/mockTest/mockResultService';
 import type {
   MockResult,
@@ -41,6 +47,10 @@ import type {
   PaginatedResponse,
   PaginationParams,
 } from '../../types/mockTest';
+import type {
+  BatchReleaseResult,
+  MockTestReleaseStatus,
+} from '../../services/mockTest/mockResultService';
 
 // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -209,10 +219,37 @@ export function useResults(
   });
 }
 
+/**
+ * Fetch the aggregate release status for all results belonging to a mock test.
+ *
+ * Returns counts, all_released flag, and date ranges (earliest/latest
+ * generated_at and released_at).
+ *
+ * The query is disabled when `testId` is falsy.
+ *
+ * @param testId - The UUID of the mock test.
+ */
+export function useMockTestReleaseStatus(testId: string | undefined | null) {
+  return useQuery<MockTestReleaseStatus>({
+    queryKey: [...mockTestKeys.all, 'releaseStatus', testId] as const,
+    queryFn: async () => {
+      const result = await getReleaseStatus(testId!);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch release status.');
+      }
+      return result.data!;
+    },
+    enabled: !!testId,
+    // Refetch periodically so release status stays current if another
+    // admin releases results while this page is open.
+    refetchInterval: 30_000,
+  });
+}
+
 // ─── Mutations ──────────────────────────────────────────────────────────────
 
 /**
- * Release a result (set is_released=true, released_at=NOW()).
+ * Release a single result (set is_released=true, released_at=NOW()).
  *
  * On success, invalidates all result list and detail queries.
  */
@@ -235,7 +272,7 @@ export function useReleaseResult() {
 }
 
 /**
- * Hide a result (set is_released=false, released_at=null).
+ * Hide a single result (set is_released=false, released_at=null).
  *
  * On success, invalidates all result list and detail queries.
  */
@@ -276,6 +313,72 @@ export function useDeleteResult() {
     onSuccess: (_data, resultId) => {
       queryClient.removeQueries({ queryKey: mockTestKeys.results.detail(resultId) });
       queryClient.invalidateQueries({ queryKey: mockTestKeys.results.lists() });
+    },
+  });
+}
+
+/**
+ * Release ALL unreleased results for a mock test.
+ *
+ * Calls the PostgreSQL RPC function `release_test_results` so that
+ * `released_at` is set to `now()` on the database server.
+ *
+ * On success, invalidates all result list queries and the release
+ * status query for the given testId.
+ */
+export function useReleaseMockResults() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BatchReleaseResult, Error, string>({
+    mutationFn: async (testId) => {
+      const result = await releaseMockResults(testId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to release mock test results.');
+      }
+      return result.data!;
+    },
+    onSuccess: (_data, testId) => {
+      // Invalidate result lists (student results, leaderboard, etc.)
+      queryClient.invalidateQueries({ queryKey: mockTestKeys.results.lists() });
+      // Invalidate the release status for this specific test
+      queryClient.invalidateQueries({
+        queryKey: [...mockTestKeys.all, 'releaseStatus', testId],
+      });
+      // Also invalidate admin mock test management caches (detail page etc.)
+      queryClient.invalidateQueries({ queryKey: ['admin', 'mockTestManagement', 'detail', testId] });
+    },
+  });
+}
+
+/**
+ * Unrelease (hide) ALL released results for a mock test.
+ *
+ * Calls the PostgreSQL RPC function `unrelease_test_results` which sets
+ * `is_released = FALSE` and `released_at = NULL` for all released results.
+ *
+ * On success, invalidates all result list queries and the release
+ * status query for the given testId.
+ */
+export function useUnreleaseMockResults() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BatchReleaseResult, Error, string>({
+    mutationFn: async (testId) => {
+      const result = await unreleaseMockResults(testId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to unrelease mock test results.');
+      }
+      return result.data!;
+    },
+    onSuccess: (_data, testId) => {
+      // Invalidate result lists (student results, leaderboard, etc.)
+      queryClient.invalidateQueries({ queryKey: mockTestKeys.results.lists() });
+      // Invalidate the release status for this specific test
+      queryClient.invalidateQueries({
+        queryKey: [...mockTestKeys.all, 'releaseStatus', testId],
+      });
+      // Also invalidate admin mock test management caches (detail page etc.)
+      queryClient.invalidateQueries({ queryKey: ['admin', 'mockTestManagement', 'detail', testId] });
     },
   });
 }

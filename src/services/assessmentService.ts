@@ -11,6 +11,7 @@ export interface QuestionBankItem {
   marks: string;
 }
 import { supabase } from '@/config/supabase';
+import { resolveTeacherIdentity } from './teacherIdentity';
 
 const getQuestionDepartment = (qTopic: string): 'Physics' | 'Chemistry' | 'Mathematics' | 'Biology' => {
   const t = qTopic.toLowerCase();
@@ -142,22 +143,18 @@ export const assessmentService = {
 
   async createAssessment(newAssessment: AssessmentItem, selectedQuestionIds?: string[]): Promise<AssessmentItem> {
     try {
-      // 1. Fetch teacher details to ensure valid foreign keys
-      const { data: activeTeacher, error: tError } = await supabase
-        .from('teacher_details')
-        .select('teacher_id, institute_id')
-        .limit(1)
-        .single();
+      // 1. Resolve the authenticated teacher's identity (single source of truth)
+      const identity = await resolveTeacherIdentity();
 
-      if (tError || !activeTeacher) {
-        throw new Error('No valid teacher details found for foreign keys.');
+      if (!identity) {
+        throw new Error('No authenticated teacher found. Please log in.');
       }
 
-      // 2. Fetch a default stream
+      // 2. Fetch a default stream for the teacher's institute
       const { data: activeStream, error: sError } = await supabase
         .from('streams')
         .select('stream_id')
-        .eq('institute_id', activeTeacher.institute_id)
+        .eq('institute_id', identity.instituteId)
         .limit(1)
         .single();
 
@@ -165,13 +162,13 @@ export const assessmentService = {
         throw new Error('No valid stream found for foreign keys.');
       }
 
-      // 3. Insert mock test record
+      // 3. Insert mock test record (uses resolved teacherId and instituteId)
       const { error: insertError } = await supabase
         .from('mock_tests')
         .insert([{
           test_id: newAssessment.id,
-          institute_id: activeTeacher.institute_id,
-          teacher_id: activeTeacher.teacher_id,
+          institute_id: identity.instituteId,
+          teacher_id: identity.teacherId,
           stream_id: activeStream.stream_id,
           title: newAssessment.title,
           duration_min: Number(newAssessment.durationMinutes) || 45,
@@ -189,7 +186,7 @@ export const assessmentService = {
         const testQuestions = selectedQuestionIds.map((qId, idx) => ({
           test_id: newAssessment.id,
           question_id: qId,
-          institute_id: activeTeacher.institute_id,
+          institute_id: identity.instituteId,
           order_sequence: idx + 1
         }));
         
@@ -251,7 +248,7 @@ export const assessmentService = {
     try {
       const { data, error } = await supabase
         .from('mock_attempts')
-        .select('attempt_id, test_id, submitted_at, mock_tests(title, test_type), student_details(profiles(full_name))')
+        .select('attempt_id, test_id, submitted_at, mock_tests(title, test_type), student_details(profiles(name))')
         .eq('status', 'submitted');
 
       if (error || !data) return [];
@@ -261,7 +258,7 @@ export const assessmentService = {
           attemptId: item.attempt_id,
           testId: item.test_id,
           testTitle: item.mock_tests?.title || 'Assessment Test',
-          studentName: item.student_details?.profiles?.full_name || 'Anonymous Student',
+          studentName: item.student_details?.profiles?.name || 'Anonymous Student',
           submittedAt: item.submitted_at ? new Date(item.submitted_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Today',
           testType: item.mock_tests?.test_type || 'Practice Test'
         }))
