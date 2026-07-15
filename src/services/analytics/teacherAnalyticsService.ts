@@ -779,6 +779,7 @@ export async function getSubjectAnalytics(
         score: s.averageScore,
         maxScore: 0,
         percentage: s.averageScore,
+        averageTimePerQuestionSeconds: null,
       })),
       comparisonData: subjects,
       ranking: sorted.map((s, i) => ({
@@ -869,6 +870,8 @@ export async function getChapterAnalytics(
       return {
         chapterId: id,
         chapterName: c.name,
+        subjectId: '',
+        subjectName: '',
         questionsAttempted: answered + c.skipped,
         correct: c.correct,
         wrong: c.wrong,
@@ -877,6 +880,7 @@ export async function getChapterAnalytics(
         score: roundTo(scored),
         maxScore: roundTo(totalMarks),
         percentage: roundTo(percentage),
+        averageTimePerQuestionSeconds: null,
       };
     });
 

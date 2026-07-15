@@ -61,4 +61,24 @@ export const analyticsKeys = {
     all: () => [...analyticsKeys.all, 'dashboard'] as const,
     analytics: () => [...analyticsKeys.dashboard.all(), 'analytics'] as const,
   },
+
+  summary: {
+    all: () => [...analyticsKeys.all, 'summary'] as const,
+    dashboard: () => [...analyticsKeys.summary.all(), 'dashboard'] as const,
+  },
+
+  weakChapters: {
+    all: () => [...analyticsKeys.all, 'weakChapters'] as const,
+    list: () => [...analyticsKeys.weakChapters.all(), 'list'] as const,
+  },
+
+  strongChapters: {
+    all: () => [...analyticsKeys.all, 'strongChapters'] as const,
+    list: () => [...analyticsKeys.strongChapters.all(), 'list'] as const,
+  },
+
+  scoreTrend: {
+    all: () => [...analyticsKeys.all, 'scoreTrend'] as const,
+    list: () => [...analyticsKeys.scoreTrend.all(), 'list'] as const,
+  },
 };

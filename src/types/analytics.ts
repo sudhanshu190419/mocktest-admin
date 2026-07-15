@@ -84,6 +84,8 @@ export interface SubjectPerformanceSummary {
   maxScore: number;
   /** Percentage score for this subject. */
   percentage: number;
+  /** Average time per question in seconds for this subject. Null if no answered questions. */
+  averageTimePerQuestionSeconds: number | null;
 }
 
 /**
@@ -94,6 +96,10 @@ export interface ChapterPerformanceSummary {
   chapterId: string;
   /** Chapter display name. */
   chapterName: string;
+  /** FK → subjects.subject_id. */
+  subjectId: string;
+  /** Subject display name. */
+  subjectName: string;
   /** Number of questions attempted in this chapter. */
   questionsAttempted: number;
   /** Number of correct answers. */
@@ -110,6 +116,8 @@ export interface ChapterPerformanceSummary {
   maxScore: number;
   /** Percentage score for this chapter. */
   percentage: number;
+  /** Average time per question in seconds for this chapter. Null if no answered questions. */
+  averageTimePerQuestionSeconds: number | null;
 }
 
 /**
@@ -374,6 +382,119 @@ export interface MockTestSummary {
   pendingTests: number;
   /** Tests with results released. */
   resultsAvailable: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Student Dashboard Summary
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lightweight result summary, with just the fields needed for the dashboard
+ * "Latest Result" card. Fetched via a paginated query internally.
+ */
+export interface LatestResult {
+  /** Result ID. */
+  resultId: string;
+  /** Parent attempt ID. */
+  attemptId: string;
+  /** Test this result belongs to. */
+  testId: string;
+  /** Aggregate score. */
+  totalScore: number;
+  /** Maximum possible score. */
+  maxScore: number;
+  /** Percentage (totalScore / maxScore) * 100. */
+  percentage: number;
+  /** Number of correct answers. */
+  correctCount: number;
+  /** Number of wrong answers. */
+  wrongCount: number;
+  /** Number of skipped questions. */
+  skippedCount: number;
+  /** Student's rank. Null if not yet ranked. */
+  rank: number | null;
+  /** Student's percentile. Null if not yet ranked. */
+  percentile: number | null;
+  /** UTC timestamp when result was generated. */
+  generatedAt: string;
+  /** UTC timestamp when result was released. Null if not yet released. */
+  releasedAt: string | null;
+}
+
+/**
+ * Lightweight attempt summary for the "Continue Practice" card.
+ */
+export interface ContinuePracticeAttempt {
+  /** Attempt ID. */
+  attemptId: string;
+  /** Test being attempted. */
+  testId: string;
+  /** Current status (always 'in_progress' for this use case). */
+  status: 'in_progress' | 'submitted' | 'timed_out' | 'abandoned';
+  /** UTC timestamp when the attempt was started. */
+  startedAt: string;
+  /** Seconds remaining on the timer. Null after submission. */
+  timeRemainingSeconds: number | null;
+}
+
+/**
+ * Dashboard Summary — the single response object for the student dashboard
+ * home screen. All fields are derived from existing tables and services.
+ *
+ * Designed to be returned by a single API call that orchestrates three
+ * existing queries in parallel: getStudentAnalytics, getStudentResults
+ * (paginated for latest), and getMockAttempts (filtered for in-progress).
+ */
+export interface StudentDashboardSummary {
+  /** Total number of tests attempted across all time. */
+  testsAttempted: number;
+  /** Average score across all attempts. */
+  averageScore: number;
+  /** Highest (best) score achieved across all attempts. */
+  bestScore: number;
+  /** Overall accuracy (correct / (correct + wrong)). Null if no answered questions. */
+  overallAccuracy: number | null;
+  /** Most recently released result. Null if no results are released yet. */
+  latestResult: LatestResult | null;
+  /** An in-progress attempt the student can resume. Null if none exists. */
+  continuePractice: ContinuePracticeAttempt | null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Score Trend
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A single data point in the student's score trend.
+ *
+ * Returned by the get_student_score_trend() PostgreSQL RPC which provides
+ * one record per released mock test result, ordered chronologically for
+ * direct line-chart plotting. Both the Website and Mobile App consume the
+ * same RPC — no business logic duplication.
+ */
+export interface ScoreTrendPoint {
+  /** Result ID. */
+  resultId: string;
+  /** Parent attempt ID. */
+  attemptId: string;
+  /** Test this result belongs to. */
+  testId: string;
+  /** Display name of the test. */
+  testName: string;
+  /** UTC timestamp when the attempt was submitted (ISO 8601). */
+  attemptedOn: string;
+  /** Aggregate score achieved. */
+  score: number;
+  /** Maximum possible score. */
+  maxScore: number;
+  /** Percentage (score / maxScore) * 100. */
+  percentage: number;
+  /** Accuracy percentage (correct / (correct + wrong)) * 100. Null if no answered questions. */
+  accuracy: number | null;
+  /** Student's rank. Null if not yet ranked. */
+  rank: number | null;
+  /** Student's percentile. Null if not yet ranked. */
+  percentile: number | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

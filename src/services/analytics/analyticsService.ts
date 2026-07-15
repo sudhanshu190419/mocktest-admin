@@ -5,22 +5,14 @@
  * existing tables (mock_results, mock_attempts, mock_answers, questions,
  * mock_tests, subjects, chapters).
  *
+ * Subject & Chapter analytics are now computed server-side via PostgreSQL
+ * RPCs (get_student_subject_analytics, get_student_chapter_analytics,
+ * get_student_weak_chapters, get_student_strong_chapters) for production
+ * performance. The public API shapes remain unchanged for backward
+ * compatibility with existing UI components.
+ *
  * Every public method returns a standardised `ApiResponse<T>` shape.
  * This service READS data only — it never inserts, updates, or deletes.
- *
- * ## Architecture decisions
- *
- * 1. **No duplicate business logic.** All evaluation and scoring happens
- *    in the evaluation engine and result service. This service reads the
- *    already-computed results and aggregates them.
- *
- * 2. **RLS is respected.** This service uses the anon key — all queries
- *    run within the context of the authenticated user.
- *
- * 3. **Efficient queries.** Uses Supabase aggregate functions and
- *    server-side computation rather than loading all rows client-side.
- *
- * 4. **Debug logging.** All operations log using console.group.
  *
  * @module analyticsService
  */
@@ -53,6 +45,10 @@ import type {
   DifficultyAnalysisItem,
   QuestionAccuracyItem,
   MockTestSummary,
+  StudentDashboardSummary,
+  LatestResult,
+  ContinuePracticeAttempt,
+  ScoreTrendPoint,
 } from '../../types/analytics';
 
 // ─── Row types for raw Supabase queries ────────────────────────────────────
@@ -85,8 +81,151 @@ interface DbAnswerAgg {
   time_spent_seconds: number;
 }
 
+// ─── RPC Response Shapes (snake_case from PostgreSQL) ──────────────────────
+
+/** Raw RPC response item for get_student_subject_analytics(). */
+interface RpcSubjectItem {
+  subject_id: string;
+  subject_name: string;
+  questions_attempted: number;
+  correct_count: number;
+  wrong_count: number;
+  skipped_count: number;
+  accuracy: number | null;
+  total_score: number;
+  max_score: number;
+  percentage: number;
+  average_time_per_question_seconds: number | null;
+}
+
+/** Raw RPC response item for get_student_chapter_analytics(). */
+interface RpcChapterItem {
+  chapter_id: string;
+  chapter_name: string;
+  subject_id: string;
+  subject_name: string;
+  questions_attempted: number;
+  correct_count: number;
+  wrong_count: number;
+  skipped_count: number;
+  accuracy: number | null;
+  total_score: number;
+  max_score: number;
+  percentage: number;
+  average_time_per_question_seconds: number | null;
+}
+
+/**
+ * Raw RPC response item for get_student_score_trend().
+ * Keys are snake_case because they come from the PostgreSQL RPC;
+ * the mapping layer below converts them to camelCase for consumers.
+ */
+interface RpcScoreTrendItem {
+  result_id: string;
+  attempt_id: string;
+  test_id: string;
+  test_name: string;
+  attempted_on: string;
+  score: number;
+  max_score: number;
+  percentage: number;
+  accuracy: number | null;
+  rank: number | null;
+  percentile: number | null;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-//  Helpers
+//  RPC Response Mappers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Map a snake_case RPC subject item to a camelCase SubjectPerformanceSummary.
+ */
+function mapRpcSubjectToSummary(item: RpcSubjectItem): SubjectPerformanceSummary {
+  return {
+    subjectId: item.subject_id,
+    subjectName: item.subject_name,
+    questionsAttempted: item.questions_attempted,
+    correct: item.correct_count,
+    wrong: item.wrong_count,
+    skipped: item.skipped_count,
+    accuracy: item.accuracy,
+    score: item.total_score,
+    maxScore: item.max_score,
+    percentage: item.percentage,
+    averageTimePerQuestionSeconds: item.average_time_per_question_seconds,
+  };
+}
+
+/**
+ * Map a snake_case RPC chapter item to a camelCase ChapterPerformanceSummary.
+ */
+function mapRpcChapterToSummary(item: RpcChapterItem): ChapterPerformanceSummary {
+  return {
+    chapterId: item.chapter_id,
+    chapterName: item.chapter_name,
+    subjectId: item.subject_id,
+    subjectName: item.subject_name,
+    questionsAttempted: item.questions_attempted,
+    correct: item.correct_count,
+    wrong: item.wrong_count,
+    skipped: item.skipped_count,
+    accuracy: item.accuracy,
+    score: item.total_score,
+    maxScore: item.max_score,
+    percentage: item.percentage,
+    averageTimePerQuestionSeconds: item.average_time_per_question_seconds,
+  };
+}
+
+/**
+ * Map a snake_case RPC score trend item to a camelCase ScoreTrendPoint.
+ */
+function mapRpcScoreTrendToPoint(item: RpcScoreTrendItem): ScoreTrendPoint {
+  return {
+    resultId: item.result_id,
+    attemptId: item.attempt_id,
+    testId: item.test_id,
+    testName: item.test_name,
+    attemptedOn: item.attempted_on,
+    score: item.score,
+    maxScore: item.max_score,
+    percentage: item.percentage,
+    accuracy: item.accuracy,
+    rank: item.rank,
+    percentile: item.percentile,
+  };
+}
+
+/**
+ * Call a no-parameter RPC, handle errors, and return the parsed JSON array.
+ * Returns null on error (caller handles the ApiResponse).
+ */
+async function callSubjectChapterRpc<T>(
+  rpcName: string,
+): Promise<{ data: T[] | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.rpc(rpcName);
+
+    if (error) {
+      return { data: null, error: extractErrorMessage(error) };
+    }
+
+    const raw = data as unknown;
+
+    // Handle error response from RPC (e.g. caller is not a student)
+    if (raw && typeof raw === 'object' && 'error' in (raw as Record<string, unknown>)) {
+      return { data: null, error: (raw as Record<string, string>).error };
+    }
+
+    return { data: raw as T[], error: null };
+  } catch (err) {
+    return { data: null, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Helpers (used by getStudentAnalytics for mock_results-based aggregation)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -105,6 +244,7 @@ function mapSubjectSummary(sb: SubjectBreakdownItem): SubjectPerformanceSummary 
     score: sb.score,
     maxScore: sb.maxScore,
     percentage: sb.maxScore > 0 ? roundTo((sb.score / sb.maxScore) * 100) : 0,
+    averageTimePerQuestionSeconds: null,
   };
 }
 
@@ -116,6 +256,8 @@ function mapChapterSummary(cb: ChapterBreakdownItem): ChapterPerformanceSummary 
   return {
     chapterId: cb.chapterId,
     chapterName: cb.chapterName,
+    subjectId: '',
+    subjectName: '',
     questionsAttempted: answered + cb.skipped,
     correct: cb.correct,
     wrong: cb.wrong,
@@ -124,6 +266,7 @@ function mapChapterSummary(cb: ChapterBreakdownItem): ChapterPerformanceSummary 
     score: cb.score,
     maxScore: cb.maxScore,
     percentage: cb.maxScore > 0 ? roundTo((cb.score / cb.maxScore) * 100) : 0,
+    averageTimePerQuestionSeconds: null,
   };
 }
 
@@ -251,23 +394,27 @@ export async function getStudentAnalytics(
       0,
     );
 
-    // Aggregate subject and chapter breakdowns
-    const subjectMap = aggregateSubjectBreakdowns(results);
-    const chapterMap = aggregateChapterBreakdowns(results);
+    // Fetch subject and chapter analytics from RPCs (server-side aggregation)
+    const [subjectResult, chapterResult] = await Promise.all([
+      getSubjectAnalytics(studentId),
+      getChapterAnalytics(studentId),
+    ]);
 
-    // Sort subjects by accuracy (percentage) for strong/weak
-    const sortedSubjects = Array.from(subjectMap.values()).sort(
-      (a, b) => b.percentage - a.percentage,
-    );
-    const strongSubjects = sortedSubjects.slice(0, 5);
-    const weakSubjects = [...sortedSubjects].reverse().slice(0, 5);
+    const strongSubjects = subjectResult.success
+      ? [...subjectResult.data!.subjects].sort((a, b) => b.percentage - a.percentage).slice(0, 5)
+      : [];
 
-    // Sort chapters by accuracy
-    const sortedChapters = Array.from(chapterMap.values()).sort(
-      (a, b) => b.percentage - a.percentage,
-    );
-    const strongChapters = sortedChapters.slice(0, 5);
-    const weakChapters = [...sortedChapters].reverse().slice(0, 5);
+    const weakSubjects = subjectResult.success
+      ? [...subjectResult.data!.subjects].sort((a, b) => a.percentage - b.percentage).slice(0, 5)
+      : [];
+
+    const strongChapters = chapterResult.success
+      ? [...chapterResult.data!.chapters].sort((a, b) => b.percentage - a.percentage).slice(0, 5)
+      : [];
+
+    const weakChapters = chapterResult.success
+      ? [...chapterResult.data!.chapters].sort((a, b) => a.percentage - b.percentage).slice(0, 5)
+      : [];
 
     // Performance trend
     const performanceTrend: PerformanceTrendPoint[] = results
@@ -420,7 +567,7 @@ export async function getTeacherAnalytics(
       }
     }
 
-    // ── Difficulty distribution ───────────────────────────────────────
+    // ── Difficulty distribution ──────────────────────────────────────
     let difficultyDistribution: DifficultyDistributionItem[] = [];
     if (testIds.length > 0) {
       // Get questions from mock_test_questions for published tests
@@ -635,9 +782,6 @@ async function computeTopStudents(instituteId: string, limit: number = 10): Prom
   }
 }
 
-/**
- * Compute monthly growth from attempt data.
- */
 /**
  * Compute monthly growth from attempt data.
  * TODO: newStudents and newTests are placeholder values (always 0).
@@ -926,13 +1070,16 @@ async function computeDifficultyAnalysis(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Subject & Chapter Analytics
+//  Subject & Chapter Analytics (RPC-backed)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Get subject-level analytics for a student.
  *
- * @param studentId - UUID of the student.
+ * Now backed by the `get_student_subject_analytics()` PostgreSQL RPC for
+ * server-side aggregation. The public API shape is unchanged.
+ *
+ * @param studentId - UUID of the student (unused — RPC resolves from auth).
  */
 export async function getSubjectAnalytics(
   studentId: string,
@@ -941,22 +1088,23 @@ export async function getSubjectAnalytics(
     console.group('ANALYTICS');
     console.log('Request: getSubjectAnalytics', { studentId });
 
-    validateUUID(studentId, 'studentId');
+    const { data: rpcItems, error } = await callSubjectChapterRpc<RpcSubjectItem>(
+      'get_student_subject_analytics',
+    );
 
-    const resultsResult = await getStudentResults(studentId);
-    if (!resultsResult.success || !resultsResult.data) {
-      console.log('Error:', resultsResult.error);
+    if (error) {
+      console.log('RPC Error:', error);
       console.groupEnd();
-      return { success: false, error: resultsResult.error ?? 'Failed to fetch results.' };
+      return { success: false, error };
     }
 
-    const subjectMap = aggregateSubjectBreakdowns(resultsResult.data.data);
-    const subjects = Array.from(subjectMap.values());
+    const subjects = (rpcItems ?? []).map(mapRpcSubjectToSummary);
+
     const totalAnswered = subjects.reduce((sum, s) => sum + s.correct + s.wrong + s.skipped, 0);
     const totalCorrect = subjects.reduce((sum, s) => sum + s.correct, 0);
     const totalWrong = subjects.reduce((sum, s) => sum + s.wrong, 0);
 
-    console.log('Response: success');
+    console.log('Response: success, subjects:', subjects.length);
     console.groupEnd();
 
     return {
@@ -977,7 +1125,10 @@ export async function getSubjectAnalytics(
 /**
  * Get chapter-level analytics for a student.
  *
- * @param studentId - UUID of the student.
+ * Now backed by the `get_student_chapter_analytics()` PostgreSQL RPC for
+ * server-side aggregation. The public API shape is unchanged.
+ *
+ * @param studentId - UUID of the student (unused — RPC resolves from auth).
  */
 export async function getChapterAnalytics(
   studentId: string,
@@ -986,22 +1137,23 @@ export async function getChapterAnalytics(
     console.group('ANALYTICS');
     console.log('Request: getChapterAnalytics', { studentId });
 
-    validateUUID(studentId, 'studentId');
+    const { data: rpcItems, error } = await callSubjectChapterRpc<RpcChapterItem>(
+      'get_student_chapter_analytics',
+    );
 
-    const resultsResult = await getStudentResults(studentId);
-    if (!resultsResult.success || !resultsResult.data) {
-      console.log('Error:', resultsResult.error);
+    if (error) {
+      console.log('RPC Error:', error);
       console.groupEnd();
-      return { success: false, error: resultsResult.error ?? 'Failed to fetch results.' };
+      return { success: false, error };
     }
 
-    const chapterMap = aggregateChapterBreakdowns(resultsResult.data.data);
-    const chapters = Array.from(chapterMap.values());
+    const chapters = (rpcItems ?? []).map(mapRpcChapterToSummary);
+
     const totalAnswered = chapters.reduce((sum, c) => sum + c.correct + c.wrong + c.skipped, 0);
     const totalCorrect = chapters.reduce((sum, c) => sum + c.correct, 0);
     const totalWrong = chapters.reduce((sum, c) => sum + c.wrong, 0);
 
-    console.log('Response: success');
+    console.log('Response: success, chapters:', chapters.length);
     console.groupEnd();
 
     return {
@@ -1012,6 +1164,84 @@ export async function getChapterAnalytics(
         overallAccuracy: computeAccuracy(totalCorrect, totalWrong),
       },
     };
+  } catch (err) {
+    console.log('Errors:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Student Weak & Strong Chapters (RPC-backed)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get weak chapters for the authenticated student, ordered weakest → strongest.
+ *
+ * Backed by the `get_student_weak_chapters()` PostgreSQL RPC.
+ * Uses the same business logic that was previously in getStudentAnalytics
+ * (sort chapters by percentage ascending, lowest first).
+ *
+ * No studentId parameter needed — the RPC resolves the student from auth.
+ */
+export async function getStudentWeakChapters(): Promise<ApiResponse<ChapterPerformanceSummary[]>> {
+  try {
+    console.group('ANALYTICS');
+    console.log('Request: getStudentWeakChapters');
+
+    const { data: rpcItems, error } = await callSubjectChapterRpc<RpcChapterItem>(
+      'get_student_weak_chapters',
+    );
+
+    if (error) {
+      console.log('RPC Error:', error);
+      console.groupEnd();
+      return { success: false, error };
+    }
+
+    const chapters = (rpcItems ?? []).map(mapRpcChapterToSummary);
+
+    console.log('Response: success, weak chapters:', chapters.length);
+    console.groupEnd();
+
+    return { success: true, data: chapters };
+  } catch (err) {
+    console.log('Errors:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
+ * Get strong chapters for the authenticated student, ordered strongest → weakest.
+ *
+ * Backed by the `get_student_strong_chapters()` PostgreSQL RPC.
+ * Uses the same business logic that was previously in getStudentAnalytics
+ * (sort chapters by percentage descending, highest first).
+ *
+ * No studentId parameter needed — the RPC resolves the student from auth.
+ */
+export async function getStudentStrongChapters(): Promise<ApiResponse<ChapterPerformanceSummary[]>> {
+  try {
+    console.group('ANALYTICS');
+    console.log('Request: getStudentStrongChapters');
+
+    const { data: rpcItems, error } = await callSubjectChapterRpc<RpcChapterItem>(
+      'get_student_strong_chapters',
+    );
+
+    if (error) {
+      console.log('RPC Error:', error);
+      console.groupEnd();
+      return { success: false, error };
+    }
+
+    const chapters = (rpcItems ?? []).map(mapRpcChapterToSummary);
+
+    console.log('Response: success, strong chapters:', chapters.length);
+    console.groupEnd();
+
+    return { success: true, data: chapters };
   } catch (err) {
     console.log('Errors:', (err as Record<string, unknown>).message);
     console.groupEnd();
@@ -1136,6 +1366,171 @@ export async function getRecentActivity(
     console.groupEnd();
 
     return { success: true, data: activity.slice(0, limit) };
+  } catch (err) {
+    console.log('Errors:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Student Dashboard Summary
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * RPC response shape for the raw JSON returned by
+ * get_student_dashboard_summary().  Keys are snake_case because they
+ * come from the PostgreSQL RPC; the mapping layer below converts them
+ * to camelCase for consumers.
+ */
+interface RpcDashboardSummary {
+  tests_attempted: number;
+  average_score: number;
+  best_score: number;
+  overall_accuracy: number | null;
+  latest_result: {
+    result_id: string;
+    attempt_id: string;
+    test_id: string;
+    total_score: number;
+    max_score: number;
+    percentage: number;
+    correct_count: number;
+    wrong_count: number;
+    skipped_count: number;
+    rank: number | null;
+    percentile: number | null;
+    generated_at: string;
+    released_at: string | null;
+  } | null;
+  continue_practice: {
+    attempt_id: string;
+    test_id: string;
+    status: string;
+    started_at: string;
+    time_remaining_seconds: number | null;
+  } | null;
+}
+
+/**
+ * Get a lightweight student dashboard summary via the
+ * get_student_dashboard_summary() PostgreSQL RPC.
+ *
+ * The RPC internally resolves the student_id from the authenticated
+ * session and returns all six fields in a single database round-trip.
+ * No parameters are required — the student is derived from auth.uid().
+ */
+export async function getStudentDashboardSummary(): Promise<ApiResponse<StudentDashboardSummary>> {
+  try {
+    console.group('ANALYTICS: getStudentDashboardSummary (RPC)');
+
+    const { data, error } = await supabase.rpc('get_student_dashboard_summary');
+
+    if (error) {
+      console.log('RPC Error:', error);
+      console.groupEnd();
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const raw = data as unknown as Record<string, unknown>;
+
+    // ── Handle error response from RPC (e.g. caller is not a student) ──
+    if (raw && typeof raw.error === 'string') {
+      console.log('RPC returned an error:', raw.error);
+      console.groupEnd();
+      return { success: false, error: raw.error };
+    }
+
+    const rpcData = raw as unknown as RpcDashboardSummary;
+
+    // ── Map snake_case RPC response → camelCase TypeScript interface ───
+    const summary: StudentDashboardSummary = {
+      testsAttempted: rpcData.tests_attempted,
+      averageScore: rpcData.average_score,
+      bestScore: rpcData.best_score,
+      overallAccuracy: rpcData.overall_accuracy,
+      latestResult: rpcData.latest_result
+        ? {
+            resultId: rpcData.latest_result.result_id,
+            attemptId: rpcData.latest_result.attempt_id,
+            testId: rpcData.latest_result.test_id,
+            totalScore: rpcData.latest_result.total_score,
+            maxScore: rpcData.latest_result.max_score,
+            percentage: rpcData.latest_result.percentage,
+            correctCount: rpcData.latest_result.correct_count,
+            wrongCount: rpcData.latest_result.wrong_count,
+            skippedCount: rpcData.latest_result.skipped_count,
+            rank: rpcData.latest_result.rank,
+            percentile: rpcData.latest_result.percentile,
+            generatedAt: rpcData.latest_result.generated_at,
+            releasedAt: rpcData.latest_result.released_at,
+          }
+        : null,
+      continuePractice: rpcData.continue_practice
+        ? {
+            attemptId: rpcData.continue_practice.attempt_id,
+            testId: rpcData.continue_practice.test_id,
+            status: rpcData.continue_practice.status as ContinuePracticeAttempt['status'],
+            startedAt: rpcData.continue_practice.started_at,
+            timeRemainingSeconds: rpcData.continue_practice.time_remaining_seconds,
+          }
+        : null,
+    };
+
+    console.log('Response: success', summary);
+    console.groupEnd();
+
+    return { success: true, data: summary };
+  } catch (err) {
+    console.log('Errors:', (err as Record<string, unknown>).message);
+    console.groupEnd();
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Score Trend (RPC-backed)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get the student score trend — one record per released mock test result
+ * in chronological order, suitable for line chart plotting.
+ *
+ * Backed by the `get_student_score_trend()` PostgreSQL RPC.
+ * No studentId parameter is needed — the RPC resolves the student from auth
+ * via get_my_student_id().
+ *
+ * Returns data ordered by attempted_on ASC (server-side) so no client-side
+ * sorting is required.
+ */
+export async function getStudentScoreTrend(): Promise<ApiResponse<ScoreTrendPoint[]>> {
+  try {
+    console.group('ANALYTICS: getStudentScoreTrend (RPC)');
+
+    const { data, error } = await supabase.rpc('get_student_score_trend');
+
+    if (error) {
+      console.log('RPC Error:', error);
+      console.groupEnd();
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const raw = data as unknown;
+
+    // ── Handle error response from RPC (e.g. caller is not a student) ──
+    if (raw && typeof raw === 'object' && 'error' in (raw as Record<string, unknown>)) {
+      console.log('RPC returned an error:', (raw as Record<string, string>).error);
+      console.groupEnd();
+      return { success: false, error: (raw as Record<string, string>).error };
+    }
+
+    const rpcItems = raw as RpcScoreTrendItem[];
+    const trend = (rpcItems ?? []).map(mapRpcScoreTrendToPoint);
+
+    console.log('Response: success, points:', trend.length);
+    console.groupEnd();
+
+    return { success: true, data: trend };
   } catch (err) {
     console.log('Errors:', (err as Record<string, unknown>).message);
     console.groupEnd();

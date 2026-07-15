@@ -16,6 +16,8 @@
  * | `useSubjectAnalytics`    | Query | Subject-level analytics for a student   |
  * | `useChapterAnalytics`    | Query | Chapter-level analytics for a student   |
  * | `usePerformanceTrend`    | Query | Student performance trend               |
+ * | `useStudentDashboardSummary` | Query | Lightweight student dashboard summary |
+ * | `useStudentScoreTrend`   | Query | Student score trend (line chart data)  |
  * | `useRecentActivity`      | Query | Recent activity for a student           |
  *
  * @module hooks/analytics/useAnalytics
@@ -33,6 +35,10 @@ import {
   getChapterAnalytics,
   getPerformanceTrend,
   getRecentActivity,
+  getStudentDashboardSummary,
+  getStudentWeakChapters,
+  getStudentStrongChapters,
+  getStudentScoreTrend,
 } from '../../services/analytics/analyticsService';
 import type {
   StudentAnalytics,
@@ -44,6 +50,9 @@ import type {
   ChapterAnalytics,
   PerformanceTrendPoint,
   RecentActivity,
+  StudentDashboardSummary,
+  ChapterPerformanceSummary,
+  ScoreTrendPoint,
 } from '../../types/analytics';
 
 // ─── Student Analytics ──────────────────────────────────────────────────────
@@ -169,7 +178,15 @@ export function useDashboardAnalytics() {
  *
  * The query is disabled when `studentId` is falsy.
  *
- * @param studentId - UUID of the student.
+ * @note This hook accepts `studentId` for backward compatibility, but the
+ *       underlying PostgreSQL RPC (`get_student_subject_analytics`) resolves
+ *       the student from the authenticated session via `get_my_student_id()`.
+ *       This means the hook only works correctly when the caller is viewing
+ *       their own analytics. Teacher/admin views of other students' subject
+ *       analytics should use a different pathway.
+ *
+ * @param studentId - UUID of the student (kept for API compatibility; RPC
+ *                    ignores this and resolves from auth session).
  */
 export function useSubjectAnalytics(studentId: string | undefined | null) {
   return useQuery<SubjectAnalytics>({
@@ -193,7 +210,15 @@ export function useSubjectAnalytics(studentId: string | undefined | null) {
  *
  * The query is disabled when `studentId` is falsy.
  *
- * @param studentId - UUID of the student.
+ * @note This hook accepts `studentId` for backward compatibility, but the
+ *       underlying PostgreSQL RPC (`get_student_chapter_analytics`) resolves
+ *       the student from the authenticated session via `get_my_student_id()`.
+ *       This means the hook only works correctly when the caller is viewing
+ *       their own analytics. Teacher/admin views of other students' chapter
+ *       analytics should use a different pathway.
+ *
+ * @param studentId - UUID of the student (kept for API compatibility; RPC
+ *                    ignores this and resolves from auth session).
  */
 export function useChapterAnalytics(studentId: string | undefined | null) {
   return useQuery<ChapterAnalytics>({
@@ -231,6 +256,103 @@ export function usePerformanceTrend(studentId: string | undefined | null) {
     },
     enabled: !!studentId,
     staleTime: 60_000,
+  });
+}
+
+// ─── Student Dashboard Summary ──────────────────────────────────────────────
+
+/**
+ * Fetch a lightweight student dashboard summary via the
+ * get_student_dashboard_summary() PostgreSQL RPC.
+ *
+ * The RPC internally resolves the student_id from the authenticated
+ * session via get_my_student_id(), so this hook takes no parameters.
+ * The query runs automatically when the React Query client is mounted.
+ */
+export function useStudentDashboardSummary() {
+  return useQuery<StudentDashboardSummary>({
+    queryKey: analyticsKeys.summary.dashboard(),
+    queryFn: async () => {
+      const result = await getStudentDashboardSummary();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch student dashboard summary.');
+      }
+      return result.data!;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ─── Weak Chapters ──────────────────────────────────────────────────────────
+
+/**
+ * Fetch weak chapters for the authenticated student, ordered weakest → strongest.
+ *
+ * Backed by the `get_student_weak_chapters()` PostgreSQL RPC.
+ * The RPC internally resolves the student_id from the authenticated
+ * session via get_my_student_id(), so this hook takes no parameters.
+ */
+export function useStudentWeakChapters() {
+  return useQuery<ChapterPerformanceSummary[]>({
+    queryKey: analyticsKeys.weakChapters.list(),
+    queryFn: async () => {
+      const result = await getStudentWeakChapters();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch weak chapters.');
+      }
+      return result.data!;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ─── Strong Chapters ────────────────────────────────────────────────────────
+
+/**
+ * Fetch strong chapters for the authenticated student, ordered strongest → weakest.
+ *
+ * Backed by the `get_student_strong_chapters()` PostgreSQL RPC.
+ * The RPC internally resolves the student_id from the authenticated
+ * session via get_my_student_id(), so this hook takes no parameters.
+ */
+export function useStudentStrongChapters() {
+  return useQuery<ChapterPerformanceSummary[]>({
+    queryKey: analyticsKeys.strongChapters.list(),
+    queryFn: async () => {
+      const result = await getStudentStrongChapters();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch strong chapters.');
+      }
+      return result.data!;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ─── Score Trend ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the student's score trend — one record per released mock test result
+ * in chronological order, suitable for line chart plotting.
+ *
+ * Backed by the `get_student_score_trend()` PostgreSQL RPC.
+ * The RPC internally resolves the student_id from the authenticated session
+ * via get_my_student_id(), so this hook takes no parameters.
+ *
+ * Data is ordered by attemptedOn ASC (server-side) so no client-side sorting
+ * is required. Both the Website and Mobile App consume the same RPC.
+ */
+export function useStudentScoreTrend() {
+  return useQuery<ScoreTrendPoint[]>({
+    queryKey: analyticsKeys.scoreTrend.list(),
+    queryFn: async () => {
+      const result = await getStudentScoreTrend();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch student score trend.');
+      }
+      return result.data!;
+    },
+    staleTime: 30_000,
   });
 }
 
