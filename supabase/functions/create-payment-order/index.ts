@@ -3,19 +3,26 @@
 //
 // PostgreSQL 16 | Supabase Edge Runtime | Production Ready
 //
-// Creates a Razorpay payment order for a course purchase and stores the
-// order details locally in the existing commerce schema.
+// Creates a Razorpay payment order for a Course or PYQ Package purchase and
+// stores the order details locally in the existing commerce schema.
 //
-// This is the backend-only entry point for starting a payment. The client
-// (React Native App or Website) sends only the courseId — all pricing is
-// determined server-side from the database.
+// Supports two product types:
+//   1. Course      (item_type = 'course',       course_id populated)
+//   2. PYQ Package (item_type = 'pyq_package',  package_id populated)
+//
+// The client sends exactly one of:
+//   - courseId  → Course purchase (existing flow, unchanged)
+//   - packageId → PYQ Package purchase (new)
+//
+// All pricing is determined server-side from the database. The client must
+// NOT send amount, currency, or pricing data.
 //
 // Architecture:
 //   Client → create-payment-order → Razorpay API → local orders/order_items/payments
 //       ↓
 //   Response with razorpayOrderId → Client opens Razorpay Checkout
 //       ↓
-//   razorpay-webhook → complete-course-purchase → create_student_after_purchase()
+//   razorpay-webhook → {complete-course-purchase | complete-pyq-purchase}
 //
 // ## Pre-onboarding data flow
 //
@@ -30,7 +37,7 @@
 //
 //   • Authentication required — resolves profile_id from JWT
 //   • Client must NOT send amount, currency, or pricing data
-//   • All pricing read from courses table (never trust the client)
+//   • All pricing read from the database (never trust the client)
 //   • Razorpay Secret Key read from Supabase Secrets (never hardcoded)
 //   • PostgreSQL errors sanitized before returning to client
 //
@@ -70,8 +77,18 @@ const CORS_HEADERS = {
 // Types
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Discriminator for the type of product being purchased.
+ * Controls which FK is populated in order_items and which completion
+ * function the webhook routes to.
+ */
+type ProductType = 'course' | 'pyq_package';
+
 interface RequestBody {
-  courseId: string;
+  /** Course ID — mutually exclusive with packageId. */
+  courseId?: string;
+  /** PYQ Package ID — mutually exclusive with courseId. */
+  packageId?: string;
   // Pre-onboarding student info (optional) — stored in order.notes for
   // the razorpay-webhook to use during student onboarding. All fields
   // are nullable and may be omitted entirely.
@@ -88,6 +105,13 @@ interface SuccessResponse {
   razorpayOrderId: string;
   amount: number;
   currency: string;
+  /** The display name of the purchased item (course or PYQ package). */
+  itemName: string;
+  /**
+   * Kept for backward compatibility with existing clients.
+   * Contains the same value as itemName.
+   * @deprecated Use itemName instead.
+   */
   courseName: string;
   description: string;
   /** Razorpay publishable key for the client to open the checkout. */
@@ -115,6 +139,19 @@ interface CourseRow {
   currency: string;
   status: string;
   deleted_at: string | null;
+}
+
+/**
+ * Raw row type from the pyq_packages table.
+ */
+interface PyqPackageRow {
+  package_id: string;
+  institute_id: string;
+  name: string;
+  price: number;
+  currency: string;
+  is_active: boolean;
+  published_at: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -185,29 +222,108 @@ function structuredLog(event: string, data: Record<string, unknown>): void {
 }
 
 /**
- * Determine the effective price for a course.
- * Uses discounted_price if available, otherwise original_price.
- * Returns the amount in paise (smallest currency unit for Razorpay).
+ * Convert a price in rupees (or smallest currency unit) to paise for Razorpay.
  *
- * @returns {amountInPaise: number, displayAmount: number}
+ * Razorpay requires amount in the smallest currency unit:
+ * INR → paise (multiply by 100)
+ *
+ * @param priceInRupees - The price in rupees (e.g., 499.00)
+ * @returns amout in paise and the display amount
  */
-function calculatePrice(course: CourseRow): {
+function calculatePrice(priceInRupees: number): {
   amountInPaise: number;
   displayAmount: number;
 } {
-  // Use discounted_price if set (and not zero), otherwise original_price
-  const effectivePrice = (course.discounted_price != null && course.discounted_price > 0)
-    ? course.discounted_price
-    : course.original_price;
-
-  // Razorpay requires amount in the smallest currency unit (paise for INR)
-  // numeric(10,2) from DB → multiply by 100 → integer paise
-  const amountInPaise = Math.round(Number(effectivePrice) * 100);
+  const amountInPaise = Math.round(Number(priceInRupees) * 100);
 
   return {
     amountInPaise,
-    displayAmount: Number(effectivePrice),
+    displayAmount: Number(priceInRupees),
   };
+}
+
+/**
+ * Determine the effective price for a course.
+ * Uses discounted_price if available and non-zero, otherwise original_price.
+ */
+function getCourseEffectivePrice(course: CourseRow): number {
+  return (course.discounted_price != null && course.discounted_price > 0)
+    ? Number(course.discounted_price)
+    : Number(course.original_price);
+}
+
+/**
+ * Parse the pre-onboarding guardian and academic fields from the raw body.
+ * All fields are optional; only string values are accepted.
+ */
+function parseGuardianFields(
+  raw: Record<string, unknown>,
+): Pick<RequestBody, 'guardianName' | 'guardianMobile' | 'guardianEmail' | 'targetYear' | 'dob'> {
+  return {
+    guardianName: typeof raw.guardianName === 'string' ? raw.guardianName : undefined,
+    guardianMobile: typeof raw.guardianMobile === 'string' ? raw.guardianMobile : undefined,
+    guardianEmail: typeof raw.guardianEmail === 'string' ? raw.guardianEmail : undefined,
+    targetYear: typeof raw.targetYear === 'string' ? raw.targetYear : undefined,
+    dob: typeof raw.dob === 'string' ? raw.dob : undefined,
+  };
+}
+
+/**
+ * Build the order.notes JSON payload containing the product info and
+ * optional pre-onboarding guardian/academic fields.
+ */
+function buildOrderNotes(
+  productType: ProductType,
+  productId: string,
+  productName: string,
+  razorpayOrderId: string,
+  profileId: string,
+  guardianFields: Pick<RequestBody, 'guardianName' | 'guardianMobile' | 'guardianEmail' | 'targetYear' | 'dob'>,
+): string {
+  const notes: Record<string, string> = {
+    razorpayOrderId,
+    profileId,
+  };
+
+  if (productType === 'course') {
+    notes.courseId = productId;
+    notes.courseName = productName;
+  } else {
+    notes.packageId = productId;
+    notes.packageName = productName;
+  }
+
+  // Pre-onboarding fields — consumed by razorpay-webhook
+  if (guardianFields.guardianName) notes.guardianName = guardianFields.guardianName;
+  if (guardianFields.guardianMobile) notes.guardianMobile = guardianFields.guardianMobile;
+  if (guardianFields.guardianEmail) notes.guardianEmail = guardianFields.guardianEmail;
+  if (guardianFields.targetYear) notes.targetYear = guardianFields.targetYear;
+  if (guardianFields.dob) notes.dob = guardianFields.dob;
+
+  return JSON.stringify(notes);
+}
+
+/**
+ * Build the Razorpay order notes payload.
+ */
+function buildRazorpayNotes(
+  productType: ProductType,
+  productId: string,
+  profileId: string,
+  instituteId: string,
+): Record<string, string> {
+  const notes: Record<string, string> = {
+    profile_id: profileId,
+    institute_id: instituteId,
+  };
+
+  if (productType === 'course') {
+    notes.course_id = productId;
+  } else {
+    notes.package_id = productId;
+  }
+
+  return notes;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -272,27 +388,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ═════════════════════════════════════════════════════════════════════
   // Step 2: Parse and validate the request body
   // ═════════════════════════════════════════════════════════════════════
-  // Only courseId is required. Guardian/academic fields are optional and
-  // stored in order.notes for the razorpay-webhook onboarding flow.
+  // The client must send exactly one of:
+  //   - courseId  → Course purchase
+  //   - packageId → PYQ Package purchase
+  //
+  // Never both. Guardian/academic fields are optional.
   let body: RequestBody;
+  let productType: ProductType;
+  let productId: string;
+
   try {
     const raw = await req.json() as Record<string, unknown>;
 
-    if (!raw.courseId || typeof raw.courseId !== 'string') {
-      return errorResponse('Missing required field: courseId.', 400);
+    const courseId = typeof raw.courseId === 'string' ? raw.courseId : undefined;
+    const packageId = typeof raw.packageId === 'string' ? raw.packageId : undefined;
+
+    // Validate exactly one of courseId or packageId
+    if (!courseId && !packageId) {
+      return errorResponse(
+        'Provide either courseId or packageId. Exactly one is required.',
+        400,
+        'MISSING_PRODUCT_ID',
+      );
     }
 
+    if (courseId && packageId) {
+      return errorResponse(
+        'Provide exactly one of courseId or packageId, not both.',
+        400,
+        'CONFLICTING_PRODUCT_IDS',
+      );
+    }
+
+    // Resolve the product type and ID
+    productType = courseId ? 'course' : 'pyq_package';
+    productId = (courseId ?? packageId)!;
+
     body = {
-      courseId: raw.courseId,
-      guardianName: typeof raw.guardianName === 'string' ? raw.guardianName : undefined,
-      guardianMobile: typeof raw.guardianMobile === 'string' ? raw.guardianMobile : undefined,
-      guardianEmail: typeof raw.guardianEmail === 'string' ? raw.guardianEmail : undefined,
-      targetYear: typeof raw.targetYear === 'string' ? raw.targetYear : undefined,
-      dob: typeof raw.dob === 'string' ? raw.dob : undefined,
+      courseId,
+      packageId,
+      ...parseGuardianFields(raw),
     };
 
     structuredLog('request_validated', {
-      courseId: body.courseId,
+      productType,
+      productId,
       hasGuardianName: !!body.guardianName,
       hasGuardianMobile: !!body.guardianMobile,
       hasTargetYear: !!body.targetYear,
@@ -329,93 +469,176 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 4: Load and validate the course
+  // Step 4: Load and validate the product
   // ═════════════════════════════════════════════════════════════════════
-  structuredLog('loading_course', { courseId: body.courseId });
+  // Branch based on productType — each product has its own validation rules.
+  let instituteId: string;
+  let productName: string;
+  let currency: string;
+  let effectivePrice: number;
 
-  const { data: course, error: courseError } = await serviceClient
-    .from('courses')
-    .select('course_id, institute_id, title, original_price, discounted_price, currency, status, deleted_at')
-    .eq('course_id', body.courseId)
-    .single();
+  if (productType === 'course') {
+    // ── Course validation (existing logic, unchanged) ─────────────────
+    structuredLog('loading_course', { courseId: productId });
 
-  if (courseError || !course) {
-    return errorResponse('Course not found.', 404, 'COURSE_NOT_FOUND', courseError?.message);
+    const { data: course, error: courseError } = await serviceClient
+      .from('courses')
+      .select('course_id, institute_id, title, original_price, discounted_price, currency, status, deleted_at')
+      .eq('course_id', productId)
+      .single();
+
+    if (courseError || !course) {
+      return errorResponse('Course not found.', 404, 'COURSE_NOT_FOUND', courseError?.message);
+    }
+
+    // Validate the course is purchasable
+    if (course.deleted_at) {
+      return errorResponse('This course is no longer available.', 410, 'COURSE_DELETED');
+    }
+
+    if (course.status !== 'published') {
+      return errorResponse('This course is not available for purchase.', 400, 'COURSE_NOT_PUBLISHED');
+    }
+
+    if (Number(course.original_price) <= 0 && (course.discounted_price == null || Number(course.discounted_price) <= 0)) {
+      return errorResponse('This course has no valid price configured.', 400, 'COURSE_NO_PRICE');
+    }
+
+    structuredLog('course_validated', {
+      courseId: course.course_id,
+      title: course.title,
+      instituteId: course.institute_id,
+      status: course.status,
+    });
+
+    instituteId = course.institute_id;
+    productName = course.title;
+    currency = course.currency || 'INR';
+    effectivePrice = getCourseEffectivePrice(course);
+  } else {
+    // ── PYQ Package validation ──────────────────────────────────────
+    structuredLog('loading_pyq_package', { packageId: productId });
+
+    const { data: pkg, error: pkgError } = await serviceClient
+      .from('pyq_packages')
+      .select('package_id, institute_id, name, price, currency, is_active, published_at')
+      .eq('package_id', productId)
+      .single();
+
+    if (pkgError || !pkg) {
+      return errorResponse('PYQ Package not found.', 404, 'PACKAGE_NOT_FOUND', pkgError?.message);
+    }
+
+    // Validate the package is purchasable
+    if (!pkg.is_active) {
+      return errorResponse('This PYQ Package is no longer available for purchase.', 410, 'PACKAGE_INACTIVE');
+    }
+
+    if (!pkg.published_at) {
+      return errorResponse('This PYQ Package has not been published yet.', 400, 'PACKAGE_NOT_PUBLISHED');
+    }
+
+    if (Number(pkg.price) <= 0) {
+      return errorResponse('This PYQ Package has no valid price configured.', 400, 'PACKAGE_NO_PRICE');
+    }
+
+    structuredLog('pyq_package_validated', {
+      packageId: pkg.package_id,
+      name: pkg.name,
+      instituteId: pkg.institute_id,
+      isActive: pkg.is_active,
+    });
+
+    instituteId = pkg.institute_id;
+    productName = pkg.name;
+    currency = pkg.currency || 'INR';
+    effectivePrice = Number(pkg.price);
   }
-
-  // Validate the course is purchasable
-  if (course.deleted_at) {
-    return errorResponse('This course is no longer available.', 410, 'COURSE_DELETED');
-  }
-
-  if (course.status !== 'published') {
-    return errorResponse('This course is not available for purchase.', 400, 'COURSE_NOT_PUBLISHED');
-  }
-
-  if (Number(course.original_price) <= 0 && (course.discounted_price == null || Number(course.discounted_price) <= 0)) {
-    return errorResponse('This course has no valid price configured.', 400, 'COURSE_NO_PRICE');
-  }
-
-  structuredLog('course_validated', {
-    courseId: course.course_id,
-    title: course.title,
-    instituteId: course.institute_id,
-    status: course.status,
-  });
-
-  const instituteId: string = course.institute_id;
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 5: Check for existing enrollment (prevent duplicate purchase)
+  // Step 5: Check for existing access (prevent duplicate purchase)
   // ═════════════════════════════════════════════════════════════════════
-  // Check if this user already has an active enrollment. We query using
-  // profile_id → student_details → course_enrollments, or direct if the
-  // student already exists.
-  structuredLog('checking_existing_enrollment', { profileId, courseId: body.courseId });
+  // Each product type has its own access table:
+  //   course      → course_enrollments (via student_details)
+  //   pyq_package → student_pyq_purchases
+  structuredLog('checking_existing_access', { productType, productId, profileId });
 
-  // Resolve student_id from student_details (may not exist yet)
-  const { data: existingStudent } = await serviceClient
-    .from('student_details')
-    .select('student_id')
-    .eq('profile_id', profileId)
-    .maybeSingle();
-
-  if (existingStudent) {
-    const { data: existingEnrollment } = await serviceClient
-      .from('course_enrollments')
-      .select('enrollment_id')
-      .eq('course_id', body.courseId)
-      .eq('student_id', existingStudent.student_id)
-      .eq('is_active', true)
+  if (productType === 'course') {
+    // Resolve student_id from student_details (may not exist yet)
+    const { data: existingStudent } = await serviceClient
+      .from('student_details')
+      .select('student_id')
+      .eq('profile_id', profileId)
       .maybeSingle();
 
-    if (existingEnrollment) {
-      structuredLog('already_enrolled', {
-        enrollmentId: existingEnrollment.enrollment_id,
-      });
+    if (existingStudent) {
+      const { data: existingEnrollment } = await serviceClient
+        .from('course_enrollments')
+        .select('enrollment_id')
+        .eq('course_id', productId)
+        .eq('student_id', existingStudent.student_id)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      return errorResponse(
-        'You are already enrolled in this course.',
-        409,
-        'ALREADY_ENROLLED',
-      );
+      if (existingEnrollment) {
+        structuredLog('already_enrolled', {
+          enrollmentId: existingEnrollment.enrollment_id,
+        });
+
+        return errorResponse(
+          'You are already enrolled in this course.',
+          409,
+          'ALREADY_ENROLLED',
+        );
+      }
     }
-  }
 
-  structuredLog('no_existing_enrollment', {});
+    structuredLog('no_existing_enrollment', {});
+  } else {
+    // Resolve student_id from student_details (may not exist yet)
+    const { data: existingStudent } = await serviceClient
+      .from('student_details')
+      .select('student_id')
+      .eq('profile_id', profileId)
+      .maybeSingle();
+
+    if (existingStudent) {
+      const { data: existingPurchase } = await serviceClient
+        .from('student_pyq_purchases')
+        .select('purchase_id')
+        .eq('package_id', productId)
+        .eq('student_id', existingStudent.student_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (existingPurchase) {
+        structuredLog('already_purchased', {
+          purchaseId: existingPurchase.purchase_id,
+        });
+
+        return errorResponse(
+          'You have already purchased this PYQ Package.',
+          409,
+          'ALREADY_PURCHASED',
+        );
+      }
+    }
+
+    structuredLog('no_existing_pyq_purchase', {});
+  }
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 6: Calculate the payment amount
   // ═════════════════════════════════════════════════════════════════════
   // All pricing is computed server-side from the database.
   // The client must never influence the amount.
-  const { amountInPaise, displayAmount } = calculatePrice(course);
+  const { amountInPaise, displayAmount } = calculatePrice(effectivePrice);
 
   structuredLog('price_calculated', {
     displayAmount,
     amountInPaise,
-    currency: course.currency,
-    source: course.discounted_price != null ? 'discounted_price' : 'original_price',
+    currency,
+    productType,
   });
 
   // ═════════════════════════════════════════════════════════════════════
@@ -434,13 +657,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     razorpayOrder = await razorpay.orders.create({
       amount: amountInPaise,
-      currency: course.currency || 'INR',
+      currency,
       receipt: receiptId,
-      notes: {
-        profile_id: profileId,
-        course_id: body.courseId,
-        institute_id: instituteId,
-      },
+      notes: buildRazorpayNotes(productType, productId, profileId, instituteId),
     });
 
     structuredLog('razorpay_order_created', {
@@ -456,7 +675,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     structuredLog('razorpay_order_failed', {
       error: errorMessage,
-      courseId: body.courseId,
+      productType,
+      productId,
     });
 
     return errorResponse(
@@ -470,22 +690,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ═════════════════════════════════════════════════════════════════════
   // Step 8: Create the local order record
   // ═════════════════════════════════════════════════════════════════════
-  // Uses the new profile_id column (migration 042) since student_details
+  // Uses the profile_id column (migration 042) since student_details
   // may not exist at this point. The order is linked to the student later
-  // during complete-course-purchase.
-  //
-  // The payment record uses:
-  //   • gateway = 'razorpay'
-  //   • gateway_order_id = Razorpay order ID (for webhook correlation)
-  //   • amount = display amount in rupees (numeric(12,2))
-  //   • status = 'pending'
+  // during the completion function (complete-course-purchase or
+  // complete-pyq-purchase).
 
   // ── 8a: Insert the order ────────────────────────────────────────────
   structuredLog('creating_local_order', {
+    productType,
+    productId,
     profileId,
     instituteId,
     amount: displayAmount,
   });
+
+  const guardianFields = {
+    guardianName: body.guardianName,
+    guardianMobile: body.guardianMobile,
+    guardianEmail: body.guardianEmail,
+    targetYear: body.targetYear,
+    dob: body.dob,
+  };
 
   const { data: order, error: orderError } = await serviceClient
     .from('orders')
@@ -494,23 +719,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       institute_id: instituteId,
       student_id: null,          // Not yet created — will be set during onboarding
       status: 'pending',
-      currency: course.currency || 'INR',
+      currency,
       subtotal_amount: displayAmount,
       discount_amount: 0,
       tax_amount: 0,
       total_amount: displayAmount,
-      notes: JSON.stringify({
-        courseId: body.courseId,
-        courseName: course.title,
-        razorpayOrderId: razorpayOrder.id,
-        profileId,
-        // Pre-onboarding fields — consumed by razorpay-webhook
-        ...(body.guardianName ? { guardianName: body.guardianName } : {}),
-        ...(body.guardianMobile ? { guardianMobile: body.guardianMobile } : {}),
-        ...(body.guardianEmail ? { guardianEmail: body.guardianEmail } : {}),
-        ...(body.targetYear ? { targetYear: body.targetYear } : {}),
-        ...(body.dob ? { dob: body.dob } : {}),
-      }),
+      notes: buildOrderNotes(productType, productId, productName, razorpayOrder.id, profileId, guardianFields),
     })
     .select('order_id')
     .single();
@@ -535,24 +749,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
   structuredLog('local_order_created', { orderId: order.order_id });
 
   // ── 8b: Insert the order_item ───────────────────────────────────────
+  // The item_type and FK vary by product type. The CHECK constraint
+  // ck_order_items_item_type_consistency enforces the correct FK is set.
+  const orderItemInsert = productType === 'course'
+    ? {
+        order_id: order.order_id,
+        institute_id: instituteId,
+        item_type: 'course' as const,
+        course_id: productId,
+        item_name: productName,
+        unit_price: displayAmount,
+        quantity: 1,
+        discount_amount: 0,
+        line_total: displayAmount,
+      }
+    : {
+        order_id: order.order_id,
+        institute_id: instituteId,
+        item_type: 'pyq_package' as const,
+        package_id: productId,
+        item_name: productName,
+        unit_price: displayAmount,
+        quantity: 1,
+        discount_amount: 0,
+        line_total: displayAmount,
+      };
+
   const { error: itemError } = await serviceClient
     .from('order_items')
-    .insert({
-      order_id: order.order_id,
-      institute_id: instituteId,
-      item_type: 'course',
-      course_id: body.courseId,
-      item_name: course.title,
-      unit_price: displayAmount,
-      quantity: 1,
-      discount_amount: 0,
-      line_total: displayAmount,
-    });
+    .insert(orderItemInsert);
 
   if (itemError) {
     structuredLog('local_order_item_failed', {
       error: itemError.message,
       orderId: order.order_id,
+      productType,
     });
 
     // Order exists but item creation failed. Log and continue — the item
@@ -569,7 +800,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       gateway: 'razorpay',
       gateway_order_id: razorpayOrder.id,
       amount: displayAmount,
-      currency: course.currency || 'INR',
+      currency,
       status: 'pending',
     });
 
@@ -589,7 +820,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     orderId: order.order_id,
     razorpayOrderId: razorpayOrder.id,
     amount: amountInPaise,
-    courseId: body.courseId,
+    productType,
+    productId,
   });
 
   return jsonResponse({
@@ -598,8 +830,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     razorpayOrderId: razorpayOrder.id,
     amount: amountInPaise,
     currency: razorpayOrder.currency,
-    courseName: course.title,
-    description: `Purchase of ${course.title}`,
+    itemName: productName,
+    courseName: productName,  // Backward compat — same value
+    description: `Purchase of ${productName}`,
     razorpayKey: RAZORPAY_KEY_ID,
   });
 });

@@ -3,14 +3,15 @@
 //
 // PostgreSQL 16 | Supabase Edge Runtime | Production Ready
 //
-// Production-grade Razorpay webhook handler for course purchase payments.
-// This is the ONLY trusted source that marks a payment as successful and
-// grants course access. The mobile app must never grant access directly.
+// Production-grade Razorpay webhook handler for course and PYQ package
+// purchases. This is the ONLY trusted source that marks a payment as
+// successful and grants product access. The mobile app must never grant
+// access directly.
 //
 // Architecture:
 //   Student
 //     ↓
-//   Buy Course
+//   Buy Product (Course / PYQ Package)
 //     ↓
 //   create-payment-order        ← Creates order + payment record
 //     ↓
@@ -24,14 +25,16 @@
 //     ↓
 //   Update Orders               ← status = confirmed, confirmed_at = now()
 //     ↓
-//   complete-course-purchase    ← Create student_details + course_enrollment
+//   Read order_items.item_type  ← Determines routing
 //     ↓
-//   Student Enrolled
+//   ┌── course ──→ complete-course-purchase  (existing)
+//   │
+//   └── pyq_package ──→ complete-pyq-purchase  (to be implemented)
 //
 // Security:
 //   • No Supabase authentication required — verified via Razorpay webhook secret
 //   • Rejects every request with an invalid signature before any processing
-//   • Never trusts amount, courseId, or profileId from the webhook payload
+//   • Never trusts amount, product ID, or profileId from the webhook payload
 //   • Only trusts: Razorpay signature, existing local order, existing DB records
 //   • SQL errors, secrets, and stack traces are NEVER exposed to the caller
 //
@@ -104,6 +107,23 @@ type FunctionResponse = SuccessResponse | ErrorResponse;
 interface OnboardingResult {
   success: boolean;
   message: string;
+}
+
+/** A single order_item row loaded for routing. */
+interface OrderItemRow {
+  item_id: string;
+  item_type: string;
+  course_id: string | null;
+  package_id: string | null;
+}
+
+/** Parsed guardian and academic fields from order.notes. */
+interface GuardianInfo {
+  guardianName: string | null;
+  guardianMobile: string | null;
+  guardianEmail: string | null;
+  targetYear: string | null;
+  dateOfBirth: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -284,133 +304,83 @@ function sanitizeErrorMessage(raw: string): string {
 }
 
 /**
- * Invoke the complete-course-purchase Edge Function to trigger student
- * onboarding. This helper:
- *   1. Loads the order to extract profileId and guardian notes
- *   2. Loads order_items to extract courseId
- *   3. Parses guardian info from order.notes
- *   4. Calls complete-course-purchase with internal=true flag
- *   5. Returns the result
- *
- * @returns OnboardingResult — always succeeds logically; errors are logged
- *          and returned as non-critical messages (never thrown).
+ * Parse guardian and academic info from order.notes JSON.
+ * Returns defaulted nulls for any missing or unparseable fields.
  */
-async function invokeOnboarding(
-  serviceClient: ReturnType<typeof createClient>,
+function parseGuardianInfo(notes: unknown): GuardianInfo {
+  let parsed: Record<string, unknown> = {};
+
+  if (notes) {
+    try {
+      parsed = typeof notes === 'string' ? JSON.parse(notes) : notes as Record<string, unknown>;
+    } catch {
+      structuredLog('NOTES_PARSE', {
+        message: 'Failed to parse order.notes JSON — guardian fields defaulted to null',
+      });
+    }
+  }
+
+  return {
+    guardianName: (typeof parsed.guardianName === 'string' ? parsed.guardianName : null) ?? null,
+    guardianMobile: (typeof parsed.guardianMobile === 'string' ? parsed.guardianMobile : null) ?? null,
+    guardianEmail: (typeof parsed.guardianEmail === 'string' ? parsed.guardianEmail : null) ?? null,
+    targetYear: (typeof parsed.targetYear === 'string' ? parsed.targetYear : null) ?? null,
+    dateOfBirth: (typeof parsed.dob === 'string' ? parsed.dob : null) ?? null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Onboarding Router — dispatches to product-specific completion functions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Route a course purchase to the complete-course-purchase Edge Function.
+ *
+ * This replicates the exact logic from the original single-product webhook:
+ * calls complete-course-purchase with internal=true flag and all guardian
+ * fields extracted from order.notes.
+ */
+async function routeToCoursePurchase(
   orderId: string,
+  orderItem: OrderItemRow,
+  profileId: string,
+  guardian: GuardianInfo,
   razorpayPaymentId: string,
   razorpayOrderId: string,
   meta?: Record<string, unknown>,
 ): Promise<OnboardingResult> {
-  // ── Load the order ──────────────────────────────────────────────────
-  const { data: order, error: orderLoadError } = await serviceClient
-    .from('orders')
-    .select('order_id, profile_id, student_id, institute_id, notes')
-    .eq('order_id', orderId)
-    .single();
-
-  if (orderLoadError || !order) {
+  const courseId = orderItem.course_id;
+  if (!courseId) {
     structuredError('WEBHOOK_ERROR', {
       ...meta,
-      eventType: 'order_load',
-      message: orderLoadError?.message ?? 'Order not found',
+      eventType: 'missing_course_id',
+      message: 'Course item missing course_id',
+      orderId,
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
-      orderId,
       httpStatus: 200,
     });
-    return { success: false, message: 'Order not found for onboarding.' };
+    return { success: false, message: 'Course item missing course_id.' };
   }
 
-  structuredLog('ORDER_FOUND', {
-    orderId: order.order_id,
-    profileId: order.profile_id,
-    hasStudentId: !!order.student_id,
-    instituteId: order.institute_id,
-    hasNotes: !!order.notes,
-    gatewayOrderId: razorpayOrderId,
-    gatewayPaymentId: razorpayPaymentId,
-  });
-
-  const profileId = order.profile_id;
-  if (!profileId) {
-    structuredError('WEBHOOK_ERROR', {
-      ...meta,
-      eventType: 'missing_profile_id',
-      message: 'Profile ID not found on order',
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-      httpStatus: 200,
-    });
-    return { success: false, message: 'Profile ID not found on order.' };
-  }
-
-  // ── Load order_items to get courseId ────────────────────────────────
-  const { data: orderItems, error: itemsLoadError } = await serviceClient
-    .from('order_items')
-    .select('item_id, course_id')
-    .eq('order_id', orderId)
-    .eq('item_type', 'course');
-
-  if (itemsLoadError || !orderItems || orderItems.length === 0) {
-    structuredError('WEBHOOK_ERROR', {
-      ...meta,
-      eventType: 'order_items_load',
-      message: itemsLoadError?.message ?? 'No course items found for order',
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-      httpStatus: 200,
-    });
-    return { success: false, message: 'Course item not found for onboarding.' };
-  }
-
-  const courseId = orderItems[0].course_id!;
-
-  structuredLog('ORDER_ITEM_FOUND', {
+  structuredLog('ROUTING_TO_COURSE', {
     orderId,
     courseId,
-    itemCount: orderItems.length,
+    profileId,
     gatewayOrderId: razorpayOrderId,
     gatewayPaymentId: razorpayPaymentId,
   });
-
-  // ── Parse guardian info from order.notes ────────────────────────────
-  let guardianName: string | null = null;
-  let guardianMobile: string | null = null;
-  let guardianEmail: string | null = null;
-  let targetYear: string | null = null;
-  let dateOfBirth: string | null = null;
-
-  if (order.notes) {
-    try {
-      const notes = typeof order.notes === 'string'
-        ? JSON.parse(order.notes)
-        : order.notes;
-      guardianName = notes.guardianName ?? null;
-      guardianMobile = notes.guardianMobile ?? null;
-      guardianEmail = notes.guardianEmail ?? null;
-      targetYear = notes.targetYear ?? null;
-      dateOfBirth = notes.dob ?? null;
-    } catch {
-      structuredLog('NOTES_PARSE', {
-        message: 'Failed to parse order.notes JSON — guardian fields defaulted to null',
-        orderId,
-      });
-    }
-  }
 
   // ── Invoke complete-course-purchase ─────────────────────────────────
   structuredLog('CALLING_COMPLETE_COURSE_PURCHASE', {
     orderId,
     courseId,
     profileId,
-    hasGuardianName: !!guardianName,
-    hasGuardianMobile: !!guardianMobile,
-    hasGuardianEmail: !!guardianEmail,
-    hasTargetYear: !!targetYear,
-    hasDob: !!dateOfBirth,
+    hasGuardianName: !!guardian.guardianName,
+    hasGuardianMobile: !!guardian.guardianMobile,
+    hasGuardianEmail: !!guardian.guardianEmail,
+    hasTargetYear: !!guardian.targetYear,
+    hasDob: !!guardian.dateOfBirth,
     gatewayOrderId: razorpayOrderId,
     gatewayPaymentId: razorpayPaymentId,
   });
@@ -428,11 +398,11 @@ async function invokeOnboarding(
         courseId,
         orderId,
         profileId,
-        guardianName,
-        guardianMobile,
-        guardianEmail,
-        targetYear,
-        dob: dateOfBirth,
+        guardianName: guardian.guardianName,
+        guardianMobile: guardian.guardianMobile,
+        guardianEmail: guardian.guardianEmail,
+        targetYear: guardian.targetYear,
+        dob: guardian.dateOfBirth,
         internal: true,  // Skip JWT auth; use provided profileId
       }),
     });
@@ -493,7 +463,7 @@ async function invokeOnboarding(
         gatewayPaymentId: razorpayPaymentId,
         orderId,
       });
-      return { success: true, message: 'Onboarding completed successfully.' };
+      return { success: true, message: 'Course onboarding completed successfully.' };
     }
 
     // Log the error details but don't fail the webhook
@@ -509,7 +479,7 @@ async function invokeOnboarding(
 
     return {
       success: false,
-      message: `Onboarding returned: ${result.error as string ?? 'unknown error'}`,
+      message: `Course onboarding returned: ${result.error as string ?? 'unknown error'}`,
     };
   } catch (err) {
     structuredError('WEBHOOK_ERROR', {
@@ -524,6 +494,327 @@ async function invokeOnboarding(
     });
     return { success: false, message: 'Failed to invoke complete-course-purchase.' };
   }
+}
+
+/**
+ * Route a PYQ package purchase to the complete-pyq-purchase Edge Function.
+ *
+ * Mirrors the course purchase routing: calls complete-pyq-purchase with
+ * internal=true flag and all guardian fields extracted from order.notes.
+ */
+async function routeToPyqPurchase(
+  orderId: string,
+  orderItem: OrderItemRow,
+  profileId: string,
+  guardian: GuardianInfo,
+  razorpayPaymentId: string,
+  razorpayOrderId: string,
+  meta?: Record<string, unknown>,
+): Promise<OnboardingResult> {
+  const packageId = orderItem.package_id;
+  if (!packageId) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'missing_package_id',
+      message: 'PYQ item missing package_id',
+      orderId,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'PYQ item missing package_id.' };
+  }
+
+  structuredLog('ROUTING_TO_PYQ', {
+    orderId,
+    packageId,
+    profileId,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  // ── Invoke complete-pyq-purchase ────────────────────────────────────
+  structuredLog('CALLING_COMPLETE_PYQ_PURCHASE', {
+    orderId,
+    packageId,
+    profileId,
+    hasGuardianName: !!guardian.guardianName,
+    hasGuardianMobile: !!guardian.guardianMobile,
+    hasGuardianEmail: !!guardian.guardianEmail,
+    hasTargetYear: !!guardian.targetYear,
+    hasDob: !!guardian.dateOfBirth,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  try {
+    const functionUrl = `${SUPABASE_URL}/functions/v1/complete-pyq-purchase`;
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        packageId,
+        orderId,
+        profileId,
+        guardianName: guardian.guardianName,
+        guardianMobile: guardian.guardianMobile,
+        guardianEmail: guardian.guardianEmail,
+        targetYear: guardian.targetYear,
+        dob: guardian.dateOfBirth,
+        internal: true,  // Skip JWT auth; use provided profileId
+      }),
+    });
+
+    // Log the HTTP status first
+    structuredLog('COMPLETE_PYQ_PURCHASE_RESPONSE_STATUS', {
+      statusCode: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    // IMPORTANT: Read the raw response body as text BEFORE any JSON parsing.
+    // This ensures we capture the full response even if it's not JSON
+    // (e.g., a 500 HTML error page from Supabase infrastructure).
+    const responseText = await response.text();
+
+    structuredLog('COMPLETE_PYQ_PURCHASE_RESPONSE_BODY', {
+      bodyLength: responseText.length,
+      bodyPreview: responseText.slice(0, 2000),
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    // Parse the response text as JSON
+    let result: Record<string, unknown>;
+    try {
+      result = JSON.parse(responseText) as Record<string, unknown>;
+    } catch (parseErr) {
+      // Response was not valid JSON — log the raw text and return
+      structuredError('WEBHOOK_ERROR', {
+        ...meta,
+        eventType: 'onboarding_response_parse',
+        message: 'complete-pyq-purchase returned non-JSON response',
+        responseBody: responseText.slice(0, 1000),
+        statusCode: response.status,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId,
+        httpStatus: 200,
+      });
+      return {
+        success: false,
+        message: `Onboarding returned non-JSON response (HTTP ${response.status}).`,
+      };
+    }
+
+    if (response.ok && result.success) {
+      structuredLog('COMPLETE_PYQ_PURCHASE_RESPONSE', {
+        success: true,
+        studentId: result.studentId as string,
+        purchaseId: result.purchaseId as string,
+        packageId: result.packageId as string,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId,
+      });
+      return { success: true, message: 'PYQ onboarding completed successfully.' };
+    }
+
+    // Log the error details but don't fail the webhook
+    structuredLog('COMPLETE_PYQ_PURCHASE_RESPONSE', {
+      success: false,
+      statusCode: response.status,
+      error: result.error as string ?? 'Unknown onboarding error',
+      details: result.details as string ?? null,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    return {
+      success: false,
+      message: `PYQ onboarding returned: ${result.error as string ?? 'unknown error'}`,
+    };
+  } catch (err) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'onboarding_invocation',
+      message: err instanceof Error ? err.message : 'Network/HTTP error calling complete-pyq-purchase',
+      stack: err instanceof Error ? err.stack : undefined,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Failed to invoke complete-pyq-purchase.' };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// invokeOnboarding — load order_items and route to the right completion fn
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Load the order, its items, and route to the correct product-specific
+ * completion function based on order_items.item_type.
+ *
+ * Routing:
+ *   'course'      → routeToCoursePurchase  (calls complete-course-purchase)
+ *   'pyq_package' → routeToPyqPurchase     (calls complete-pyq-purchase)
+ *   unknown       → logs UNSUPPORTED_ITEM_TYPE error
+ *
+ * @returns OnboardingResult — always succeeds logically; errors are logged
+ *          and returned as non-critical messages (never thrown).
+ */
+async function invokeOnboarding(
+  serviceClient: ReturnType<typeof createClient>,
+  orderId: string,
+  razorpayPaymentId: string,
+  razorpayOrderId: string,
+  meta?: Record<string, unknown>,
+): Promise<OnboardingResult> {
+  // ── Load the order ──────────────────────────────────────────────────
+  const { data: order, error: orderLoadError } = await serviceClient
+    .from('orders')
+    .select('order_id, profile_id, student_id, institute_id, notes')
+    .eq('order_id', orderId)
+    .single();
+
+  if (orderLoadError || !order) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'order_load',
+      message: orderLoadError?.message ?? 'Order not found',
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Order not found for onboarding.' };
+  }
+
+  structuredLog('ORDER_FOUND', {
+    orderId: order.order_id,
+    profileId: order.profile_id,
+    hasStudentId: !!order.student_id,
+    instituteId: order.institute_id,
+    hasNotes: !!order.notes,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  const profileId = order.profile_id;
+  if (!profileId) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'missing_profile_id',
+      message: 'Profile ID not found on order',
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Profile ID not found on order.' };
+  }
+
+  // ── Load order_items to get item_type and product ID ────────────────
+  // Removed the .eq('item_type', 'course') filter — the webhook now
+  // reads item_type from the result and routes accordingly.
+  const { data: orderItems, error: itemsLoadError } = await serviceClient
+    .from('order_items')
+    .select('item_id, item_type, course_id, package_id')
+    .eq('order_id', orderId);
+
+  if (itemsLoadError || !orderItems || orderItems.length === 0) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'order_items_load',
+      message: itemsLoadError?.message ?? 'No items found for order',
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Order item not found for onboarding.' };
+  }
+
+  const orderItem: OrderItemRow = orderItems[0];
+  const itemType = orderItem.item_type;
+
+  structuredLog('ORDER_ITEM_LOADED', {
+    orderId,
+    itemType,
+    courseId: orderItem.course_id ?? null,
+    packageId: orderItem.package_id ?? null,
+    itemCount: orderItems.length,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  structuredLog('ITEM_TYPE_DETECTED', {
+    orderId,
+    itemType,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  // ── Parse guardian info from order.notes ────────────────────────────
+  const guardian = parseGuardianInfo(order.notes);
+
+  // ── Route based on item_type ────────────────────────────────────────
+  // Each product type has its own completion function that handles
+  // product-specific onboarding (student creation, enrollment, purchase).
+  if (itemType === 'course') {
+    return await routeToCoursePurchase(
+      orderId,
+      orderItem,
+      profileId,
+      guardian,
+      razorpayPaymentId,
+      razorpayOrderId,
+      meta,
+    );
+  }
+
+  if (itemType === 'pyq_package') {
+    return await routeToPyqPurchase(
+      orderId,
+      orderItem,
+      profileId,
+      guardian,
+      razorpayPaymentId,
+      razorpayOrderId,
+      meta,
+    );
+  }
+
+  // ── Unknown item_type — log and fail safe ───────────────────────────
+  // Do NOT corrupt payment records. The payment is already captured and
+  // the order is confirmed. Onboarding will need to be handled manually
+  // or after the unknown item type is deployed.
+  structuredError('WEBHOOK_ERROR', {
+    ...meta,
+    eventType: 'UNSUPPORTED_ITEM_TYPE',
+    message: `Unsupported item_type: ${itemType}`,
+    itemType,
+    orderId,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+    httpStatus: 200,
+  });
+
+  return {
+    success: false,
+    message: `Unsupported item type "${itemType}". Onboarding not available for this product.`,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -947,11 +1238,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 16: Invoke complete-course-purchase for student onboarding
+  // Step 16: Invoke product-specific onboarding based on item_type
   // ═════════════════════════════════════════════════════════════════════
-  // Delegates ALL onboarding logic to invokeOnboarding which handles
-  // CALLING_COMPLETE_COURSE_PURCHASE, COMPLETE_COURSE_PURCHASE_RESPONSE,
-  // and error logging internally.
+  // Delegates ALL onboarding logic to invokeOnboarding which loads the
+  // order_items, reads item_type, and routes to the appropriate completion
+  // function (complete-course-purchase, complete-pyq-purchase, etc.).
   const onboardingResult = await invokeOnboarding(
     serviceClient,
     orderId,
@@ -961,7 +1252,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   );
 
   if (onboardingResult.success) {
-    structuredLog('ENROLLMENT_CREATED', {
+    structuredLog('ONBOARDING_COMPLETED', {
       orderId,
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,

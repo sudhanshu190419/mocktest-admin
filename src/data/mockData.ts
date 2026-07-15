@@ -3,7 +3,7 @@ export interface TeacherProfile {
   name: string;
   email: string;
   phone: string;
-  role: 'teacher' | 'admin' | 'student';
+  role: 'teacher' | 'admin' | 'student' | 'user';
   accountStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | 'inactive';
   department: string;
   designation: string;

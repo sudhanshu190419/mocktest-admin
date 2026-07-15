@@ -166,8 +166,10 @@ async function fetchProfile(userId: string): Promise<DbProfile | null> {
  * only as a fallback when the profile has not yet been created by the
  * database trigger (e.g. immediately after sign-up).
  *
- * The `role` defaults to `'student'`, `instituteId` to `null`, when no
- * profile row exists yet. For phone-based auth, `email` may be empty.
+ * The `role` falls back to `'student'` when no profile row exists yet.
+ * This matches the current database trigger default, which is expected to
+ * change to `'user'` in a future migration. For phone-based auth, `email`
+ * may be empty.
  */
 function buildUserProfile(
   authUser: {

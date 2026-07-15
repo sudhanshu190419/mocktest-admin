@@ -48,7 +48,7 @@ export interface AuthResponse<T = unknown> {
  *       in PostgreSQL, NOT `auth.users.raw_user_meta_data`. The service
  *       layer always queries the `profiles` table after authentication.
  */
-export type UserRole = 'student' | 'teacher' | 'admin';
+export type UserRole = 'student' | 'teacher' | 'admin' | 'user';
 
 // ─── Account Status (Lifecycle) ─────────────────────────────────────────────
 

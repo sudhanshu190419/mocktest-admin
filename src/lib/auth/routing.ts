@@ -21,6 +21,7 @@
 //   teacher    | rejected      → /account-rejected
 //   teacher    | suspended     → /account-suspended
 //   teacher    | inactive      → /account-inactive
+//   user       | *             → / (user landing — not in this phase)
 //   student    | *             → / (not in this phase)
 //   unknown    | *             → / (fallback)
 //
@@ -66,8 +67,15 @@ export function getPostLoginDestination(
     }
   }
 
-  // ── Student / Unknown ────────────────────────────────────────────────────
-  // Student routing is not part of this phase. Fall back to root.
+  // ── User / Student / Unknown ─────────────────────────────────────────────
+  //   - user:    Landing page will be added in a later phase.
+  //   - student: Routing is not part of this phase.
+  // Fall back to root for both.
+  if (role === 'user' || role === 'student') {
+    return '/';
+  }
+
+  // ── Unknown role ─────────────────────────────────────────────────────────
   return '/';
 }
 
