@@ -426,4 +426,69 @@ export const adminKeys = {
     stats: (courseId: string) =>
       [...adminKeys.courseContentAssignment.all(), 'stats', courseId] as const,
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Commerce (admin Commerce Verification module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  commerce: {
+    /** Root key for all commerce queries. */
+    all: () => [...adminKeys.all, 'commerce'] as const,
+
+    /** Key for every commerce metrics query. */
+    metrics: () => [...adminKeys.commerce.all(), 'metrics'] as const,
+
+    /** Key for a specific commerce metrics query (keyed by instituteId). */
+    metricsList: (instituteId?: string | null) =>
+      [...adminKeys.commerce.metrics(), instituteId] as const,
+
+    /** Key for every orders list query. */
+    orders: () => [...adminKeys.commerce.all(), 'orders'] as const,
+
+    /** Key for a specific paginated orders list. */
+    ordersList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.orders(), filters, pagination] as const,
+
+    /** Key for every payments list query. */
+    payments: () => [...adminKeys.commerce.all(), 'payments'] as const,
+
+    /** Key for a specific paginated payments list. */
+    paymentsList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.payments(), filters, pagination] as const,
+
+    /** Key for every course purchases list query. */
+    coursePurchases: () => [...adminKeys.commerce.all(), 'coursePurchases'] as const,
+
+    /** Key for a specific paginated course purchases list. */
+    coursePurchasesList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.coursePurchases(), filters, pagination] as const,
+
+    /** Key for every PYQ purchases list query. */
+    pyqPurchases: () => [...adminKeys.commerce.all(), 'pyqPurchases'] as const,
+
+    /** Key for a specific paginated PYQ purchases list. */
+    pyqPurchasesList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.pyqPurchases(), filters, pagination] as const,
+
+    /** Key for every student commerce query. */
+    student: () => [...adminKeys.commerce.all(), 'student'] as const,
+
+    /** Key for a specific student commerce query. */
+    studentDetail: (profileId: string) =>
+      [...adminKeys.commerce.student(), profileId] as const,
+
+    /** Key for global search. */
+    search: () => [...adminKeys.commerce.all(), 'search'] as const,
+
+    /** Key for a specific global search query. */
+    searchQuery: (query: string) =>
+      [...adminKeys.commerce.search(), query] as const,
+
+    /** Key for order detail. */
+    orderDetail: () => [...adminKeys.commerce.all(), 'orderDetail'] as const,
+
+    /** Key for a specific order detail. */
+    orderDetailItem: (orderId: string) =>
+      [...adminKeys.commerce.orderDetail(), orderId] as const,
+  },
 };

@@ -25,6 +25,12 @@
 //       ↓
 //   Create course_enrollment
 //       ↓
+//   Create In-App Notification (course_purchased)
+//       ↓
+//   Send Push Notification (awaited, errors caught inside — never blocks success)
+//       ↓
+//   Create In-App Notification (course_enrolled)
+//       ↓
 //   Success
 //
 // When called internally (by razorpay-webhook), authentication is skipped
@@ -35,6 +41,7 @@
 // ============================================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { sendPushNotification } from '../_shared/pushNotification.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -90,6 +97,294 @@ type FunctionResponse = SuccessResponse | ErrorResponse;
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create a commerce purchase notification (notification + recipient rows).
+ *
+ * Designed for Phase 1 in-app notifications. Creates a single-row dispatch
+ * (total_recipients = 1) with immediate dispatched_at. Idempotent: checks
+ * for an existing notification_recipients row matching (profile_id,
+ * event_type, reference_id) before inserting.
+ *
+ * @returns An object with `{ created, skipped }` indicating whether the
+ *          notification was created or skipped due to an existing one.
+ *          Errors are logged but NEVER thrown — notification creation must
+ *          NOT block the purchase success response.
+ */
+async function createCommerceNotification(
+  client: any,
+  params: {
+    eventType: string;
+    title: string;
+    body: string;
+    profileId: string;
+    instituteId: string;
+    referenceType: string;
+    referenceId: string;
+  },
+): Promise<{ created: boolean; skipped: boolean }> {
+  const { eventType, title, body, profileId, instituteId, referenceType, referenceId } =
+    params;
+
+  structuredLog('NOTIFICATION_CREATE_START', {
+    eventType,
+    profileId,
+    title,
+    referenceType,
+    referenceId,
+  });
+
+  try {
+    // ── Idempotency check ─────────────────────────────────────────────
+    structuredLog('IDEMPOTENCY_CHECK_START', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+    });
+
+    // Check if a notification_recipients row already exists for this
+    // profile + event_type + reference_id combination. This prevents
+    // duplicate notifications on webhook retry.
+    //
+    // Start from notifications with an inner join to
+    // notification_recipients so that PostgREST correctly applies ALL
+    // filters — event_type, reference_id AND profile_id. The old approach
+    // started from notification_recipients with embedded notifications,
+    // which caused PostgREST to silently drop filters on embedded columns,
+    // producing false-positive idempotency matches.
+    const { data: existing } = await client
+      .from('notifications')
+      .select(`
+        notification_id,
+        event_type,
+        reference_type,
+        reference_id,
+        notification_recipients!inner(recipient_id, profile_id)
+      `)
+      .eq('event_type', eventType)
+      .eq('reference_type', referenceType)
+      .eq('reference_id', referenceId)
+      .eq('notification_recipients.profile_id', profileId)
+      .maybeSingle();
+
+    // Log the complete returned row for troubleshooting idempotency
+    if (existing) {
+      const existingObj = existing as any;
+      structuredLog('IDEMPOTENCY_QUERY_RESULT', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        notification_id: existingObj.notification_id ?? null,
+        event_type: existingObj.event_type ?? null,
+        reference_id: existingObj.reference_id ?? null,
+        recipient_id: existingObj.notification_recipients?.recipient_id ?? null,
+        matched_profile_id: existingObj.notification_recipients?.profile_id ?? null,
+      });
+    } else {
+      structuredLog('IDEMPOTENCY_QUERY_RESULT_EMPTY', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+    }
+
+    if (existing) {
+      structuredLog('NOTIFICATION_ALREADY_EXISTS', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+      return { created: false, skipped: true };
+    }
+
+    // ── Insert notification row ───────────────────────────────────────
+    const insertPayload = {
+      institute_id: instituteId,
+      title,
+      body,
+      channel: 'in_app',
+      event_type: eventType,
+      reference_type: referenceType,
+      reference_id: referenceId,
+      total_recipients: 1,
+    };
+
+    structuredLog('NOTIFICATION_DB_INSERT_START', {
+      eventType,
+      profileId,
+      payload: insertPayload,
+    });
+
+    const { data: notification, error: notifError } = await client
+      .from('notifications')
+      .insert(insertPayload)
+      .select('notification_id')
+      .single();
+
+    if (notifError || !notification) {
+      structuredLog('NOTIFICATION_DB_INSERT_FAILED', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        error: {
+          message: notifError?.message ?? 'Insert returned no data',
+          details: (notifError as any)?.details ?? null,
+          hint: (notifError as any)?.hint ?? null,
+          code: (notifError as any)?.code ?? null,
+          status: (notifError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('NOTIFICATION_DB_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    // ── Insert recipient row ──────────────────────────────────────────
+    const recipientPayload = {
+      notification_id: notification.notification_id,
+      profile_id: profileId,
+      institute_id: instituteId,
+    };
+
+    structuredLog('RECIPIENT_INSERT_START', {
+      eventType,
+      profileId,
+      payload: recipientPayload,
+    });
+
+    const { error: recipientError } = await client
+      .from('notification_recipients')
+      .insert(recipientPayload);
+
+    if (recipientError) {
+      // Recipient insert failure should not leave orphan notification.
+      // Since this is a non-critical operation and the purchase has
+      // already succeeded, we log and continue.
+      structuredLog('RECIPIENT_INSERT_FAILED', {
+        eventType,
+        profileId,
+        notification_id: notification.notification_id,
+        error: {
+          message: recipientError.message,
+          details: (recipientError as any)?.details ?? null,
+          hint: (recipientError as any)?.hint ?? null,
+          code: (recipientError as any)?.code ?? null,
+          status: (recipientError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('RECIPIENT_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    structuredLog('NOTIFICATION_FLOW_COMPLETE', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      notificationId: notification.notification_id,
+      recipientCreated: true,
+    });
+
+    return { created: true, skipped: false };
+  } catch (err) {
+    // Catch-all: never let notification creation throw.
+    structuredLog('NOTIFICATION_UNEXPECTED_EXCEPTION', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      message: err instanceof Error ? err.message : 'Unknown error',
+      stack: err instanceof Error ? err.stack : undefined,
+      cause: err instanceof Error && (err as any).cause ? (err as any).cause : undefined,
+    });
+    return { created: false, skipped: false };
+  }
+}
+
+/**
+ * Send a push notification for a successful course purchase.
+ *
+ * Awaited in the purchase flow. Errors are caught and logged via
+ * structuredLog() but NEVER rethrown, ensuring push delivery NEVER
+ * blocks the purchase flow.
+ */
+async function sendCoursePurchasedPushNotification(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  courseId: string,
+): Promise<void> {
+  structuredLog('PUSH_NOTIFICATION_START', {
+    profileId,
+    courseId,
+    notificationType: 'course_purchased',
+    title: 'Course Purchased Successfully',
+  });
+
+  try {
+    const result = await sendPushNotification(supabase, {
+      profileId,
+      title: 'Course Purchased Successfully',
+      body: 'Your payment was successful. You now own this course.',
+      data: {
+        type: 'course_purchased',
+        referenceType: 'course',
+        referenceId: courseId,
+      },
+    });
+
+    if (result.successful > 0) {
+      structuredLog('PUSH_NOTIFICATION_SUCCESS', {
+        profileId,
+        courseId,
+        totalDevices: result.totalDevices,
+        successful: result.successful,
+        failed: result.failed,
+        invalidTokensCount: result.invalidTokens.length,
+      });
+    } else {
+      structuredLog('PUSH_NOTIFICATION_FAILED', {
+        profileId,
+        courseId,
+        totalDevices: result.totalDevices,
+        successful: result.successful,
+        failed: result.failed,
+        invalidTokensCount: result.invalidTokens.length,
+        hint: 'No devices received the notification. This may mean the user has no active device tokens.',
+      });
+    }
+
+    structuredLog('PUSH_NOTIFICATION_SUMMARY', {
+      profileId,
+      courseId,
+      totalDevices: result.totalDevices,
+      successful: result.successful,
+      failed: result.failed,
+      invalidTokensCount: result.invalidTokens.length,
+    });
+  } catch (err) {
+    structuredLog('PUSH_NOTIFICATION_FAILED', {
+      profileId,
+      courseId,
+      error: err instanceof Error ? err.message : 'Unknown error in sendCoursePurchasedPushNotification',
+      stack: err instanceof Error ? err.stack : undefined,
+      context: 'fire_and_forget_catch_all',
+    });
+  }
+}
 
 /**
  * Create a JSON response with standard CORS headers.
@@ -620,6 +915,69 @@ Deno.serve(async (req: Request): Promise<Response> => {
       enrollmentId: existingEnrollment.enrollment_id,
     });
 
+    // ── Ensure notifications exist (idempotent) ────────────────────────
+    // If a previous webhook delivery succeeded for enrollment but failed
+    // before creating notifications, this call creates them now. The
+    // idempotency check inside createCommerceNotification prevents dupes.
+    structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      courseId: body.courseId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['course_purchased', 'course_enrolled'],
+      context: 'existing_enrollment',
+    });
+
+    await createCommerceNotification(serviceClient, {
+      eventType: 'course_purchased',
+      title: 'Course Purchased Successfully',
+      body: 'Your payment was successful. You now own this course.',
+      profileId,
+      instituteId,
+      referenceType: 'course',
+      referenceId: body.courseId,
+    });
+
+    // ── Send push notification (awaited) ─────────────────────────────
+    // After the in-app notification is created, send a push
+    // notification to the user's active devices. We await it so the
+    // Edge Function does not return before push delivery completes.
+    // Errors are caught inside and NEVER propagate to the caller.
+    try {
+      await sendCoursePurchasedPushNotification(
+        serviceClient,
+        profileId,
+        body.courseId,
+      );
+    } catch (error) {
+      structuredLog(
+        'PUSH_NOTIFICATION_FAILED',
+        {
+          error: String(error),
+        },
+        'error',
+      );
+    }
+
+    structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      courseId: body.courseId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['course_enrolled'],
+      context: 'existing_enrollment',
+    });
+
+    await createCommerceNotification(serviceClient, {
+      eventType: 'course_enrolled',
+      title: 'Enrollment Successful',
+      body: 'You have been successfully enrolled. Start learning anytime.',
+      profileId,
+      instituteId,
+      referenceType: 'course',
+      referenceId: body.courseId,
+    });
+
     return jsonResponse({
       success: true,
       studentId,
@@ -709,7 +1067,76 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 11: Return the structured success response
+  // Step 11: Create purchase notifications
+  // ═════════════════════════════════════════════════════════════════════
+  // Create TWO notifications after the entire purchase flow succeeds:
+  //   1. course_purchased — payment confirmation
+  //   2. course_enrolled  — enrollment confirmation
+  //
+  // These are awaited but errors are caught internally. Notification
+  // failure does NOT block the success response because the purchase
+  // is already complete.
+  structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      courseId: body.courseId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['course_purchased'],
+      context: 'main_flow',
+    });
+
+  await createCommerceNotification(serviceClient, {
+      eventType: 'course_purchased',
+      title: 'Course Purchased Successfully',
+      body: 'Your payment was successful. You now own this course.',
+      profileId,
+      instituteId,
+      referenceType: 'course',
+      referenceId: body.courseId,
+    });
+
+  // ── Send push notification (awaited) ─────────────────────────────
+  // After the in-app notification is created, send a push
+  // notification to the user's active devices. We await it so the
+  // Edge Function does not return before push delivery completes.
+  // Errors are caught inside and NEVER propagate to the caller.
+  try {
+    await sendCoursePurchasedPushNotification(
+      serviceClient,
+      profileId,
+      body.courseId,
+    );
+  } catch (error) {
+    structuredLog(
+      'PUSH_NOTIFICATION_FAILED',
+      {
+        error: String(error),
+      },
+      'error',
+    );
+  }
+
+  structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      courseId: body.courseId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['course_enrolled'],
+      context: 'main_flow',
+    });
+
+  await createCommerceNotification(serviceClient, {
+      eventType: 'course_enrolled',
+      title: 'Enrollment Successful',
+      body: 'You have been successfully enrolled. Start learning anytime.',
+      profileId,
+      instituteId,
+      referenceType: 'course',
+      referenceId: body.courseId,
+    });
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 12: Return the structured success response
   // ═════════════════════════════════════════════════════════════════════
   structuredLog('ONBOARDING_COMPLETE', {
     studentId,

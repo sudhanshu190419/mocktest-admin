@@ -102,6 +102,223 @@ interface OrderItemRow {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Create a commerce purchase notification (notification + recipient rows).
+ *
+ * Designed for Phase 1 in-app notifications. Creates a single-row dispatch
+ * (total_recipients = 1) with immediate dispatched_at. Idempotent: checks
+ * for an existing notification_recipients row matching (profile_id,
+ * event_type, reference_id) before inserting.
+ *
+ * @returns An object with `{ created, skipped }` indicating whether the
+ *          notification was created or skipped due to an existing one.
+ *          Errors are logged but NEVER thrown — notification creation must
+ *          NOT block the purchase success response.
+ */
+async function createCommerceNotification(
+  client: any,
+  params: {
+    eventType: string;
+    title: string;
+    body: string;
+    profileId: string;
+    instituteId: string;
+    referenceType: string;
+    referenceId: string;
+  },
+): Promise<{ created: boolean; skipped: boolean }> {
+  const { eventType, title, body, profileId, instituteId, referenceType, referenceId } =
+    params;
+
+  structuredLog('NOTIFICATION_CREATE_START', {
+    eventType,
+    profileId,
+    title,
+    referenceType,
+    referenceId,
+  });
+
+  try {
+    // ── Idempotency check ─────────────────────────────────────────────
+    structuredLog('IDEMPOTENCY_CHECK_START', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+    });
+
+    // Check if a notification_recipients row already exists for this
+    // profile + event_type + reference_id combination. This prevents
+    // duplicate notifications on webhook retry.
+    //
+    // Start from notifications with an inner join to
+    // notification_recipients so that PostgREST correctly applies ALL
+    // filters — event_type, reference_id AND profile_id. The old approach
+    // started from notification_recipients with embedded notifications,
+    // which caused PostgREST to silently drop filters on embedded columns,
+    // producing false-positive idempotency matches.
+    const { data: existing } = await client
+      .from('notifications')
+      .select(`
+        notification_id,
+        event_type,
+        reference_type,
+        reference_id,
+        notification_recipients!inner(recipient_id, profile_id)
+      `)
+      .eq('event_type', eventType)
+      .eq('reference_type', referenceType)
+      .eq('reference_id', referenceId)
+      .eq('notification_recipients.profile_id', profileId)
+      .maybeSingle();
+
+    // Log the complete returned row for troubleshooting idempotency
+    if (existing) {
+      const existingObj = existing as any;
+      structuredLog('IDEMPOTENCY_QUERY_RESULT', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        notification_id: existingObj.notification_id ?? null,
+        event_type: existingObj.event_type ?? null,
+        reference_id: existingObj.reference_id ?? null,
+        recipient_id: existingObj.notification_recipients?.recipient_id ?? null,
+        matched_profile_id: existingObj.notification_recipients?.profile_id ?? null,
+      });
+    } else {
+      structuredLog('IDEMPOTENCY_QUERY_RESULT_EMPTY', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+    }
+
+    if (existing) {
+      structuredLog('NOTIFICATION_ALREADY_EXISTS', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+      return { created: false, skipped: true };
+    }
+
+    // ── Insert notification row ───────────────────────────────────────
+    const insertPayload = {
+      institute_id: instituteId,
+      title,
+      body,
+      channel: 'in_app',
+      event_type: eventType,
+      reference_type: referenceType,
+      reference_id: referenceId,
+      total_recipients: 1,
+    };
+
+    structuredLog('NOTIFICATION_DB_INSERT_START', {
+      eventType,
+      profileId,
+      payload: insertPayload,
+    });
+
+    const { data: notification, error: notifError } = await client
+      .from('notifications')
+      .insert(insertPayload)
+      .select('notification_id')
+      .single();
+
+    if (notifError || !notification) {
+      structuredLog('NOTIFICATION_DB_INSERT_FAILED', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        error: {
+          message: notifError?.message ?? 'Insert returned no data',
+          details: (notifError as any)?.details ?? null,
+          hint: (notifError as any)?.hint ?? null,
+          code: (notifError as any)?.code ?? null,
+          status: (notifError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('NOTIFICATION_DB_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    // ── Insert recipient row ──────────────────────────────────────────
+    const recipientPayload = {
+      notification_id: notification.notification_id,
+      profile_id: profileId,
+      institute_id: instituteId,
+    };
+
+    structuredLog('RECIPIENT_INSERT_START', {
+      eventType,
+      profileId,
+      payload: recipientPayload,
+    });
+
+    const { error: recipientError } = await client
+      .from('notification_recipients')
+      .insert(recipientPayload);
+
+    if (recipientError) {
+      // Recipient insert failure should not leave orphan notification.
+      // Since this is a non-critical operation and the purchase has
+      // already succeeded, we log and continue.
+      structuredLog('RECIPIENT_INSERT_FAILED', {
+        eventType,
+        profileId,
+        notification_id: notification.notification_id,
+        error: {
+          message: recipientError.message,
+          details: (recipientError as any)?.details ?? null,
+          hint: (recipientError as any)?.hint ?? null,
+          code: (recipientError as any)?.code ?? null,
+          status: (recipientError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('RECIPIENT_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    structuredLog('NOTIFICATION_FLOW_COMPLETE', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      notificationId: notification.notification_id,
+      recipientCreated: true,
+    });
+
+    return { created: true, skipped: false };
+  } catch (err) {
+    // Catch-all: never let notification creation throw.
+    structuredLog('NOTIFICATION_UNEXPECTED_EXCEPTION', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      message: err instanceof Error ? err.message : 'Unknown error',
+      stack: err instanceof Error ? err.stack : undefined,
+      cause: err instanceof Error && (err as any).cause ? (err as any).cause : undefined,
+    });
+    return { created: false, skipped: false };
+  }
+}
+
+/**
  * Create a JSON response with standard CORS headers.
  */
 function jsonResponse(
@@ -638,6 +855,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
       studentId,
     });
 
+    // ── Ensure notifications exist (idempotent) ────────────────────────
+    // If a previous webhook delivery succeeded for purchase but failed
+    // before creating notifications, this call creates them now.
+    structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      packageId: body.packageId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['pyq_purchased'],
+      context: 'existing_purchase',
+    });
+
+    await createCommerceNotification(serviceClient, {
+      eventType: 'pyq_purchased',
+      title: 'PYQ Package Purchased',
+      body: 'Your payment was successful. Your PYQ package is ready.',
+      profileId,
+      instituteId,
+      referenceType: 'pyq_package',
+      referenceId: body.packageId,
+    });
+
+    structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      packageId: body.packageId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['pyq_access_granted'],
+      context: 'existing_purchase',
+    });
+
+    await createCommerceNotification(serviceClient, {
+      eventType: 'pyq_access_granted',
+      title: 'PYQ Access Granted',
+      body: 'You can now start practicing your purchased PYQ package.',
+      profileId,
+      instituteId,
+      referenceType: 'pyq_package',
+      referenceId: body.packageId,
+    });
+
     // Idempotent: already purchased, return success.
     return jsonResponse({
       success: true,
@@ -774,6 +1032,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
           });
         }
 
+        // ── Create notifications (concurrent recovery path) ────────────
+        structuredLog('NOTIFICATION_FLOW_START', {
+          profileId,
+          studentId,
+          packageId: body.packageId,
+          orderId: body.orderId ?? null,
+          eventTypes: ['pyq_purchased'],
+          context: 'concurrent_recovery',
+        });
+
+        await createCommerceNotification(serviceClient, {
+          eventType: 'pyq_purchased',
+          title: 'PYQ Package Purchased',
+          body: 'Your payment was successful. Your PYQ package is ready.',
+          profileId,
+          instituteId,
+          referenceType: 'pyq_package',
+          referenceId: body.packageId,
+        });
+
+        structuredLog('NOTIFICATION_FLOW_START', {
+          profileId,
+          studentId,
+          packageId: body.packageId,
+          orderId: body.orderId ?? null,
+          eventTypes: ['pyq_access_granted'],
+          context: 'concurrent_recovery',
+        });
+
+        await createCommerceNotification(serviceClient, {
+          eventType: 'pyq_access_granted',
+          title: 'PYQ Access Granted',
+          body: 'You can now start practicing your purchased PYQ package.',
+          profileId,
+          instituteId,
+          referenceType: 'pyq_package',
+          referenceId: body.packageId,
+        });
+
         structuredLog('ONBOARDING_COMPLETE', {
           studentId,
           purchaseId,
@@ -843,7 +1140,53 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 12: Return the structured success response
+  // Step 12: Create purchase notifications
+  // ═════════════════════════════════════════════════════════════════════
+  // Create TWO notifications after the entire purchase flow succeeds:
+  //   1. pyq_purchased — payment confirmation
+  //   2. pyq_access_granted — access grant confirmation
+  //  // These are fire-and-forget: notification failure does NOT block the
+  // success response because the purchase is already complete.
+  structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      packageId: body.packageId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['pyq_purchased'],
+      context: 'main_flow',
+    });
+
+  await createCommerceNotification(serviceClient, {
+      eventType: 'pyq_purchased',
+      title: 'PYQ Package Purchased',
+      body: 'Your payment was successful. Your PYQ package is ready.',
+      profileId,
+      instituteId,
+      referenceType: 'pyq_package',
+      referenceId: body.packageId,
+    });
+
+  structuredLog('NOTIFICATION_FLOW_START', {
+      profileId,
+      studentId,
+      packageId: body.packageId,
+      orderId: body.orderId ?? null,
+      eventTypes: ['pyq_access_granted'],
+      context: 'main_flow',
+    });
+
+  await createCommerceNotification(serviceClient, {
+      eventType: 'pyq_access_granted',
+      title: 'PYQ Access Granted',
+      body: 'You can now start practicing your purchased PYQ package.',
+      profileId,
+      instituteId,
+      referenceType: 'pyq_package',
+      referenceId: body.packageId,
+    });
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 13: Return the structured success response
   // ═════════════════════════════════════════════════════════════════════
   structuredLog('ONBOARDING_COMPLETE', {
     studentId,

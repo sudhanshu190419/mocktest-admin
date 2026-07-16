@@ -356,6 +356,90 @@ export interface NotificationDashboardStats {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Audience Model (shared permissions system)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Audience type for notification sending.
+ *
+ * - `all_users`: Everyone in the institute
+ * - `students`: All students
+ * - `teachers`: All teachers
+ * - `batch`: Specific batch (requires batchId)
+ * - `specific_students`: Specific student profile IDs (requires recipientIds)
+ * - `specific_teachers`: Specific teacher profile IDs (requires recipientIds)
+ */
+export type NotificationAudienceType =
+  | 'all_users'
+  | 'students'
+  | 'teachers'
+  | 'batch'
+  | 'specific_students'
+  | 'specific_teachers';
+
+/**
+ * An audience descriptor for creating a notification.
+ * Resolved to recipient profile IDs before sending.
+ */
+export interface NotificationAudience {
+  /** Which audience category to target. */
+  type: NotificationAudienceType;
+  /** Batch ID if type is 'batch'. */
+  batchId?: string;
+  /** Specific profile IDs if type is 'specific_students' or 'specific_teachers'. */
+  recipientIds?: string[];
+}
+
+/**
+ * Per-role permission model defining which audiences a role can target.
+ */
+export interface RoleNotificationPermissions {
+  /** Audiences this role can send to. */
+  allowedAudiences: NotificationAudienceType[];
+  /** Whether this role can send push notifications. */
+  canSendPush: boolean;
+  /** Whether this role can send to all users. */
+  canSendToAll: boolean;
+  /** Whether this role can delete notifications. */
+  canDelete: boolean;
+  /** Whether this role can send to specific batches. */
+  canSendToBatch: boolean;
+}
+
+/**
+ * Input for creating a notification with audience and optional push.
+ */
+export interface CreateAudienceNotificationInput {
+  instituteId: string;
+  title: string;
+  body: string;
+  eventType: NotificationType;
+  priority?: NotificationPriority;
+  channel?: NotificationChannel;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  triggeredBy?: string | null;
+  /** The audience to send to. Resolved to recipient IDs internally. */
+  audience: NotificationAudience;
+  /** Whether to also send push notifications via FCM. */
+  sendPush?: boolean;
+}
+
+/**
+ * Result of sending a notification with optional push.
+ */
+export interface SendNotificationResult {
+  notificationId: string;
+  recipientCount: number;
+  pushSent: boolean;
+  pushResults?: {
+    successful: number;
+    failed: number;
+    totalDevices: number;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Notification Template (for reference/admin use)
 // ═══════════════════════════════════════════════════════════════════════════
 

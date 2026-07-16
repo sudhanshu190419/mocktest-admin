@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { teacherService } from '@/services/teacherService';
+import { supabase } from '@/config/supabase';
 import { useNotificationPermissions, AUDIENCE_LABELS } from '@/hooks/notification/useNotificationPermissions';
 import { useSendAudienceNotification } from '@/hooks/notification/useSendNotification';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -18,21 +18,18 @@ const PRIORITIES: { value: NotificationPriority; label: string; color: string }[
   { value: 'critical', label: 'Critical', color: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400' },
 ];
 
-export default function TeacherCreateNotificationPage() {
+export default function AdminCreateNotificationPage() {
   const router = useRouter();
-  const { teacherProfile, instituteId, user } = useAuth();
-  const teacherId = teacherProfile?.id ?? '';
-  const role = 'teacher';
+  const { user, instituteId, teacherProfile } = useAuth();
+  const role = (teacherProfile?.role as 'admin' | 'teacher') ?? 'admin';
   const { allowedAudiences, canSendPush } = useNotificationPermissions(role);
 
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [priority, setPriority] = useState<NotificationPriority>('normal');
-  const [audienceType, setAudienceType] = useState<NotificationAudienceType>('batch');
+  const [audienceType, setAudienceType] = useState<NotificationAudienceType>('students');
   const [selectedBatch, setSelectedBatch] = useState('');
   const [sendPush, setSendPush] = useState(false);
-
-  // If teacher has no assigned batches, show empty state
   const [scheduleMode, setScheduleMode] = useState<'immediate' | 'scheduled'>('immediate');
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
@@ -40,11 +37,18 @@ export default function TeacherCreateNotificationPage() {
 
   const sendNotif = useSendAudienceNotification();
 
-  // Fetch batches assigned to this teacher only
+  // Fetch batches for batch audience
   const { data: batches } = useQuery({
-    queryKey: ['teacher', 'batches', teacherId],
-    queryFn: () => teacherService.getAssignedBatches(teacherId),
-    enabled: !!teacherId,
+    queryKey: ['admin', 'batches', instituteId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('batches')
+        .select('batch_id, batch_name')
+        .eq('institute_id', instituteId)
+        .order('batch_name');
+      return data ?? [];
+    },
+    enabled: !!instituteId && audienceType === 'batch',
   });
 
   const validate = useCallback((): boolean => {
@@ -87,13 +91,13 @@ export default function TeacherCreateNotificationPage() {
       await sendNotif.mutateAsync({
         input: payload,
         userRole: role,
-        teacherId: user?.id,
+        teacherId: role === 'teacher' ? user?.id : undefined,
       });
-      router.push('/teacher/notifications');
+      router.push('/admin/notifications');
     } catch (err) {
       setErrors({ submit: (err as Error)?.message ?? 'Failed to create notification' });
     }
-  }, [validate, instituteId, title, message, priority, audienceType, selectedBatch, sendPush, canSendPush, scheduleMode, sendNotif, router, user]);
+  }, [validate, instituteId, title, message, priority, audienceType, selectedBatch, sendPush, canSendPush, scheduleMode, sendNotif, router, user, role]);
 
   const isPending = sendNotif.isPending;
 
@@ -101,9 +105,9 @@ export default function TeacherCreateNotificationPage() {
     <div>
       <PageHeader
         title="Create Notification"
-        description="Send an announcement or notification to students"
+        description="Send a notification or announcement to your audience"
         breadcrumbs={[
-          { label: 'Notifications', href: '/teacher/notifications' },
+          { label: 'Notifications', href: '/admin/notifications' },
           { label: 'Create' },
         ]}
       />
@@ -166,14 +170,13 @@ export default function TeacherCreateNotificationPage() {
             </div>
           </div>
 
-          {/* Target Audience — Teacher can only target assigned batches */}
+          {/* Target Audience */}
           <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
             <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Target Audience</h3>
-            <p className="mb-3 text-[10px] text-gray-400">You can only send notifications to students in your assigned batches.</p>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {allowedAudiences.map((type) => {
                 const info = AUDIENCE_LABELS[type];
-                const isComingSoon = type === 'specific_students';
+                const isComingSoon = type === 'specific_students' || type === 'specific_teachers';
                 return (
                   <button
                     key={type}
@@ -201,11 +204,11 @@ export default function TeacherCreateNotificationPage() {
                 <select
                   value={selectedBatch}
                   onChange={(e) => setSelectedBatch(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select a batch...</option>
-                  {batches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                  {batches.map((b: { batch_id: string; batch_name: string }) => (
+                    <option key={b.batch_id} value={b.batch_id}>{b.batch_name}</option>
                   ))}
                 </select>
               )}
@@ -214,7 +217,7 @@ export default function TeacherCreateNotificationPage() {
           </div>
         </div>
 
-        {/* Push Notification Toggle — Teacher can send push to their batches */}
+        {/* Push Notification Toggle */}
         {canSendPush && (
           <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
             <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Delivery</h3>
@@ -227,7 +230,7 @@ export default function TeacherCreateNotificationPage() {
               />
               <div>
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Also send as Push Notification (FCM)</p>
-                <p className="text-xs text-gray-400">Students will receive a push notification on their mobile devices</p>
+                <p className="text-xs text-gray-400">Recipients will receive a push notification on their mobile devices</p>
               </div>
             </label>
           </div>
@@ -306,6 +309,7 @@ export default function TeacherCreateNotificationPage() {
                 <span>📢 Announcement</span>
                 <span>·</span>
                 <span>{AUDIENCE_LABELS[audienceType]?.label ?? 'Selected audience'}</span>
+                {sendPush && <><span>·</span><span>📱 Push</span></>}
                 <span>·</span>
                 <span>{scheduleMode === 'immediate' ? 'Send immediately' : `Scheduled for ${scheduledDate || '...'}`}</span>
               </div>
@@ -329,7 +333,7 @@ export default function TeacherCreateNotificationPage() {
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
-            onClick={() => router.push('/teacher/notifications')}
+            onClick={() => router.push('/admin/notifications')}
             className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             Cancel

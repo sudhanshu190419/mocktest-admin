@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStudentDetail } from '@/hooks/admin/useStudentLifecycle';
+import { useStudentCommerce } from '@/hooks/admin/useCommerce';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -23,6 +24,7 @@ import {
   Hourglass,
   XCircle,
   BookOpen,
+  ShoppingCart,
 } from '@phosphor-icons/react';
 import type { AccountStatus } from '@/types/auth';
 
@@ -361,6 +363,9 @@ export default function StudentDetailPage() {
     );
   }
 
+  // ── Student Commerce Data ──────────────────────────────────────────
+  const { data: commerceData, isLoading: commerceLoading } = useStudentCommerce(profileId);
+
   // ═════════════════════════════════════════════════════════════════════
   //  Render — Student Data Loaded
   // ═════════════════════════════════════════════════════════════════════
@@ -575,6 +580,16 @@ export default function StudentDetailPage() {
                 }
               />
               <InfoRow
+                icon={<IdentificationCard size={18} />}
+                label="Student ID"
+                value={<span className="font-mono text-xs">{student.studentId ?? '—'}</span>}
+              />
+              <InfoRow
+                icon={<User size={18} />}
+                label="Profile ID"
+                value={<span className="font-mono text-xs">{profileId.slice(0, 8)}...</span>}
+              />
+              <InfoRow
                 icon={<CheckCircle size={18} />}
                 label="Account Status"
                 value={
@@ -613,6 +628,171 @@ export default function StudentDetailPage() {
                 Status transition history will appear here when admin actions are performed.
               </p>
             </div>
+          </div>
+
+          {/* Commerce Section */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Commerce
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">Purchases and order history</p>
+            {commerceLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : commerceData ? (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {/* Purchased Courses */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                      Purchased Courses
+                    </span>
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      {commerceData.purchasedCourses.length}
+                    </span>
+                  </div>
+                  {commerceData.purchasedCourses.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No course purchases</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {commerceData.purchasedCourses.slice(0, 3).map((c) => (
+                        <div key={c.enrollmentId} className="flex items-center justify-between text-xs">
+                          <span className="truncate max-w-[140px] text-gray-700 dark:text-gray-300">
+                            {c.courseTitle ?? 'Unknown'}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusBadge status={c.isActive ? 'active' : 'inactive'} showDot={true} />
+                            <span className="text-[10px] text-gray-400">{formatDate(c.enrolledAt)}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {commerceData.purchasedCourses.length > 3 && (
+                        <p className="text-[10px] text-blue-600">
+                          +{commerceData.purchasedCourses.length - 3} more
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Purchased PYQ Packages */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                      PYQ Packages
+                    </span>
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      {commerceData.purchasedPyqPackages.length}
+                    </span>
+                  </div>
+                  {commerceData.purchasedPyqPackages.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No PYQ purchases</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {commerceData.purchasedPyqPackages.slice(0, 3).map((p) => (
+                        <div key={p.purchaseId} className="flex items-center justify-between text-xs">
+                          <span className="truncate max-w-[140px] text-gray-700 dark:text-gray-300">
+                            {p.packageName ?? 'Unknown'}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusBadge status={p.isActive ? 'active' : 'inactive'} showDot={true} />
+                            <span className="text-[10px] text-gray-400">{formatDate(p.purchasedAt)}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {commerceData.purchasedPyqPackages.length > 3 && (
+                        <p className="text-[10px] text-blue-600">
+                          +{commerceData.purchasedPyqPackages.length - 3} more
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Orders & Payments Summary */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                      Orders
+                    </span>
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      {commerceData.orderHistory.length}
+                    </span>
+                  </div>
+                  {commerceData.orderHistory.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No orders</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {commerceData.orderHistory.slice(0, 3).map((o) => (
+                        <div key={o.orderId} className="flex items-center justify-between text-xs">
+                          <span className="font-mono text-[10px] text-gray-500">
+                            {o.orderId.slice(0, 8)}...
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusBadge status={o.status} showDot={true} />
+                            <span className="text-xs font-medium text-gray-900">
+                              ₹{o.totalAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      <Link
+                        href={`/admin/commerce/orders`}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700 mt-1"
+                      >
+                        View all orders →
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payments Summary */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                      Payments
+                    </span>
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      {commerceData.paymentHistory.length}
+                    </span>
+                  </div>
+                  {commerceData.paymentHistory.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No payments</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {commerceData.paymentHistory.slice(0, 3).map((p) => (
+                        <div key={p.paymentId} className="flex items-center justify-between text-xs">
+                          <span className="font-mono text-[10px] text-gray-500">
+                            {p.paymentId.slice(0, 8)}...
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusBadge status={p.status} showDot={true} />
+                            <span className="text-xs font-medium text-gray-900">
+                              ₹{p.amount.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      <Link
+                        href={`/admin/commerce/payments`}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700 mt-1"
+                      >
+                        View all payments →
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<ShoppingCart size={24} weight="thin" />}
+                title="No commerce data"
+                description="Commerce data will appear here."
+              />
+            )}
           </div>
         </div>
       </div>

@@ -63,6 +63,10 @@ export interface DashboardData {
   stats: DashboardStats;
   recentRegistrations: RecentRegistration[];
   upcomingClasses: UpcomingLiveClass[];
+  commerce?: {
+    totalOrders: number;
+    totalRevenue: number;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -196,7 +200,25 @@ export const adminDashboardService = {
         }));
       }
 
-      // ── Monthly Revenue (TODO: backend endpoint not yet available) ──
+      // ── Commerce Metrics ─────────────────────────────────────────────
+      let totalOrders = 0;
+      let totalRevenue = 0;
+
+      try {
+        const { data: ordersData, count: ordersCount } = await supabase
+          .from('orders')
+          .select('total_amount, status', { count: 'exact' })
+          .match(instituteFilter);
+
+        if (ordersData) {
+          totalOrders = ordersCount ?? ordersData.length;
+          totalRevenue = ordersData
+            .filter((o: any) => o.status === 'confirmed')
+            .reduce((sum: number, o: any) => sum + parseFloat(o.total_amount ?? 0), 0);
+        }
+      } catch (_err) {
+        // Commerce data may not be available yet
+      }
 
       return {
         success: true,
@@ -209,10 +231,14 @@ export const adminDashboardService = {
             pendingQuestionApprovals,
             pendingContentApprovals,
             pendingMockTestApprovals,
-            monthlyRevenue: null, // TODO: implement when orders/payments service is available
+            monthlyRevenue: totalRevenue > 0 ? totalRevenue : null,
           },
           recentRegistrations,
           upcomingClasses,
+          commerce: {
+            totalOrders,
+            totalRevenue,
+          },
         },
       };
     } catch (err) {
