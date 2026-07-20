@@ -43,9 +43,9 @@ export default function AdminCreateNotificationPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('batches')
-        .select('batch_id, batch_name')
+        .select('batch_id, name')
         .eq('institute_id', instituteId)
-        .order('batch_name');
+        .order('name');
       return data ?? [];
     },
     enabled: !!instituteId && audienceType === 'batch',
@@ -207,8 +207,8 @@ export default function AdminCreateNotificationPage() {
                   className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select a batch...</option>
-                  {batches.map((b: { batch_id: string; batch_name: string }) => (
-                    <option key={b.batch_id} value={b.batch_id}>{b.batch_name}</option>
+                  {batches.map((b: { batch_id: string; name: string }) => (
+                    <option key={b.batch_id} value={b.batch_id}>{b.name}</option>
                   ))}
                 </select>
               )}

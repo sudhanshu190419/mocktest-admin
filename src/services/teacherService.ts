@@ -35,7 +35,7 @@ export const teacherService = {
           const b = item.batches || {};
           return {
             id: b.batch_id || `b-${idx}`,
-            name: b.batch_name || 'General Batch',
+            name: b.name || 'General Batch',
             code: b.batch_code || 'B-GEN',
             stream: b.stream || 'General Science',
             studentsCount: b.max_students || 0,
@@ -67,6 +67,118 @@ export const teacherService = {
     }
   },
 
+
+  /**
+   * Fetch subjects the teacher is authorized to teach (via teacher_specializations).
+   * Used to populate the subject dropdown in the Start Live Class dialog.
+   */
+  async getAuthorizedSubjects(teacherId: string): Promise<{ subject_id: string; name: string; code: string }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('teacher_specializations')
+        .select('subject_id, subjects(name, code)')
+        .eq('teacher_id', teacherId);
+
+      if (error || !data) return [];
+
+      return data.map((item: any) => ({
+        subject_id: item.subject_id,
+        name: item.subjects?.name || 'Unknown Subject',
+        code: item.subjects?.code || '',
+      }));
+    } catch (err) {
+      console.error('Error fetching authorized subjects:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch chapters for a given subject (for the chapter dropdown).
+   */
+  async getChaptersForSubject(subjectId: string): Promise<{ chapter_id: string; name: string }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('chapters')
+        .select('chapter_id, name')
+        .eq('subject_id', subjectId)
+        .order('display_order', { ascending: true });
+
+      if (error || !data) return [];
+      return data;
+    } catch (err) {
+      console.error('Error fetching chapters:', err);
+      return [];
+    }
+  },
+  /**
+   * Get the first authorized subject ID for a teacher.
+   * Used as a fallback when no subject is provided (subject selection was removed
+   * from the UI because admin subject assignment is not yet implemented).
+   */
+  async getFirstAuthorizedSubjectId(_teacherId: string): Promise<string> {
+    // 1. Try teacher_specializations first (preferred, but may be empty
+    //    because there is no admin UI to assign subjects to teachers).
+    const subjects = await this.getAuthorizedSubjects(_teacherId);
+    if (subjects.length > 0) return subjects[0].subject_id;
+
+    // 2. Fallback: query the subjects table directly.
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('subject_id')
+      .limit(1);
+
+    if (!error && data && data.length > 0) return data[0].subject_id;
+
+    throw new Error('No subjects found in the system. Contact admin.');
+  },
+
+  /**
+   * Validate that a batch is assigned to the teacher.
+   * Returns true/false — does not throw.
+   */
+  async validateBatchForTeacher(teacherId: string, batchId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('batch_teachers')
+        .select('batch_id')
+        .eq('teacher_id', teacherId)
+        .eq('batch_id', batchId)
+        .limit(1);
+      return !error && !!data && data.length > 0;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Get the teacher's institute_id (from profiles) and teacher_id (from teacher_details)
+   * using the authenticated user's profile_id.
+   */
+  async getTeacherInstituteAndTeacherId(authUserId: string): Promise<{ institute_id: string; teacher_id: string }> {
+    // institute_id comes from profiles (teacher_details does NOT have it)
+    const { data: profileRow, error: profileErr } = await supabase
+      .from('profiles')
+      .select('institute_id')
+      .eq('profile_id', authUserId)
+      .single();
+
+    if (profileErr || !profileRow) {
+      throw new Error('Could not find teacher profile. Ensure profiles row exists for this user.');
+    }
+
+    // teacher_id comes from teacher_details, queried by profile_id
+    const { data: tRow, error: tErr } = await supabase
+      .from('teacher_details')
+      .select('teacher_id')
+      .eq('profile_id', authUserId)
+      .single();
+
+    if (tErr || !tRow) {
+      throw new Error('Could not find teacher record. Ensure teacher_details exists for this user.');
+    }
+
+    return { institute_id: profileRow.institute_id, teacher_id: tRow.teacher_id };
+  },
   /**
    * Fetch student roster and performance for a specific batch.
    * Queries Domain 01 (student_details), Domain 04 (attendance), and Domain 14 (student_doubts).
@@ -165,149 +277,186 @@ export const teacherService = {
   /**
    * Get or create a live class for demo/broadcast purposes (Domain 04: live_classes).
    */
-  async getOrCreateActiveLiveClass(teacherId: string): Promise<string> {
-    try {
-      // 1. Check if there is an existing live class that is scheduled or live
-      const { data: existing, error } = await supabase
-        .from('live_classes')
-        .select('class_id')
-        .eq('teacher_id', teacherId)
-        .in('status', ['scheduled', 'live'])
-        .limit(1);
-
-      if (!error && existing && existing.length > 0) {
-        return existing[0].class_id;
-      }
-
-      // 2. If not, let's create a new class. We need institute_id and subject_id.
-      const { data: tDetails } = await supabase
-        .from('teacher_details')
-        .select('institute_id')
-        .eq('teacher_id', teacherId)
-        .single();
-
-      const instId = tDetails?.institute_id || '00000000-0000-0000-0000-000000000000';
-
-      // Get first subject
-      const { data: subj } = await supabase
-        .from('subjects')
-        .select('subject_id')
-        .limit(1);
-
-      const subjId = subj && subj.length > 0 ? subj[0].subject_id : '00000000-0000-0000-0000-000000000000';
-
-      // Insert new live class
-      const newClassId = crypto.randomUUID ? crypto.randomUUID() : 'c-' + Math.random().toString(36).substring(2, 9);
-      const { error: insertErr } = await supabase
-        .from('live_classes')
-        .insert([{
-          class_id: newClassId,
-          institute_id: instId,
-          teacher_id: teacherId,
-          subject_id: subjId,
-          title: 'Rotational Dynamics: Rigid Body Collisions & Angular Momentum',
-          scheduled_at: new Date().toISOString(),
-          duration_min: 90,
-          status: 'scheduled'
-        }]);
-
-      if (insertErr) {
-        console.warn('Could not insert fallback live class in database:', insertErr.message);
-        return 'fallback-demo-class-id';
-      }
-
-      return newClassId;
-    } catch (err) {
-      console.error('Error in getOrCreateActiveLiveClass:', err);
-      return 'fallback-demo-class-id';
+  async getOrCreateActiveLiveClass(
+    teacherId: string,
+    subjectId: string,
+    batchId: string,
+    chapterId: string | null,
+    title: string
+  ): Promise<{ classId: string; title: string; institute_id: string }> {
+    // 0. Get the authenticated session and user ID.
+    //    We use session.user.id (which equals auth.uid() in RLS) for
+    //    database lookups so the query filter matches the RLS policy
+    //    column (profile_id) exactly, avoiding silent row filtering.
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !session?.user?.id) {
+      throw new Error('No authenticated session. Please log in again.');
     }
+    const authUserId = session.user.id;
+
+
+    // Best-effort token refresh: if the cached access token is expired,
+    // refresh it so subsequent REST queries don't return 401.
+    // We capture authUserId BEFORE the refresh so it's available even
+    // if the refresh call temporarily clears the auth state.
+    if (session.expires_at && Date.now() / 1000 >= session.expires_at) {
+      const { error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr) {
+        console.warn('[LiveClass] Session refresh failed:', refreshErr.message);
+      }
+    }
+
+    // 1. Validate batch assignment (server-side check)
+    const batchValid = await this.validateBatchForTeacher(teacherId, batchId);
+    if (!batchValid) {
+      throw new Error('Selected batch is not assigned to this teacher.');
+    }
+
+    // 1b. If no subjectId was provided, auto-select the first authorized subject.
+    //     (Subject selection was removed from the Start Live dialog because there
+    //      is no admin UI to populate teacher_specializations.)
+    const effectiveSubjectId = subjectId || await this.getFirstAuthorizedSubjectId(teacherId);
+
+    // 2. Check if there is an existing live class that is scheduled or live
+    const { data: existing, error } = await supabase
+      .from('live_classes')
+      .select('class_id, title, institute_id')
+      .eq('teacher_id', teacherId)
+      .in('status', ['scheduled', 'live'])
+      .limit(1);
+
+    if (error) {
+      throw new Error(`Failed to check existing live classes: ${error.message}`);
+    }
+    if (existing && existing.length > 0) {
+      return {
+        classId: existing[0].class_id,
+        title: existing[0].title,
+        institute_id: existing[0].institute_id,
+      };
+    }
+
+    // 3. Get institute_id and teacher_id from the database (uses helper method)
+    const { institute_id, teacher_id } = await this.getTeacherInstituteAndTeacherId(authUserId);
+
+    // 4. Subject, title, and batch come from the teacher via the StartLive dialog.
+    //    chapterId is optional (null if skipped by teacher).
+
+    // 5. Insert new live class (class_id auto-generated by DB default gen_random_uuid())
+    const { data: inserted, error: insertErr } = await supabase
+      .from('live_classes')
+      .insert([{
+        institute_id,
+        teacher_id,
+        subject_id: effectiveSubjectId,
+        title: title,
+        scheduled_at: new Date().toISOString(),
+        chapter_id: chapterId,
+        duration_min: 90,
+        status: 'scheduled'
+      }])
+      .select('class_id, title')
+      .single();
+
+    if (insertErr || !inserted) {
+      throw new Error(`Failed to create live class: ${insertErr?.message || 'Unknown error'}`);
+    }
+
+    // 5b. Link the class to the selected batch in live_class_batch
+    const { error: batchLinkErr } = await supabase
+      .from('live_class_batch')
+      .insert([{
+        class_id: inserted.class_id,
+        batch_id: batchId,
+      }]);
+
+    if (batchLinkErr) {
+      console.error('[LiveClass] Failed to link batch:', batchLinkErr.message);
+    }
+
+    return { classId: inserted.class_id, title: inserted.title, institute_id };
   },
 
   /**
    * Start a live class session (updates status to 'live') (Domain 04: live_classes).
    */
-  async startLiveClass(classId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('live_classes')
-        .update({ status: 'live', updated_at: new Date().toISOString() })
-        .eq('class_id', classId);
+  async startLiveClass(classId: string, profileId: string, roomName: string, instituteId: string): Promise<void> {
+    // 1. Update live_classes status to 'live' and persist room_name
+    const { error: updateErr } = await supabase
+      .from('live_classes')
+      .update({
+        status: 'live',
+        room_name: roomName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('class_id', classId);
 
-      if (error) {
-        console.warn('Could not start live class in backend:', error.message);
-        return false;
-      }
+    if (updateErr) {
+      throw new Error(`Failed to start live class: ${updateErr.message}`);
+    }
 
-      // Try inserting into live_sessions table if possible (will handle RLS failures gracefully)
-      try {
-        const { data: sessionData, error: sessionErr } = await supabase
-          .from('live_sessions')
-          .insert([{
-            class_id: classId,
-            provider: 'webrtc-simulation',
-            status: 'live',
-            started_at: new Date().toISOString(),
-            room_url: window.location.href
-          }])
-          .select()
-          .single();
+    // 2. Create live_sessions row with institute_id (reused from live_classes, not re-fetched from profiles)
+    const { data: sessionData, error: sessionErr } = await supabase
+      .from('live_sessions')
+      .insert([{
+        class_id: classId,
+        institute_id: instituteId,
+        provider: 'livekit',
+        status: 'live',
+        started_at: new Date().toISOString(),
+        room_url: window.location.href,
+      }])
+      .select()
+      .single();
 
-        if (sessionErr) {
-          console.warn('Could not insert session (likely RLS restrictions), falling back:', sessionErr.message);
-        } else {
-          // Log a dummy session participant representing teacher host
-          await supabase.from('session_participants').insert([{
-            session_id: sessionData.session_id,
-            class_id: classId,
-            student_id: '00000000-0000-0000-0000-000000000000',
-            joined_at: new Date().toISOString(),
-            device_type: 'desktop-browser'
-          }]);
-        }
-      } catch (err) {
-        console.warn('Live session RLS bypass or fallback active:', err);
-      }
+    if (sessionErr || !sessionData) {
+      throw new Error(`Failed to create live session: ${sessionErr?.message || 'Unknown error'}`);
+    }
 
-      return true;
-    } catch (err) {
-      console.error('Error starting live class:', err);
-      return false;
+    // 3. Log teacher as participant in session_participants
+    const { error: participantErr } = await supabase
+      .from('session_participants')
+      .insert([{
+        session_id: sessionData.session_id,
+        class_id: classId,
+        profile_id: profileId,
+        joined_at: new Date().toISOString(),
+        device_type: 'desktop-browser',
+      }]);
+
+    if (participantErr) {
+      console.error('[LiveClass] Failed to log teacher participant:', participantErr.message);
+      // Non-critical — session already created, log and continue
     }
   },
 
   /**
    * End a live class session (updates status to 'completed') (Domain 04: live_classes).
    */
-  async endLiveClass(classId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('live_classes')
-        .update({ status: 'completed', updated_at: new Date().toISOString() })
-        .eq('class_id', classId);
+  async endLiveClass(classId: string): Promise<void> {
+    // 1. Update live_classes status to 'completed'
+    const { error: updateErr } = await supabase
+      .from('live_classes')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('class_id', classId);
 
-      if (error) {
-        console.warn('Could not end live class in backend:', error.message);
-        return false;
-      }
+    if (updateErr) {
+      throw new Error(`Failed to end live class: ${updateErr.message}`);
+    }
 
-      // Try updating live_sessions record if possible (will handle RLS failures gracefully)
-      try {
-        await supabase
-          .from('live_sessions')
-          .update({
-            status: 'ended',
-            ended_at: new Date().toISOString(),
-            ended_reason: 'host_ended'
-          })
-          .eq('class_id', classId);
-      } catch (err) {
-        console.warn('Live session RLS bypass or fallback active:', err);
-      }
+    // 2. Update live_sessions status to 'ended'
+    const { error: sessionErr } = await supabase
+      .from('live_sessions')
+      .update({
+        status: 'ended',
+        ended_at: new Date().toISOString(),
+        ended_reason: 'host_ended',
+      })
+      .eq('class_id', classId);
 
-      return true;
-    } catch (err) {
-      console.error('Error ending live class:', err);
-      return false;
+    if (sessionErr) {
+      console.error('[LiveClass] Failed to update live_sessions:', sessionErr.message);
+      // Non-critical — class is already marked completed
     }
   },
 
@@ -665,7 +814,17 @@ export const teacherService = {
       console.error('Error fetching teacher availability:', err);
       return [];
     }
-  }
+  },
+  async getTeacherProfileId(_teacherId: string): Promise<string> {
+    // profile_id equals auth.uid() (the Supabase Auth user ID).
+    // Reading it from the session is faster and avoids RLS filtering issues.
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !session?.user?.id) {
+      throw new Error('No authenticated session. Please log in again.');
+    }
+    return session.user.id;
+  },
+
 };
 
 const parseToISODate = (dateStr: string): string => {
@@ -678,5 +837,6 @@ const parseToISODate = (dateStr: string): string => {
       return d.toISOString().split('T')[0];
     }
   } catch (e) {}
-  return new Date().toISOString().split('T')[0];
+  return new Date().toISOString().split('T')[0];  
+
 };

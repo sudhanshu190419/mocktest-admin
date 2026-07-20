@@ -11,11 +11,11 @@
  *
  * 1. **Profile is the source of truth for roles.**
  *    The `profiles.role` column in PostgreSQL is authoritative. The auth
- *    user's `raw_user_meta_data.role` is NOT used—the service always
+ *    user's `raw_user_meta_data.role` is NOT used�the service always
  *    queries `public.profiles` after authentication.
  *
  * 2. **Profile creation is owned by the database.**
- *    The `on_auth_user_created` trigger (→ `handle_new_user()`) is the
+ *    The `on_auth_user_created` trigger (-> `handle_new_user()`) is the
  *    sole mechanism for inserting into `public.profiles`. The frontend
  *    **never** writes to the profiles table during sign-up.
  *
@@ -31,6 +31,7 @@
 
 import { supabase } from '../config/supabase';
 import { AuthError, PostgrestError } from '@supabase/supabase-js';
+import { getTokenExpirySummary } from '../utils/supabase';
 import type {
   AuthResponse,
   DbProfile,
@@ -43,29 +44,13 @@ import type {
   VerifyOtpInput,
 } from '../types/auth';
 
-// ─── Input Validation Hooks ─────────────────────────────────────────────────
-// These are designed to be seamlessly replaced by Zod schemas.
-// Migration path:
-//   import { z } from 'zod';
-//   const signUpSchema = z.object({ ... });
-//   export function validateSignUpInput(input: SignUpInput): ValidationResult {
-//     const result = signUpSchema.safeParse(input);
-//     return result.success
-//       ? { valid: true }
-//       : { valid: false, error: result.error.issues[0]?.message ?? 'Invalid input' };
-//   }
+// ---- Input Validation Hooks -------------------------------------------------
 
-/**
- * Validates sign-up input fields (phone-based registration).
- *
- * @todo Replace body with Zod schema parsing.
- */
 export function validateSignUpInput(input: SignUpInput): ValidationResult {
   if (!input.phone?.trim()) {
     return { valid: false, error: 'Mobile number is required.' };
   }
 
-  // Basic phone validation: must start with + and contain digits
   const phoneRegex = /^\+[1-9]\d{6,14}$/;
   if (!phoneRegex.test(input.phone.trim())) {
     return {
@@ -89,11 +74,6 @@ export function validateSignUpInput(input: SignUpInput): ValidationResult {
   return { valid: true };
 }
 
-/**
- * Validates sign-in input fields (phone-based login).
- *
- * @todo Replace body with Zod schema parsing.
- */
 export function validateSignInInput(input: SignInInput): ValidationResult {
   if (!input.phone?.trim()) {
     return { valid: false, error: 'Mobile number is required.' };
@@ -106,9 +86,6 @@ export function validateSignInInput(input: SignInInput): ValidationResult {
   return { valid: true };
 }
 
-/**
- * Validates OTP verification input.
- */
 export function validateOtpInput(input: VerifyOtpInput): ValidationResult {
   if (!input.phone?.trim()) {
     return { valid: false, error: 'Phone number is required.' };
@@ -125,17 +102,8 @@ export function validateOtpInput(input: VerifyOtpInput): ValidationResult {
   return { valid: true };
 }
 
-// ─── Database Helpers ───────────────────────────────────────────────────────
+// ---- Database Helpers -------------------------------------------------------
 
-/**
- * Fetches a single profile row from the `profiles` table.
- *
- * Profile creation is handled entirely by the `on_auth_user_created` database
- * trigger. The frontend never inserts into `public.profiles`.
- *
- * @param userId - The `auth.users.id` (matches `profiles.profile_id`).
- * @returns The profile row, or `null` when the row doesn't exist.
- */
 async function fetchProfile(userId: string): Promise<DbProfile | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -144,33 +112,17 @@ async function fetchProfile(userId: string): Promise<DbProfile | null> {
     .single<DbProfile>();
 
   if (error) {
-    // PGRST116 = "The result contains 0 rows" — this is not a real error
     if (error.code === 'PGRST116') {
       return null;
     }
-
-    // All other database errors are unexpected; rethrow to be caught
-    // by the caller's try-catch.
     throw error;
   }
 
   return data;
 }
 
-// ─── Profile Mapping ────────────────────────────────────────────────────────
+// ---- Profile Mapping --------------------------------------------------------
 
-/**
- * Merges a Supabase `User` with an optional `DbProfile` into a `UserProfile`.
- *
- * The DB profile is the **primary source of truth**. Auth metadata is used
- * only as a fallback when the profile has not yet been created by the
- * database trigger (e.g. immediately after sign-up).
- *
- * The `role` falls back to `'student'` when no profile row exists yet.
- * This matches the current database trigger default, which is expected to
- * change to `'user'` in a future migration. For phone-based auth, `email`
- * may be empty.
- */
 function buildUserProfile(
   authUser: {
     id: string;
@@ -200,22 +152,14 @@ function buildUserProfile(
   };
 }
 
-// ─── Error Helpers ──────────────────────────────────────────────────────────
+// ---- Error Helpers ----------------------------------------------------------
 
-/**
- * Safely extracts a human-readable message from any error value.
- *
- * Normalises `AuthError`, `PostgrestError`, and plain `Error` instances
- * into a single string so that callers never need to inspect error types.
- */
 function extractErrorMessage(error: unknown): string {
   if (error instanceof AuthError) {
     return error.message;
   }
 
   if (error instanceof PostgrestError) {
-    // Include the Postgres error code for debugging without leaking details
-    // to the UI.  The message alone is sufficient for most consumers.
     return error.message;
   }
 
@@ -226,28 +170,12 @@ function extractErrorMessage(error: unknown): string {
   return 'An unexpected authentication error occurred.';
 }
 
-// ─── Public API ─────────────────────────────────────────────────────────────
+// ---- Public API -------------------------------------------------------------
 
-/**
- * Register a new user account with phone number and password.
- *
- * Supabase sends an SMS OTP to the provided phone number. The user
- * must verify the OTP via `verifyOtp()` to complete registration.
- *
- * Profile creation is handled entirely by the `on_auth_user_created` database
- * trigger. The frontend never inserts into `public.profiles`.
- *
- * @param input - The sign-up credentials and profile data.
- *
- * @returns `AuthResponse<{ phone: string; password: string }>` — the phone
- *          and password are returned so the UI can pass them to the
- *          OTP verification screen without needing to re-enter them.
- */
 export async function signUp(
   input: SignUpInput,
 ): Promise<AuthResponse<{ phone: string; password: string }>> {
   try {
-    // 1. Validate input ----------------------------------------------------
     const validation = validateSignUpInput(input);
     if (!validation.valid) {
       return { success: false, error: validation.error };
@@ -255,10 +183,6 @@ export async function signUp(
 
     const { phone, password, name } = input;
 
-    // 2. Create auth user --------------------------------------------------
-    // The database trigger (on_auth_user_created → handle_new_user())
-    // automatically creates the profile row after this succeeds.
-    // Role is NOT sent from the frontend — the trigger defaults to 'student'.
     const { data: authData, error: authError } = await supabase.auth.signUp({
       phone,
       password,
@@ -281,18 +205,12 @@ export async function signUp(
       };
     }
 
-    // 3. Return the phone + password so the OTP screen can proceed ---------
     return { success: true, data: { phone, password } };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
-/**
- * Verify an OTP sent via SMS during phone verification or forgot password flow.
- *
- * @param input - The phone number and OTP token.
- */
 export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<UserProfile>> {
   try {
     const validation = validateOtpInput(input);
@@ -319,12 +237,11 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<Use
       };
     }
 
-    // Fetch profile to get the authoritative role
     let profile: DbProfile | null = null;
     try {
       profile = await fetchProfile(data.user.id);
     } catch {
-      // DB query failed — fall through with metadata-derived profile.
+      // DB query failed -- fall through with metadata-derived profile.
     }
 
     const userProfile = buildUserProfile(data.user, profile);
@@ -335,13 +252,6 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<Use
   }
 }
 
-/**
- * Resend the SMS OTP to the user's phone number.
- *
- * This calls `signInWithOtp` which triggers a new OTP to be sent.
- *
- * @param phone - The phone number to resend the OTP to.
- */
 export async function resendOtp(phone: string): Promise<AuthResponse<null>> {
   try {
     const { error } = await supabase.auth.signInWithOtp({
@@ -361,17 +271,8 @@ export async function resendOtp(phone: string): Promise<AuthResponse<null>> {
   }
 }
 
-/**
- * Authenticate an existing user with phone number and password.
- *
- * After authentication, the service fetches the user's profile from the
- * `profiles` table to obtain the authoritative role.
- *
- * @param input - The sign-in credentials.
- */
 export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfile>> {
   try {
-    // 1. Validate input ----------------------------------------------------
     const validation = validateSignInInput(input);
     if (!validation.valid) {
       return { success: false, error: validation.error };
@@ -379,7 +280,6 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
 
     const { phone, password } = input;
 
-    // 2. Authenticate ------------------------------------------------------
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
         phone,
@@ -394,13 +294,12 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
       return { success: false, error: 'Sign-in succeeded but no user data was returned.' };
     }
 
-    // 3. Fetch profile from DB (source of truth for role) ------------------
     let profile: DbProfile | null = null;
 
     try {
       profile = await fetchProfile(authData.user.id);
     } catch {
-      // DB query failed — fall through with metadata-derived profile.
+      // DB query failed -- fall through with metadata-derived profile.
     }
 
     const userProfile = buildUserProfile(authData.user, profile);
@@ -411,14 +310,6 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
   }
 }
 
-/**
- * Update the current user's password.
- *
- * This requires an active session (obtained after OTP verification
- * in the forgot password flow, or after normal login).
- *
- * @param newPassword - The new password to set.
- */
 export async function updatePassword(newPassword: string): Promise<AuthResponse<null>> {
   try {
     if (!newPassword || newPassword.length < 6) {
@@ -439,12 +330,6 @@ export async function updatePassword(newPassword: string): Promise<AuthResponse<
   }
 }
 
-/**
- * Sign out the currently authenticated user.
- *
- * Clears the local session and notifies the Supabase server to
- * invalidate the refresh token.
- */
 export async function signOut(): Promise<AuthResponse<null>> {
   try {
     const { error } = await supabase.auth.signOut();
@@ -459,65 +344,65 @@ export async function signOut(): Promise<AuthResponse<null>> {
   }
 }
 
-/**
- * Fetch the currently authenticated user from the server.
- *
- * Unlike `getSession()`, this method performs a network request to verify
- * the JWT is still valid.  Use this for sensitive operations such as
- * checking auth status on app launch or accessing protected resources.
- *
- * @see getSession for a faster, locally-cached alternative.
- */
 export async function getCurrentUser(): Promise<AuthResponse<UserProfile>> {
+  console.log('[LiveKit Debug] getCurrentUser � fetching authenticated user from server...');
   try {
     const { data, error } = await supabase.auth.getUser();
 
     if (error) {
+      console.error('[LiveKit Debug] getCurrentUser � getUser() failed:', {
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStatus: (error as any)?.status,
+      });
       return { success: false, error: extractErrorMessage(error) };
     }
 
     if (!data.user) {
+      console.warn('[LiveKit Debug] getCurrentUser � getUser() returned no user.');
       return { success: false, error: 'No authenticated user found.' };
     }
 
-    // Fetch profile from DB to get the authoritative role
+    console.log('[LiveKit Debug] getCurrentUser � user found:', {
+      userId: data.user.id,
+      email: data.user.email,
+      phone: data.user.phone,
+    });
+
     let profile: DbProfile | null = null;
 
     try {
       profile = await fetchProfile(data.user.id);
     } catch {
-      // DB query failed — fall through with metadata-derived profile.
+      // DB query failed -- fall through with metadata-derived profile.
     }
 
     const userProfile = buildUserProfile(data.user, profile);
 
     return { success: true, data: userProfile };
   } catch (err) {
+    console.error('[LiveKit Debug] getCurrentUser � unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
-/**
- * Retrieve the current session from the local cache.
- *
- * This is a fast, synchronous-like read that does **not** verify the
- * JWT with the server.  Use it for UI decisions (e.g. "show a loading
- * spinner while we refresh the token") rather than security-critical
- * gates.
- *
- * @see getCurrentUser if you need server-verified auth status.
- */
 export async function getSession(): Promise<AuthResponse<SessionData>> {
+  console.log('[LiveKit Debug] getSession � retrieving session from local cache...');
   try {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) {
+      console.error('[LiveKit Debug] getSession � getSession() failed:', {
+        errorName: error.name,
+        errorMessage: error.message,
+      });
       return { success: false, error: extractErrorMessage(error) };
     }
 
     const session = data.session;
 
     if (!session) {
+      console.warn('[LiveKit Debug] getSession � no active session found.');
       return {
         success: true,
         data: {
@@ -529,13 +414,22 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
       };
     }
 
-    // Fetch profile from DB to get the authoritative role
+    console.log('[LiveKit Debug] getSession � active session found:', {
+      userId: session.user.id,
+      email: session.user.email,
+      phone: session.user.phone,
+      hasAccessToken: !!session.access_token,
+      accessTokenExpiry: getTokenExpirySummary(session.access_token),
+      hasRefreshToken: !!session.refresh_token,
+      createdAt: session.user.created_at,
+    });
+
     let profile: DbProfile | null = null;
 
     try {
       profile = await fetchProfile(session.user.id);
     } catch {
-      // DB query failed — fall through with metadata-derived profile.
+      // DB query failed -- fall through with metadata-derived profile.
     }
 
     const userProfile = buildUserProfile(session.user, profile);
@@ -550,41 +444,58 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
       },
     };
   } catch (err) {
+    console.error('[LiveKit Debug] getSession � unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
-/**
- * Force-refresh the current session tokens.
- *
- * Use this when you receive a 401 response from a Supabase query and
- * want to attempt a seamless token refresh before redirecting the user
- * to the login screen.
- */
 export async function refreshSession(): Promise<AuthResponse<SessionData>> {
+  console.log('[LiveKit Debug] refreshSession � BEFORE calling supabase.auth.refreshSession()');
+
+  const beforeSession = await supabase.auth.getSession();
+  if (beforeSession.data?.session?.access_token) {
+    console.log('[LiveKit Debug] refreshSession � session BEFORE refresh:', {
+      userId: beforeSession.data.session.user.id,
+      tokenExpiry: getTokenExpirySummary(beforeSession.data.session.access_token),
+    });
+  } else {
+    console.warn('[LiveKit Debug] refreshSession � no session to refresh.');
+  }
+
   try {
     const { data, error } = await supabase.auth.refreshSession();
 
     if (error) {
+      console.error('[LiveKit Debug] refreshSession � refreshSession() FAILED:', {
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStatus: (error as any)?.status,
+      });
       return { success: false, error: extractErrorMessage(error) };
     }
 
     const session = data.session;
 
     if (!session) {
+      console.error('[LiveKit Debug] refreshSession � refresh succeeded but returned no session.');
       return {
         success: false,
         error: 'Session refresh failed. Please sign in again.',
       };
     }
 
-    // Fetch profile from DB to get the authoritative role
+    console.log('[LiveKit Debug] refreshSession � refresh SUCCEEDED:', {
+      userId: session.user.id,
+      newTokenExpiry: getTokenExpirySummary(session.access_token),
+      hasRefreshToken: !!session.refresh_token,
+    });
+
     let profile: DbProfile | null = null;
 
     try {
       profile = await fetchProfile(session.user.id);
     } catch {
-      // DB query failed — fall through with metadata-derived profile.
+      // DB query failed -- fall through with metadata-derived profile.
     }
 
     const userProfile = buildUserProfile(session.user, profile);
@@ -599,6 +510,7 @@ export async function refreshSession(): Promise<AuthResponse<SessionData>> {
       },
     };
   } catch (err) {
+    console.error('[LiveKit Debug] refreshSession � unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }

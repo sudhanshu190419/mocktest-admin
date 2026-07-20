@@ -91,9 +91,6 @@ DROP POLICY IF EXISTS "Admins can delete question images" ON storage.objects;
 -- simplified policies use only bucket_id, owner, and public.* helpers,
 -- so these storage schema functions are unnecessary.
 
-DROP FUNCTION IF EXISTS storage.get_institute_id_from_path(path text);
-DROP FUNCTION IF EXISTS storage.get_question_id_from_path(path text);
-
 
 -- ═══════════════════════════════════════════════════════════════════════════
 --  4. ENABLE RLS ON storage.objects
@@ -101,7 +98,6 @@ DROP FUNCTION IF EXISTS storage.get_question_id_from_path(path text);
 -- If RLS is already enabled, this is a no-op. Defensive check to ensure
 -- the storage.objects table has RLS active.
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════

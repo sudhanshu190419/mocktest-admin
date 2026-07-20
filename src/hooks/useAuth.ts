@@ -14,7 +14,7 @@
  *
  * ## Boundaries
  *
- * This hook does **not** contain any UI logic — screens consume the exposed
+ * This hook does **not** contain any UI logic � screens consume the exposed
  * state and call the provided functions.
  *
  * @module useAuth
@@ -48,53 +48,32 @@ import {
 } from '../services/authService';
 import type { UserProfile } from '../types/auth';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ---- Types -----------------------------------------------------------------
 
-/**
- * Result returned by `login()`, `register()`, and other auth actions.
- *
- * Consumers check `success` to decide whether to navigate or display
- * feedback — they never need to inspect raw Supabase errors.
- */
 export type AuthHookResult =
   | { success: true; warning?: string }
   | { success: false; error: string };
 
-/**
- * Result returned by `register()` — includes the phone number so the
- * OTP verification screen can proceed without the user re-entering it.
- */
 export type RegisterHookResult = AuthHookResult & { phone?: string };
 
-// ─── Hook ───────────────────────────────────────────────────────────────────
+// ---- Hook -----------------------------------------------------------------
 
-/**
- * Reusable auth orchestration hook.
- */
 export function useAuth() {
   const dispatch = useAppDispatch();
-
-  // ── Reactive state ────────────────────────────────────────────────────
 
   const user = useAppSelector(selectUser);
   const loading = useAppSelector(selectIsLoading);
   const error = useAppSelector(selectAuthError);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
-  // Guard to prevent concurrent auth operations from racing.
   const pendingRef = useRef(false);
 
-  // ── Actions ──────────────────────────────────────────────────────────
-
-  /**
-   * Sign in an existing user with phone + password.
-   *
-   * On success the Redux store is updated with the full `SessionData` via
-   * `setSession` (which also populates `user` and `isAuthenticated`).
-   */
   const login = useCallback(
     async (phone: string, password: string): Promise<AuthHookResult> => {
+      console.log('[LiveKit Debug] useAuth.login � START (phone obfuscated):', phone.slice(0, 5) + '****');
+
       if (pendingRef.current) {
+        console.warn('[LiveKit Debug] useAuth.login � ABORTED: operation already in progress');
         return { success: false, error: 'An authentication operation is already in progress.' };
       }
 
@@ -103,25 +82,32 @@ export function useAuth() {
       dispatch(clearError());
 
       try {
+        console.log('[LiveKit Debug] useAuth.login � calling authSignIn...');
         const result = await authSignIn({ phone, password });
 
         if (!result.success) {
+          console.error('[LiveKit Debug] useAuth.login � authSignIn FAILED:', result.error);
           dispatch(setError(result.error ?? 'Sign in failed.'));
           return { success: false, error: result.error ?? 'Sign in failed.' };
         }
 
-        // Fetch the full session (includes profile from the `profiles` table)
+        console.log('[LiveKit Debug] useAuth.login � authSignIn succeeded, fetching session...');
+
         const sessionResult = await getSession();
 
         if (sessionResult.success && sessionResult.data) {
+          console.log('[LiveKit Debug] useAuth.login � dispatching setSession');
           dispatch(setSession(sessionResult.data));
         } else if (result.data) {
+          console.warn('[LiveKit Debug] useAuth.login � session fetch failed, falling back to setUser');
           dispatch(setUser(result.data));
         }
 
+        console.log('[LiveKit Debug] useAuth.login � COMPLETE');
         return { success: true };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+        console.error('[LiveKit Debug] useAuth.login � UNEXPECTED ERROR:', message);
         dispatch(setError(message));
         return { success: false, error: message };
       } finally {
@@ -132,21 +118,8 @@ export function useAuth() {
     [dispatch],
   );
 
-  /**
-   * Register a new user account with phone + password.
-   *
-   * Supabase sends an SMS OTP to the phone. The user must verify it
-   * via `verifyOtp()` to complete registration.
-   *
-   * Returns the phone number in the result so the screen can navigate
-   * to the OTP verification screen with it.
-   */
   const register = useCallback(
-    async (
-      phone: string,
-      password: string,
-      name: string,
-    ): Promise<RegisterHookResult> => {
+    async (phone: string, password: string, name: string): Promise<RegisterHookResult> => {
       if (pendingRef.current) {
         return { success: false, error: 'An authentication operation is already in progress.' };
       }
@@ -156,8 +129,6 @@ export function useAuth() {
       dispatch(clearError());
 
       try {
-        // Role is NOT sent from the frontend — the database trigger
-        // (handle_new_user()) defaults to 'student' when not provided.
         const result = await authSignUp({ phone, password, name });
 
         if (!result.success) {
@@ -178,27 +149,8 @@ export function useAuth() {
     [dispatch],
   );
 
-  /**
-   * Verify an SMS OTP.
-   *
-   * Used in both the registration flow (after signUp) and the forgot
-   * password flow (after requesting an OTP).
-   *
-   * @param phone  - The phone number the OTP was sent to.
-   * @param token  - The OTP code.
-   * @param options - Optional settings:
-   *   - `updateSession` (default `true`): When `false`, the Redux store
-   *     is NOT updated with the user's session. This is used in the
-   *     forgot-password flow where we only need the OTP verified so the
-   *     user can set a new password — updating the session would trigger
-   *     automatic navigation to the App stack.
-   */
   const verifyOtp = useCallback(
-    async (
-      phone: string,
-      token: string,
-      options?: { updateSession?: boolean },
-    ): Promise<AuthHookResult> => {
+    async (phone: string, token: string, options?: { updateSession?: boolean }): Promise<AuthHookResult> => {
       const updateSession = options?.updateSession ?? true;
 
       if (pendingRef.current) {
@@ -217,8 +169,6 @@ export function useAuth() {
           return { success: false, error: result.error ?? 'OTP verification failed.' };
         }
 
-        // OTP verified — update the store with the user profile
-        // (skipped for forgot-password flow to prevent automatic navigation)
         if (updateSession && result.data) {
           const sessionResult = await getSession();
           if (sessionResult.success && sessionResult.data) {
@@ -241,9 +191,6 @@ export function useAuth() {
     [dispatch],
   );
 
-  /**
-   * Resend the SMS OTP to the user's phone.
-   */
   const resendOtp = useCallback(
     async (phone: string): Promise<AuthHookResult> => {
       if (pendingRef.current) {
@@ -259,7 +206,7 @@ export function useAuth() {
 
         if (!result.success) {
           dispatch(setError(result.error ?? 'Failed to resend OTP.'));
-          return { success: false, error: result.error ?? 'Failed to resend OTP.' };
+          return { success: false, error: 'Failed to resend OTP.' };
         }
 
         return { success: true };
@@ -275,12 +222,6 @@ export function useAuth() {
     [dispatch],
   );
 
-  /**
-   * Reset the user's password (after OTP verification in forgot password flow).
-   *
-   * On success, signs the user out and clears the session so they must
-   * sign in again with their new password.
-   */
   const resetPassword = useCallback(
     async (newPassword: string): Promise<AuthHookResult> => {
       if (pendingRef.current) {
@@ -296,10 +237,9 @@ export function useAuth() {
 
         if (!result.success) {
           dispatch(setError(result.error ?? 'Password update failed.'));
-          return { success: false, error: result.error ?? 'Password update failed.' };
+          return { success: false, error: 'Password update failed.' };
         }
 
-        // Password updated — sign out so the user signs in again
         await authSignOut();
         dispatch(reduxLogout());
 
@@ -316,31 +256,36 @@ export function useAuth() {
     [dispatch],
   );
 
-  /**
-   * Sign out the current user.
-   */
   const logout = useCallback(async (): Promise<void> => {
-    if (pendingRef.current) return;
+    console.log('[LiveKit Debug] useAuth.logout � START');
+
+    if (pendingRef.current) {
+      console.warn('[LiveKit Debug] useAuth.logout � operation already in progress, returning');
+      return;
+    }
 
     pendingRef.current = true;
     dispatch(setLoading(true));
 
     try {
+      console.log('[LiveKit Debug] useAuth.logout � calling authSignOut...');
       await authSignOut();
-    } catch {
-      // Even if the network request fails, we clear local state.
+      console.log('[LiveKit Debug] useAuth.logout � authSignOut succeeded');
+    } catch (err) {
+      console.warn('[LiveKit Debug] useAuth.logout � authSignOut failed (clearing local state anyway):', err);
     } finally {
       dispatch(reduxLogout());
       dispatch(setLoading(false));
       pendingRef.current = false;
+      console.log('[LiveKit Debug] useAuth.logout � COMPLETE');
     }
   }, [dispatch]);
 
-  /**
-   * Force-refresh the current session tokens.
-   */
   const refreshSession = useCallback(async (): Promise<AuthHookResult> => {
+    console.log('[LiveKit Debug] useAuth.refreshSession � START');
+
     if (pendingRef.current) {
+      console.warn('[LiveKit Debug] useAuth.refreshSession � ABORTED: operation already in progress');
       return { success: false, error: 'An authentication operation is already in progress.' };
     }
 
@@ -349,20 +294,25 @@ export function useAuth() {
     dispatch(clearError());
 
     try {
+      console.log('[LiveKit Debug] useAuth.refreshSession � calling authRefreshSession...');
       const result = await authRefreshSession();
 
       if (!result.success) {
+        console.error('[LiveKit Debug] useAuth.refreshSession � FAILED:', result.error);
         dispatch(reduxLogout());
         return { success: false, error: result.error ?? 'Session refresh failed.' };
       }
 
       if (result.data) {
+        console.log('[LiveKit Debug] useAuth.refreshSession � dispatching setSession');
         dispatch(setSession(result.data));
       }
 
+      console.log('[LiveKit Debug] useAuth.refreshSession � COMPLETE');
       return { success: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      console.error('[LiveKit Debug] useAuth.refreshSession � UNEXPECTED ERROR:', message);
       dispatch(reduxLogout());
       dispatch(setError(message));
       return { success: false, error: message };
@@ -372,16 +322,11 @@ export function useAuth() {
     }
   }, [dispatch]);
 
-  // ── Public API ───────────────────────────────────────────────────────
-
   return {
-    // State
     user,
     loading,
     error,
     isAuthenticated,
-
-    // Actions
     login,
     register,
     verifyOtp,

@@ -94,7 +94,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ onLaunchLive }) => {
       if (!isDemoMode) {
         supabase
           .from('live_classes')
-          .select('*, batches(batch_name)')
+          .select('*, batches(name)')
           .eq('teacher_id', teacherProfile.id)
           .in('status', ['scheduled', 'live'])
           .order('scheduled_start', { ascending: true })
@@ -102,7 +102,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ onLaunchLive }) => {
           .then(({ data, error }) => {
             if (!error && data && data.length > 0) {
               const lc = data[0];
-              const bName = (lc.batches as any)?.batch_name || 'Allotted Batch';
+              const bName = (lc.batches as any)?.name || 'Allotted Batch';
               setUpcomingClass({
                 title: lc.topic || 'Live Session',
                 startTime: lc.scheduled_start ? new Date(lc.scheduled_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',

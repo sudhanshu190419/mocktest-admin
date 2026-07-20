@@ -24,6 +24,60 @@ export const DEFAULT_PAGE_SIZE = 20;
  */
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// ─── [LiveKit Debug] JWT Payload Decoder ────────────────────────────────────
+
+/**
+ * Safely decodes the payload (claims) of a JWT without verifying the
+ * signature.  This is safe for debug logging only — the decoded data
+ * is never trusted for authorization decisions.
+ *
+ * Returns `null` if the token is malformed or cannot be decoded.
+ *
+ * @example
+ *   const claims = decodeJwtPayload(token);
+ *   console.log('[LiveKit Debug] Token expires at:', new Date(claims.exp * 1000).toISOString());
+ */
+export function decodeJwtPayload(token: string | null | undefined): Record<string, unknown> | null {
+  if (!token || typeof token !== 'string') return null;
+
+  try {
+    // JWT = header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    // Base64url-decode the payload (part index 1)
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    // Pad the base64 string to be a multiple of 4
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const decoded = atob(padded);
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * [LiveKit Debug] Extracts human-readable token expiry info from a JWT.
+ * Returns a summary string safe for logging (never prints the full token).
+ */
+export function getTokenExpirySummary(token: string | null | undefined): string {
+  if (!token) return 'NO_TOKEN';
+
+  const claims = decodeJwtPayload(token);
+  if (!claims) return 'MALFORMED_TOKEN';
+
+  const exp = claims.exp as number | undefined;
+  if (!exp) return 'NO_EXP_CLAIM';
+
+  const expiryDate = new Date(exp * 1000);
+  const now = new Date();
+  const diffMs = expiryDate.getTime() - now.getTime();
+  const diffSec = Math.round(diffMs / 1000);
+  const isExpired = diffMs <= 0;
+
+  return `expires_at=${expiryDate.toISOString()} (${isExpired ? 'EXPIRED' : 'valid'} — ${diffSec}s from now)`;
+}
+
 // ─── Validation Helpers ─────────────────────────────────────────────────────
 
 /**
