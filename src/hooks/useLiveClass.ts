@@ -17,6 +17,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { teacherService } from '@/services/teacherService';
+import { teacherLiveClassService } from '@/services/teacherLiveClassService';
 import { getLiveKitToken } from '@/lib/livekit/tokenService';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -92,10 +93,10 @@ export function useLiveClass(teacherId: string, teacherName: string) {
   );
   const classIdRef = useRef<string | null>(null);
 
-  // ── Start Class ────────────────────────────────────────────────────────
+  // ── Start Class (Mode A: Instant Go Live) ────────────────────────────
 
   /**
-   * Begins the live class flow:
+   * Begins the live class flow for an INSTANT (non-scheduled) class.
    * 1. Creates/loads a live_classes row
    * 2. Generates a LiveKit token for the teacher
    * 3. Updates DB status to 'live'
@@ -159,6 +160,62 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     }
   }, [teacherId, teacherName]);
 
+  // ── Start Scheduled Class (Mode B: Scheduled → Live) ─────────────────
+
+  /**
+   * Starts a PRE-SCHEDULED live class.
+   * 1. Validates the teacher owns the class and status is 'scheduled'
+   * 2. Generates room_name from existing classId
+   * 3. Updates DB: status='live', room_name, creates live_sessions
+   * 4. Generates LiveKit token for the existing room
+   *
+   * Does NOT create a new live_classes record.
+   */
+  const startScheduledClass = useCallback(async (classId: string): Promise<void> => {
+    setState((prev) => ({ ...prev, status: 'loading', error: null }));
+
+    try {
+      console.log('[GO LIVE] Selected class_id:', classId);
+
+      // 1. Call the scheduling service which validates, builds roomName,
+      //    and calls startLiveClass (sets status='live', creates session)
+      console.log('[START SCHEDULED] Calling teacherLiveClassService.startScheduledClass()...');
+      const result = await teacherLiveClassService.startScheduledClass(classId, teacherId);
+      console.log('[START SCHEDULED] ✅ Result:', JSON.stringify(result, null, 2));
+
+      classIdRef.current = result.classId;
+
+      // 2. Generate LiveKit token for the existing room
+      console.log('[LIVEKIT] room_name:', result.roomName);
+      console.log('[TOKEN] Generating LiveKit token for teacher...');
+      const { token, url } = await getLiveKitToken({
+        roomName: result.roomName,
+        participantName: teacherName,
+        role: 'teacher',
+      });
+      console.log('[TOKEN] ✅ Token generated successfully');
+
+      // 3. Set state to 'live' — LiveKitRoom will auto-connect
+      setState({
+        status: 'live',
+        classId: result.classId,
+        title: result.title,
+        roomName: result.roomName,
+        token,
+        serverUrl: url,
+        teacherName,
+        error: null,
+      });
+
+      console.log('[JOIN] ✅ Connected to existing scheduled class:', result.classId);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to start scheduled class.';
+      console.error('[SCHEDULED CLASS] ❌ Start failed:', message);
+      setState((prev) => ({ ...prev, status: 'idle', error: message }));
+    }
+  }, [teacherId, teacherName]);
+
   // ── End Class ──────────────────────────────────────────────────────────
 
   /**
@@ -191,5 +248,5 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     setState(createInitialState(teacherName));
   }, [teacherName]);
 
-  return { state, startClass, endClass, reset } as const;
+  return { state, startClass, startScheduledClass, endClass, reset } as const;
 }

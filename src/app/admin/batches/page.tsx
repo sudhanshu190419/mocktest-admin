@@ -12,6 +12,7 @@ import {
   useRestoreBatch,
   useDeleteBatch,
 } from '@/hooks/admin/useBatchManagement';
+import { CreateBatchDialog } from '@/components/admin/batches/CreateBatchDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -35,6 +36,7 @@ import {
   CheckCircle,
   XCircle,
   CircleNotch,
+  Plus,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -187,6 +189,9 @@ export default function BatchManagementPage() {
     setter(value);
     setPage(1);
   }, []);
+
+  // ── Create Batch Dialog State ────────────────────────────────────────
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   // ── Selection & Confirmation State ───────────────────────────────────
   const [confirmAction, setConfirmAction] = useState<{
@@ -561,15 +566,25 @@ export default function BatchManagementPage() {
           { label: 'Batch Management' },
         ]}
         actions={
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateDialog(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700"
+            >
+              <Plus size={16} weight="bold" />
+              Create Batch
+            </button>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         }
       />
 
@@ -731,6 +746,14 @@ export default function BatchManagementPage() {
           loading={actionLoading}
         />
       )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          Create Batch Dialog
+         ════════════════════════════════════════════════════════════════ */}
+      <CreateBatchDialog
+        isOpen={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+      />
     </div>
   );
 }

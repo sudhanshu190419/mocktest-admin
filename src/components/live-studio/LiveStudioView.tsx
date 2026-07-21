@@ -44,6 +44,14 @@ interface LiveStudioViewProps {
   isOpen: boolean;
   /** Called when the modal should close (after end-class completes). */
   onClose: () => void;
+  /**
+   * When set, LiveStudioView operates in "Scheduled Class" mode.
+   * It calls startScheduledClass(classId) instead of showing StartLiveDialog,
+   * preserving the existing live_classes record.
+   */
+  scheduledClassId?: string;
+  /** Optional callback after a scheduled class goes live — parent can refresh its list. */
+  onLiveClassStarted?: () => void;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -53,14 +61,29 @@ interface LiveStudioViewProps {
  *
  * Manages camera preview, Go Live, LiveKit connection, and End Class.
  */
-export function LiveStudioView({ isOpen, onClose }: LiveStudioViewProps): React.JSX.Element | null {
+export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassStarted }: LiveStudioViewProps): React.JSX.Element | null {
   const { teacherProfile, isDemoMode } = useAuth();
 
   const teacherId = teacherProfile?.id || 'demo-teacher';
   const teacherName = teacherProfile?.name || 'Dr. Arvind Sharma';
   const [showStartDialog, setShowStartDialog] = useState(false);
 
-  const { state, startClass, endClass, reset } = useLiveClass(teacherId, teacherName);
+  const { state, startClass, startScheduledClass, endClass, reset } = useLiveClass(teacherId, teacherName);
+
+  // ── If scheduledClassId is provided, auto-start when studio opens ──
+  const hasAutoStarted = useRef(false);
+  useEffect(() => {
+    if (scheduledClassId && isOpen && state.status === 'idle' && !hasAutoStarted.current) {
+      hasAutoStarted.current = true;
+      startScheduledClass(scheduledClassId).then(() => {
+        onLiveClassStarted?.();
+      });
+    }
+    // Reset flag when studio closes
+    if (!isOpen) {
+      hasAutoStarted.current = false;
+    }
+  }, [scheduledClassId, isOpen, state.status, startScheduledClass, onLiveClassStarted]);
 
   // ── Local Media Preview (getUserMedia) ───────────────────────────────
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -146,6 +169,20 @@ export function LiveStudioView({ isOpen, onClose }: LiveStudioViewProps): React.
       onClose();
     }
   }, [state.status, endClass, reset, onClose]);
+
+  // ── Go Live button click: scheduled or instant ────────────────────
+
+  const handleGoLiveClick = useCallback(() => {
+    if (scheduledClassId) {
+      // Mode B: Start the pre-scheduled class directly
+      startScheduledClass(scheduledClassId).then(() => {
+        onLiveClassStarted?.();
+      });
+    } else {
+      // Mode A: Show StartLiveDialog for Instant Go Live
+      setShowStartDialog(true);
+    }
+  }, [scheduledClassId, startScheduledClass, onLiveClassStarted]);
 
   // ── Track mounted state for safe async operations ─────────────────
   const isMountedRef = useRef(true);
@@ -391,7 +428,7 @@ export function LiveStudioView({ isOpen, onClose }: LiveStudioViewProps): React.
       </div>
 
       {/* ── Control Bar ── */}
-      {showPreview && !isEnding && (
+      {!scheduledClassId && showPreview && !isEnding && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-white/10 shrink-0">
           {/* Preview controls */}
           <div className="flex items-center gap-3">
@@ -421,7 +458,7 @@ export function LiveStudioView({ isOpen, onClose }: LiveStudioViewProps): React.
 
           {/* Go Live button */}
           <button
-            onClick={() => setShowStartDialog(true)}
+            onClick={handleGoLiveClick}
             disabled={isLoading}
             className="w-full sm:w-auto px-8 py-4 rounded-full bg-amber-400 hover:bg-amber-300 disabled:bg-amber-400/50 disabled:cursor-not-allowed text-slate-900 font-extrabold text-sm tracking-wide shadow-2xl transition-all"
           >
@@ -441,8 +478,8 @@ export function LiveStudioView({ isOpen, onClose }: LiveStudioViewProps): React.
           </button>
         </div>
       )}
-      {/* Start Live Dialog */}
-      {showStartDialog && (
+      {/* Start Live Dialog — only shown in Instant Go Live mode (no scheduledClassId) */}
+      {!scheduledClassId && showStartDialog && (
         <StartLiveDialog
           teacherId={teacherId}
           onStart={(selections) => {

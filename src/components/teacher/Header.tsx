@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { LiveStudioView } from '@/components/live-studio/LiveStudioView';
 
 export function TeacherHeader() {
+  const router = useRouter();
   const { teacherProfile, isDemoMode } = useAuth();
   const [showLiveStudio, setShowLiveStudio] = useState(false);
 
@@ -20,6 +22,18 @@ export function TeacherHeader() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Schedule Class Button */}
+          <button
+            type="button"
+            onClick={() => router.push('/teacher/live-classes')}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 hover:border-blue-400"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+            </svg>
+            <span>Schedule</span>
+          </button>
+
           {/* Launch Live Studio Button */}
           <button
             type="button"
