@@ -16,6 +16,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { supabase } from '@/config/supabase';
 import { teacherService } from '@/services/teacherService';
 import { teacherLiveClassService } from '@/services/teacherLiveClassService';
 import { getLiveKitToken } from '@/lib/livekit/tokenService';
@@ -131,6 +132,25 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       // 3. Get teacher's profile_id for session_participants
       const profileId = await teacherService.getTeacherProfileId(teacherId);
 
+      // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Instant Go Live) ──
+      try {
+        const { data: diagSession } = await supabase.auth.getSession();
+        const diagTs = new Date().toISOString();
+        console.log(`[${diagTs}] [LK-DIAG-WEB] [useLiveClass.startClass] Pre-token session check:`);
+        if (diagSession?.session) {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = true`);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   user.id               =`, diagSession.session.user.id);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   email                 =`, diagSession.session.user.email);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token length   =`, diagSession.session.access_token?.length ?? 0);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token (1st 20) =`, diagSession.session.access_token?.substring(0, 20) ?? 'N/A');
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   expires_at            =`, diagSession.session.expires_at ?? 'N/A');
+        } else {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = false`);
+        }
+      } catch (diagErr) {
+        console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] [useLiveClass.startClass] Session check error:`, diagErr);
+      }
+
       // 4. Generate LiveKit token
       const { token, url } = await getLiveKitToken({
         roomName,
@@ -185,6 +205,25 @@ export function useLiveClass(teacherId: string, teacherName: string) {
 
       classIdRef.current = result.classId;
 
+      // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Scheduled Go Live) ──
+      try {
+        const { data: diagSession } = await supabase.auth.getSession();
+        const diagTs = new Date().toISOString();
+        console.log(`[${diagTs}] [LK-DIAG-WEB] [useLiveClass.startScheduledClass] Pre-token session check:`);
+        if (diagSession?.session) {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = true`);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   user.id               =`, diagSession.session.user.id);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   email                 =`, diagSession.session.user.email);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token length   =`, diagSession.session.access_token?.length ?? 0);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token (1st 20) =`, diagSession.session.access_token?.substring(0, 20) ?? 'N/A');
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   expires_at            =`, diagSession.session.expires_at ?? 'N/A');
+        } else {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = false`);
+        }
+      } catch (diagErr) {
+        console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] [useLiveClass.startScheduledClass] Session check error:`, diagErr);
+      }
+
       // 2. Generate LiveKit token for the existing room
       console.log('[LIVEKIT] room_name:', result.roomName);
       console.log('[TOKEN] Generating LiveKit token for teacher...');
@@ -216,12 +255,27 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     }
   }, [teacherId, teacherName]);
 
-  // ── End Class ──────────────────────────────────────────────────────────
+  // ── End Class (explicit teacher action only) ──────────────────────────
 
   /**
-   * Ends the live class:
-   * 1. Updates DB status to 'completed'
-   * 2. Sets status to 'ended'
+   * Ends the live class PERMANENTLY.
+   *
+   * CRITICAL: The DB update (endLiveClass) MUST complete BEFORE the local
+   * state changes from 'live'. This order prevents a race condition where
+   * LiveKitRoom unmounts (triggering the room_finished webhook) before
+   * live_sessions is updated in the database.
+   *
+   *   ✅ FIXED ORDER:
+   *     1. teacherService.endLiveClass(classId)  ← DB updated first
+   *     2. setState({ status: 'ended' })         ← then LiveKitRoom unmounts
+   *
+   *   ❌ OLD ORDER (broken):
+   *     1. setState({ status: 'ending' })        ← LiveKitRoom unmounts
+   *     2. teacherService.endLiveClass(classId)  ← webhook fires before DB update
+   *
+   * This is the ONLY function that marks a session as ended in the database.
+   * Page refresh, navigation, component unmount, or LiveKit disconnect
+   * must NEVER call this function.
    *
    * LiveKitRoom will disconnect when it unmounts (status changes to 'ended').
    */
@@ -229,16 +283,108 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     const classId = classIdRef.current;
     if (!classId) return;
 
-    setState((prev) => ({ ...prev, status: 'ending' }));
-
+    // ── Step 1: Update database FIRST (live_sessions gets ended_at BEFORE LiveKit disconnects) ─
     try {
       await teacherService.endLiveClass(classId);
     } catch (err) {
       console.error('[LiveClass] End class DB update failed:', err);
+      // Continue to set status to 'ended' even if DB fails — the UI must close.
+      // The error has already been logged with full details by endLiveClass.
     }
 
+    // ── Step 2: Now it is safe to change status. LiveKitRoom will unmount,
+    //    LiveKit will send room_finished, and the webhook will find
+    //    live_sessions already updated with status='ended' and ended_at set. ─
     setState((prev) => ({ ...prev, status: 'ended' }));
   }, []);
+
+  // ── Disconnect Only (no DB change) ─────────────────────────────────────
+
+  /**
+   * Disconnects from LiveKit WITHOUT ending the session.
+   *
+   * This is safe to call on:
+   * - Component unmount
+   * - Modal close (X button)
+   * - Page refresh (via cleanup)
+   * - LiveKit temporary disconnect
+   *
+   * The session remains LIVE in the database so the teacher can rejoin later.
+   */
+  const disconnectOnly = useCallback((): void => {
+    classIdRef.current = null;
+    setState(createInitialState(teacherName));
+  }, [teacherName]);
+
+  // ── Rejoin Existing Live Session ───────────────────────────────────────
+
+  /**
+   * Reconnects the teacher to an existing LIVE session.
+   *
+   * Called when:
+   * - Teacher returns to the Live Classes page after a refresh/navigation
+   * - Teacher clicks "Rejoin Live Class" on a class with status 'live'
+   *
+   * Generates a new LiveKit token for the existing room without modifying
+   * the database status (which is already 'live').
+   */
+  const rejoinClass = useCallback(async (classId: string): Promise<void> => {
+    setState((prev) => ({ ...prev, status: 'loading', error: null }));
+
+    try {
+      // 1. Load class details (for title display)
+      const classDetail = await teacherLiveClassService.getTeacherClassById(classId);
+      const title = classDetail?.title || 'Live Class';
+
+      // 2. Build room name from existing classId (deterministic)
+      const roomName = buildRoomName(classId);
+
+      // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Rejoin) ──
+      try {
+        const { data: diagSession } = await supabase.auth.getSession();
+        const diagTs = new Date().toISOString();
+        console.log(`[${diagTs}] [LK-DIAG-WEB] [useLiveClass.rejoinClass] Pre-token session check:`);
+        if (diagSession?.session) {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = true`);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   user.id               =`, diagSession.session.user.id);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   email                 =`, diagSession.session.user.email);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token length   =`, diagSession.session.access_token?.length ?? 0);
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token (1st 20) =`, diagSession.session.access_token?.substring(0, 20) ?? 'N/A');
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   expires_at            =`, diagSession.session.expires_at ?? 'N/A');
+        } else {
+          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = false`);
+        }
+      } catch (diagErr) {
+        console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] [useLiveClass.rejoinClass] Session check error:`, diagErr);
+      }
+
+      // 3. Generate a new LiveKit token for the existing room
+      const { token, url } = await getLiveKitToken({
+        roomName,
+        participantName: teacherName,
+        role: 'teacher',
+      });
+
+      classIdRef.current = classId;
+
+      // 4. Set state to 'live' — LiveKitRoom will auto-connect
+      setState({
+        status: 'live',
+        classId,
+        title,
+        roomName,
+        token,
+        serverUrl: url,
+        teacherName,
+        error: null,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to rejoin live class.';
+      console.error('[LiveClass] Rejoin failed:', message);
+      setState((prev) => ({ ...prev, status: 'idle', error: message }));
+    }
+  }, [teacherName]);
 
   // ── Reset ──────────────────────────────────────────────────────────────
 
@@ -248,5 +394,5 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     setState(createInitialState(teacherName));
   }, [teacherName]);
 
-  return { state, startClass, startScheduledClass, endClass, reset } as const;
+  return { state, startClass, startScheduledClass, endClass, disconnectOnly, rejoinClass, reset } as const;
 }

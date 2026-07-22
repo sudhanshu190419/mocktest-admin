@@ -45,8 +45,9 @@ export function ScheduledClassesView({ onLaunchLive }: { onLaunchLive?: () => vo
   const [cancelClassId, setCancelClassId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  // LiveStudio — tracks which scheduled class is being launched (or null for Instant Go Live)
+  // LiveStudio — tracks which scheduled class is being launched / rejoined
   const [launchingClassId, setLaunchingClassId] = useState<string | null>(null);
+  const [rejoinClassId, setRejoinClassId] = useState<string | null>(null);
 
   // ── Unified fetch ─────────────────────────────────────────────────────
 
@@ -119,6 +120,10 @@ export function ScheduledClassesView({ onLaunchLive }: { onLaunchLive?: () => vo
       case 'start':
         // Set the launching classId — LiveStudioView will pick it up
         setLaunchingClassId(action.classId);
+        break;
+      case 'rejoin':
+        // Set the rejoin classId — LiveStudioView will pick it up
+        setRejoinClassId(action.classId);
         break;
       case 'edit':
         setEditClassId(action.classId);
@@ -301,12 +306,14 @@ export function ScheduledClassesView({ onLaunchLive }: { onLaunchLive?: () => vo
 
       {/* LiveStudioView — launched from a scheduled class card */}
       <LiveStudioView
-        isOpen={!!launchingClassId}
+        isOpen={!!launchingClassId || !!rejoinClassId}
         onClose={() => {
           setLaunchingClassId(null);
+          setRejoinClassId(null);
           fetchClasses();
         }}
         scheduledClassId={launchingClassId ?? undefined}
+        rejoinClassId={rejoinClassId ?? undefined}
         onLiveClassStarted={fetchClasses}
       />
 

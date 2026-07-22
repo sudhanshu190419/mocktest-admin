@@ -23,6 +23,7 @@ const EDITABLE_STATUSES = ['scheduled'];
 
 export type ClassAction =
   | { type: 'start'; classId: string }
+  | { type: 'rejoin'; classId: string }
   | { type: 'edit'; classId: string }
   | { type: 'cancel'; classId: string }
   | { type: 'view'; classId: string };
@@ -159,11 +160,11 @@ export function ClassCard({ item, onAction }: ClassCardProps) {
         )}
         {item.status === 'live' && (
           <button
-            disabled
-            className="flex items-center gap-1.5 rounded-lg bg-green-100 px-3.5 py-2 text-xs font-bold text-green-700 cursor-default"
+            onClick={() => onAction({ type: 'rejoin', classId: item.classId })}
+            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-green-700 animate-pulse"
           >
-            <VideoCamera size={16} weight="fill" className="animate-pulse" />
-            Live Now
+            <VideoCamera size={16} weight="fill" />
+            Rejoin Live Class
           </button>
         )}
         {canEdit && (

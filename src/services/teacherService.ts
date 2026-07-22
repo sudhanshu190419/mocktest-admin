@@ -1,5 +1,6 @@
 import { supabase } from '@/config/supabase';
 import { MOCK_BATCHES } from '@/data/mockData';
+import { liveClassAttendanceService } from './liveClassAttendanceService';
 import type { 
   AcademicBatch, 
   StudentRosterItem, 
@@ -425,33 +426,99 @@ export const teacherService = {
   },
 
   /**
-   * End a live class session (updates status to 'completed') (Domain 04: live_classes).
+   * End a live class session.
+   *
+   * 1. Fetches the live_sessions row by class_id (to get session_id and current status)
+   * 2. Updates live_sessions by session_id: status='ended', ended_at=NOW(), updated_at=NOW()
+   * 3. Updates live_classes status to 'completed'
+   * 4. Finalizes attendance (best-effort, non-blocking)
+   *
+   * CRITICAL: This function is called BEFORE the React state changes from 'live'
+   * to 'ended'. This ensures `live_sessions` is updated in the database before
+   * LiveKitRoom unmounts and triggers the `room_finished` webhook. Otherwise the
+   * webhook reads stale data (status='live', ended_at=NULL) and calculates
+   * attendance with an incorrect session duration.
+   *
+   * @param classId - The UUID of the live_classes row.
+   * @throws Error if the session fetch or update fails.
    */
   async endLiveClass(classId: string): Promise<void> {
-    // 1. Update live_classes status to 'completed'
+    const now = new Date().toISOString();
+
+    // ── 1. Fetch current live_sessions row ──────────────────────────────
+    const { data: session, error: fetchErr } = await supabase
+      .from('live_sessions')
+      .select('session_id, status, started_at')
+      .eq('class_id', classId)
+      .single();
+
+    if (fetchErr || !session) {
+      console.error('[LiveClass] ❌ Failed to fetch live_sessions for class:', {
+        classId,
+        error: fetchErr?.message ?? 'Session not found',
+      });
+      throw new Error(
+        `Failed to fetch live session for class ${classId}: ${fetchErr?.message || 'Session not found'}`,
+      );
+    }
+
+    const previousStatus = session.status;
+
+    // ── TEMPORARY LOG: session details before update ─────────────────────
+    console.log('[LiveClass] ════════════════════════════════════════');
+    console.log('[LiveClass] 🔴 END SESSION');
+    console.log('[LiveClass]   class_id:', classId);
+    console.log('[LiveClass]   session_id:', session.session_id);
+    console.log('[LiveClass]   previous status:', previousStatus);
+    console.log('[LiveClass]   new status: ended');
+    console.log('[LiveClass]   ended_at:', now);
+    console.log('[LiveClass] ════════════════════════════════════════');
+
+    // ── 2. Update live_sessions by session_id (precise, avoids ambiguity) ─
+    const { error: sessionErr } = await supabase
+      .from('live_sessions')
+      .update({
+        status: 'ended',
+        ended_at: now,
+        updated_at: now,
+        ended_reason: 'host_ended',
+      })
+      .eq('session_id', session.session_id);
+
+    if (sessionErr) {
+      console.error('[LiveClass] ❌ Failed to update live_sessions:', {
+        session_id: session.session_id,
+        class_id: classId,
+        error: sessionErr.message,
+      });
+      throw new Error(`Failed to end live session: ${sessionErr.message}`);
+    }
+
+    console.log('[LiveClass] ✅ live_sessions updated:', {
+      session_id: session.session_id,
+      class_id: classId,
+      status: 'ended',
+      ended_at: now,
+    });
+
+    // ── 3. Update live_classes status to 'completed' ────────────────────
     const { error: updateErr } = await supabase
       .from('live_classes')
-      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .update({ status: 'completed', updated_at: now })
       .eq('class_id', classId);
 
     if (updateErr) {
       throw new Error(`Failed to end live class: ${updateErr.message}`);
     }
 
-    // 2. Update live_sessions status to 'ended'
-    const { error: sessionErr } = await supabase
-      .from('live_sessions')
-      .update({
-        status: 'ended',
-        ended_at: new Date().toISOString(),
-        ended_reason: 'host_ended',
-      })
-      .eq('class_id', classId);
-
-    if (sessionErr) {
-      console.error('[LiveClass] Failed to update live_sessions:', sessionErr.message);
-      // Non-critical — class is already marked completed
-    }
+    // ── 4. Finalize attendance (best-effort, non-blocking) ───────────────
+    liveClassAttendanceService.finalizeClassAttendance(classId).then((result) => {
+      if (result) {
+        console.log('[Attendance] Class', classId, 'attendance finalized:', result);
+      }
+    }).catch((err) => {
+      console.error('[Attendance] Failed to finalize class attendance:', err);
+    });
   },
 
   /**

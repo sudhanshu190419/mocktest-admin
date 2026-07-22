@@ -42,7 +42,7 @@ import { ControlBar } from './ControlBar';
 interface LiveStudioViewProps {
   /** Whether the modal is visible. */
   isOpen: boolean;
-  /** Called when the modal should close (after end-class completes). */
+  /** Called when the modal should close. */
   onClose: () => void;
   /**
    * When set, LiveStudioView operates in "Scheduled Class" mode.
@@ -50,7 +50,14 @@ interface LiveStudioViewProps {
    * preserving the existing live_classes record.
    */
   scheduledClassId?: string;
-  /** Optional callback after a scheduled class goes live — parent can refresh its list. */
+  /**
+   * When set, LiveStudioView operates in "Rejoin" mode.
+   * The class must already have status='live' in the database.
+   * It generates a new LiveKit token for the existing room without
+   * modifying the database or creating a new session.
+   */
+  rejoinClassId?: string;
+  /** Optional callback after a class goes live or rejoins — parent can refresh its list. */
   onLiveClassStarted?: () => void;
 }
 
@@ -61,29 +68,39 @@ interface LiveStudioViewProps {
  *
  * Manages camera preview, Go Live, LiveKit connection, and End Class.
  */
-export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassStarted }: LiveStudioViewProps): React.JSX.Element | null {
+export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassId, onLiveClassStarted }: LiveStudioViewProps): React.JSX.Element | null {
   const { teacherProfile, isDemoMode } = useAuth();
 
   const teacherId = teacherProfile?.id || 'demo-teacher';
   const teacherName = teacherProfile?.name || 'Dr. Arvind Sharma';
   const [showStartDialog, setShowStartDialog] = useState(false);
 
-  const { state, startClass, startScheduledClass, endClass, reset } = useLiveClass(teacherId, teacherName);
+  const { state, startClass, startScheduledClass, endClass, disconnectOnly, rejoinClass, reset } = useLiveClass(teacherId, teacherName);
 
-  // ── If scheduledClassId is provided, auto-start when studio opens ──
+  // ── Auto-start / Auto-rejoin when studio opens ──
   const hasAutoStarted = useRef(false);
   useEffect(() => {
-    if (scheduledClassId && isOpen && state.status === 'idle' && !hasAutoStarted.current) {
+    if (!isOpen) {
+      hasAutoStarted.current = false;
+      return;
+    }
+
+    if (hasAutoStarted.current) return;
+
+    if (rejoinClassId && state.status === 'idle') {
+      // Mode C: Rejoin existing live session (no DB changes)
+      hasAutoStarted.current = true;
+      rejoinClass(rejoinClassId).then(() => {
+        onLiveClassStarted?.();
+      });
+    } else if (scheduledClassId && state.status === 'idle') {
+      // Mode B: Start a pre-scheduled class
       hasAutoStarted.current = true;
       startScheduledClass(scheduledClassId).then(() => {
         onLiveClassStarted?.();
       });
     }
-    // Reset flag when studio closes
-    if (!isOpen) {
-      hasAutoStarted.current = false;
-    }
-  }, [scheduledClassId, isOpen, state.status, startScheduledClass, onLiveClassStarted]);
+  }, [scheduledClassId, rejoinClassId, isOpen, state.status, startScheduledClass, rejoinClass, onLiveClassStarted]);
 
   // ── Local Media Preview (getUserMedia) ───────────────────────────────
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -155,20 +172,20 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
 
   // ── Close Handler ───────────────────────────────────────────────────
 
+  /**
+   * Closes the studio modal.
+   *
+   * - If the session is live: disconnects from LiveKit but does NOT
+   *   end the session in the database. The teacher can rejoin later.
+   * - If not live: simply resets and closes.
+   *
+   * The ONLY way to permanently end a session is via the "End Session"
+   * button in the ControlBar, which calls endClass().
+   */
   const handleClose = useCallback(() => {
-    if (state.status === 'live') {
-      // End class, then close after DB update
-      endClass().then(() => {
-        if (isMountedRef.current) {
-          reset();
-          onClose();
-        }
-      });
-    } else {
-      reset();
-      onClose();
-    }
-  }, [state.status, endClass, reset, onClose]);
+    disconnectOnly();
+    onClose();
+  }, [disconnectOnly, onClose]);
 
   // ── Go Live button click: scheduled or instant ────────────────────
 
@@ -190,9 +207,11 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      reset();
+      // On unmount, disconnect from LiveKit but DO NOT end the session.
+      // The session remains LIVE in the database so the teacher can rejoin.
+      disconnectOnly();
     };
-  }, [reset]);
+  }, [disconnectOnly]);
 
   // ── Guard: not open ─────────────────────────────────────────────────
 
@@ -263,9 +282,15 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
         audio={true}
         className="fixed inset-0 z-50 bg-navy-800/90 backdrop-blur-xl flex flex-col p-6 sm:p-10 animate-fadeIn text-white"
         onDisconnected={() => {
-          if (isMountedRef.current && state.status === 'live') {
-            endClass();
-          }
+          // LiveKit disconnected — this is expected on:
+          //   • Modal close (X button via disconnectOnly)
+          //   • Page refresh / browser navigation
+          //   • Temporary internet loss
+          //
+          // The session remains LIVE in the database until the teacher
+          // explicitly clicks "End Session" in the ControlBar.
+          // Teachers can rejoin via the "Rejoin Live Class" button.
+          console.log('[LiveStudio] Disconnected from LiveKit room');
         }}
       >
         {/* Audio from remote participants */}
@@ -329,7 +354,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
         </div>
 
         {/* ── Control Bar (inside LiveKitRoom for useLocalParticipant) ── */}
-        <ControlBar onEndClass={endClass} />
+        <ControlBar onEndClass={endClass} onCloseStudio={handleClose} />
       </LiveKitRoom>
     );
   }
@@ -428,7 +453,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
       </div>
 
       {/* ── Control Bar ── */}
-      {!scheduledClassId && showPreview && !isEnding && (
+      {!scheduledClassId && !rejoinClassId && showPreview && !isEnding && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-white/10 shrink-0">
           {/* Preview controls */}
           <div className="flex items-center gap-3">
@@ -478,8 +503,8 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, onLiveClassS
           </button>
         </div>
       )}
-      {/* Start Live Dialog — only shown in Instant Go Live mode (no scheduledClassId) */}
-      {!scheduledClassId && showStartDialog && (
+      {/* Start Live Dialog — only shown in Instant Go Live mode (no scheduledClassId or rejoinClassId) */}
+      {!scheduledClassId && !rejoinClassId && showStartDialog && (
         <StartLiveDialog
           teacherId={teacherId}
           onStart={(selections) => {

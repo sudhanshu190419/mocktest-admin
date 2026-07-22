@@ -15,15 +15,18 @@ import { useLocalParticipant } from '@livekit/components-react';
 import { Microphone, VideoCamera } from '@phosphor-icons/react';
 
 interface ControlBarProps {
-  /** Called when the teacher clicks "End Class". */
+  /** Called when the teacher clicks "End Class" — permanently ends the session in DB. */
   onEndClass: () => void;
+  /** Called when the teacher clicks the close/disconnect button — only disconnects from LiveKit. */
+  onCloseStudio: () => void;
 }
 
 /**
  * Control bar for a live LiveKit session.
- * Renders camera/mic toggle buttons and an "End Class" button.
+ * Renders camera/mic toggle buttons, an "End Session" button,
+ * and a close studio link (disconnect-only).
  */
-export function ControlBar({ onEndClass }: ControlBarProps): React.JSX.Element {
+export function ControlBar({ onEndClass, onCloseStudio }: ControlBarProps): React.JSX.Element {
   const {
     isCameraEnabled,
     isMicrophoneEnabled,
@@ -59,13 +62,25 @@ export function ControlBar({ onEndClass }: ControlBarProps): React.JSX.Element {
         >
           <VideoCamera size={22} />
         </button>
+
+        {/* Separator */}
+        <div className="h-8 w-px bg-white/10 mx-1" />
+
+        {/* Close Studio (disconnect only) */}
+        <button
+          onClick={onCloseStudio}
+          className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-all border border-white/10"
+          aria-label="Disconnect from LiveKit (session stays live)"
+        >
+          Exit Studio
+        </button>
       </div>
 
-      {/* End Class Button */}
+      {/* End Session Button — PERMANENTLY ends the session in DB */}
       <button
         onClick={onEndClass}
         className="w-full sm:w-auto px-8 py-4 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm tracking-wide shadow-2xl transition-all"
-        aria-label="End class for all students"
+        aria-label="End class for all students — this cannot be undone"
       >
         END SESSION & SAVE
       </button>

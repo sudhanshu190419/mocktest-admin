@@ -143,12 +143,14 @@ export async function getLiveKitToken(
           return JSON.parse(atob(padded));
         } catch { return null; }
       })();
-      console.log('[LiveKit Debug] INVOKE SESSION DIAGNOSTICS:', {
-        userId: freshSession.user.id,
-        expires_at: claims?.exp ? new Date((claims.exp as number) * 1000).toISOString() : 'unknown',
-        hasAccessToken: !!freshSession.access_token,
-        accessTokenFirst20: freshSession.access_token ? freshSession.access_token.substring(0, 20) + '...' : 'N/A',
-      });
+      const nowDiag = new Date().toISOString();
+      console.log(`[${nowDiag}] [LK-DIAG-WEB] INVOKE SESSION DIAGNOSTICS:`);
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   userId               =`, freshSession.user.id);
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   email                =`, freshSession.user.email);
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   expires_at           =`, claims?.exp ? new Date((claims.exp as number) * 1000).toISOString() : 'unknown');
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   hasAccessToken       =`, !!freshSession.access_token);
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   access token length  =`, freshSession.access_token?.length ?? 0);
+      console.log(`[${nowDiag}] [LK-DIAG-WEB]   access token (1st 20)=`, freshSession.access_token ? freshSession.access_token.substring(0, 20) + '...' : 'N/A');
     }
     // Log the Supabase URL
     const supabaseUrl = (supabase as any)?.supabaseUrl ||
@@ -163,14 +165,47 @@ export async function getLiveKitToken(
     console.warn('[LiveKit Debug] Session was NOT checked before invoke (sessionChecked=false)');
   }
 
+  // ── [LK-DIAG-WEB] Also check getUser() for additional diagnostics ──
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const nowUser = new Date().toISOString();
+    console.log(`[${nowUser}] [LK-DIAG-WEB] getUser() BEFORE invoke:`);
+    if (userError) {
+      console.error(`[${nowUser}] [LK-DIAG-WEB]   getUser error:`, JSON.stringify(userError, Object.getOwnPropertyNames(userError)));
+    }
+    if (userData?.user) {
+      console.log(`[${nowUser}] [LK-DIAG-WEB]   user exists = true`);
+      console.log(`[${nowUser}] [LK-DIAG-WEB]   user.id     =`, userData.user.id);
+      console.log(`[${nowUser}] [LK-DIAG-WEB]   email       =`, userData.user.email);
+    } else {
+      console.log(`[${nowUser}] [LK-DIAG-WEB]   user exists = false (user is null)`);
+    }
+  } catch (getUserErr) {
+    console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] getUser() THREW:`, getUserErr);
+  }
+
   // ── Edge Function Invocation ──
   console.log('[LiveKit Debug] INVOKE START — calling supabase.functions.invoke("livekit-token")...');
   const invokeStartTime = Date.now();
 
-  const { data, error } = await supabase.functions.invoke('livekit-token', {
-    body: request,
-  });
+  // ── [LK-DIAG-WEB] Wrap invoke in try/catch ──
+  let invokeResult: { data: unknown; error: unknown } | null = null;
+  try {
+    invokeResult = await supabase.functions.invoke('livekit-token', {
+      body: request,
+    });
+  } catch (invokeException: unknown) {
+    const excDuration = Date.now() - invokeStartTime;
+    const now = new Date().toISOString();
+    console.error(`[${now}] [LK-DIAG-WEB] invoke() EXCEPTION (threw before returning, duration: ${excDuration}ms):`);
+    console.error(`[${now}] [LK-DIAG-WEB]   name       =`, (invokeException as Error)?.name ?? 'N/A');
+    console.error(`[${now}] [LK-DIAG-WEB]   message    =`, (invokeException as Error)?.message ?? 'N/A');
+    console.error(`[${now}] [LK-DIAG-WEB]   stack      =`, (invokeException as Error)?.stack ?? 'N/A');
+    console.error(`[${now}] [LK-DIAG-WEB]   complete   =`, invokeException);
+    throw invokeException;
+  }
 
+  const { data, error } = invokeResult;
   const invokeDuration = Date.now() - invokeStartTime;
 
   if (error) {
@@ -196,6 +231,17 @@ export async function getLiveKitToken(
       } catch (e) {
         console.error('[LiveKit Debug] Could not serialize full error:', e);
       }
+    }
+
+    // ── [LK-DIAG-WEB] Log FunctionsHttpError properties individually ──
+    const now2 = new Date().toISOString();
+    console.error(`[${now2}] [LK-DIAG-WEB] FunctionsHttpError individual properties:`);
+    const errRecord = error as Record<string, unknown>;
+    const errProps = ['error', 'status', 'context', 'response', 'message', 'name'];
+    for (const key of errProps) {
+      const val = errRecord[key];
+      const valStr = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val ?? 'N/A');
+      console.error(`[${now2}] [LK-DIAG-WEB]   ${key} = ${valStr}`);
     }
 
     throw new Error(`Failed to fetch LiveKit token: ${error.message}`);
