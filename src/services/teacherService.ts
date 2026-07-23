@@ -409,20 +409,55 @@ export const teacherService = {
     }
 
     // 3. Log teacher as participant in session_participants
+    // ── DEBUG: Log the insert attempt ────────────────────────────────
+    const sessionParticipantPayload = {
+      session_id: sessionData.session_id,
+      class_id: classId,
+      profile_id: profileId,
+      joined_at: new Date().toISOString(),
+      device_type: 'desktop-browser',
+    };
+
+    console.log('[DEBUG session_participants] ════════════════════════════════════════');
+    console.log('[DEBUG session_participants] 📝 Attempting insert for TEACHER');
+    console.log('[DEBUG session_participants]   schema column (expected): student_id (FK → student_details.student_id)');
+    console.log('[DEBUG session_participants]   code uses (actual):      profile_id =', profileId);
+    console.log('[DEBUG session_participants]   missing NOT NULL cols:   student_id, institute_id');
+    console.log('[DEBUG session_participants]   full payload:', JSON.stringify(sessionParticipantPayload, null, 2));
+
+    // ── Query the DB to see what columns actually exist ─────────────
+    const { data: sampleRow } = await supabase
+      .from('session_participants')
+      .select('*')
+      .limit(1);
+    console.log('[DEBUG session_participants]   columns (from sample):', Object.keys(sampleRow?.[0] ?? {}).length > 0
+      ? Object.keys(sampleRow[0])
+      : 'table is empty — columns unknown until first insert. Expected from schema: participant_id, session_id, class_id, student_id, institute_id, joined_at, left_at, camera_enabled, mic_enabled, screen_shared, network_quality, device_type, ip_address, created_at');
+
     const { error: participantErr } = await supabase
       .from('session_participants')
-      .insert([{
-        session_id: sessionData.session_id,
-        class_id: classId,
-        profile_id: profileId,
-        joined_at: new Date().toISOString(),
-        device_type: 'desktop-browser',
-      }]);
+      .insert([sessionParticipantPayload]);
 
     if (participantErr) {
+      console.log('[DEBUG session_participants] ❌ INSERT FAILED:');
+      console.log('[DEBUG session_participants]   error code:', participantErr.code);
+      console.log('[DEBUG session_participants]   error message:', participantErr.message);
+      console.log('[DEBUG session_participants]   error details:', participantErr.details);
+      console.log('[DEBUG session_participants]   error hint:', participantErr.hint);
       console.error('[LiveClass] Failed to log teacher participant:', participantErr.message);
       // Non-critical — session already created, log and continue
+    } else {
+      console.log('[DEBUG session_participants] ✅ Insert succeeded for TEACHER');
+      
+      // ── Verify: query back the row we just inserted ──────────────
+      const { data: verifyRow } = await supabase
+        .from('session_participants')
+        .select('*')
+        .eq('session_id', sessionData.session_id)
+        .limit(1);
+      console.log('[DEBUG session_participants]   verify inserted row:', verifyRow);
     }
+    console.log('[DEBUG session_participants] ════════════════════════════════════════');
   },
 
   /**

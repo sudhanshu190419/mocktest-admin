@@ -29,13 +29,13 @@ const SEARCH_PROMPTS = [
 export const Header: React.FC<HeaderProps> = ({ activeTabTitle, onLaunchLive, activeRole, onToggleRole: _onToggleRole }) => {
   const [promptIndex, setPromptIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const { teacherProfile } = useAuth();
+  const { user, teacherProfile } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
   const fetchNotifs = async () => {
-    if (teacherProfile?.id) {
-      const list = await notificationService.getNotifications(teacherProfile.id);
+    if (user?.id) {
+      const list = await notificationService.getNotifications(user.id);
       setNotifications(list);
     }
   };
@@ -44,11 +44,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTabTitle, onLaunchLive, ac
     fetchNotifs();
     const interval = setInterval(fetchNotifs, 5000);
     return () => clearInterval(interval);
-  }, [teacherProfile?.id]);
+  }, [user?.id]);
 
   const handleMarkRead = async (recipientId: string) => {
-    if (teacherProfile?.id) {
-      await notificationService.markAsRead(recipientId, teacherProfile.id);
+    if (user?.id) {
+      await notificationService.markAsRead(recipientId, user.id);
       fetchNotifs();
     }
   };
@@ -123,10 +123,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTabTitle, onLaunchLive, ac
           <button 
             onClick={() => setShowDropdown(!showDropdown)}
             className="w-11 h-11 rounded-full bg-background border border-border flex items-center justify-center text-text-primary hover:bg-slate-100 transition-colors relative group shrink-0"
+            title="Notifications"
           >
             <BellRinging size={20} className="group-hover:scale-110 transition-transform" />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-error ring-2 ring-surface animate-bounce" />
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-error px-1 text-[9px] font-bold text-white ring-2 ring-surface">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </button>
 

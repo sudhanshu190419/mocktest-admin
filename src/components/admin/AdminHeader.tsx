@@ -14,10 +14,10 @@ import {
 } from '@/utils/notification';
 
 export function AdminHeader() {
-  const { teacherProfile, isDemoMode, signOut } = useAuth();
+  const { user, teacherProfile, isDemoMode, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const userId = teacherProfile?.id;
+  const userId = user?.id;
 
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

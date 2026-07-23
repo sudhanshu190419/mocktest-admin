@@ -21,7 +21,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { LiveKitRoom, RoomAudioRenderer, useTracks, VideoTrack } from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, useTracks, useRemoteParticipants, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import {
   X,
@@ -30,12 +30,16 @@ import {
   VideoCamera,
   Microphone,
   CircleNotch,
+  ChatCircleDots,
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
+
+import { supabase } from '@/config/supabase';
 
 import { useLiveClass } from '@/hooks/useLiveClass';
 import StartLiveDialog from './StartLiveDialog';
 import { ControlBar } from './ControlBar';
+import { StudioChatPanel } from '@/components/chat/StudioChatPanel';
 
 // ─── Props ─────────────────────────────────────────────────────────────────
 
@@ -69,11 +73,14 @@ interface LiveStudioViewProps {
  * Manages camera preview, Go Live, LiveKit connection, and End Class.
  */
 export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassId, onLiveClassStarted }: LiveStudioViewProps): React.JSX.Element | null {
-  const { teacherProfile, isDemoMode } = useAuth();
+  const { teacherProfile, isDemoMode, user } = useAuth();
 
   const teacherId = teacherProfile?.id || 'demo-teacher';
   const teacherName = teacherProfile?.name || 'Dr. Arvind Sharma';
+  const currentProfileId = user?.id ?? null;
   const [showStartDialog, setShowStartDialog] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const { state, startClass, startScheduledClass, endClass, disconnectOnly, rejoinClass, reset } = useLiveClass(teacherId, teacherName);
 
@@ -213,6 +220,45 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
     };
   }, [disconnectOnly]);
 
+  // ── Unread chat count (realtime subscription) ────────────────────────
+  // Listens to ALL new messages during the live session and increments the
+  // unread badge counter. Filters out the teacher's own messages.
+  // We DO NOT filter by conversation ID because conversations may not exist
+  // yet when the subscription starts (they're created on first student message).
+  // During a live class, any incoming message is for this class.
+  const classIdForChat = state.classId || scheduledClassId || rejoinClassId || '';
+
+  useEffect(() => {
+    if (!classIdForChat || state.status !== 'live') return;
+
+    const channel = supabase
+      .channel(`studio-unread:${classIdForChat}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload: { new: Record<string, unknown> }) => {
+          const msg = payload.new;
+          // Don't count the teacher's own messages (sent via the chat panel)
+          if (msg.sender_profile_id === currentProfileId) return;
+          setUnreadCount((prev) => prev + 1);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [classIdForChat, state.status, currentProfileId]);
+
+  // Reset unread count when the teacher opens the chat panel
+  useEffect(() => {
+    if (showChat) setUnreadCount(0);
+  }, [showChat]);
+
   // ── Guard: not open ─────────────────────────────────────────────────
 
   if (!isOpen) return null;
@@ -225,17 +271,12 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
   const isEnding = state.status === 'ending' || state.status === 'ended';
   const showPreview = state.status === 'idle' || state.status === 'ended';
 
-  // ── Video Stage: renders camera tracks via LiveKit Components ──────────
+  // ── LiveKit-connected sub-components ─────────────────────────────────
+  // These components MUST be rendered inside `<LiveKitRoom>` so their
+  // LiveKit hooks can access the Room context.
 
   /**
    * Renders all active camera tracks inside the video stage.
-   *
-   * Uses `useTracks` (LiveKit hook) which reactively provides track references
-   * as participants publish/unpublish their cameras.  When a track is disabled
-   * the array empties and the placeholder icon appears automatically.
-   *
-   * This component MUST be rendered inside `<LiveKitRoom>` so the hook
-   * can access Room context.
    */
   function VideoStageContent(): React.JSX.Element {
     const cameraTracks = useTracks([Track.Source.Camera]);
@@ -269,6 +310,25 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
     );
   }
 
+  /**
+   * Displays the count of remote participants (students) currently connected
+   * to the LiveKit room. Updates in real-time as students join/leave.
+   *
+   * This is the single source of truth for "students currently attending"
+   * — derived directly from the LiveKit WebRTC connection state.
+   */
+  function StudentCountBadge(): React.JSX.Element {
+    const remoteParticipants = useRemoteParticipants();
+    const count = remoteParticipants.length;
+
+    return (
+      <div className="absolute top-6 left-6 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-mono flex items-center gap-2">
+        <Users size={16} className="text-blue-400" />
+        <span>{count} Joined</span>
+      </div>
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────
 
   // ── Live mode: wrap everything in LiveKitRoom ───────────────────────
@@ -280,7 +340,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
         connect={true}
         video={true}
         audio={true}
-        className="fixed inset-0 z-50 bg-navy-800/90 backdrop-blur-xl flex flex-col p-6 sm:p-10 animate-fadeIn text-white"
+        className="fixed inset-0 z-50 bg-navy-800/90 backdrop-blur-xl flex flex-col p-6 sm:p-10 overflow-hidden animate-fadeIn text-white"
         onDisconnected={() => {
           // LiveKit disconnected — this is expected on:
           //   • Modal close (X button via disconnectOnly)
@@ -312,11 +372,28 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
               )}
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <div className="px-4 py-2 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 font-mono text-xs font-bold flex items-center gap-2">
               <RecordIcon size={16} weight="fill" className="text-red-500 animate-pulse" />
               <span>LIVE</span>
             </div>
+            {/* Chat toggle with unread badge */}
+            <button
+              onClick={() => setShowChat((prev) => !prev)}
+              className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                showChat
+                  ? 'bg-blue-500/30 text-blue-300 border border-blue-400/40'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80'
+              }`}
+              aria-label={showChat ? 'Close chat' : 'Open chat'}
+            >
+              <ChatCircleDots size={20} />
+              {unreadCount > 0 && !showChat && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white ring-2 ring-navy-800">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={handleClose}
               className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
@@ -326,29 +403,42 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
           </div>
         </div>
 
-        {/* ── Video Stage ── */}
-        <div className="flex-1 my-6 rounded-[2.5rem] bg-black/40 border border-white/10 relative overflow-hidden flex items-center justify-center shadow-2xl">
-          {/* Camera tracks rendered by LiveKit Components */}
-          <VideoStageContent />
+        {/* ── Video Stage + Chat Panel ── */}
+        <div className="relative flex flex-1 min-h-0 overflow-hidden">
+          {/* Video stage — shrinks in width when chat is open via padding-right */}
+          <div
+            className="relative flex-1 min-h-0 rounded-[2.5rem] bg-black/40 border border-white/10 overflow-hidden flex items-center justify-center shadow-2xl"
+            style={showChat ? { paddingRight: '376px' } : undefined}
+          >
+            {/* Camera tracks rendered by LiveKit Components */}
+            <VideoStageContent />
 
-          {/* Overlay: teacher name + room */}
-          <div className="absolute bottom-6 left-6 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-xs">
-            <p className="font-bold">{teacherName} (Host)</p>
-            <p className="text-[10px] text-blue-200/80 font-mono mt-0.5">
-              {state.roomName ? `Room: ${state.roomName}` : 'LiveKit • Connected'}
-            </p>
+            {/* Overlay: teacher name + room */}
+            <div className="absolute bottom-6 left-6 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-xs">
+              <p className="font-bold">{teacherName} (Host)</p>
+              <p className="text-[10px] text-blue-200/80 font-mono mt-0.5">
+                {state.roomName ? `Room: ${state.roomName}` : 'LiveKit • Connected'}
+              </p>
+            </div>
+
+            <StudentCountBadge />
+
+            {/* Connection error banner (LiveKitRoom may render this if connect fails) */}
+            {state.error && (
+              <div className="absolute top-6 right-6 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-medium max-w-xs">
+                {state.error}
+              </div>
+            )}
           </div>
 
-          {/* Top-left: student count */}
-          <div className="absolute top-6 left-6 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-mono flex items-center gap-2">
-            <Users size={16} className="text-blue-400" />
-            <span>48 Enrolled</span>
-          </div>
-
-          {/* Connection error banner (LiveKitRoom may render this if connect fails) */}
-          {state.error && (
-            <div className="absolute top-6 right-6 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-medium max-w-xs">
-              {state.error}
+          {/* Chat panel — absolutely positioned on the right, completely out of flex flow */}
+          {showChat && (
+            <div className="absolute top-0 right-0 bottom-0 w-[360px] rounded-[1.5rem] overflow-hidden border border-white/10 bg-navy-900/95 backdrop-blur-xl shadow-2xl">
+              <StudioChatPanel
+                classId={state.classId || scheduledClassId || rejoinClassId || ''}
+                currentProfileId={currentProfileId}
+                onClose={() => setShowChat(false)}
+              />
             </div>
           )}
         </div>
@@ -436,10 +526,10 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
               <p className="text-[10px] text-blue-200/80 font-mono mt-0.5">Preview • Not Live Yet</p>
             </div>
 
-            {/* Top-left: student count */}
+            {/* Top-left: student count — no LiveKit yet, so show 0 */}
             <div className="absolute top-6 left-6 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-mono flex items-center gap-2">
               <Users size={16} className="text-blue-400" />
-              <span>48 Enrolled</span>
+              <span>0 Joined</span>
             </div>
           </>
         ) : null}

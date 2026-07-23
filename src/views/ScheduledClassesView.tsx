@@ -164,126 +164,126 @@ export function ScheduledClassesView({ onLaunchLive }: { onLaunchLive?: () => vo
 
   return (
     <div className="space-y-6 pb-12 animate-fadeIn">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Live Classes</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Manage your scheduled, live, and past classes
-          </p>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Live Classes</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Manage your scheduled, live, and past classes
+            </p>
+          </div>
+          <button
+            onClick={() => setShowScheduleDialog(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700"
+          >
+            <PlusCircle size={18} weight="fill" />
+            Schedule Class
+          </button>
         </div>
-        <button
-          onClick={() => setShowScheduleDialog(true)}
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700"
-        >
-          <PlusCircle size={18} weight="fill" />
-          Schedule Class
-        </button>
-      </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-2xl bg-gray-100 p-1.5">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const count = counts[tab.id];
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                isActive
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <Icon size={18} weight={isActive ? 'fill' : 'regular'} />
-              <span>{tab.label}</span>
-              {count > 0 && (
-                <span
-                  className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                    tab.id === 'live'
-                      ? 'bg-green-100 text-green-700'
-                      : tab.id === 'upcoming'
-                      ? 'bg-blue-100 text-blue-700'
-                      : tab.id === 'cancelled'
-                      ? 'bg-red-100 text-red-600'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}
+        {/* Tabs */}
+        <div className="flex gap-1 rounded-2xl bg-gray-100 p-1.5">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const count = counts[tab.id];
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+                  isActive
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Icon size={18} weight={isActive ? 'fill' : 'regular'} />
+                <span>{tab.label}</span>
+                {count > 0 && (
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      tab.id === 'live'
+                        ? 'bg-green-100 text-green-700'
+                        : tab.id === 'upcoming'
+                        ? 'bg-blue-100 text-blue-700'
+                        : tab.id === 'cancelled'
+                        ? 'bg-red-100 text-red-600'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content */}
+        <div>
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <CircleNotch size={36} className="animate-spin text-blue-600" />
+              <p className="text-sm text-gray-500 font-medium">Loading your classes...</p>
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+              <XCircle size={32} className="mx-auto text-red-400 mb-2" />
+              <p className="text-sm font-medium text-red-700">{error}</p>
+              <button
+                onClick={fetchClasses}
+                className="mt-3 rounded-xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-200 transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : sortedClasses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
+                {activeTab === 'live' ? (
+                  <VideoCamera size={32} className="text-gray-300" />
+                ) : activeTab === 'upcoming' ? (
+                  <CalendarBlank size={32} className="text-gray-300" />
+                ) : activeTab === 'completed' ? (
+                  <ChartLineUp size={32} className="text-gray-300" />
+                ) : (
+                  <XCircle size={32} className="text-gray-300" />
+                )}
+              </div>
+              <h4 className="text-base font-bold text-gray-700 mb-1">
+                {activeTab === 'upcoming'
+                  ? 'No upcoming classes'
+                  : activeTab === 'live'
+                  ? 'No live classes right now'
+                  : activeTab === 'completed'
+                  ? 'No completed classes'
+                  : 'No cancelled classes'}
+              </h4>
+              <p className="text-sm text-gray-400 max-w-sm">
+                {activeTab === 'upcoming'
+                  ? 'Schedule your first class to get started.'
+                  : activeTab === 'live'
+                  ? 'Start a scheduled class when you\'re ready to go live.'
+                  : 'Classes will appear here once they\'re completed or cancelled.'}
+              </p>
+              {activeTab === 'upcoming' && (
+                <button
+                  onClick={() => setShowScheduleDialog(true)}
+                  className="mt-4 flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-700"
                 >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Content */}
-      <div>
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <CircleNotch size={36} className="animate-spin text-blue-600" />
-            <p className="text-sm text-gray-500 font-medium">Loading your classes...</p>
-          </div>
-        ) : error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-            <XCircle size={32} className="mx-auto text-red-400 mb-2" />
-            <p className="text-sm font-medium text-red-700">{error}</p>
-            <button
-              onClick={fetchClasses}
-              className="mt-3 rounded-xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-200 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : sortedClasses.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
-              {activeTab === 'live' ? (
-                <VideoCamera size={32} className="text-gray-300" />
-              ) : activeTab === 'upcoming' ? (
-                <CalendarBlank size={32} className="text-gray-300" />
-              ) : activeTab === 'completed' ? (
-                <ChartLineUp size={32} className="text-gray-300" />
-              ) : (
-                <XCircle size={32} className="text-gray-300" />
+                  <PlusCircle size={18} weight="fill" />
+                  Schedule Your First Class
+                </button>
               )}
             </div>
-            <h4 className="text-base font-bold text-gray-700 mb-1">
-              {activeTab === 'upcoming'
-                ? 'No upcoming classes'
-                : activeTab === 'live'
-                ? 'No live classes right now'
-                : activeTab === 'completed'
-                ? 'No completed classes'
-                : 'No cancelled classes'}
-            </h4>
-            <p className="text-sm text-gray-400 max-w-sm">
-              {activeTab === 'upcoming'
-                ? 'Schedule your first class to get started.'
-                : activeTab === 'live'
-                ? 'Start a scheduled class when you\'re ready to go live.'
-                : 'Classes will appear here once they\'re completed or cancelled.'}
-            </p>
-            {activeTab === 'upcoming' && (
-              <button
-                onClick={() => setShowScheduleDialog(true)}
-                className="mt-4 flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-700"
-              >
-                <PlusCircle size={18} weight="fill" />
-                Schedule Your First Class
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {sortedClasses.map((item) => (
-              <ClassCard key={item.classId} item={item} onAction={handleAction} />
-            ))}
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {sortedClasses.map((item) => (
+                <ClassCard key={item.classId} item={item} onAction={handleAction} />
+              ))}
+            </div>
+          )}
+        </div>
 
       {/* Schedule Dialog */}
       <ScheduleClassDialog
