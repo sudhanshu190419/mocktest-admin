@@ -14,7 +14,11 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { QuestionForm, type QuestionFormData } from '@/features/question-bank/components/QuestionForm';
+import { AddSubjectModal } from '@/features/question-bank/components/AddSubjectModal';
+import { AddChapterModal } from '@/features/question-bank/components/AddChapterModal';
+import { AddTopicModal } from '@/features/question-bank/components/AddTopicModal';
 import type { DifficultyLevel, QuestionOption } from '@/types/mockTest';
+import type { Chapter, Subject, Topic } from '@/types/academic';
 import { deleteQuestionImage, uploadQuestionImage } from '@/services/mockTest/questionImageService';
 import { deleteOptionImage, uploadOptionImage } from '@/services/questionOptionImageService';
 
@@ -45,18 +49,66 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // ── Subject creation modal ──────────────────────────────────────────────
+  const [showAddSubject, setShowAddSubject] = useState(false);
+  const [showAddChapter, setShowAddChapter] = useState(false);
+  const [showAddTopic, setShowAddTopic] = useState(false);
+  const [addSubjectFeedback, setAddSubjectFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
   const { data: subjectsData, isLoading: loadingSubjects } = useSubjects();
   const subjects = (subjectsData?.data ?? []).map((s) => ({ value: s.subjectId, label: s.name }));
+  const rawSubjects: Subject[] = subjectsData?.data ?? [];
+
+  const handleSubjectCreated = useCallback((newSubject: Subject) => {
+    setShowAddSubject(false);
+    setFormData((prev) =>
+      prev ? { ...prev, subjectId: newSubject.subjectId, chapterId: '', topicId: '' } : prev,
+    );
+    setAddSubjectFeedback({
+      type: 'success',
+      message: `✓ Subject "${newSubject.name}" created successfully.`,
+    });
+    setTimeout(() => setAddSubjectFeedback(null), 4000);
+  }, []);
 
   const { data: chaptersData, isLoading: loadingChapters } = useChapters(
     formData?.subjectId ? { subjectId: formData.subjectId } : undefined,
   );
   const chapters = (chaptersData?.data ?? []).map((c) => ({ value: c.chapterId, label: c.name }));
+  const rawChapters: Chapter[] = chaptersData?.data ?? [];
+
+  const handleChapterCreated = useCallback((newChapter: Chapter) => {
+    setShowAddChapter(false);
+    setFormData((prev) =>
+      prev ? { ...prev, chapterId: newChapter.chapterId, topicId: '' } : prev,
+    );
+    setAddSubjectFeedback({
+      type: 'success',
+      message: `✓ Chapter "${newChapter.name}" created successfully.`,
+    });
+    setTimeout(() => setAddSubjectFeedback(null), 4000);
+  }, []);
 
   const { data: topicsData, isLoading: loadingTopics } = useTopics(
     formData?.chapterId ? { chapterId: formData.chapterId } : undefined,
   );
   const topics = (topicsData?.data ?? []).map((t) => ({ value: t.topicId, label: t.name }));
+  const rawTopics: Topic[] = topicsData?.data ?? [];
+
+  const handleTopicCreated = useCallback((newTopic: Topic) => {
+    setShowAddTopic(false);
+    setFormData((prev) =>
+      prev ? { ...prev, topicId: newTopic.topicId } : prev,
+    );
+    setAddSubjectFeedback({
+      type: 'success',
+      message: `✓ Topic "${newTopic.name}" created successfully.`,
+    });
+    setTimeout(() => setAddSubjectFeedback(null), 4000);
+  }, []);
 
   useEffect(() => {
     // Wait for ALL data sources to resolve before populating formData.
@@ -414,6 +466,41 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{saveError}</div>
       )}
 
+      {addSubjectFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addSubjectFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addSubjectFeedback.message}
+        </div>
+      )}
+
+      <AddSubjectModal
+        isOpen={showAddSubject}
+        existingSubjects={rawSubjects}
+        onClose={() => setShowAddSubject(false)}
+        onCreated={handleSubjectCreated}
+      />
+
+      <AddChapterModal
+        isOpen={showAddChapter}
+        subjectId={formData?.subjectId ?? ''}
+        existingChapters={rawChapters}
+        onClose={() => setShowAddChapter(false)}
+        onCreated={handleChapterCreated}
+      />
+
+      <AddTopicModal
+        isOpen={showAddTopic}
+        chapterId={formData?.chapterId ?? ''}
+        existingTopics={rawTopics}
+        onClose={() => setShowAddTopic(false)}
+        onCreated={handleTopicCreated}
+      />
+
       {formData && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
           <QuestionForm
@@ -425,6 +512,9 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
             loadingTopics={loadingTopics}
             onSubjectChange={handleSubjectChange}
             onChapterChange={handleChapterChange}
+            onAddSubject={() => setShowAddSubject(true)}
+            onAddChapter={() => setShowAddChapter(true)}
+            onAddTopic={() => setShowAddTopic(true)}
             data={formData}
             onChange={setFormData}
             errors={errors}

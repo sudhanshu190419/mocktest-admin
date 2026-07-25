@@ -88,12 +88,6 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
       render: (p) => <span className="text-xs">{p.totalQuestions}</span>,
     },
     {
-      key: 'totalMarks',
-      header: 'Marks',
-      sortable: true,
-      render: (p) => <span className="text-xs">{p.totalMarks != null ? p.totalMarks : '—'}</span>,
-    },
-    {
       key: 'durationMin',
       header: 'Duration',
       sortable: true,

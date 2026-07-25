@@ -402,6 +402,9 @@ export const adminKeys = {
 
   // ═════════════════════════════════════════════════════════════════════════
   //  Course Content Assignment (admin Course Content Assignment module)
+  //  ── DEPRECATED in favor of batchContentAssignment below.
+  //  Kept for backward compatibility during migration phase.
+  //  Will be removed in Phase 2 after full verification.
   // ═════════════════════════════════════════════════════════════════════════
 
   courseContentAssignment: {
@@ -425,6 +428,33 @@ export const adminKeys = {
     /** Key for assignment stats of a specific course. */
     stats: (courseId: string) =>
       [...adminKeys.courseContentAssignment.all(), 'stats', courseId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Content Assignment (admin Batch Content Assignment module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchContentAssignment: {
+    /** Root key for all batch content assignment queries. */
+    all: () => [...adminKeys.all, 'batchContentAssignment'] as const,
+
+    /** Key for every assigned-content list query (broad invalidation). */
+    assigned: () => [...adminKeys.batchContentAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned content of a specific batch. */
+    assignedContent: (batchId: string) =>
+      [...adminKeys.batchContentAssignment.assigned(), batchId] as const,
+
+    /** Key for every available-content list query. */
+    available: () => [...adminKeys.batchContentAssignment.all(), 'available'] as const,
+
+    /** Key for available content for a specific batch. */
+    availableContent: (batchId: string) =>
+      [...adminKeys.batchContentAssignment.available(), batchId] as const,
+
+    /** Key for assignment stats of a specific batch. */
+    stats: (batchId: string) =>
+      [...adminKeys.batchContentAssignment.all(), 'stats', batchId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════

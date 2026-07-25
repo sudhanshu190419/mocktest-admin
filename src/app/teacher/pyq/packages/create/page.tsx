@@ -6,7 +6,9 @@ import Link from 'next/link';
 import { useCreatePyqPackage } from '@/hooks/pyq/usePyqPackages';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { useAuth } from '@/context/AuthContext';
+import { AddStreamModal } from '@/features/question-bank/components/AddStreamModal';
 import { PageHeader } from '@/components/ui/PageHeader';
+import type { Stream } from '@/types/academic';
 
 interface FormData {
   name: string;
@@ -43,8 +45,16 @@ export default function CreatePyqPackagePage() {
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // ── Stream creation modal ────────────────────────────────────────────────
+  const [showAddStream, setShowAddStream] = useState(false);
+  const [addStreamFeedback, setAddStreamFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
   const { data: streamsData } = useStreams(undefined, undefined, { page: 1, pageSize: 100 });
   const streams = streamsData?.data ?? [];
+  const rawStreams: Stream[] = streamsData?.data ?? [];
 
   const handleChange = useCallback(
     (field: keyof FormData, value: string | number) => {
@@ -53,6 +63,16 @@ export default function CreatePyqPackagePage() {
     },
     [],
   );
+
+  const handleStreamCreated = useCallback((newStream: Stream) => {
+    setShowAddStream(false);
+    setFormData((prev) => ({ ...prev, streamId: newStream.streamId }));
+    setAddStreamFeedback({
+      type: 'success',
+      message: `✓ Stream "${newStream.name}" created successfully.`,
+    });
+    setTimeout(() => setAddStreamFeedback(null), 4000);
+  }, []);
 
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
@@ -131,6 +151,25 @@ export default function CreatePyqPackagePage() {
         ]}
       />
 
+      {addStreamFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addStreamFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addStreamFeedback.message}
+        </div>
+      )}
+
+      <AddStreamModal
+        isOpen={showAddStream}
+        existingStreams={rawStreams}
+        onClose={() => setShowAddStream(false)}
+        onCreated={handleStreamCreated}
+      />
+
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Info */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
@@ -170,13 +209,23 @@ export default function CreatePyqPackagePage() {
               </label>
               <select
                 value={formData.streamId}
-                onChange={(e) => handleChange('streamId', e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === '__add_new__') {
+                    setShowAddStream(true);
+                    return;
+                  }
+                  handleChange('streamId', e.target.value);
+                }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
               >
                 <option value="">Select a stream...</option>
                 {streams.map((s) => (
                   <option key={s.streamId} value={s.streamId}>{s.name}</option>
                 ))}
+                <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                  + Add New Stream
+                </option>
               </select>
               {errors.streamId && <p className="mt-1 text-xs text-red-500">{errors.streamId}</p>}
             </div>

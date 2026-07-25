@@ -129,6 +129,8 @@ export function notificationIcon(type: NotificationType): string {
       return '❌';
     case 'live_class_reminder':
       return '🎓';
+    case 'live_class_started':
+      return '🔴';
     case 'content_approved':
       return '👍';
     case 'content_rejected':
@@ -179,6 +181,8 @@ export function notificationTypeLabel(type: NotificationType): string {
       return 'Error';
     case 'live_class_reminder':
       return 'Live Class Reminder';
+    case 'live_class_started':
+      return 'Live Class Started';
     case 'content_approved':
       return 'Content Approved';
     case 'content_rejected':

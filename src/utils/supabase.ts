@@ -130,5 +130,34 @@ export function extractErrorMessage(error: unknown): string {
     return error.message;
   }
 
+  // Plain object with a message property (e.g. Supabase HTTP error body)
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as Record<string, unknown>).message;
+    if (typeof msg === 'string' && msg.length > 0) {
+      return msg;
+    }
+    if (typeof msg === 'string') {
+      // Fall back to stringifying details or the full error
+      const details = (error as Record<string, unknown>).details;
+      if (typeof details === 'string' && details.length > 0) {
+        return details;
+      }
+      const code = (error as Record<string, unknown>).code;
+      return `Error code: ${String(code ?? 'unknown')}`;
+    }
+  }
+
+  // Stringifiable object with no message property
+  if (error && typeof error === 'object') {
+    try {
+      const serialised = JSON.stringify(error);
+      if (serialised && serialised !== '{}') {
+        return serialised;
+      }
+    } catch {
+      // ignore serialisation failures
+    }
+  }
+
   return 'An unexpected error occurred.';
 }

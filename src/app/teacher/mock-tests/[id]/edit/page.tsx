@@ -29,9 +29,6 @@ interface FormData {
   description: string;
   testType: string;
   durationMin: number;
-  totalMarks: number;
-  passingMarks: number | null;
-  negativeMarking: number;
   attemptLimit: number | null;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -77,9 +74,6 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
         description: test.description ?? '',
         testType: test.testType,
         durationMin: test.durationMin,
-        totalMarks: test.totalMarks,
-        passingMarks: test.passingMarks,
-        negativeMarking: test.negativeMarking,
         attemptLimit: test.attemptLimit,
         shuffleQuestions: test.shuffleQuestions,
         shuffleOptions: test.shuffleOptions,
@@ -114,11 +108,7 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
     else if (formData.title.trim().length < 3) newErrors.title = 'Title must be at least 3 characters.';
     if (formData.durationMin <= 0) newErrors.durationMin = 'Duration must be greater than 0.';
     if (formData.durationMin > 600) newErrors.durationMin = 'Duration cannot exceed 600 minutes.';
-    if (formData.totalMarks <= 0) newErrors.totalMarks = 'Total marks must be greater than 0.';
-    if (formData.passingMarks !== null && formData.passingMarks > formData.totalMarks) {
-      newErrors.passingMarks = 'Passing marks cannot exceed total marks.';
-    }
-    if (formData.negativeMarking < 0) newErrors.negativeMarking = 'Negative marking cannot be negative.';
+
     if (formData.attemptLimit !== null && formData.attemptLimit < 1) {
       newErrors.attemptLimit = 'Attempt limit must be at least 1.';
     }
@@ -146,8 +136,6 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
             title: formData.title.trim(),
             description: formData.description || null,
             durationMin: formData.durationMin,
-            passingMarks: formData.passingMarks,
-            negativeMarking: formData.negativeMarking,
             attemptLimit: formData.attemptLimit,
             shuffleQuestions: formData.shuffleQuestions,
             shuffleOptions: formData.shuffleOptions,
@@ -300,24 +288,6 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
                 onChange={(e) => handleChange('durationMin', Math.max(1, parseInt(e.target.value) || 1))} min={1} max={600}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
               {errors.durationMin && <p className="mt-1 text-xs text-red-500">{errors.durationMin}</p>}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Total Marks</label>
-              <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">{test.totalMarks}</p>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Passing Marks</label>
-              <input type="number" value={formData.passingMarks ?? ''}
-                onChange={(e) => handleChange('passingMarks', e.target.value ? parseInt(e.target.value) : null)} min={0}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
-              {errors.passingMarks && <p className="mt-1 text-xs text-red-500">{errors.passingMarks}</p>}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Negative Marking</label>
-              <input type="number" value={formData.negativeMarking}
-                onChange={(e) => handleChange('negativeMarking', Math.max(0, parseFloat(e.target.value) || 0))} min={0} step={0.25}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
-              {errors.negativeMarking && <p className="mt-1 text-xs text-red-500">{errors.negativeMarking}</p>}
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Attempt Limit</label>

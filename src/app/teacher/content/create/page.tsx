@@ -8,7 +8,11 @@ import { useSubjects } from '@/hooks/academic/useSubjects';
 import { useChapters } from '@/hooks/academic/useChapters';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { useAuth } from '@/context/AuthContext';
+import { AddSubjectModal } from '@/features/question-bank/components/AddSubjectModal';
+import { AddChapterModal } from '@/features/question-bank/components/AddChapterModal';
+import { AddStreamModal } from '@/features/question-bank/components/AddStreamModal';
 import { PageHeader } from '@/components/ui/PageHeader';
+import type { Subject, Chapter, Stream } from '@/types/academic';
 
 const CONTENT_TYPES = [
   { value: 'pdf', label: 'PDF Document' },
@@ -58,6 +62,14 @@ export default function CreateContentPage() {
     { page: 1, pageSize: 50 },
   );
   const streams = streamsData?.data ?? [];
+  const rawStreams: Stream[] = streamsData?.data ?? [];
+
+  // ── Stream creation modal ────────────────────────────────────────────────
+  const [showAddStream, setShowAddStream] = useState(false);
+  const [addStreamFeedback, setAddStreamFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const { data: subjectsData } = useSubjects(
     formData.streamId ? { streamId: formData.streamId } : undefined,
@@ -65,6 +77,7 @@ export default function CreateContentPage() {
     { page: 1, pageSize: 200 },
   );
   const subjects = subjectsData?.data ?? [];
+  const rawSubjects: Subject[] = subjectsData?.data ?? [];
 
   const { data: chaptersData } = useChapters(
     formData.subjectId ? { subjectId: formData.subjectId } : undefined,
@@ -72,6 +85,21 @@ export default function CreateContentPage() {
     { page: 1, pageSize: 200 },
   );
   const chapters = chaptersData?.data ?? [];
+  const rawChapters: Chapter[] = chaptersData?.data ?? [];
+
+  // ── Subject creation modal ──────────────────────────────────────────────
+  const [showAddSubject, setShowAddSubject] = useState(false);
+  const [addSubjectFeedback, setAddSubjectFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  // ── Chapter creation modal ──────────────────────────────────────────────
+  const [showAddChapter, setShowAddChapter] = useState(false);
+  const [addChapterFeedback, setAddChapterFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const handleChange = useCallback(
     (field: keyof FormData, value: string | number | boolean | null) => {
@@ -81,6 +109,35 @@ export default function CreateContentPage() {
     [],
   );
 
+  const handleSubjectCreated = useCallback((newSubject: Subject) => {
+    setShowAddSubject(false);
+    setFormData((prev) => ({ ...prev, subjectId: newSubject.subjectId }));
+    setAddSubjectFeedback({
+      type: 'success',
+      message: `✓ Subject "${newSubject.name}" created successfully.`,
+    });
+    setTimeout(() => setAddSubjectFeedback(null), 4000);
+  }, []);
+
+  const handleChapterCreated = useCallback((newChapter: Chapter) => {
+    setShowAddChapter(false);
+    setFormData((prev) => ({ ...prev, chapterId: newChapter.chapterId }));
+    setAddChapterFeedback({
+      type: 'success',
+      message: `✓ Chapter "${newChapter.name}" created successfully.`,
+    });
+    setTimeout(() => setAddChapterFeedback(null), 4000);
+  }, []);
+
+  const handleStreamCreated = useCallback((newStream: Stream) => {
+    setShowAddStream(false);
+    setFormData((prev) => ({ ...prev, streamId: newStream.streamId }));
+    setAddStreamFeedback({
+      type: 'success',
+      message: `✓ Stream "${newStream.name}" created successfully.`,
+    });
+    setTimeout(() => setAddStreamFeedback(null), 4000);
+  }, []);
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -99,11 +156,7 @@ export default function CreateContentPage() {
       }
     }
 
-    if (formData.contentType === 'pdf') {
-      if (!formData.pageCount || formData.pageCount <= 0) {
-        newErrors.pageCount = 'Page count is required for PDFs.';
-      }
-    }
+
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -162,6 +215,76 @@ export default function CreateContentPage() {
         ]}
       />
 
+      {addSubjectFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addSubjectFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addSubjectFeedback.message}
+        </div>
+      )}
+
+      {addStreamFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addStreamFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addStreamFeedback.message}
+        </div>
+      )}
+
+      {addSubjectFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addSubjectFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addSubjectFeedback.message}
+        </div>
+      )}
+
+      {addChapterFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addChapterFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addChapterFeedback.message}
+        </div>
+      )}
+
+      <AddStreamModal
+        isOpen={showAddStream}
+        existingStreams={rawStreams}
+        onClose={() => setShowAddStream(false)}
+        onCreated={handleStreamCreated}
+      />
+
+      <AddSubjectModal
+        isOpen={showAddSubject}
+        existingSubjects={rawSubjects}
+        onClose={() => setShowAddSubject(false)}
+        onCreated={handleSubjectCreated}
+      />
+
+      <AddChapterModal
+        isOpen={showAddChapter}
+        subjectId={formData.subjectId}
+        existingChapters={rawChapters}
+        onClose={() => setShowAddChapter(false)}
+        onCreated={handleChapterCreated}
+      />
+
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Info */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
@@ -199,6 +322,10 @@ export default function CreateContentPage() {
                 <select
                   value={formData.streamId}
                   onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowAddStream(true);
+                      return;
+                    }
                     handleChange('streamId', e.target.value);
                     handleChange('subjectId', '');
                     handleChange('chapterId', '');
@@ -209,6 +336,10 @@ export default function CreateContentPage() {
                   {streams.map((s) => (
                     <option key={s.streamId} value={s.streamId}>{s.name}</option>
                   ))}
+                  <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                  <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                    + Add New Stream
+                  </option>
                 </select>
                 {errors.streamId && <p className="mt-1 text-xs text-red-500">{errors.streamId}</p>}
               </div>
@@ -217,6 +348,10 @@ export default function CreateContentPage() {
                 <select
                   value={formData.subjectId}
                   onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowAddSubject(true);
+                      return;
+                    }
                     handleChange('subjectId', e.target.value);
                     handleChange('chapterId', '');
                   }}
@@ -226,6 +361,10 @@ export default function CreateContentPage() {
                   {subjects.map((s) => (
                     <option key={s.subjectId} value={s.subjectId}>{s.name}</option>
                   ))}
+                  <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                  <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                    + Add New Subject
+                  </option>
                 </select>
                 {errors.subjectId && <p className="mt-1 text-xs text-red-500">{errors.subjectId}</p>}
               </div>
@@ -233,13 +372,23 @@ export default function CreateContentPage() {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Chapter *</label>
                 <select
                   value={formData.chapterId}
-                  onChange={(e) => handleChange('chapterId', e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowAddChapter(true);
+                      return;
+                    }
+                    handleChange('chapterId', e.target.value);
+                  }}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
                 >
                   <option value="">Select a chapter...</option>
                   {chapters.map((c) => (
                     <option key={c.chapterId} value={c.chapterId}>{c.name}</option>
                   ))}
+                  <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                  <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                    + Add New Chapter
+                  </option>
                 </select>
                 {errors.chapterId && <p className="mt-1 text-xs text-red-500">{errors.chapterId}</p>}
               </div>
@@ -254,7 +403,6 @@ export default function CreateContentPage() {
                   onChange={(e) => {
                     handleChange('contentType', e.target.value);
                     if (e.target.value !== 'video') handleChange('durationSeconds', null);
-                    if (e.target.value !== 'pdf') handleChange('pageCount', null);
                   }}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
                 >
@@ -264,7 +412,7 @@ export default function CreateContentPage() {
                 </select>
               </div>
 
-              {/* Duration (video) or Page Count (PDF) */}
+              {/* Duration (video) */}
               {formData.contentType === 'video' && (
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">Duration (seconds) *</label>
@@ -280,20 +428,7 @@ export default function CreateContentPage() {
                 </div>
               )}
 
-              {formData.contentType === 'pdf' && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Page Count *</label>
-                  <input
-                    type="number"
-                    value={formData.pageCount ?? ''}
-                    onChange={(e) => handleChange('pageCount', parseInt(e.target.value) || null)}
-                    min={1}
-                    placeholder="e.g. 25"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-                  />
-                  {errors.pageCount && <p className="mt-1 text-xs text-red-500">{errors.pageCount}</p>}
-                </div>
-              )}
+
             </div>
           </div>
         </section>

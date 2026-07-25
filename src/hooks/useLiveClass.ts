@@ -47,6 +47,10 @@ export interface LiveClassState {
   teacherName: string;
   /** Human-readable error message. */
   error: string | null;
+  /** Batch IDs this class is linked to (for notification audience targeting). */
+  batchIds: string[];
+  /** Institute ID (for notification dispatch). */
+  instituteId: string;
 }
 
 // ─── Room Name Helpers ─────────────────────────────────────────────────────
@@ -77,6 +81,8 @@ function createInitialState(teacherName: string): LiveClassState {
     serverUrl: null,
     teacherName,
     error: null,
+    batchIds: [],
+    instituteId: '',
   };
 }
 
@@ -171,6 +177,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         serverUrl: url,
         teacherName,
         error: null,
+        batchIds: [selections.batchId],
+        instituteId: institute_id,
       });
     } catch (err) {
       const message =
@@ -234,6 +242,21 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       });
       console.log('[TOKEN] ✅ Token generated successfully');
 
+      // ── Resolve batch IDs for this class (for notification audience targeting) ─
+      let batchIds: string[] = [];
+      try {
+        const { data: classBatches } = await supabase
+          .from('live_class_batch')
+          .select('batch_id')
+          .eq('class_id', result.classId);
+        if (classBatches) {
+          batchIds = classBatches.map((b: { batch_id: string }) => b.batch_id);
+        }
+      } catch {
+        // Non-critical — batch IDs are only used for notification audience.
+        // If resolution fails, no batch-scoped notification will be sent.
+      }
+
       // 3. Set state to 'live' — LiveKitRoom will auto-connect
       setState({
         status: 'live',
@@ -244,6 +267,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         serverUrl: url,
         teacherName,
         error: null,
+        batchIds,
+        instituteId: result.instituteId,
       });
 
       console.log('[JOIN] ✅ Connected to existing scheduled class:', result.classId);
@@ -367,6 +392,31 @@ export function useLiveClass(teacherId: string, teacherName: string) {
 
       classIdRef.current = classId;
 
+      // ── Resolve batch IDs for this class (for notification audience targeting) ─
+      let batchIds: string[] = [];
+      let instituteId = '';
+      try {
+        const { data: classBatches } = await supabase
+          .from('live_class_batch')
+          .select('batch_id')
+          .eq('class_id', classId);
+        if (classBatches) {
+          batchIds = classBatches.map((b: { batch_id: string }) => b.batch_id);
+        }
+        // Also fetch institute_id from the live_classes record
+        const { data: cls } = await supabase
+          .from('live_classes')
+          .select('institute_id')
+          .eq('id', classId)
+          .single();
+        if (cls) {
+          instituteId = cls.institute_id;
+        }
+      } catch {
+        // Non-critical — batch IDs are only used for notification audience.
+        // If resolution fails, no batch-scoped notification will be sent.
+      }
+
       // 4. Set state to 'live' — LiveKitRoom will auto-connect
       setState({
         status: 'live',
@@ -377,6 +427,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         serverUrl: url,
         teacherName,
         error: null,
+        batchIds,
+        instituteId,
       });
     } catch (err) {
       const message =

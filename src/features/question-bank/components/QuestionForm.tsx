@@ -65,6 +65,12 @@ interface QuestionFormProps {
   onChange: (data: QuestionFormData) => void;
   errors?: Record<string, string>;
   isEditing?: boolean;
+  /** Callback invoked when the user clicks \"+ Add New Subject\" in the dropdown. */
+  onAddSubject?: () => void;
+  /** Callback invoked when the user clicks \"+ Add New Chapter\" in the dropdown. */
+  onAddChapter?: () => void;
+  /** Callback invoked when the user clicks \"+ Add New Topic\" in the dropdown. */
+  onAddTopic?: () => void;
 }
 
 const QUESTION_TYPES: { value: string; label: string }[] = [
@@ -108,6 +114,9 @@ export function QuestionForm({
   loadingTopics,
   onSubjectChange,
   onChapterChange,
+  onAddSubject,
+  onAddChapter,
+  onAddTopic,
   data,
   onChange,
   errors = {},
@@ -156,6 +165,10 @@ export function QuestionForm({
           <select
             value={data.subjectId}
             onChange={(e) => {
+              if (e.target.value === '__add_new__') {
+                onAddSubject?.();
+                return;
+              }
               handleFieldChange('subjectId', e.target.value);
               onSubjectChange(e.target.value);
             }}
@@ -165,6 +178,10 @@ export function QuestionForm({
             {subjects.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
+            <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+            <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+              + Add New Subject
+            </option>
           </select>
           {errors.subjectId && <p className="text-xs text-red-500">{errors.subjectId}</p>}
         </div>
@@ -175,6 +192,10 @@ export function QuestionForm({
           <select
             value={data.chapterId}
             onChange={(e) => {
+              if (e.target.value === '__add_new_chapter__') {
+                onAddChapter?.();
+                return;
+              }
               handleFieldChange('chapterId', e.target.value);
               onChapterChange(e.target.value);
             }}
@@ -185,6 +206,10 @@ export function QuestionForm({
             {chapters.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
+            <option disabled className="border-t border-gray-200" value="__divider_ch__">──────────────</option>
+            <option value="__add_new_chapter__" className="font-medium text-blue-600 dark:text-blue-400">
+              + Add New Chapter
+            </option>
           </select>
           {errors.chapterId && <p className="text-xs text-red-500">{errors.chapterId}</p>}
         </div>
@@ -194,7 +219,13 @@ export function QuestionForm({
           </label>
           <select
             value={data.topicId}
-            onChange={(e) => handleFieldChange('topicId', e.target.value)}
+            onChange={(e) => {
+              if (e.target.value === '__add_new_topic__') {
+                onAddTopic?.();
+                return;
+              }
+              handleFieldChange('topicId', e.target.value);
+            }}
             disabled={!data.chapterId || loadingTopics}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
           >
@@ -202,6 +233,10 @@ export function QuestionForm({
             {topics.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
+            <option disabled className="border-t border-gray-200" value="__divider_topic__">──────────────</option>
+            <option value="__add_new_topic__" className="font-medium text-blue-600 dark:text-blue-400">
+              + Add New Topic
+            </option>
           </select>
         </div>
       </div>

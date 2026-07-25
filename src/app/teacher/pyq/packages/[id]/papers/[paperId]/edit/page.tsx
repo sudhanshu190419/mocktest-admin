@@ -22,7 +22,6 @@ interface FormData {
   examYear: string;
   examDate: string;
   examSession: string;
-  totalMarks: string;
   durationMin: string;
 }
 
@@ -31,7 +30,6 @@ const emptyForm: FormData = {
   examYear: '',
   examDate: '',
   examSession: '',
-  totalMarks: '',
   durationMin: '',
 };
 
@@ -79,7 +77,6 @@ export default function EditPyqPaperPage({
         examYear: paper.examYear.toString(),
         examDate: paper.examDate ?? '',
         examSession: paper.examSession ?? '',
-        totalMarks: paper.totalMarks?.toString() ?? '',
         durationMin: paper.durationMin?.toString() ?? '',
       });
     }
@@ -143,13 +140,6 @@ export default function EditPyqPaperPage({
       }
     }
 
-    if (formData.totalMarks) {
-      const marks = parseInt(formData.totalMarks);
-      if (isNaN(marks) || marks <= 0) {
-        newErrors.totalMarks = 'Marks must be a positive number.';
-      }
-    }
-
     if (formData.durationMin) {
       const duration = parseInt(formData.durationMin);
       if (isNaN(duration) || duration <= 0 || duration > 600) {
@@ -172,7 +162,7 @@ export default function EditPyqPaperPage({
         examYear: parseInt(formData.examYear),
         examDate: formData.examDate || null,
         examSession: formData.examSession || null,
-        totalMarks: formData.totalMarks ? parseInt(formData.totalMarks) : null,
+        totalMarks: null,
         durationMin: formData.durationMin ? parseInt(formData.durationMin) : null,
       };
 
@@ -503,17 +493,6 @@ export default function EditPyqPaperPage({
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
           <h2 className="mb-4 text-base font-semibold text-gray-900">Scoring & Timing</h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Total Marks</label>
-              <input
-                type="number"
-                value={formData?.totalMarks ?? ''}
-                onChange={(e) => handleChange('totalMarks', e.target.value)}
-                min={1}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-              />
-              {errors.totalMarks && <p className="mt-1 text-xs text-red-500">{errors.totalMarks}</p>}
-            </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Duration (minutes)</label>
               <input

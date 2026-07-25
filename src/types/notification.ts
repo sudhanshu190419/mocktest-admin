@@ -50,6 +50,7 @@ export type NotificationType =
   | 'success'
   | 'error'
   | 'live_class_reminder'
+  | 'live_class_started'
   | 'content_approved'
   | 'content_rejected'
   | 'subscription_expiring'

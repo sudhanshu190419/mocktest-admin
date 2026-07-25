@@ -7,7 +7,10 @@ import { useCreateMockTest } from '@/hooks/mockTest/useMockTests';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { useSubjects } from '@/hooks/academic/useSubjects';
 import { useAuth } from '@/context/AuthContext';
+import { AddSubjectModal } from '@/features/question-bank/components/AddSubjectModal';
+import { AddStreamModal } from '@/features/question-bank/components/AddStreamModal';
 import { PageHeader } from '@/components/ui/PageHeader';
+import type { Subject, Stream } from '@/types/academic';
 
 const TEST_TYPES = [
   { value: 'practice', label: 'Practice' },
@@ -27,9 +30,6 @@ interface FormData {
   description: string;
   testType: string;
   durationMin: number;
-  totalMarks: number;
-  passingMarks: number | null;
-  negativeMarking: number;
   attemptLimit: number | null;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -47,9 +47,6 @@ const emptyForm: FormData = {
   description: '',
   testType: 'practice',
   durationMin: 60,
-  totalMarks: 100,
-  passingMarks: null,
-  negativeMarking: 0,
   attemptLimit: null,
   shuffleQuestions: false,
   shuffleOptions: false,
@@ -70,8 +67,24 @@ export default function CreateMockTestPage() {
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // ── Stream creation modal ────────────────────────────────────────────────
+  const [showAddStream, setShowAddStream] = useState(false);
+  const [addStreamFeedback, setAddStreamFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  // ── Subject creation modal ──────────────────────────────────────────────
+  const [showAddSubject, setShowAddSubject] = useState(false);
+  const [addSubjectFeedback, setAddSubjectFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
   const { data: streamsData } = useStreams(undefined, undefined, { page: 1, pageSize: 50 });
   const streams = streamsData?.data ?? [];
+  const rawStreams: Stream[] = streamsData?.data ?? [];
+  const rawStreams: Stream[] = streamsData?.data ?? [];
 
   const { data: subjectsData } = useSubjects(
     formData.streamId ? { streamId: formData.streamId } : undefined,
@@ -79,6 +92,7 @@ export default function CreateMockTestPage() {
     { page: 1, pageSize: 200 },
   );
   const subjects = subjectsData?.data ?? [];
+  const rawSubjects: Subject[] = subjectsData?.data ?? [];
 
   const handleChange = useCallback(
     (field: keyof FormData, value: string | number | boolean | null) => {
@@ -88,6 +102,25 @@ export default function CreateMockTestPage() {
     [],
   );
 
+  const handleSubjectCreated = useCallback((newSubject: Subject) => {
+    setShowAddSubject(false);
+    setFormData((prev) => ({ ...prev, subjectId: newSubject.subjectId }));
+    setAddSubjectFeedback({
+      type: 'success',
+      message: `✓ Subject "${newSubject.name}" created successfully.`,
+    });
+    setTimeout(() => setAddSubjectFeedback(null), 4000);
+  }, []);
+
+  const handleStreamCreated = useCallback((newStream: Stream) => {
+    setShowAddStream(false);
+    setFormData((prev) => ({ ...prev, streamId: newStream.streamId }));
+    setAddStreamFeedback({
+      type: 'success',
+      message: `✓ Stream "${newStream.name}" created successfully.`,
+    });
+    setTimeout(() => setAddStreamFeedback(null), 4000);
+  }, []);
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -96,14 +129,6 @@ export default function CreateMockTestPage() {
 
     if (formData.durationMin <= 0) newErrors.durationMin = 'Duration must be greater than 0.';
     if (formData.durationMin > 600) newErrors.durationMin = 'Duration cannot exceed 600 minutes.';
-
-    if (formData.totalMarks <= 0) newErrors.totalMarks = 'Total marks must be greater than 0.';
-
-    if (formData.passingMarks !== null && formData.passingMarks > formData.totalMarks) {
-      newErrors.passingMarks = 'Passing marks cannot exceed total marks.';
-    }
-
-    if (formData.negativeMarking < 0) newErrors.negativeMarking = 'Negative marking cannot be negative.';
 
     if (formData.attemptLimit !== null && formData.attemptLimit < 1) {
       newErrors.attemptLimit = 'Attempt limit must be at least 1.';
@@ -119,9 +144,7 @@ export default function CreateMockTestPage() {
       }
     }
 
-    if (formData.negativeMarking > formData.totalMarks) {
-      newErrors.negativeMarking = 'Negative marking cannot exceed total marks.';
-    }
+
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -145,9 +168,8 @@ export default function CreateMockTestPage() {
           description: formData.description || null,
           testType: formData.testType,
           durationMin: formData.durationMin,
-          totalMarks: formData.totalMarks,
-          passingMarks: formData.passingMarks,
-          negativeMarking: formData.negativeMarking,
+          totalMarks: 1,
+          negativeMarking: 0,
           attemptLimit: formData.attemptLimit,
           shuffleQuestions: formData.shuffleQuestions,
           shuffleOptions: formData.shuffleOptions,
@@ -180,6 +202,44 @@ export default function CreateMockTestPage() {
           { label: 'Mock Tests', href: '/teacher/mock-tests' },
           { label: 'Create Test' },
         ]}
+      />
+
+      {addStreamFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addStreamFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addStreamFeedback.message}
+        </div>
+      )}
+
+      {addSubjectFeedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            addSubjectFeedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}
+        >
+          {addSubjectFeedback.message}
+        </div>
+      )}
+
+      <AddStreamModal
+        isOpen={showAddStream}
+        existingStreams={rawStreams}
+        onClose={() => setShowAddStream(false)}
+        onCreated={handleStreamCreated}
+      />
+
+      <AddSubjectModal
+        isOpen={showAddSubject}
+        existingSubjects={rawSubjects}
+        onClose={() => setShowAddSubject(false)}
+        onCreated={handleSubjectCreated}
       />
 
       <form onSubmit={handleSubmit} className="space-y-8">
@@ -219,6 +279,10 @@ export default function CreateMockTestPage() {
                 <select
                   value={formData.streamId}
                   onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowAddStream(true);
+                      return;
+                    }
                     handleChange('streamId', e.target.value);
                     handleChange('subjectId', '');
                   }}
@@ -228,6 +292,10 @@ export default function CreateMockTestPage() {
                   {streams.map((s) => (
                     <option key={s.streamId} value={s.streamId}>{s.name}</option>
                   ))}
+                  <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                  <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                    + Add New Stream
+                  </option>
                 </select>
               </div>
               <div>
@@ -247,6 +315,10 @@ export default function CreateMockTestPage() {
                 <select
                   value={formData.subjectId}
                   onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowAddSubject(true);
+                      return;
+                    }
                     handleChange('subjectId', e.target.value);
                   }}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
@@ -255,6 +327,10 @@ export default function CreateMockTestPage() {
                   {subjects.map((s) => (
                     <option key={s.subjectId} value={s.subjectId}>{s.name}</option>
                   ))}
+                  <option disabled className="border-t border-gray-200" value="__divider__">──────────────</option>
+                  <option value="__add_new__" className="font-medium text-blue-600 dark:text-blue-400">
+                    + Add New Subject
+                  </option>
                 </select>
               </div>
             </div>
@@ -276,40 +352,6 @@ export default function CreateMockTestPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
               />
               {errors.durationMin && <p className="mt-1 text-xs text-red-500">{errors.durationMin}</p>}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Total Marks *</label>
-              <input
-                type="number"
-                value={formData.totalMarks}
-                onChange={(e) => handleChange('totalMarks', Math.max(1, parseInt(e.target.value) || 1))}
-                min={1}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-              />
-              {errors.totalMarks && <p className="mt-1 text-xs text-red-500">{errors.totalMarks}</p>}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Passing Marks</label>
-              <input
-                type="number"
-                value={formData.passingMarks ?? ''}
-                onChange={(e) => handleChange('passingMarks', e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-              />
-              {errors.passingMarks && <p className="mt-1 text-xs text-red-500">{errors.passingMarks}</p>}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Negative Marking</label>
-              <input
-                type="number"
-                value={formData.negativeMarking}
-                onChange={(e) => handleChange('negativeMarking', Math.max(0, parseFloat(e.target.value) || 0))}
-                min={0}
-                step={0.25}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-              />
-              {errors.negativeMarking && <p className="mt-1 text-xs text-red-500">{errors.negativeMarking}</p>}
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Attempt Limit</label>

@@ -64,7 +64,8 @@ type NotificationType =
   | 'result_published' | 'new_content_uploaded' | 'chapter_added'
   | 'subject_added' | 'new_mock_test_available' | 'announcement'
   | 'general_message' | 'warning' | 'success' | 'error'
-  | 'live_class_reminder' | 'content_approved' | 'content_rejected'
+  | 'live_class_reminder' | 'live_class_started' | 'content_approved'
+  | 'content_rejected'
   | 'subscription_expiring' | 'subscription_expired' | 'batch_assigned'
   | 'custom';
 
@@ -335,10 +336,26 @@ async function resolveAudience(
 
       // Teacher validation: verify batch is assigned
       if (role === 'teacher') {
+        // ── Map profile_id → teacher_id ────────────────────────────────
+        // callerProfileId is profiles.profile_id (auth.uid()), but
+        // batch_teachers.teacher_id FK references teacher_details.teacher_id,
+        // NOT profiles.profile_id.  Query teacher_details to get the correct
+        // teacher_id before validating batch assignment.
+        const { data: teacherRow, error: teacherError } = await supabase
+          .from('teacher_details')
+          .select('teacher_id')
+          .eq('profile_id', callerProfileId)
+          .maybeSingle();
+
+        if (teacherError) return { error: teacherError.message };
+        if (!teacherRow) return { error: 'Teacher details not found for this profile.' };
+
+        const teacherId = teacherRow.teacher_id;
+
         const { data: assignment, error: assignError } = await supabase
           .from('batch_teachers')
           .select('batch_id')
-          .eq('teacher_id', callerProfileId)
+          .eq('teacher_id', teacherId)
           .eq('batch_id', batchId)
           .maybeSingle();
 
@@ -375,10 +392,24 @@ async function resolveAudience(
 
       // Teacher: validate students belong to their batches
       if (role === 'teacher') {
+        // ── Map profile_id → teacher_id ────────────────────────────────
+        // Same reason as the 'batch' case above: batch_teachers.teacher_id
+        // references teacher_details.teacher_id, not profiles.profile_id.
+        const { data: teacherRow, error: teacherError } = await supabase
+          .from('teacher_details')
+          .select('teacher_id')
+          .eq('profile_id', callerProfileId)
+          .maybeSingle();
+
+        if (teacherError) return { error: teacherError.message };
+        if (!teacherRow) return { error: 'Teacher details not found for this profile.' };
+
+        const teacherId = teacherRow.teacher_id;
+
         const { data: teacherBatches, error: tbError } = await supabase
           .from('batch_teachers')
           .select('batch_id')
-          .eq('teacher_id', callerProfileId);
+          .eq('teacher_id', teacherId);
 
         if (tbError) return { error: tbError.message };
 

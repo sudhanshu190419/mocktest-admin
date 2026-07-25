@@ -33,6 +33,7 @@ import {
   ChatCircleDots,
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
+import { useSendAudienceNotification } from '@/hooks/notification/useSendNotification';
 
 import { supabase } from '@/config/supabase';
 
@@ -84,11 +85,60 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
 
   const { state, startClass, startScheduledClass, endClass, disconnectOnly, rejoinClass, reset } = useLiveClass(teacherId, teacherName);
 
+  // ── Send Notifications on Live Class Start ────────────────────────────
+  const sendNotification = useSendAudienceNotification();
+  const hasNotifiedRef = useRef(false);
+
+  /**
+   * Sends the "Live Class Started" notification to the batch audience.
+   * Triggered only after the class status becomes 'live' via startClass or
+   * startScheduledClass. NOT triggered on rejoinClass.
+   */
+  useEffect(() => {
+    if (
+      state.status !== 'live' ||
+      !state.classId ||
+      state.batchIds.length === 0 ||
+      !state.instituteId ||
+      hasNotifiedRef.current
+    ) {
+      return;
+    }
+
+    hasNotifiedRef.current = true;
+
+    const title = state.title || 'Live Class';
+    const body = `Your live class "${title}" has started. Join now.`;
+    const classId = state.classId;
+
+    for (const batchId of state.batchIds) {
+      sendNotification.mutateAsync({
+        input: {
+          instituteId: state.instituteId,
+          title: 'Live Class Started',
+          body,
+          eventType: 'live_class_started',
+          referenceType: 'live_class',
+          referenceId: classId,
+          audience: { type: 'batch', batchId },
+          sendPush: true,
+        },
+        userRole: 'teacher',
+      }).catch((err) => {
+        // Notification failure must NOT block the live class flow.
+        // The class started successfully — the notification is a
+        // best-effort dispatch. Logged server-side by the Edge Function.
+        console.error('[Notification] live_class_started failed:', err);
+      });
+    }
+  }, [state.status, state.classId, state.batchIds, state.instituteId, state.title, sendNotification]);
+
   // ── Auto-start / Auto-rejoin when studio opens ──
   const hasAutoStarted = useRef(false);
   useEffect(() => {
     if (!isOpen) {
       hasAutoStarted.current = false;
+      hasNotifiedRef.current = false;
       return;
     }
 

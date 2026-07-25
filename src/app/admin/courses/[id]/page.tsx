@@ -26,14 +26,7 @@ import {
   useRemoveBatches,
 } from '@/hooks/admin/useCourseBatchAssignment';
 import type { AssignedCourseBatch, AvailableCourseBatch } from '@/services/admin/courseBatchAssignmentService';
-import {
-  useAssignedContent,
-  useAvailableContent,
-  useAssignContent,
-  useRemoveContent,
-  useRemoveContents,
-} from '@/hooks/admin/useCourseContentAssignment';
-import type { AssignedCourseContent, AvailableCourseContent } from '@/services/admin/courseContentAssignmentService';
+
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -61,11 +54,9 @@ import {
   Buildings,
   Sparkle,
   Trash,
-  CircleNotch,
   Image,
   Question,
   GraduationCap,
-  PlusCircle,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -341,41 +332,7 @@ export default function CourseDetailPage() {
     };
   }, [batchSearch]);
 
-  // ── Content Assignment State ─────────────────────────────────────────
-  const [contentSearch, setContentSearch] = useState('');
-  const [debouncedContentSearch, setDebouncedContentSearch] = useState('');
-  const contentSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const [selectedAssignedContentIds, setSelectedAssignedContentIds] = useState<Set<string>>(new Set());
-  const [selectedAvailableContentIds, setSelectedAvailableContentIds] = useState<Set<string>>(new Set());
-
-  const [contentConfirmAction, setContentConfirmAction] = useState<{
-    type: 'assign' | 'remove-single' | 'remove-bulk';
-    contentId?: string;
-    contentTitle?: string;
-    count?: number;
-  } | null>(null);
-
-  const [contentFeedback, setContentFeedback] = useState<{
-    type: 'success' | 'error';
-    message: string;
-  } | null>(null);
-
-  const contentFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const clearContentFeedback = useCallback(() => {
-    if (contentFeedbackTimeoutRef.current) clearTimeout(contentFeedbackTimeoutRef.current);
-    contentFeedbackTimeoutRef.current = setTimeout(() => setContentFeedback(null), 4000);
-  }, []);
-
-  // Content search debounce
-  useEffect(() => {
-    if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
-    contentSearchRef.current = setTimeout(() => setDebouncedContentSearch(contentSearch), 400);
-    return () => {
-      if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
-    };
-  }, [contentSearch]);
 
   // ── Query Hooks (Teacher Assignment) ─────────────────────────────────
   const {
@@ -399,16 +356,7 @@ export default function CourseDetailPage() {
     isLoading: availableBatchesLoading,
   } = useAvailableBatches(courseId, debouncedBatchSearch || undefined);
 
-  // ── Query Hooks (Content Assignment) ─────────────────────────────────
-  const {
-    data: assignedContent,
-    isLoading: assignedContentLoading,
-  } = useAssignedContent(courseId);
 
-  const {
-    data: availableContent,
-    isLoading: availableContentLoading,
-  } = useAvailableContent(courseId, debouncedContentSearch || undefined);
 
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const publishMutation = usePublishCourse();
@@ -424,9 +372,7 @@ export default function CourseDetailPage() {
   const removeBatchMutation = useRemoveBatch();
   const removeBatchesMutation = useRemoveBatches();
 
-  const assignContentMutation = useAssignContent();
-  const removeContentMutation = useRemoveContent();
-  const removeContentsMutation = useRemoveContents();
+
 
   // ── Lifecycle Action Executor ────────────────────────────────────────
   const executeAction = useCallback(async (action: 'publish' | 'archive' | 'restore' | 'delete') => {
@@ -742,140 +688,7 @@ export default function CourseDetailPage() {
     (batchConfirmAction?.type === 'remove-single' && removeBatchMutation.isPending) ||
     (batchConfirmAction?.type === 'remove-bulk' && removeBatchesMutation.isPending);
 
-  // ── Content Confirm Dialog Handlers ──────────────────────────────────
-  const handleContentConfirmAssign = async () => {
-    if (!selectedAvailableContentIds.size) return;
 
-    const result = await assignContentMutation.mutateAsync({
-      courseId,
-      contentIds: Array.from(selectedAvailableContentIds),
-    });
-
-    if (result.success) {
-      const count = result.data?.assigned ?? selectedAvailableContentIds.size;
-      setContentFeedback({
-        type: 'success',
-        message: `${count} content item(s) assigned to this course successfully.`,
-      });
-      setSelectedAvailableContentIds(new Set());
-    } else {
-      setContentFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to assign content.',
-      });
-    }
-    setContentConfirmAction(null);
-    clearContentFeedback();
-  };
-
-  const handleContentConfirmRemoveSingle = async () => {
-    if (!contentConfirmAction?.contentId) return;
-
-    const result = await removeContentMutation.mutateAsync({
-      courseId,
-      contentId: contentConfirmAction.contentId,
-    });
-
-    if (result.success) {
-      setContentFeedback({
-        type: 'success',
-        message: `"${contentConfirmAction.contentTitle ?? 'Content'}" removed from this course.`,
-      });
-    } else {
-      setContentFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to remove content.',
-      });
-    }
-    setContentConfirmAction(null);
-    clearContentFeedback();
-  };
-
-  const handleContentConfirmRemoveBulk = async () => {
-    if (!selectedAssignedContentIds.size) return;
-
-    const result = await removeContentsMutation.mutateAsync({
-      courseId,
-      contentIds: Array.from(selectedAssignedContentIds),
-    });
-
-    if (result.success) {
-      setContentFeedback({
-        type: 'success',
-        message: `${selectedAssignedContentIds.size} content item(s) removed from this course.`,
-      });
-      setSelectedAssignedContentIds(new Set());
-    } else {
-      setContentFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to remove content.',
-      });
-    }
-    setContentConfirmAction(null);
-    clearContentFeedback();
-  };
-
-  const handleContentConfirm = async () => {
-    if (!contentConfirmAction) return;
-    switch (contentConfirmAction.type) {
-      case 'assign':
-        await handleContentConfirmAssign();
-        break;
-      case 'remove-single':
-        await handleContentConfirmRemoveSingle();
-        break;
-      case 'remove-bulk':
-        await handleContentConfirmRemoveBulk();
-        break;
-    }
-  };
-
-  const getContentConfirmProps = () => {
-    if (!contentConfirmAction) {
-      return { open: false, title: '', message: '', variant: 'default' as const };
-    }
-
-    switch (contentConfirmAction.type) {
-      case 'assign':
-        return {
-          open: true,
-          title: 'Assign Content',
-          message: `Assign ${contentConfirmAction.count ?? selectedAvailableContentIds.size} selected content item(s) to this course?`,
-          confirmLabel: 'Assign',
-          variant: 'default' as const,
-        };
-      case 'remove-single':
-        return {
-          open: true,
-          title: 'Remove Content',
-          message: `Remove "${contentConfirmAction.contentTitle ?? 'this content'}" from this course? It can be re-assigned later.`,
-          confirmLabel: 'Remove',
-          variant: 'danger' as const,
-        };
-      case 'remove-bulk':
-        return {
-          open: true,
-          title: 'Remove Content',
-          message: `Remove ${contentConfirmAction.count ?? selectedAssignedContentIds.size} selected content item(s) from this course? They can be re-assigned later.`,
-          confirmLabel: 'Remove All',
-          variant: 'danger' as const,
-        };
-      default:
-        return {
-          open: true,
-          title: 'Confirm Action',
-          message: 'Are you sure you want to proceed?',
-          confirmLabel: 'Confirm',
-          variant: 'default' as const,
-        };
-    }
-  };
-
-  const contentConfirmProps = getContentConfirmProps();
-  const isContentConfirmLoading =
-    (contentConfirmAction?.type === 'assign' && assignContentMutation.isPending) ||
-    (contentConfirmAction?.type === 'remove-single' && removeContentMutation.isPending) ||
-    (contentConfirmAction?.type === 'remove-bulk' && removeContentsMutation.isPending);
 
   // ── Confirm Dialog Configuration (Lifecycle) ─────────────────────────
   const confirmDialogConfig = useMemo(() => {
@@ -1206,190 +1019,7 @@ export default function CourseDetailPage() {
     },
   ], []);
 
-  // ── Assigned Content Columns ─────────────────────────────────────────
-  const assignedContentColumns: Column<AssignedCourseContent>[] = useMemo(() => [
-    {
-      key: 'title',
-      header: 'Title',
-      className: 'max-w-[180px]',
-      render: (item) => (
-        <div className="flex items-center gap-3 max-w-[180px]">
-          {/* Thumbnail placeholder */}
-          <div className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
-            {item.thumbnailPath ? (
-              <img
-                src={item.thumbnailPath}
-                alt={item.title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <BookOpen size={14} weight="fill" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-              {item.title}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'contentType',
-      header: 'Type',
-      render: (item) => (
-        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase">
-          {item.contentType.replace(/_/g, ' ')}
-        </span>
-      ),
-    },
-    {
-      key: 'subjectName',
-      header: 'Subject',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.subjectName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'chapterName',
-      header: 'Chapter',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.chapterName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'teacherName',
-      header: 'Teacher',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.teacherName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (item) => (
-        <StatusBadge status={item.status} showDot={true} />
-      ),
-    },
-    {
-      key: 'assignedAt',
-      header: 'Assigned Date',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.assignedAt ? formatDate(item.assignedAt) : '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (item) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setContentConfirmAction({
-              type: 'remove-single',
-              contentId: item.contentId,
-              contentTitle: item.title,
-            });
-          }}
-          disabled={removeContentMutation.isPending || removeContentsMutation.isPending}
-          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
-        >
-          {removeContentMutation.isPending &&
-          contentConfirmAction?.type === 'remove-single' &&
-          contentConfirmAction?.contentId === item.contentId ? (
-            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <Trash size={12} />
-          )}
-          Remove
-        </button>
-      ),
-    },
-  ], [removeContentMutation.isPending, removeContentsMutation.isPending, contentConfirmAction]);
 
-  // ── Available Content Columns ────────────────────────────────────────
-  const availableContentColumns: Column<AvailableCourseContent>[] = useMemo(() => [
-    {
-      key: 'title',
-      header: 'Title',
-      className: 'max-w-[180px]',
-      render: (item) => (
-        <div className="flex items-center gap-3 max-w-[180px]">
-          <div className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
-            {item.thumbnailPath ? (
-              <img
-                src={item.thumbnailPath}
-                alt={item.title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <BookOpen size={14} weight="fill" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-              {item.title}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'contentType',
-      header: 'Type',
-      render: (item) => (
-        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase">
-          {item.contentType.replace(/_/g, ' ')}
-        </span>
-      ),
-    },
-    {
-      key: 'subjectName',
-      header: 'Subject',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.subjectName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'chapterName',
-      header: 'Chapter',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.chapterName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'teacherName',
-      header: 'Teacher',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.teacherName ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (item) => (
-        <StatusBadge status={item.status} showDot={true} />
-      ),
-    },
-  ], []);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Loading State
@@ -1647,7 +1277,7 @@ export default function CourseDetailPage() {
               Statistics
             </h3>
             <p className="mb-4 text-xs text-gray-500">Usage and performance overview</p>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <StatCard
                 icon={<ChalkboardTeacher size={22} weight="duotone" />}
                 label="Teachers"
@@ -1659,12 +1289,6 @@ export default function CourseDetailPage() {
                 label="Batches"
                 value={course.batchesCount}
                 color="indigo"
-              />
-              <StatCard
-                icon={<BookOpen size={22} weight="duotone" />}
-                label="Content Items"
-                value={course.contentCount}
-                color="blue"
               />
               <StatCard
                 icon={<Users size={22} weight="duotone" />}
@@ -1747,28 +1371,7 @@ export default function CourseDetailPage() {
             )}
           </div>
 
-          {/* ════════════════════════════════════════════════════════════
-              Content Summary
-              ════════════════════════════════════════════════════════════ */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Content Summary
-            </h3>
-            <p className="mb-3 text-xs text-gray-500">Content items associated with this course</p>
-            <div className="flex items-center gap-4">
-              <StatCard
-                icon={<BookOpen size={22} weight="duotone" />}
-                label="Content Items"
-                value={course.contentCount}
-                color="blue"
-              />
-            </div>
-            {course.contentCount === 0 && (
-              <p className="mt-3 text-xs text-gray-400">
-                No content items have been assigned to this course yet. Content assignment will be available in a future phase.
-              </p>
-            )}
-          </div>
+
 
           {/* ════════════════════════════════════════════════════════════
               Teacher Assignment (Section — NEW)
@@ -2062,152 +1665,7 @@ export default function CourseDetailPage() {
                 />
               </div>
             </div>
-          </div>            {/* ════════════════════════════════════════════════════════════
-                Content Assignment (Section — NEW)
-                ════════════════════════════════════════════════════════════ */}
-            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  Content Assignment
-                </h3>
-              </div>
-              <p className="mb-4 text-xs text-gray-500">
-                Assign or remove content items from this course. A course may contain multiple content items.
-              </p>
-
-              {/* Content feedback banners */}
-              {contentFeedback && (
-                <div
-                  className={`mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
-                    contentFeedback.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                      : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                  }`}
-                >
-                  {contentFeedback.type === 'success' ? (
-                    <CheckCircle size={16} weight="duotone" />
-                  ) : (
-                    <XCircle size={16} weight="duotone" />
-                  )}
-                  {contentFeedback.message}
-                </div>
-              )}
-
-              {/* Two-panel layout */}
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* ─── LEFT: Assigned Content ────────────────────────── */}
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Assigned ({assignedContent?.length ?? 0})
-                    </h4>
-                    {selectedAssignedContentIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setContentConfirmAction({
-                            type: 'remove-bulk',
-                            count: selectedAssignedContentIds.size,
-                          })
-                        }
-                        disabled={removeContentsMutation.isPending}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
-                      >
-                        {removeContentsMutation.isPending ? (
-                          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                        ) : (
-                          <Trash size={12} />
-                        )}
-                        Remove Selected ({selectedAssignedContentIds.size})
-                      </button>
-                    )}
-                  </div>
-
-                  <DataTable
-                    columns={assignedContentColumns}
-                    data={assignedContent ?? []}
-                    keyExtractor={(item) => item.contentId}
-                    isLoading={assignedContentLoading}
-                    selectedIds={selectedAssignedContentIds}
-                    onSelectionChange={setSelectedAssignedContentIds}
-                    emptyState={
-                      <EmptyState
-                        icon={<BookOpen size={28} weight="thin" />}
-                        title="No content assigned"
-                        description="Use the Available Content panel to assign content to this course."
-                      />
-                    }
-                    className="min-h-[200px]"
-                  />
-                </div>
-
-                {/* ─── RIGHT: Available Content ──────────────────────── */}
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Available ({availableContent?.length ?? 0})
-                    </h4>
-                    {selectedAvailableContentIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setContentConfirmAction({
-                            type: 'assign',
-                            count: selectedAvailableContentIds.size,
-                          })
-                        }
-                        disabled={assignContentMutation.isPending}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
-                      >
-                        {assignContentMutation.isPending ? (
-                          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                        ) : (
-                          <PlusCircle size={12} />
-                        )}
-                        Assign Selected ({selectedAvailableContentIds.size})
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Search */}
-                  <div className="mb-3">
-                    <SearchBar
-                      value={contentSearch}
-                      onChange={setContentSearch}
-                      placeholder="Search by title, description, or type..."
-                      className="w-full"
-                    />
-                  </div>
-
-                  <DataTable
-                    columns={availableContentColumns}
-                    data={availableContent ?? []}
-                    keyExtractor={(item) => item.contentId}
-                    isLoading={availableContentLoading}
-                    selectedIds={selectedAvailableContentIds}
-                    onSelectionChange={setSelectedAvailableContentIds}
-                    emptyState={
-                      <EmptyState
-                        icon={<BookOpen size={28} weight="thin" />}
-                        title={debouncedContentSearch ? 'No matching content' : 'No content available'}
-                        description={
-                          debouncedContentSearch
-                            ? 'Try a different search term.'
-                            : 'All eligible content items are already assigned to this course.'
-                        }
-                      />
-                    }
-                    className="min-h-[200px]"
-                  />
-                </div>
-              </div>
-            </div>
+          </div>
 
             {/* ════════════════════════════════════════════════════════════
                 Recent Activity
@@ -2472,21 +1930,7 @@ export default function CourseDetailPage() {
         loading={isBatchConfirmLoading}
       />
 
-      {/* ════════════════════════════════════════════════════════════════
-          Confirm Dialog (Content Assignment)
-         ════════════════════════════════════════════════════════════════ */}
-      <ConfirmDialog
-        open={contentConfirmProps.open}
-        onClose={() => {
-          if (!isContentConfirmLoading) setContentConfirmAction(null);
-        }}
-        onConfirm={handleContentConfirm}
-        title={contentConfirmProps.title}
-        message={contentConfirmProps.message}
-        confirmLabel={contentConfirmProps.confirmLabel}
-        variant={contentConfirmProps.variant}
-        loading={isContentConfirmLoading}
-      />
+
     </div>
   );
 }

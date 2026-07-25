@@ -3,6 +3,8 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
+import { useSendAudienceNotification } from '@/hooks/notification/useSendNotification';
 import { useBatchDetail } from '@/hooks/admin/useBatchManagement';
 import {
   useAssignedStudents,
@@ -30,6 +32,15 @@ import {
 } from '@/hooks/admin/useMockTestAssignment';
 import type { AssignedMockTest } from '@/services/admin/mockTestAssignmentService';
 import type { MockTest } from '@/types/mockTest';
+import {
+  useAssignedBatchContent,
+  useAvailableBatchContent,
+  useBatchContentAssignmentStats,
+  useAssignBatchContent,
+  useRemoveBatchContent,
+  useRemoveBatchContents,
+} from '@/hooks/admin/useBatchContentAssignment';
+import type { AssignedBatchContent, AvailableBatchContent } from '@/services/admin/batchContentAssignmentService';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -58,6 +69,7 @@ import {
   CheckCircle,
   Trash,
   PlusCircle,
+  FileText,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -244,7 +256,8 @@ export default function BatchDetailPage() {
   const [confirmAction, setConfirmAction] = useState<{
     type: 'assign' | 'remove-single' | 'remove-bulk'
     | 'teacher-assign' | 'teacher-remove'
-    | 'mock-assign' | 'mock-remove-single' | 'mock-remove-bulk' | 'mock-edit';
+    | 'mock-assign' | 'mock-remove-single' | 'mock-remove-bulk' | 'mock-edit'
+    | 'content-assign' | 'content-remove-single' | 'content-remove-bulk';
     studentId?: string;
     studentName?: string;
     count?: number;
@@ -253,6 +266,8 @@ export default function BatchDetailPage() {
     assignmentId?: string;
     mockTestId?: string;
     mockTestTitle?: string;
+    contentId?: string;
+    contentTitle?: string;
   } | null>(null);
 
   const [actionFeedback, setActionFeedback] = useState<{
@@ -296,6 +311,23 @@ export default function BatchDetailPage() {
       if (teacherSearchRef.current) clearTimeout(teacherSearchRef.current);
     };
   }, [teacherSearch]);
+
+  // ── Content Assignment State ─────────────────────────────────────
+  const [contentSearch, setContentSearch] = useState('');
+  const [debouncedContentSearch, setDebouncedContentSearch] = useState('');
+  const contentSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [selectedAssignedContentIds, setSelectedAssignedContentIds] = useState<Set<string>>(new Set());
+  const [selectedAvailableContentIds, setSelectedAvailableContentIds] = useState<Set<string>>(new Set());
+
+  // Content search debounce
+  useEffect(() => {
+    if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
+    contentSearchRef.current = setTimeout(() => setDebouncedContentSearch(contentSearch), 400);
+    return () => {
+      if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
+    };
+  }, [contentSearch]);
 
   // ── Mock Test Assignment State ──────────────────────────────────────
   const [mockTestSearch, setMockTestSearch] = useState('');
@@ -364,6 +396,22 @@ export default function BatchDetailPage() {
     isLoading: availableTeachersLoading,
   } = useAvailableTeachers(batchId, debouncedTeacherSearch || undefined);
 
+  // ── Content Query Hooks ───────────────────────────────────────────
+  const {
+    data: assignedBatchContent,
+    isLoading: assignedBatchContentLoading,
+  } = useAssignedBatchContent(batchId);
+
+  const {
+    data: availableBatchContent,
+    isLoading: availableBatchContentLoading,
+  } = useAvailableBatchContent(batchId, debouncedContentSearch || undefined);
+
+  const {
+    data: batchContentStats,
+    isLoading: batchContentStatsLoading,
+  } = useBatchContentAssignmentStats(batchId);
+
   // ── Mock Test Query Hooks ────────────────────────────────────────────
   const {
     data: assignedMockTests,
@@ -380,12 +428,22 @@ export default function BatchDetailPage() {
     isLoading: mockTestStatsLoading,
   } = useMockTestAssignmentStats(batchId);
 
+  // ── Auth Context ─────────────────────────────────────────────────────
+  const { instituteId } = useAuth();
+
+  // ── Notification Hook ──────────────────────────────────────────────
+  const sendNotification = useSendAudienceNotification();
+
   // ── Mutation Hooks ────────────────────────────────────────────────────
   const assignMutation = useAssignStudents();
   const removeStudentMutation = useRemoveStudent();
   const removeStudentsMutation = useRemoveStudents();
   const assignTeacherMutation = useAssignTeacher();
   const removeTeacherMutation = useRemoveTeacher();
+  const assignBatchContentMutation = useAssignBatchContent();
+  const removeBatchContentMutation = useRemoveBatchContent();
+  const removeBatchContentsMutation = useRemoveBatchContents();
+
   const assignMockTestsMutation = useAssignMockTests();
   const removeMockTestMutation = useRemoveMockTest();
   const removeMockTestsMutation = useRemoveMockTests();
@@ -397,6 +455,79 @@ export default function BatchDetailPage() {
   const availableSeats = batch?.capacity !== null && batch?.capacity !== undefined
     ? Math.max(0, batch.capacity - (batch?.studentCount ?? 0))
     : null;
+
+  // ── Content Handlers ───────────────────────────────────────────────
+  const handleConfirmContentAssign = async () => {
+    if (!selectedAvailableContentIds.size) return;
+
+    const result = await assignBatchContentMutation.mutateAsync({
+      batchId,
+      contentIds: Array.from(selectedAvailableContentIds),
+    });
+
+    if (result.success) {
+      const count = result.data?.assigned ?? selectedAvailableContentIds.size;
+      setActionFeedback({
+        type: 'success',
+        message: `${count} content item(s) assigned to this batch successfully.`,
+      });
+      setSelectedAvailableContentIds(new Set());
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to assign content.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  const handleConfirmContentRemoveSingle = async () => {
+    if (!confirmAction?.contentId) return;
+
+    const result = await removeBatchContentMutation.mutateAsync({
+      batchId,
+      contentId: confirmAction.contentId,
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `"${confirmAction.contentTitle ?? 'Content'}" removed from this batch.`,
+      });
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove content.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
+
+  const handleConfirmContentRemoveBulk = async () => {
+    if (!selectedAssignedContentIds.size) return;
+
+    const result = await removeBatchContentsMutation.mutateAsync({
+      batchId,
+      contentIds: Array.from(selectedAssignedContentIds),
+    });
+
+    if (result.success) {
+      setActionFeedback({
+        type: 'success',
+        message: `${selectedAssignedContentIds.size} content item(s) removed from this batch.`,
+      });
+      setSelectedAssignedContentIds(new Set());
+    } else {
+      setActionFeedback({
+        type: 'error',
+        message: result.error ?? 'Failed to remove content.',
+      });
+    }
+    setConfirmAction(null);
+    clearFeedback();
+  };
 
   // ── Mock Test Handlers ────────────────────────────────────────────────
   const handleConfirmMockAssign = async () => {
@@ -432,6 +563,38 @@ export default function BatchDetailPage() {
       });
       setSelectedAvailableMockTestIds(new Set());
       setAssignOptions({ availableFrom: '', availableUntil: '', attemptLimit: '' });
+
+      // ── Send notification(s) via dispatch-notification Edge Function ─
+      const assignedTestIds = Array.from(selectedAvailableMockTestIds);
+      const assignedTests = (availableMockTests ?? []).filter((t) =>
+        assignedTestIds.includes(t.testId),
+      );
+      const testTitles = assignedTests.map((t) => t.title).filter(Boolean) as string[];
+
+      if (instituteId && testTitles.length > 0) {
+        const notificationBody =
+          testTitles.length === 1
+            ? `A new mock test "${testTitles[0]}" has been assigned to you.`
+            : `New mock tests have been assigned to you: ${testTitles.join(', ')}.`;
+
+        try {
+          await sendNotification.mutateAsync({
+            input: {
+              instituteId,
+              title: 'New Mock Test Assigned',
+              body: notificationBody,
+              eventType: 'mock_test_assigned',
+              audience: { type: 'batch', batchId },
+              sendPush: true,
+            },
+            userRole: 'admin',
+          });
+        } catch {
+          // Notification failure must NOT block the assignment success flow.
+          // The assignment itself succeeded — the notification is a
+          // best-effort dispatch. Logged server-side by the Edge Function.
+        }
+      }
     } else {
       setActionFeedback({
         type: 'error',
@@ -691,6 +854,15 @@ export default function BatchDetailPage() {
       case 'mock-edit':
         await handleConfirmMockEdit();
         break;
+      case 'content-assign':
+        await handleConfirmContentAssign();
+        break;
+      case 'content-remove-single':
+        await handleConfirmContentRemoveSingle();
+        break;
+      case 'content-remove-bulk':
+        await handleConfirmContentRemoveBulk();
+        break;
     }
   };
 
@@ -764,6 +936,30 @@ export default function BatchDetailPage() {
           confirmLabel: 'Remove All',
           variant: 'danger' as const,
         };
+      case 'content-assign':
+        return {
+          open: true,
+          title: 'Assign Content',
+          message: `Assign ${confirmAction.count ?? selectedAvailableContentIds.size} selected content item(s) to this batch?`,
+          confirmLabel: 'Assign',
+          variant: 'default' as const,
+        };
+      case 'content-remove-single':
+        return {
+          open: true,
+          title: 'Remove Content',
+          message: `Remove "${confirmAction.contentTitle ?? 'this content'}" from this batch? It can be re-assigned later.`,
+          confirmLabel: 'Remove',
+          variant: 'danger' as const,
+        };
+      case 'content-remove-bulk':
+        return {
+          open: true,
+          title: 'Remove Content',
+          message: `Remove ${confirmAction.count ?? selectedAssignedContentIds.size} selected content item(s) from this batch? They can be re-assigned later.`,
+          confirmLabel: 'Remove All',
+          variant: 'danger' as const,
+        };
       default:
         return {
           open: true,
@@ -784,7 +980,10 @@ export default function BatchDetailPage() {
     (confirmAction?.type === 'teacher-remove' && removeTeacherMutation.isPending) ||
     (confirmAction?.type === 'mock-assign' && assignMockTestsMutation.isPending) ||
     (confirmAction?.type === 'mock-remove-single' && removeMockTestMutation.isPending) ||
-    (confirmAction?.type === 'mock-remove-bulk' && removeMockTestsMutation.isPending);
+    (confirmAction?.type === 'mock-remove-bulk' && removeMockTestsMutation.isPending) ||
+    (confirmAction?.type === 'content-assign' && assignBatchContentMutation.isPending) ||
+    (confirmAction?.type === 'content-remove-single' && removeBatchContentMutation.isPending) ||
+    (confirmAction?.type === 'content-remove-bulk' && removeBatchContentsMutation.isPending);
 
   // ── Assigned Students Columns ─────────────────────────────────────────
   const assignedColumns: Column<AssignedStudent>[] = useMemo(() => [
@@ -949,6 +1148,190 @@ export default function BatchDetailPage() {
       ),
     },
   ], [removeMockTestMutation.isPending, removeMockTestsMutation.isPending]);
+
+  // ── Assigned Content Columns ────────────────────────────────────────
+  const assignedContentColumns: Column<AssignedBatchContent>[] = useMemo(() => [
+    {
+      key: 'title',
+      header: 'Title',
+      className: 'max-w-[180px]',
+      render: (item) => (
+        <div className="flex items-center gap-3 max-w-[180px]">
+          <div className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
+            {item.thumbnailPath ? (
+              <img
+                src={item.thumbnailPath}
+                alt={item.title}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <BookOpen size={14} weight="fill" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+              {item.title}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'contentType',
+      header: 'Type',
+      render: (item) => (
+        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase">
+          {item.contentType.replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'subjectName',
+      header: 'Subject',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.subjectName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'chapterName',
+      header: 'Chapter',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.chapterName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'teacherName',
+      header: 'Teacher',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.teacherName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (item) => (
+        <StatusBadge status={item.status} showDot={true} />
+      ),
+    },
+    {
+      key: 'assignedAt',
+      header: 'Assigned Date',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.assignedAt ? formatDate(item.assignedAt) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (item) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmAction({
+              type: 'content-remove-single',
+              contentId: item.contentId,
+              contentTitle: item.title,
+            });
+          }}
+          disabled={removeBatchContentMutation.isPending || removeBatchContentsMutation.isPending}
+          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+        >
+          {removeBatchContentMutation.isPending &&
+          confirmAction?.type === 'content-remove-single' &&
+          confirmAction?.contentId === item.contentId ? (
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <Trash size={12} />
+          )}
+          Remove
+        </button>
+      ),
+    },
+  ], [removeBatchContentMutation.isPending, removeBatchContentsMutation.isPending, confirmAction]);
+
+  // ── Available Content Columns ────────────────────────────────────────
+  const availableContentColumns: Column<AvailableBatchContent>[] = useMemo(() => [
+    {
+      key: 'title',
+      header: 'Title',
+      className: 'max-w-[180px]',
+      render: (item) => (
+        <div className="flex items-center gap-3 max-w-[180px]">
+          <div className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
+            {item.thumbnailPath ? (
+              <img
+                src={item.thumbnailPath}
+                alt={item.title}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <BookOpen size={14} weight="fill" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+              {item.title}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'contentType',
+      header: 'Type',
+      render: (item) => (
+        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase">
+          {item.contentType.replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'subjectName',
+      header: 'Subject',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.subjectName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'chapterName',
+      header: 'Chapter',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.chapterName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'teacherName',
+      header: 'Teacher',
+      render: (item) => (
+        <span className="text-xs text-gray-600 dark:text-gray-400">
+          {item.teacherName ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (item) => (
+        <StatusBadge status={item.status} showDot={true} />
+      ),
+    },
+  ], []);
 
   // ── Available Mock Tests Columns ──────────────────────────────────────
   const availableMockTestColumns: Column<MockTest>[] = useMemo(() => [
@@ -1878,6 +2261,142 @@ export default function BatchDetailPage() {
               title="No recent batch activity"
               description="Activity will appear once students take mock tests or teachers take actions in this batch."
             />
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
+              Section 10: Content Assignment
+              ════════════════════════════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Content Assignment
+            </h3>
+            <p className="mb-4 text-xs text-gray-500">Assign and manage content for this batch</p>
+
+            {/* ─── Assignment Statistics ───────────────────────────── */}
+            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <StatCard
+                icon={<BookOpen size={22} weight="duotone" />}
+                label="Assigned"
+                value={batchContentStats?.assignedCount ?? 0}
+                color="blue"
+              />
+              <StatCard
+                icon={<FileText size={22} weight="duotone" />}
+                label="Available"
+                value={batchContentStats?.availableCount ?? 0}
+                color="emerald"
+              />
+            </div>
+
+            {/* ─── Assigned Content ───────────────────────────────── */}
+            <div className="mb-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Assigned ({assignedBatchContent?.length ?? 0})
+                </h4>
+                {selectedAssignedContentIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'content-remove-bulk',
+                        count: selectedAssignedContentIds.size,
+                      })
+                    }
+                    disabled={removeBatchContentsMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+                  >
+                    {removeBatchContentsMutation.isPending ? (
+                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <Trash size={12} />
+                    )}
+                    Remove Selected ({selectedAssignedContentIds.size})
+                  </button>
+                )}
+              </div>
+              <DataTable
+                columns={assignedContentColumns}
+                data={assignedBatchContent ?? []}
+                keyExtractor={(item) => item.contentId}
+                isLoading={assignedBatchContentLoading}
+                selectedIds={selectedAssignedContentIds}
+                onSelectionChange={setSelectedAssignedContentIds}
+                emptyState={
+                  <EmptyState
+                    icon={<BookOpen size={28} weight="thin" />}
+                    title="No content assigned"
+                    description="Assign approved content to this batch using the panel below."
+                  />
+                }
+                className="min-h-[200px]"
+              />
+            </div>
+
+            {/* ─── Available Content ──────────────────────────────── */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Available Content ({availableBatchContent?.length ?? 0})
+                </h4>
+                {selectedAvailableContentIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'content-assign',
+                        count: selectedAvailableContentIds.size,
+                      })
+                    }
+                    disabled={assignBatchContentMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                  >
+                    {assignBatchContentMutation.isPending ? (
+                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <PlusCircle size={12} />
+                    )}
+                    Assign Selected ({selectedAvailableContentIds.size})
+                  </button>
+                )}
+              </div>
+
+              <div className="mb-3">
+                <SearchBar
+                  value={contentSearch}
+                  onChange={setContentSearch}
+                  placeholder="Search by title, description, or type..."
+                  className="w-full"
+                />
+              </div>
+
+              <DataTable
+                columns={availableContentColumns}
+                data={availableBatchContent ?? []}
+                keyExtractor={(item) => item.contentId}
+                isLoading={availableBatchContentLoading}
+                selectedIds={selectedAvailableContentIds}
+                onSelectionChange={setSelectedAvailableContentIds}
+                emptyState={
+                  <EmptyState
+                    icon={<BookOpen size={28} weight="thin" />}
+                    title={debouncedContentSearch ? 'No matching content' : 'No content available'}
+                    description={
+                      debouncedContentSearch
+                        ? 'Try a different search term.'
+                        : 'All approved content is already assigned to this batch.'
+                    }
+                  />
+                }
+                className="min-h-[200px]"
+              />
+            </div>
           </div>
         </div>
 
