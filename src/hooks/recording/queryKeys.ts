@@ -30,4 +30,8 @@ export const recordingKeys = {
 
   /** Key for playback URL queries. */
   playback: (id: string) => [...recordingKeys.all, 'playback', id] as const,
+
+  /** Key for assignment queries. */
+  assignments: (recordingId: string) =>
+    [...recordingKeys.all, 'assignments', recordingId] as const,
 };

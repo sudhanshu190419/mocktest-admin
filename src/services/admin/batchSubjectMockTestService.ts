@@ -1,60 +1,47 @@
 /**
- * Mock Test Assignment Service
+ * Batch Subject Mock Test Service
  *
- * Single source of truth for mock test assignment operations within the
- * Admin Batch Management module.
- *
- * Every public method returns a standardised `ApiResponse<T>` shape.
- * Follows the exact same architecture as `batchStudentAssignmentService.ts`,
- * `batchTeacherAssignmentService.ts`, and `batchManagementService.ts`.
+ * Manages mock test assignments within a Batch Subject (subject-within-a-batch).
+ * Serves as the primary service for querying and mutating `batch_subject_mock_tests`
+ * — the migration 069 replacement for the old `batch_mock_tests` table.
  *
  * ## Scope
  *
- * This service manages the planned `batch_mock_tests` junction table.
+ * This service manages the `batch_subject_mock_tests` junction table ONLY.
  * It does NOT manage:
- * - Batch lifecycle (handled by batchManagementService)
- * - Student enrollment (handled by batchStudentAssignmentService)
- * - Teacher assignment (handled by batchTeacherAssignmentService)
+ * - Batch Subject lifecycle
  * - Mock test CRUD or lifecycle (handled by mockTestService)
+ * - Teacher assignment (handled by batchSubjectTeacherService)
  *
- * ## Schema Note
+ * ## Business Rules
  *
- * The `batch_mock_tests` junction table does not exist in the current DB
- * schema.  It is a planned table documented in:
- *   - src/services/admin/batchManagementService.ts (mockTestCount = 0)
- *   - Schema_Domain_05_Assessment.md
+ * - A Batch Subject may have multiple mock tests assigned (many-to-many).
+ * - A mock test may belong to multiple Batch Subjects across batches.
+ * - Assigning a test adds a new entry; duplicate entries are silently skipped.
+ * - Only published mock tests from the same institute + subject are eligible.
+ * - Teachers can only manage tests for Batch Subjects they are assigned to.
  *
- * Expected columns:
- *   assignment_id    uuid (PK)
- *   batch_id         uuid (FK → batches)
- *   test_id          uuid (FK → mock_tests)
- *   assigned_at      timestamptz
- *   available_from   timestamptz (nullable — override)
- *   available_until  timestamptz (nullable — override)
- *   attempt_limit    integer (nullable — override)
- *   created_at       timestamptz
- *
- * @module services/admin/mockTestAssignmentService
+ * @module services/admin/batchSubjectMockTestService
  */
 
 import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
-import type { MockTest } from '@/types/mockTest';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** A mock test assigned to a batch. */
-export interface AssignedMockTest {
+/** A mock test assigned to a Batch Subject. */
+export interface AssignedBatchSubjectMockTest {
   assignmentId: string;
+  batchSubjectId: string;
   mockTestId: string;
   title: string;
-  type: string;
-  subject: string | null;
-  stream: string;
-  duration: number;
+  testType: string;
+  subjectName: string | null;
+  streamName: string;
+  durationMin: number;
   totalMarks: number;
   publishedAt: string | null;
   assignedAt: string;
@@ -64,7 +51,21 @@ export interface AssignedMockTest {
   status: string;
 }
 
-/** Input for assigning mock tests to a batch. */
+/** A mock test available for assignment to a Batch Subject. */
+export interface AvailableBatchSubjectMockTest {
+  testId: string;
+  title: string;
+  testType: string;
+  subjectId: string;
+  subjectName: string | null;
+  streamName: string;
+  durationMin: number;
+  totalMarks: number;
+  publishedAt: string | null;
+  status: string;
+}
+
+/** Options when assigning mock tests. */
 export interface AssignMockTestsOptions {
   availableFrom?: string | null;
   availableUntil?: string | null;
@@ -84,11 +85,11 @@ export interface UpdateMockTestAssignmentInput {
   attemptLimit?: number | null;
 }
 
-/** Assignment statistics for a batch. */
-export interface MockTestAssignmentStats {
-  /** Total tests assigned to this batch. */
+/** Assignment statistics for a Batch Subject. */
+export interface BatchSubjectMockTestStats {
+  /** Total tests assigned to this batch subject. */
   assigned: number;
-  /** Tests currently available (NOW() BETWEEN available_from AND available_until). */
+  /** Tests currently available. */
   active: number;
   /** Tests whose available_until has passed. */
   expired: number;
@@ -100,24 +101,26 @@ export interface MockTestAssignmentStats {
 //  Service
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const mockTestAssignmentService = {
+export const batchSubjectMockTestService = {
   // ─────────────────────────────────────────────────────────────────────────
   //  1. Get Assigned Mock Tests
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Fetch all mock tests assigned to a batch.
+   * Fetch all mock tests assigned to a Batch Subject.
    *
-   * Joins `batch_mock_tests` → `mock_tests` to return enriched test info.
+   * Joins `batch_subject_mock_tests` → `mock_tests` to return enriched test info.
    *
-   * @param batchId - The `batches.batch_id`.
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
    */
-  async getAssignedMockTests(batchId: string): Promise<ApiResponse<AssignedMockTest[]>> {
+  async getAssignedMockTests(
+    batchSubjectId: string,
+  ): Promise<ApiResponse<AssignedBatchSubjectMockTest[]>> {
     try {
-      validateUUID(batchId, 'batchId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
 
       const { data, error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .select(
           `
           *,
@@ -130,9 +133,6 @@ export const mockTestAssignmentService = {
             total_marks,
             published_at,
             status,
-            available_from,
-            available_until,
-            attempt_limit,
             streams!left (
               name
             ),
@@ -142,29 +142,30 @@ export const mockTestAssignmentService = {
           )
         `,
         )
-        .eq('batch_id', batchId)
+        .eq('batch_subject_id', batchSubjectId)
         .order('assigned_at', { ascending: false });
 
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
 
-      const list: AssignedMockTest[] = (data ?? []).map((row: any) => {
+      const list: AssignedBatchSubjectMockTest[] = (data ?? []).map((row: any) => {
         const mt = row.mock_tests ?? {};
         return {
           assignmentId: row.assignment_id,
+          batchSubjectId: row.batch_subject_id,
           mockTestId: mt.test_id ?? row.test_id,
           title: mt.title ?? 'Unknown',
-          type: mt.test_type ?? 'practice',
-          subject: mt.subjects?.name ?? null,
-          stream: mt.streams?.name ?? '',
-          duration: mt.duration_min ?? 0,
+          testType: mt.test_type ?? 'practice',
+          subjectName: mt.subjects?.name ?? null,
+          streamName: mt.streams?.name ?? '',
+          durationMin: mt.duration_min ?? 0,
           totalMarks: mt.total_marks ?? 0,
           publishedAt: mt.published_at ?? null,
           assignedAt: row.assigned_at ?? row.created_at ?? '',
-          availableFrom: row.available_from ?? mt.available_from ?? null,
-          availableUntil: row.available_until ?? mt.available_until ?? null,
-          attemptLimit: row.attempt_limit ?? mt.attempt_limit ?? null,
+          availableFrom: row.available_from ?? null,
+          availableUntil: row.available_until ?? null,
+          attemptLimit: row.attempt_limit ?? null,
           status: mt.status ?? 'draft',
         };
       });
@@ -180,43 +181,70 @@ export const mockTestAssignmentService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Fetch published mock tests that are NOT already assigned to a batch.
+   * Fetch published mock tests that are NOT already assigned to a Batch Subject.
    *
-   * Supports optional search by title or subject name.
+   * Scopes to the same institute and subject as the Batch Subject.
+   * Supports optional search by title.
    *
-   * @param batchId - The `batches.batch_id` to exclude already-assigned tests.
-   * @param search  - Optional search term (title or subject).
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
+   * @param subjectId      - The subject_id to scope available tests.
+   * @param search         - Optional search term.
    */
   async getAvailableMockTests(
-    batchId: string,
+    batchSubjectId: string,
+    subjectId: string,
     search?: string,
-  ): Promise<ApiResponse<MockTest[]>> {
+  ): Promise<ApiResponse<AvailableBatchSubjectMockTest[]>> {
     try {
-      validateUUID(batchId, 'batchId');
+      console.log('[DIAG] getAvailableMockTests called with:', { batchSubjectId, subjectId, search });
 
-      // 1. Get the batch's institute_id
-      const { data: batch, error: batchErr } = await supabase
-        .from('batches')
-        .select('institute_id, stream_id')
-        .eq('batch_id', batchId)
+      validateUUID(batchSubjectId, 'batchSubjectId');
+      validateUUID(subjectId, 'subjectId');
+
+      // 1. Get the Batch Subject's institute_id
+      const { data: bs, error: bsErr } = await supabase
+        .from('batch_subjects')
+        .select('institute_id')
+        .eq('batch_subject_id', batchSubjectId)
         .single();
 
-      if (batchErr) {
-        if (batchErr.code === 'PGRST116') {
-          return { success: false, error: `Batch not found: ${batchId}` };
+      if (bsErr) {
+        console.error('[DIAG] Failed to fetch batch_subject institute_id:', bsErr);
+        if (bsErr.code === 'PGRST116') {
+          return { success: false, error: `Batch Subject not found: ${batchSubjectId}` };
         }
-        return { success: false, error: extractErrorMessage(batchErr) };
+        return { success: false, error: extractErrorMessage(bsErr) };
       }
+
+      console.log('[DIAG] Batch subject institute_id:', bs.institute_id);
 
       // 2. Get already-assigned test IDs
       const { data: assignedData } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .select('test_id')
-        .eq('batch_id', batchId);
+        .eq('batch_subject_id', batchSubjectId);
 
       const assignedIds = (assignedData ?? []).map((r: any) => r.test_id);
+      console.log('[DIAG] Already assigned test IDs:', assignedIds);
 
-      // 3. Query mock_tests for this institute + stream, published status
+      // 2a. Check ALL published tests in this institute to compare subject_id matching
+      const { data: allPublished, error: allPubErr } = await supabase
+        .from('mock_tests')
+        .select('test_id, title, subject_id, institute_id, status')
+        .eq('institute_id', bs.institute_id)
+        .eq('status', 'published');
+
+      if (allPubErr) {
+        console.error('[DIAG] Failed to fetch all published tests:', allPubErr);
+      } else {
+        console.log('[DIAG] All published mock_tests in this institute:', allPublished?.length ?? 0);
+        console.log('[DIAG] Looking for subject_id:', subjectId);
+        allPublished?.forEach((t: any) => {
+          console.log(`[DIAG]   "${t.title}" | subject_id: ${t.subject_id} | matches: ${t.subject_id === subjectId} | type check: ${typeof t.subject_id} === ${typeof subjectId}`);
+        });
+      }
+
+      // 3. Query mock_tests for this institute + subject, published status
       let query = supabase
         .from('mock_tests')
         .select(
@@ -225,53 +253,47 @@ export const mockTestAssignmentService = {
           subjects!left (name)
         `,
         )
-        .eq('institute_id', batch.institute_id)
+        .eq('institute_id', bs.institute_id)
+        .eq('subject_id', subjectId)
         .eq('status', 'published');
 
       // Exclude already-assigned tests
       if (assignedIds.length > 0) {
+        console.log('[DIAG] Excluding already-assigned test_ids:', assignedIds);
         query = query.not('test_id', 'in', `(${assignedIds.join(',')})`);
       }
 
       // Search filter
       if (search?.trim()) {
         const term = `%${search.trim()}%`;
+        console.log('[DIAG] Applying search filter:', term);
         query = query.or(`title.ilike.${term},subjects.name.ilike.${term}`);
       }
 
       query = query.order('title', { ascending: true });
 
+      console.log('[DIAG] Executing final query for subject_id:', subjectId, 'and institute_id:', bs.institute_id);
       const { data, error } = await query;
 
       if (error) {
+        console.error('[DIAG] Final query failed:', error);
         return { success: false, error: extractErrorMessage(error) };
       }
 
-      const tests: MockTest[] = (data ?? []).map((row: any) => ({
+      console.log('[DIAG] Final filtered results count:', data?.length ?? 0);
+      console.log('[DIAG] Final filtered results:', data);
+
+      const tests: AvailableBatchSubjectMockTest[] = (data ?? []).map((row: any) => ({
         testId: row.test_id,
-        instituteId: row.institute_id,
-        teacherId: row.teacher_id,
-        streamId: row.stream_id,
-        subjectId: row.subject_id,
-        title: row.title,
-        description: row.description,
-        durationMin: row.duration_min,
-        totalMarks: row.total_marks,
-        passingMarks: row.passing_marks,
-        negativeMarking: row.negative_marking,
-        attemptLimit: row.attempt_limit,
-        shuffleQuestions: row.shuffle_questions,
-        shuffleOptions: row.shuffle_options,
-        calculatorAllowed: row.calculator_allowed,
-        status: row.status,
-        testType: row.test_type,
-        resultReleaseMode: row.result_release_mode,
-        resultReleaseAt: row.result_release_at,
-        availableFrom: row.available_from,
-        availableUntil: row.available_until,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        publishedAt: row.published_at,
+        title: row.title ?? 'Unknown',
+        testType: row.test_type ?? 'practice',
+        subjectId: row.subject_id ?? '',
+        subjectName: row.subjects?.name ?? null,
+        streamName: row.streams?.name ?? '',
+        durationMin: row.duration_min ?? 0,
+        totalMarks: row.total_marks ?? 0,
+        publishedAt: row.published_at ?? null,
+        status: row.status ?? 'draft',
       }));
 
       return { success: true, data: tests };
@@ -285,41 +307,55 @@ export const mockTestAssignmentService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Assign multiple mock tests to a batch.
+   * Assign multiple mock tests to a Batch Subject.
    *
-   * Prevents duplicate assignments.  Options (availableFrom, availableUntil,
+   * Prevents duplicate assignments. Options (availableFrom, availableUntil,
    * attemptLimit) are applied to all tests.
    *
-   * @param batchId   - The `batches.batch_id`.
-   * @param testIds   - Array of `mock_tests.test_id` values.
-   * @param options   - Optional overrides for all assigned tests.
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
+   * @param testIds        - Array of `mock_tests.test_id` values.
+   * @param options        - Optional overrides for all assigned tests.
    */
   async assignMockTests(
-    batchId: string,
+    batchSubjectId: string,
     testIds: string[],
     options?: AssignMockTestsOptions,
   ): Promise<ApiResponse<AssignMockTestsResult>> {
     try {
-      validateUUID(batchId, 'batchId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
 
       if (testIds.length === 0) {
         return { success: true, data: { assigned: 0, skipped: 0 } };
       }
 
-      // Validate all test IDs
       for (const id of testIds) {
         validateUUID(id, 'testId');
       }
 
-      // Get the current user for assigned_by
+      // 1. Get batch subject's institute_id
+      const { data: bs, error: bsErr } = await supabase
+        .from('batch_subjects')
+        .select('institute_id')
+        .eq('batch_subject_id', batchSubjectId)
+        .single();
+
+      if (bsErr) {
+        if (bsErr.code === 'PGRST116') {
+          return { success: false, error: `Batch Subject not found: ${batchSubjectId}` };
+        }
+        return { success: false, error: extractErrorMessage(bsErr) };
+      }
+
+      // 2. Get the current user for assigned_by
       const { data: userData } = await supabase.auth.getUser();
       const assignedBy = userData?.user?.id ?? null;
 
-      // Build insert rows
+      // 3. Build insert rows
       const now = new Date().toISOString();
       const rows = testIds.map((testId) => ({
-        batch_id: batchId,
+        batch_subject_id: batchSubjectId,
         test_id: testId,
+        institute_id: bs.institute_id,
         assigned_at: now,
         available_from: options?.availableFrom ?? null,
         available_until: options?.availableUntil ?? null,
@@ -328,7 +364,7 @@ export const mockTestAssignmentService = {
       }));
 
       const { error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .insert(rows);
 
       if (error) {
@@ -339,7 +375,7 @@ export const mockTestAssignmentService = {
 
           for (const row of rows) {
             const { error: insertErr } = await supabase
-              .from('batch_mock_tests')
+              .from('batch_subject_mock_tests')
               .insert(row);
 
             if (insertErr && insertErr.code === '23505') {
@@ -354,7 +390,7 @@ export const mockTestAssignmentService = {
           return {
             success: true,
             data: { assigned, skipped },
-            warning: `${skipped} mock test(s) were already assigned to this batch.`,
+            warning: `${skipped} mock test(s) were already assigned to this batch subject.`,
           };
         }
 
@@ -375,23 +411,23 @@ export const mockTestAssignmentService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Remove a single mock test assignment from a batch.
+   * Remove a single mock test assignment from a Batch Subject.
    *
-   * @param batchId      - The `batches.batch_id`.
-   * @param assignmentId - The `batch_mock_tests.assignment_id`.
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
+   * @param assignmentId   - The `batch_subject_mock_tests.assignment_id`.
    */
   async removeMockTest(
-    batchId: string,
+    batchSubjectId: string,
     assignmentId: string,
   ): Promise<ApiResponse<null>> {
     try {
-      validateUUID(batchId, 'batchId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
       validateUUID(assignmentId, 'assignmentId');
 
       const { error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .delete()
-        .eq('batch_id', batchId)
+        .eq('batch_subject_id', batchSubjectId)
         .eq('assignment_id', assignmentId);
 
       if (error) {
@@ -412,17 +448,17 @@ export const mockTestAssignmentService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Remove multiple mock test assignments from a batch.
+   * Remove multiple mock test assignments from a Batch Subject.
    *
-   * @param batchId       - The `batches.batch_id`.
-   * @param assignmentIds - Array of `batch_mock_tests.assignment_id` values.
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
+   * @param assignmentIds  - Array of `batch_subject_mock_tests.assignment_id` values.
    */
   async removeMockTests(
-    batchId: string,
+    batchSubjectId: string,
     assignmentIds: string[],
   ): Promise<ApiResponse<null>> {
     try {
-      validateUUID(batchId, 'batchId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
 
       if (assignmentIds.length === 0) {
         return { success: true, data: null };
@@ -433,9 +469,9 @@ export const mockTestAssignmentService = {
       }
 
       const { error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .delete()
-        .eq('batch_id', batchId)
+        .eq('batch_subject_id', batchSubjectId)
         .in('assignment_id', assignmentIds);
 
       if (error) {
@@ -457,7 +493,7 @@ export const mockTestAssignmentService = {
    *
    * Allows updating availableFrom, availableUntil, and attemptLimit.
    *
-   * @param assignmentId - The `batch_mock_tests.assignment_id`.
+   * @param assignmentId - The `batch_subject_mock_tests.assignment_id`.
    * @param input        - The fields to update.
    */
   async updateAssignment(
@@ -484,7 +520,7 @@ export const mockTestAssignmentService = {
       }
 
       const { error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .update(dbRecord)
         .eq('assignment_id', assignmentId);
 
@@ -506,30 +542,28 @@ export const mockTestAssignmentService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Get mock test assignment statistics for a batch.
+   * Get mock test assignment statistics for a Batch Subject.
    *
    * Returns total assigned, active, expired, and upcoming counts.
    *
-   * @param batchId - The `batches.batch_id`.
+   * @param batchSubjectId - The `batch_subjects.batch_subject_id`.
    */
-  async getAssignmentStats(batchId: string): Promise<ApiResponse<MockTestAssignmentStats>> {
+  async getAssignmentStats(
+    batchSubjectId: string,
+  ): Promise<ApiResponse<BatchSubjectMockTestStats>> {
     try {
-      validateUUID(batchId, 'batchId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
 
       const { data, error } = await supabase
-        .from('batch_mock_tests')
+        .from('batch_subject_mock_tests')
         .select(
           `
           assignment_id,
           available_from,
-          available_until,
-          mock_tests!inner (
-            available_from,
-            available_until
-          )
+          available_until
         `,
         )
-        .eq('batch_id', batchId);
+        .eq('batch_subject_id', batchSubjectId);
 
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
@@ -542,9 +576,8 @@ export const mockTestAssignmentService = {
 
       for (const row of data ?? []) {
         const rowAny = row as any;
-        const mt = rowAny.mock_tests ?? {};
-        const from = rowAny.available_from ?? mt.available_from;
-        const until = rowAny.available_until ?? mt.available_until;
+        const from = rowAny.available_from;
+        const until = rowAny.available_until;
 
         if (until && until < now) {
           expired++;

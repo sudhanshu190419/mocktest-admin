@@ -13,8 +13,10 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/config/supabase';
 import {
   useRecordings,
+  useRecordingAssignments,
   useDeleteRecording,
   useRetryRecording,
 } from '@/hooks/recording/useRecordings';
@@ -77,6 +79,10 @@ export default function RecordingsListPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [batchSubjectFilter, setBatchSubjectFilter] = useState('');
+  const [teacherSubjects, setTeacherSubjects] = useState<
+    { batchSubjectId: string; label: string }[]
+  >([]);
   const [sortOrder, setSortOrder] = useState('newest');
   const [deleteConfirm, setDeleteConfirm] = useState<{
     recordingId: string;
@@ -99,13 +105,43 @@ export default function RecordingsListPage() {
     [],
   );
 
+  // ── Fetch teacher's assigned batch subjects for filter dropdown ─────────
+  useEffect(() => {
+    async function fetchSubjects() {
+      const { data: myTeacherId } = await supabase.rpc('get_my_teacher_id');
+      if (!myTeacherId) return;
+
+      const { data: assignments } = await supabase
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner (
+            batches!inner (name),
+            subjects!inner (name)
+          )
+        `)
+        .eq('teacher_id', myTeacherId);
+
+      if (!assignments) return;
+
+      setTeacherSubjects(
+        (assignments as any[]).map((row: any) => ({
+          batchSubjectId: row.batch_subject_id,
+          label: `${row.batch_subjects?.subjects?.name} \u2022 ${row.batch_subjects?.batches?.name}`,
+        })),
+      );
+    }
+    fetchSubjects();
+  }, []);
+
   // ── Build Query Filters ──────────────────────────────────────────────────
   const filters = useMemo(() => {
     const f: Record<string, unknown> = {};
     if (search) f.search = search;
     if (statusFilter) f.status = statusFilter;
+    if (batchSubjectFilter) f.batchSubjectId = batchSubjectFilter;
     return f;
-  }, [search, statusFilter]);
+  }, [search, statusFilter, batchSubjectFilter]);
 
   const sortOptions = useMemo(
     () => ({
@@ -260,11 +296,17 @@ export default function RecordingsListPage() {
         ),
       },
       {
-        key: 'recordingType',
-        header: 'Type',
+        key: 'sourceType',
+        header: 'Source',
         render: (r) => (
-          <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 uppercase dark:bg-gray-800 dark:text-gray-400">
-            {r.recordingType.replace(/_/g, ' ')}
+          <span
+            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium uppercase ${
+              r.sourceType === 'uploaded'
+                ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300'
+                : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+            }`}
+          >
+            {r.sourceType === 'uploaded' ? 'Uploaded' : 'Live Class'}
           </span>
         ),
       },
@@ -406,6 +448,21 @@ export default function RecordingsListPage() {
         >
           {STATUS_FILTER_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={batchSubjectFilter}
+          onChange={(e) => {
+            setBatchSubjectFilter(e.target.value);
+            setPage(1);
+          }}
+          className="min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">All Subjects</option>
+          {teacherSubjects.map((s) => (
+            <option key={s.batchSubjectId} value={s.batchSubjectId}>
               {s.label}
             </option>
           ))}

@@ -259,32 +259,6 @@ export const adminKeys = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
-  //  Batch Teacher Assignment (admin Batch Teacher Assignment module)
-  // ═════════════════════════════════════════════════════════════════════════
-
-  batchTeacherAssignment: {
-    /** Root key for all batch teacher assignment queries. */
-    all: () => [...adminKeys.all, 'batchTeacherAssignment'] as const,
-
-    /** Key for every assigned-teacher query (broad invalidation). */
-    assigned: () => [...adminKeys.batchTeacherAssignment.all(), 'assigned'] as const,
-
-    /** Key for the assigned teacher of a specific batch. */
-    assignedTeacher: (batchId: string) =>
-      [...adminKeys.batchTeacherAssignment.assigned(), batchId] as const,
-
-    /** Key for every available-teachers list query. */
-    available: () => [...adminKeys.batchTeacherAssignment.all(), 'available'] as const,
-
-    /** Key for available teachers for a specific batch. */
-    availableTeachers: (batchId: string) =>
-      [...adminKeys.batchTeacherAssignment.available(), batchId] as const,
-
-    /** Key for teacher assignment stats. */
-    stats: () => [...adminKeys.batchTeacherAssignment.all(), 'stats'] as const,
-  },
-
-  // ═════════════════════════════════════════════════════════════════════════
   //  Mock Test Management (admin Mock Test Management module)
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -455,6 +429,129 @@ export const adminKeys = {
     /** Key for assignment stats of a specific batch. */
     stats: (batchId: string) =>
       [...adminKeys.batchContentAssignment.all(), 'stats', batchId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Subject Mock Test Assignment (admin Batch Subject Mock Test module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchSubjectMockTestAssignment: {
+    /** Root key for all batch subject mock test assignment queries. */
+    all: () => [...adminKeys.all, 'batchSubjectMockTestAssignment'] as const,
+
+    /** Key for every assigned-tests list query (broad invalidation). */
+    assigned: () =>
+      [...adminKeys.batchSubjectMockTestAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned tests of a specific batch subject. */
+    assignedTests: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectMockTestAssignment.assigned(), batchSubjectId] as const,
+
+    /** Key for every available-tests list query. */
+    available: () =>
+      [...adminKeys.batchSubjectMockTestAssignment.all(), 'available'] as const,
+
+    /** Key for available tests for a specific batch subject. */
+    availableTests: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectMockTestAssignment.available(), batchSubjectId] as const,
+
+    /** Key for assignment stats of a specific batch subject. */
+    stats: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectMockTestAssignment.all(), 'stats', batchSubjectId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Subject Content Assignment (admin Batch Subject Content module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchSubjectContentAssignment: {
+    /** Root key for all batch subject content assignment queries. */
+    all: () => [...adminKeys.all, 'batchSubjectContentAssignment'] as const,
+
+    /** Key for every assigned-content list query (broad invalidation). */
+    assigned: () =>
+      [...adminKeys.batchSubjectContentAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned content of a specific batch subject. */
+    assignedContent: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectContentAssignment.assigned(), batchSubjectId] as const,
+
+    /** Key for every available-content list query. */
+    available: () =>
+      [...adminKeys.batchSubjectContentAssignment.all(), 'available'] as const,
+
+    /** Key for available content for a specific batch subject. */
+    availableContent: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectContentAssignment.available(), batchSubjectId] as const,
+
+    /** Key for assignment stats of a specific batch subject. */
+    stats: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectContentAssignment.all(), 'stats', batchSubjectId] as const,
+
+    /** Key for batch subject detail. */
+    detail: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectContentAssignment.all(), 'detail', batchSubjectId] as const,
+
+    /** Key for batch subjects list (subjects within a batch). */
+    subjectsList: (batchId: string) =>
+      [...adminKeys.batchSubjectContentAssignment.all(), 'subjects', batchId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Subject Assignment (admin Batch Subject management — assign/remove
+  //  subjects to/from a batch at the batch level)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchSubjectAssignment: {
+    /** Root key for all batch subject assignment queries. */
+    all: () => [...adminKeys.all, 'batchSubjectAssignment'] as const,
+
+    /** Key for every assigned-subjects list query (broad invalidation). */
+    assigned: () => [...adminKeys.batchSubjectAssignment.all(), 'assigned'] as const,
+
+    /** Key for assigned subjects of a specific batch. */
+    assignedSubjects: (batchId: string) =>
+      [...adminKeys.batchSubjectAssignment.assigned(), batchId] as const,
+
+    /** Key for every available-subjects list query. */
+    available: () => [...adminKeys.batchSubjectAssignment.all(), 'available'] as const,
+
+    /** Key for available subjects for a specific batch. */
+    availableSubjects: (batchId: string) =>
+      [...adminKeys.batchSubjectAssignment.available(), batchId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Batch Subject Teacher Assignment (admin Batch Subject Teacher Assignment)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  batchSubjectTeacherAssignment: {
+    /** Root key for all batch subject teacher assignment queries. */
+    all: () => [...adminKeys.all, 'batchSubjectTeacherAssignment'] as const,
+
+    /** Key for every batch-subject-teacher summary query (broad invalidation). */
+    summary: () =>
+      [...adminKeys.batchSubjectTeacherAssignment.all(), 'summary'] as const,
+
+    /** Key for teacher summary of a specific batch. */
+    batchSummary: (batchId: string) =>
+      [...adminKeys.batchSubjectTeacherAssignment.summary(), batchId] as const,
+
+    /** Key for assigned teachers of a specific batch subject. */
+    assignedTeachers: (batchSubjectId: string) =>
+      [...adminKeys.batchSubjectTeacherAssignment.all(), 'assigned', batchSubjectId] as const,
+
+    /** Key for available teachers. */
+    available: () =>
+      [...adminKeys.batchSubjectTeacherAssignment.all(), 'available'] as const,
+
+    /** Key for available teachers for a specific institute. */
+    availableTeachers: (instituteId: string, search?: string) =>
+      [...adminKeys.batchSubjectTeacherAssignment.available(), instituteId, search] as const,
+
+    /** Key for stats. */
+    stats: (instituteId: string) =>
+      [...adminKeys.batchSubjectTeacherAssignment.all(), 'stats', instituteId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════

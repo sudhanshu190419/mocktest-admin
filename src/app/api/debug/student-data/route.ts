@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     // Get batches
     const { data: batches } = await supabase
-      .from('batch_teachers')
+      .from('batch_subject_teachers')
       .select('batch_id')
       .eq('teacher_id', tDetails.teacher_id);
 

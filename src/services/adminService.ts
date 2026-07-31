@@ -174,13 +174,14 @@ export const adminService = {
   },
 
   /**
-   * Allot a batch/course to a teacher and dispatch an in-app notification.
+   * Allot a batch subject to a teacher and dispatch an in-app notification.
+   * Uses `batch_subject_teachers` instead of the old `batch_teachers`.
    */
-  async allotBatchToTeacher(teacherId: string, batchId: string, batchName: string, teacherProfileId: string): Promise<boolean> {
+  async allotBatchToTeacher(teacherId: string, batchSubjectId: string, batchSubjectName: string, teacherProfileId: string): Promise<boolean> {
     try {
       const { error: btErr } = await supabase
-        .from('batch_teachers')
-        .insert([{ teacher_id: teacherId, batch_id: batchId }]);
+        .from('batch_subject_teachers')
+        .insert([{ teacher_id: teacherId, batch_subject_id: batchSubjectId }]);
 
       const notificationId = crypto.randomUUID ? crypto.randomUUID() : 'n-' + Math.random().toString(36).substring(2, 9);
 
@@ -190,12 +191,12 @@ export const adminService = {
           .insert([{
             notification_id: notificationId,
             institute_id: '00000000-0000-0000-0000-000000000000',
-            title: 'New Course Allotted',
-            body: `The administration has allotted a new course: ${batchName} to your profile.`,
+            title: 'New Subject Allotted',
+            body: `The administration has allotted a new subject: ${batchSubjectName} to your profile.`,
             channel: 'in_app',
             event_type: 'batch_assigned',
-            reference_type: 'batch',
-            reference_id: batchId
+            reference_type: 'batch_subject',
+            reference_id: batchSubjectId
           }]);
 
         if (!nErr) {
@@ -211,18 +212,18 @@ export const adminService = {
       }
 
       if (btErr) {
-        console.warn('Supabase batch allotment failed, updating local storage:', btErr.message);
+        console.warn('Supabase batch subject allotment failed, updating local storage:', btErr.message);
       }
     } catch (err) {
-      console.warn('Error in Supabase batch allotment:', err);
+      console.warn('Error in Supabase batch subject allotment:', err);
     }
 
     // Dynamic fallback for both connected & demo mode to sync instantly in localStorage:
     const allottedKey = `EDTECH_ALLOTTED_BATCHES_${teacherId}`;
     const existingBatches = localStorage.getItem(allottedKey);
     const batchesList = existingBatches ? JSON.parse(existingBatches) : [];
-    if (!batchesList.includes(batchId)) {
-      batchesList.push(batchId);
+    if (!batchesList.includes(batchSubjectId)) {
+      batchesList.push(batchSubjectId);
       localStorage.setItem(allottedKey, JSON.stringify(batchesList));
     }
 
@@ -232,12 +233,12 @@ export const adminService = {
       const notifsList = existingNotifs ? JSON.parse(existingNotifs) : [];
       const newNotif = {
         id: crypto.randomUUID ? crypto.randomUUID() : 'n-' + Math.random().toString(36).substring(2, 9),
-        title: 'New Course Allotted',
-        body: `The administration has allotted a new course: ${batchName} to your profile.`,
+        title: 'New Subject Allotted',
+        body: `The administration has allotted a new subject: ${batchSubjectName} to your profile.`,
         isRead: false,
         receivedAt: new Date().toISOString(),
-        referenceType: 'batch',
-        referenceId: batchId
+        referenceType: 'batch_subject',
+        referenceId: batchSubjectId
       };
       notifsList.unshift(newNotif);
       localStorage.setItem(notifsKey, JSON.stringify(notifsList));

@@ -16,7 +16,9 @@ import type {
  */
 export const teacherService = {
   /**
-   * Fetch all batches assigned to a teacher.
+   * Fetch all batch subjects assigned to a teacher via batch_subject_teachers.
+   * Groups by batch and subject. Returns an array shaped like AcademicBatch[]
+   * for backward compatibility with existing consumers.
    */
   async getAssignedBatches(teacherId: string): Promise<AcademicBatch[]> {
     try {
@@ -26,27 +28,51 @@ export const teacherService = {
       // Check if we are in demo mode or if this is the default simulation/mock teacher profile
       const isDefaultMockTeacher = teacherId === 'tch-8492-phy' || teacherId.toLowerCase().includes('t-sim-101');
 
+      // Query batch_subject_teachers to get all batch subjects assigned to this teacher
       const { data, error } = await supabase
-        .from('batch_teachers')
-        .select('*, batches(*)')
+        .from('batch_subject_teachers')
+        .select(`
+          teacher_id,
+          batch_subject_id,
+          batch_subjects!inner (
+            batch_subject_id,
+            batch_id,
+            batches!inner (
+              batch_id,
+              name,
+              batch_code,
+              status,
+              max_students
+            ),
+            subjects!inner (
+              name
+            )
+          )
+        `)
         .eq('teacher_id', teacherId);
 
       if (!error && data && data.length > 0) {
-        return data.map((item: any, idx: number) => {
-          const b = item.batches || {};
-          return {
-            id: b.batch_id || `b-${idx}`,
-            name: b.name || 'General Batch',
-            code: b.batch_code || 'B-GEN',
-            stream: b.stream || 'General Science',
-            studentsCount: b.max_students || 0,
-            nextClass: idx === 0 ? 'Today at 2:00 PM' : idx === 1 ? 'Tomorrow at 10:30 AM' : 'Wednesday at 4:15 PM',
-            room: idx === 0 ? 'Virtual Studio 01' : idx === 1 ? 'Virtual Studio 03' : 'Virtual Studio 02',
-            progress: 74,
-            status: 'In Progress',
-            attendanceRate: '94.2%',
-          };
+        // Deduplicate by batch_id and return unique batches
+        const batchMap = new Map<string, AcademicBatch>();
+        (data as any[]).forEach((item: any, idx: number) => {
+          const bs = item.batch_subjects;
+          const batch = bs?.batches ?? {};
+          if (!batchMap.has(batch.batch_id)) {
+            batchMap.set(batch.batch_id, {
+              id: batch.batch_id || `b-${idx}`,
+              name: batch.name || 'General Batch',
+              code: batch.batch_code || 'B-GEN',
+              stream: bs?.subjects?.name || 'General Science',
+              studentsCount: batch.max_students || 0,
+              nextClass: idx === 0 ? 'Today at 2:00 PM' : idx === 1 ? 'Tomorrow at 10:30 AM' : 'Wednesday at 4:15 PM',
+              room: idx === 0 ? 'Virtual Studio 01' : idx === 1 ? 'Virtual Studio 03' : 'Virtual Studio 02',
+              progress: 74,
+              status: 'In Progress',
+              attendanceRate: '94.2%',
+            });
+          }
         });
+        return Array.from(batchMap.values());
       }
 
       // Local storage check or default mock fallback
@@ -55,7 +81,7 @@ export const teacherService = {
         return MOCK_BATCHES.filter(b => batchIds.includes(b.id));
       }
 
-      // Default mock teacher gets all mock batches by default (to preserve standard dashboard view for MOCK_TEACHER)
+      // Default mock teacher gets all mock batches by default
       if (isDefaultMockTeacher) {
         return MOCK_BATCHES;
       }
@@ -139,11 +165,15 @@ export const teacherService = {
    */
   async validateBatchForTeacher(teacherId: string, batchId: string): Promise<boolean> {
     try {
+      // Check if teacher has any batch_subject assignment in this batch
       const { data, error } = await supabase
-        .from('batch_teachers')
-        .select('batch_id')
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(batch_id)
+        `)
         .eq('teacher_id', teacherId)
-        .eq('batch_id', batchId)
+        .eq('batch_subjects.batch_id', batchId)
         .limit(1);
       return !error && !!data && data.length > 0;
     } catch {
@@ -357,16 +387,31 @@ export const teacherService = {
       throw new Error(`Failed to create live class: ${insertErr?.message || 'Unknown error'}`);
     }
 
-    // 5b. Link the class to the selected batch in live_class_batch
-    const { error: batchLinkErr } = await supabase
-      .from('live_class_batch')
-      .insert([{
-        class_id: inserted.class_id,
-        batch_id: batchId,
-      }]);
+    // 5b. Link the class to batch subjects via batch_subject_live_classes
+    //     Find batch subjects in this batch that the teacher is assigned to
+    const { data: bsAssignments } = await supabase
+      .from('batch_subject_teachers')
+      .select(`
+        batch_subject_id,
+        batch_subjects!inner(batch_subject_id, batch_id, institute_id)
+      `)
+      .eq('teacher_id', teacherId)
+      .eq('batch_subjects.batch_id', batchId);
 
-    if (batchLinkErr) {
-      console.error('[LiveClass] Failed to link batch:', batchLinkErr.message);
+    if (bsAssignments && (bsAssignments as any[]).length > 0) {
+      const bsLinks = (bsAssignments as any[]).map((row: any) => ({
+        batch_subject_id: row.batch_subject_id,
+        class_id: inserted.class_id,
+        institute_id,
+      }));
+
+      const { error: bsLinkErr } = await supabase
+        .from('batch_subject_live_classes')
+        .insert(bsLinks);
+
+      if (bsLinkErr) {
+        console.error('[LiveClass] Failed to link batch subjects:', bsLinkErr.message);
+      }
     }
 
     return { classId: inserted.class_id, title: inserted.title, institute_id };
@@ -568,14 +613,23 @@ export const teacherService = {
         .eq('teacher_id', teacherId)
         .single();
 
-      // 2. Fetch assigned batches count
-      const { data: batches } = await supabase
-        .from('batch_teachers')
-        .select('batch_id')
+      // 2. Fetch assigned batch subjects count (via batch_subject_teachers)
+      const { data: batchSubjects } = await supabase
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(batch_id)
+        `)
         .eq('teacher_id', teacherId);
 
-      const activeBatches = batches ? batches.length : 0;
-      const batchIds = batches ? batches.map(b => b.batch_id) : [];
+      // Deduplicate by batch_id
+      const batchIdSet = new Set<string>();
+      (batchSubjects ?? []).forEach((item: any) => {
+        const bsId = item.batch_subjects?.batch_id;
+        if (bsId) batchIdSet.add(bsId);
+      });
+      const activeBatches = batchIdSet.size;
+      const batchIds = Array.from(batchIdSet);
 
       // 3. Fetch unique students count
       let totalStudentsCount = 0;
@@ -609,23 +663,33 @@ export const teacherService = {
       let nextClassInfo = null;
       if (liveClasses && liveClasses.length > 0) {
         const lc = liveClasses[0];
-        // Get batch info
-        const { data: classBatch } = await supabase
-          .from('live_class_batch')
-          .select('batch_id, batches(name)')
+        // Get batch info from batch_subject_live_classes
+        const { data: classBS } = await supabase
+          .from('batch_subject_live_classes')
+          .select(`
+            batch_subject_id,
+            batch_subjects!inner (
+              batch_id,
+              batches!inner (name)
+            )
+          `)
           .eq('class_id', lc.class_id)
           .limit(1);
         
-        const batchName = classBatch && classBatch.length > 0 && (classBatch[0] as any).batches
-          ? (classBatch[0] as any).batches.name 
-          : 'General Batch';
+        let batchName = 'General Batch';
+        let batchId = '';
+        if (classBS && classBS.length > 0) {
+          const bs = (classBS[0] as any).batch_subjects;
+          batchName = bs?.batches?.name ?? 'General Batch';
+          batchId = bs?.batch_id ?? '';
+        }
         
         let batchStudentsCount = 0;
-        if (classBatch && classBatch.length > 0) {
+        if (batchId) {
           const { count } = await supabase
             .from('batch_students')
             .select('*', { count: 'exact', head: true })
-            .eq('batch_id', classBatch[0].batch_id);
+            .eq('batch_id', batchId);
           batchStudentsCount = count || 0;
         }
 

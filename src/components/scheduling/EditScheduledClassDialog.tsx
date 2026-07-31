@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, VideoCamera, CircleNotch } from '@phosphor-icons/react';
-import { teacherService } from '@/services/teacherService';
+import { X, VideoCamera, CircleNotch, CheckSquare, Square, BookOpen } from '@phosphor-icons/react';
+import { supabase } from '@/config/supabase';
 import { teacherLiveClassService, type LiveClassDetail, type UpdateScheduledClassInput } from '@/services/teacherLiveClassService';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -25,13 +25,14 @@ export function EditScheduledClassDialog({ isOpen, onClose, teacherId, classId, 
   // Form fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [durationMin, setDurationMin] = useState(60);
   const [isRecorded, setIsRecorded] = useState(true);
 
-  const [batches, setBatches] = useState<{ id: string; name: string }[]>([]);
+  const [batchSubjects, setBatchSubjects] = useState<{ batchSubjectId: string; batchName: string; subjectName: string; label: string }[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,35 +46,78 @@ export function EditScheduledClassDialog({ isOpen, onClose, teacherId, classId, 
     setSuccess(false);
     setLoading(true);
 
-    Promise.all([
-      teacherLiveClassService.getTeacherClassById(classId),
-      teacherService.getAssignedBatches(teacherId),
-    ]).then(([classDetail, batchList]) => {
-      if (!classDetail) {
-        setError('Class not found. It may have been deleted.');
+    (async () => {
+      try {
+        // Fetch class detail and teacher's batch subjects in parallel
+        const [classDetail] = await Promise.all([
+          teacherLiveClassService.getTeacherClassById(classId),
+        ]);
+
+        if (!classDetail) {
+          setError('Class not found. It may have been deleted.');
+          setLoading(false);
+          return;
+        }
+
+        setOriginal(classDetail);
+
+        // Fetch teacher's assigned batch subjects
+        const { data: myTeacherId } = await supabase.rpc('get_my_teacher_id');
+        if (myTeacherId) {
+          const { data: assignments } = await supabase
+            .from('batch_subject_teachers')
+            .select(`
+              batch_subject_id,
+              batch_subjects!inner (
+                batch_subject_id,
+                is_active,
+                batches!inner (name),
+                subjects!inner (name)
+              )
+            `)
+            .eq('teacher_id', myTeacherId);
+
+          if (assignments) {
+            const options = (assignments as any[])
+              .filter((row: any) => row.batch_subjects?.is_active !== false)
+              .map((row: any) => {
+                const bs = row.batch_subjects;
+                const batchName = bs?.batches?.name ?? 'Unknown Batch';
+                const subjectName = bs?.subjects?.name ?? 'Unknown Subject';
+                return {
+                  batchSubjectId: row.batch_subject_id,
+                  batchName,
+                  subjectName,
+                  label: `${batchName} → ${subjectName}`,
+                };
+              });
+            setBatchSubjects(options);
+          }
+        }
+
+        // Pre-fill form with existing class data
+        setTitle(classDetail.title);
+        setDescription(classDetail.description || '');
+
+        // Pre-select the batch subjects this class is already assigned to
+        const existingIds = new Set(
+          classDetail.assignedBatchSubjects.map((bs) => bs.batchSubjectId)
+        );
+        setSelectedIds(existingIds);
+
+        setDurationMin(classDetail.durationMin);
+        setIsRecorded(classDetail.isRecorded);
+
+        // Extract date & time from scheduledAt
+        const d = new Date(classDetail.scheduledAt);
+        setDate(d.toISOString().split('T')[0]);
+        setTime(d.toTimeString().slice(0, 5));
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load class details.');
+      } finally {
         setLoading(false);
-        return;
       }
-
-      setOriginal(classDetail);
-      setBatches(batchList.map((b: any) => ({ id: b.id, name: b.name })));
-
-      // Pre-fill form
-      setTitle(classDetail.title);
-      setDescription(classDetail.description || '');
-      setSelectedBatchId(classDetail.batchId || classDetail.batches[0]?.batchId || '');
-      setDurationMin(classDetail.durationMin);
-      setIsRecorded(classDetail.isRecorded);
-
-      // Extract date & time from scheduledAt
-      const d = new Date(classDetail.scheduledAt);
-      setDate(d.toISOString().split('T')[0]);
-      setTime(d.toTimeString().slice(0, 5));
-    }).catch((err: any) => {
-      setError(err?.message || 'Failed to load class details.');
-    }).finally(() => {
-      setLoading(false);
-    });
+    })();
   }, [isOpen, classId, teacherId]);
 
   // ── Submit ─────────────────────────────────────────────────────────────
@@ -85,6 +129,10 @@ export function EditScheduledClassDialog({ isOpen, onClose, teacherId, classId, 
     const trimmedTitle = title.trim();
     if (trimmedTitle.length < 3) {
       setError('Title must be at least 3 characters.');
+      return;
+    }
+    if (selectedIds.size === 0) {
+      setError('Please select at least one batch subject.');
       return;
     }
     if (!date || !time) {
@@ -108,7 +156,17 @@ export function EditScheduledClassDialog({ isOpen, onClose, teacherId, classId, 
     const updates: UpdateScheduledClassInput = {};
     if (trimmedTitle !== original.title) updates.title = trimmedTitle;
     if (description.trim() !== (original.description || '')) updates.description = description.trim() || undefined;
-    if (selectedBatchId !== original.batchId) updates.batchIds = [selectedBatchId];
+
+    // Detect batch subject changes
+    const originalIds = new Set(original.assignedBatchSubjects.map((bs) => bs.batchSubjectId));
+    const newIds = Array.from(selectedIds);
+    const idsChanged =
+      originalIds.size !== selectedIds.size ||
+      newIds.some((id) => !originalIds.has(id));
+    if (idsChanged) {
+      updates.batchSubjectIds = newIds;
+    }
+
     if (durationMin !== original.durationMin) updates.durationMin = durationMin;
     if (isRecorded !== original.isRecorded) updates.isRecorded = isRecorded;
 
@@ -211,20 +269,75 @@ export function EditScheduledClassDialog({ isOpen, onClose, teacherId, classId, 
               />
             </div>
 
-            {/* Batch select */}
+            {/* Batch Subject multi-select */}
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                Batch <span className="text-red-500">*</span>
+                Batch Subjects <span className="text-red-500">*</span>
+                {selectedIds.size > 0 && (
+                  <span className="ml-1.5 font-normal text-blue-500">
+                    ({selectedIds.size} selected)
+                  </span>
+                )}
               </label>
-              <select
-                value={selectedBatchId}
-                onChange={(e) => setSelectedBatchId(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
-              >
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search batch subjects..."
+                className="mb-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
+              />
+
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
+                {batchSubjects.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <BookOpen size={24} className="text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-400">
+                      No subjects assigned. Contact admin.
+                    </p>
+                  </div>
+                )}
+                {batchSubjects
+                  .filter((bs) => !searchQuery.trim() || bs.label.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((bs) => {
+                    const isSelected = selectedIds.has(bs.batchSubjectId);
+                    return (
+                      <button
+                        key={bs.batchSubjectId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(bs.batchSubjectId)) {
+                              next.delete(bs.batchSubjectId);
+                            } else {
+                              next.add(bs.batchSubjectId);
+                            }
+                            return next;
+                          });
+                        }}
+                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="shrink-0">
+                          {isSelected ? (
+                            <CheckSquare size={18} weight="fill" className="text-amber-600" />
+                          ) : (
+                            <Square size={18} className="text-gray-400" />
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium">{bs.batchName}</span>
+                          <span className="mx-1 text-gray-400">→</span>
+                          <span className="text-gray-500">{bs.subjectName}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
 
             {/* Date, Time, Duration */}

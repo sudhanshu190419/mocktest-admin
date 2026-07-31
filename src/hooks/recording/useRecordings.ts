@@ -15,6 +15,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/config/supabase';
 import { recordingService } from '@/services/recording/recordingService';
 import { recordingKeys } from './queryKeys';
 import type {
@@ -23,6 +24,7 @@ import type {
   RecordingSortOptions,
   StartRecordingRequest,
   RecordingListResponse,
+  BatchSubjectAssignment,
 } from '@/types/recording';
 import type { PaginationParams, ApiResponse } from '@/types/academic';
 
@@ -211,5 +213,66 @@ export function useRetryRecording() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: recordingKeys.lists() });
     },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Assignments Query
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch the batch subject assignments for a specific recording.
+ *
+ * Queries batch_subject_recordings with joins to resolve batch and
+ * subject display names.
+ *
+ * @param recordingId - The recording UUID.
+ *
+ * @example
+ * const { data: assignments } = useRecordingAssignments(recordingId);
+ * // => [{ assignmentId, batchSubjectId, batchName, subjectName }, ...]
+ */
+export function useRecordingAssignments(recordingId: string | undefined | null) {
+  return useQuery<ApiResponse<BatchSubjectAssignment[]>>({
+    queryKey: recordingKeys.assignments(recordingId ?? ''),
+    queryFn: async () => {
+      if (!recordingId) {
+        return { success: true, data: [] };
+      }
+
+      const { data, error } = await supabase
+        .from('batch_subject_recordings')
+        .select(`
+          assignment_id,
+          batch_subject_id,
+          batch_subjects!inner (
+            batch_subject_id,
+            batches!inner (
+              name
+            ),
+            subjects!inner (
+              name
+            )
+          )
+        `)
+        .eq('recording_id', recordingId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      const assignments: BatchSubjectAssignment[] = (data ?? []).map(
+        (row: any) => ({
+          assignmentId: row.assignment_id,
+          batchSubjectId: row.batch_subject_id,
+          batchName: row.batch_subjects?.batches?.name ?? 'Unknown Batch',
+          subjectName: row.batch_subjects?.subjects?.name ?? 'Unknown Subject',
+        }),
+      );
+
+      return { success: true, data: assignments };
+    },
+    enabled: !!recordingId,
+    staleTime: 30 * 1000,
   });
 }

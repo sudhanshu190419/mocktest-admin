@@ -1,9 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, CalendarBlank, Clock, VideoCamera, CircleNotch } from '@phosphor-icons/react';
-import { teacherService } from '@/services/teacherService';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, CalendarBlank, Clock, VideoCamera, CircleNotch, CheckSquare, Square, BookOpen } from '@phosphor-icons/react';
+import { supabase } from '@/config/supabase';
 import { teacherLiveClassService, type ScheduleLiveClassInput } from '@/services/teacherLiveClassService';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface BatchSubjectOption {
+  batchSubjectId: string;
+  batchName: string;
+  subjectName: string;
+  label: string;
+}
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -20,41 +29,107 @@ export interface ScheduleClassDialogProps {
 export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }: ScheduleClassDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [durationMin, setDurationMin] = useState(60);
   const [isRecorded, setIsRecorded] = useState(true);
 
-  const [batches, setBatches] = useState<{ id: string; name: string }[]>([]);
+  const [batchSubjects, setBatchSubjects] = useState<BatchSubjectOption[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // ── Fetch batches on mount ────────────────────────────────────────────
+  // ── Fetch batch subjects on mount ─────────────────────────────────────
 
   useEffect(() => {
     if (!isOpen || !teacherId) return;
     setError(null);
     setSuccess(false);
 
-    teacherService.getAssignedBatches(teacherId).then((batchList) => {
-      setBatches(batchList.map((b: any) => ({ id: b.id, name: b.name })));
-      if (batchList.length > 0) setSelectedBatchId(batchList[0].id);
-    }).catch(() => { /* handled */ });
+    (async () => {
+      try {
+        const { data: myTeacherId } = await supabase.rpc('get_my_teacher_id');
+        if (!myTeacherId) return;
+
+        const { data: assignments } = await supabase
+          .from('batch_subject_teachers')
+          .select(`
+            batch_subject_id,
+            batch_subjects!inner (
+              batch_subject_id,
+              is_active,
+              batches!inner (name),
+              subjects!inner (name)
+            )
+          `)
+          .eq('teacher_id', myTeacherId);
+
+        if (assignments) {
+          const options: BatchSubjectOption[] = (assignments as any[])
+            .filter((row: any) => row.batch_subjects?.is_active !== false)
+            .map((row: any) => {
+              const bs = row.batch_subjects;
+              const batchName = bs?.batches?.name ?? 'Unknown Batch';
+              const subjectName = bs?.subjects?.name ?? 'Unknown Subject';
+              return {
+                batchSubjectId: row.batch_subject_id,
+                batchName,
+                subjectName,
+                label: `${batchName} → ${subjectName}`,
+              };
+            });
+          setBatchSubjects(options);
+        }
+      } catch (err) {
+        console.error('Failed to fetch batch subjects:', err);
+      }
+    })();
   }, [isOpen, teacherId]);
+
+  // ── Filtered list ─────────────────────────────────────────────────────
+
+  const filteredSubjects = useMemo(() => {
+    if (!searchQuery.trim()) return batchSubjects;
+    const q = searchQuery.toLowerCase();
+    return batchSubjects.filter((s) => s.label.toLowerCase().includes(q));
+  }, [batchSubjects, searchQuery]);
+
+  // ── Selection helpers ─────────────────────────────────────────────────
+
+  function toggleSelect(bsId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bsId)) {
+        next.delete(bsId);
+      } else {
+        next.add(bsId);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(filteredSubjects.map((s) => s.batchSubjectId)));
+  }
+
+  function deselectAll() {
+    setSelectedIds(new Set());
+  }
 
   // ── Reset form on close ────────────────────────────────────────────────
 
   function resetForm() {
     setTitle('');
     setDescription('');
-    setSelectedBatchId(batches[0]?.id ?? '');
+    setSelectedIds(new Set());
     setDate('');
     setTime('');
     setDurationMin(60);
     setIsRecorded(true);
+    setSearchQuery('');
     setError(null);
     setSuccess(false);
   }
@@ -70,8 +145,8 @@ export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }:
       setError('Title must be at least 3 characters.');
       return;
     }
-    if (!selectedBatchId) {
-      setError('Please select a batch.');
+    if (selectedIds.size === 0) {
+      setError('Please select at least one batch subject.');
       return;
     }
     if (!date || !time) {
@@ -84,8 +159,6 @@ export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }:
     }
 
     // Convert user's local time to UTC before storing
-    // Without this, the local time (e.g. IST) would be falsely labelled as UTC,
-    // causing a timezone offset error when the UI later converts UTC back to local.
     const localDate = new Date(`${date}T${time}:00`);
     const scheduledAt = localDate.toISOString();
     const scheduledDate = new Date(scheduledAt);
@@ -97,7 +170,7 @@ export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }:
     const input: ScheduleLiveClassInput = {
       teacherId,
       title: trimmedTitle,
-      batchIds: [selectedBatchId],
+      batchSubjectIds: Array.from(selectedIds),
       scheduledAt,
       durationMin,
       description: description.trim() || undefined,
@@ -133,7 +206,7 @@ export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }:
             </div>
             <div>
               <h3 className="text-lg font-bold">Schedule Live Class</h3>
-              <p className="text-xs text-blue-200">Create a future-dated class for your batch</p>
+              <p className="text-xs text-blue-200">Create a future-dated class for your subjects</p>
             </div>
           </div>
           <button
@@ -171,27 +244,93 @@ export function ScheduleClassDialog({ isOpen, onClose, teacherId, onScheduled }:
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What will this session cover?"
-              rows={3}
+              rows={2}
               className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
               maxLength={1000}
             />
           </div>
 
-          {/* Batch select */}
+          {/* Batch Subject multi-select */}
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-              Batch <span className="text-red-500">*</span>
+              Batch Subjects <span className="text-red-500">*</span>
+              {selectedIds.size > 0 && (
+                <span className="ml-1.5 font-normal text-blue-500">
+                  ({selectedIds.size} selected)
+                </span>
+              )}
             </label>
-            <select
-              value={selectedBatchId}
-              onChange={(e) => setSelectedBatchId(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
-            >
-              {batches.length === 0 && <option value="">No batches assigned</option>}
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+
+            {/* Search */}
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search batch subjects..."
+              className="mb-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            />
+
+            {/* Select / Deselect all */}
+            {filteredSubjects.length > 0 && (
+              <div className="mb-2 flex items-center gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  className="text-blue-600 hover:text-blue-800 font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={deselectAll}
+                  className="text-gray-500 hover:text-gray-700 font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            )}
+
+            {/* List */}
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
+              {filteredSubjects.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <BookOpen size={24} className="text-gray-300 mb-2" />
+                  <p className="text-sm text-gray-400">
+                    {batchSubjects.length === 0
+                      ? 'No subjects assigned. Contact admin.'
+                      : 'No subjects match your search.'}
+                  </p>
+                </div>
+              )}
+              {filteredSubjects.map((bs) => {
+                const isSelected = selectedIds.has(bs.batchSubjectId);
+                return (
+                  <button
+                    key={bs.batchSubjectId}
+                    type="button"
+                    onClick={() => toggleSelect(bs.batchSubjectId)}
+                    className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 text-blue-800'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {isSelected ? (
+                        <CheckSquare size={18} weight="fill" className="text-blue-600" />
+                      ) : (
+                        <Square size={18} className="text-gray-400" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{bs.batchName}</span>
+                      <span className="mx-1 text-gray-400">→</span>
+                      <span className="text-gray-500">{bs.subjectName}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Date, Time, Duration row */}

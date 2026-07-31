@@ -354,8 +354,8 @@ export const teacherLifecycleService = {
         // Batch count
         teacherId
           ? supabase
-              .from('batch_teachers')
-              .select('batch_id', { count: 'exact', head: true })
+              .from('batch_subject_teachers')
+              .select('batch_subject_id', { count: 'exact', head: true })
               .eq('teacher_id', teacherId)
           : Promise.resolve({ count: 0, data: null }),
 

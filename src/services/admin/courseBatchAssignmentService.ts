@@ -125,11 +125,11 @@ export const courseBatchAssignmentService = {
 
       if (batchIds.length > 0) {
         const [teachersRes, studentsRes] = await Promise.allSettled([
-          // Teacher counts per batch
+          // Teacher counts per batch (via batch_subject_teachers -> batch_subjects)
           supabase
-            .from('batch_teachers')
-            .select('batch_id, count:teacher_id')
-            .in('batch_id', batchIds),
+            .from('batch_subject_teachers')
+            .select('batch_subjects!inner(batch_id), teacher_id')
+            .in('batch_subjects.batch_id', batchIds),
           // Student counts per batch (active only)
           supabase
             .from('batch_students')
@@ -139,12 +139,21 @@ export const courseBatchAssignmentService = {
         ]);
 
         if (teachersRes.status === 'fulfilled' && teachersRes.value.data) {
-          // batch_teachers returns one row per batch_id with a count
+          // Count distinct teachers per batch from batch_subject_teachers
+          const teacherBatchMap = new Map<string, Set<string>>();
           for (const row of teachersRes.value.data as any[]) {
-            teachersCountMap.set(row.batch_id, typeof row.count === 'number' ? row.count : 0);
+            const bid = row.batch_subjects?.batch_id;
+            if (bid) {
+              if (!teacherBatchMap.has(bid)) {
+                teacherBatchMap.set(bid, new Set());
+              }
+              teacherBatchMap.get(bid)!.add(row.teacher_id);
+            }
+          }
+          for (const [bid, teacherSet] of teacherBatchMap) {
+            teachersCountMap.set(bid, teacherSet.size);
           }
         }
-        // If a batch has no teachers, it won't appear in the results, so the count stays 0.
 
         if (studentsRes.status === 'fulfilled' && studentsRes.value.data) {
           for (const row of studentsRes.value.data as any[]) {

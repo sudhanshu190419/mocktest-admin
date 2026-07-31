@@ -84,7 +84,6 @@ export default function CreateMockTestPage() {
   const { data: streamsData } = useStreams(undefined, undefined, { page: 1, pageSize: 50 });
   const streams = streamsData?.data ?? [];
   const rawStreams: Stream[] = streamsData?.data ?? [];
-  const rawStreams: Stream[] = streamsData?.data ?? [];
 
   const { data: subjectsData } = useSubjects(
     formData.streamId ? { streamId: formData.streamId } : undefined,

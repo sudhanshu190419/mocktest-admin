@@ -131,12 +131,26 @@ export function ClassCard({ item, onAction }: ClassCardProps) {
         {item.title}
       </h4>
 
-      {/* Metadata row */}
+      {/* Metadata row - show batch subjects */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mb-4">
-        <span className="flex items-center gap-1">
-          <Users size={14} className="text-gray-400" />
-          {item.batchName}
-        </span>
+        {item.assignedBatchSubjects && item.assignedBatchSubjects.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            <Users size={14} className="text-gray-400 shrink-0 mt-0.5" />
+            {item.assignedBatchSubjects.map((bs, idx) => (
+              <span key={bs.batchSubjectId} className="inline-flex items-center gap-1">
+                {idx > 0 && <span className="text-gray-300 mx-0.5">·</span>}
+                <span className="font-medium text-gray-600">{bs.batchName}</span>
+                <span className="text-gray-400">→</span>
+                <span>{bs.subjectName}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="flex items-center gap-1">
+            <Users size={14} className="text-gray-400" />
+            {item.batchName}
+          </span>
+        )}
       </div>
 
       {/* Date/time */}

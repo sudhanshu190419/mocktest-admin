@@ -77,10 +77,17 @@ export async function getFullTeacherProfile(
       .select('*, subjects(name)')
       .eq('teacher_id', teacherId);
 
-    // 4. Fetch assigned batches via batch_teachers
-    const { data: batchTeachers } = await supabase
-      .from('batch_teachers')
-      .select('*, batches(name, stream_id)')
+    // 4. Fetch assigned batch subjects (via batch_subject_teachers)
+    const { data: batchSubjects } = await supabase
+      .from('batch_subject_teachers')
+      .select(`
+        batch_subject_id,
+        batch_subjects!inner(
+          batch_id,
+          batches!inner(name, stream_id),
+          subjects!inner(name)
+        )
+      `)
       .eq('teacher_id', teacherId);
 
     // 5. Fetch institute name if instituteId provided
@@ -95,10 +102,20 @@ export async function getFullTeacherProfile(
     }
 
     const subjects = specializations?.map((s: any) => s.subjects?.name ?? 'Unknown') ?? [];
-    const batches = (batchTeachers ?? []).map((bt: any) => ({
-      batchId: bt.batches?.batch_id ?? bt.batch_id ?? '',
-      batchName: bt.batches?.name ?? 'Unknown Batch',
-      streamName: bt.batches?.stream_id ?? undefined,
+    // Deduplicate by batch_id from batch_subject_teachers
+    const batchMap = new Map<string, { batchId: string; batchName: string; streamName?: string }>();
+    (batchSubjects ?? []).forEach((item: any) => {
+      const bs = item.batch_subjects;
+      if (bs?.batch_id && !batchMap.has(bs.batch_id)) {
+        batchMap.set(bs.batch_id, {
+          batchId: bs.batch_id,
+          batchName: bs.batches?.name ?? 'Unknown Batch',
+          streamName: bs.batches?.stream_id ?? undefined,
+        });
+      }
+    });
+    const batches = Array.from(batchMap.values()).map((b) => ({
+      ...b,
       studentCount: 0,
       status: 'active',
     }));

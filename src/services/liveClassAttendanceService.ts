@@ -418,7 +418,7 @@ export const liveClassAttendanceService = {
    * never joined the live class.
    *
    * Fetches all students assigned to the class's batches via
-   * live_class_batch → batch_students, compares with existing attendance
+   * batch_subject_live_classes → batch_subjects → batch_students, compares with existing attendance
    * records, and inserts absent records for any missing students.
    *
    * Respects the unique constraint (class_id, student_id) — uses ON CONFLICT
@@ -438,23 +438,32 @@ export const liveClassAttendanceService = {
         return 0;
       }
 
-      // 2. Get all batch IDs linked to this class
-      const { data: batchLinks, error: batchErr } = await supabase
-        .from('live_class_batch')
-        .select('batch_id')
+      // 2. Get all batch IDs linked to this class via batch_subject_live_classes
+      const { data: bsLinks, error: bsErr } = await supabase
+        .from('batch_subject_live_classes')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(batch_id)
+        `)
         .eq('class_id', classId);
 
-      if (batchErr) {
-        console.error('[Attendance] Failed to fetch batch links:', batchErr.message);
+      if (bsErr) {
+        console.error('[Attendance] Failed to fetch batch subject links:', bsErr.message);
         return 0;
       }
 
-      if (!batchLinks || batchLinks.length === 0) {
-        console.log('[Attendance] No batches linked to this class — skipping absent creation.');
+      if (!bsLinks || bsLinks.length === 0) {
+        console.log('[Attendance] No batch subjects linked to this class — skipping absent creation.');
         return 0;
       }
 
-      const batchIds = batchLinks.map((b: any) => b.batch_id);
+      // Deduplicate by batch_id (a class may be assigned to multiple subjects in the same batch)
+      const batchIdSet = new Set<string>();
+      (bsLinks ?? []).forEach((item: any) => {
+        const bid = item.batch_subjects?.batch_id;
+        if (bid) batchIdSet.add(bid);
+      });
+      const batchIds = Array.from(batchIdSet);
 
       // 3. Get all enrolled student IDs for those batches
       const { data: enrolledStudents, error: enrolledErr } = await supabase

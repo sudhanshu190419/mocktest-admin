@@ -7,10 +7,10 @@
  *   - attendance_events
  *   - live_classes
  *   - live_sessions
- *   - live_class_batch
+ *   - batch_subject_live_classes
  *   - batch_students
  *   - batches
- *   - batch_teachers
+ *   - batch_subject_teachers
  *   - student_details
  *   - teacher_details
  *   - profiles
@@ -128,13 +128,22 @@ export const attendanceAnalyticsService = {
    */
   async getTeacherSummary(teacherId: string): Promise<TeacherAttendanceSummary> {
     try {
-      // 1. Get teacher's batch IDs
-      const { data: batchTeachers } = await supabase
-        .from('batch_teachers')
-        .select('batch_id')
+      // 1. Get teacher's batch IDs via batch_subject_teachers
+      const { data: bsTeachers } = await supabase
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(batch_id)
+        `)
         .eq('teacher_id', teacherId);
 
-      const batchIds = (batchTeachers ?? []).map((b: any) => b.batch_id);
+      // Deduplicate by batch_id
+      const batchIdSet = new Set<string>();
+      (bsTeachers ?? []).forEach((item: any) => {
+        const bid = item.batch_subjects?.batch_id;
+        if (bid) batchIdSet.add(bid);
+      });
+      const batchIds = Array.from(batchIdSet);
 
       // 2. Total students across all batches
       let totalStudents = 0;
@@ -237,13 +246,27 @@ export const attendanceAnalyticsService = {
   async getTeacherBatches(teacherId: string): Promise<{ batchId: string; name: string }[]> {
     try {
       const { data } = await supabase
-        .from('batch_teachers')
-        .select('batch_id, batches(name)')
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(
+            batch_id,
+            batches!inner(name)
+          )
+        `)
         .eq('teacher_id', teacherId);
 
-      return (data ?? []).map((item: any) => ({
-        batchId: item.batch_id,
-        name: item.batches?.name ?? 'Unknown Batch',
+      // Deduplicate by batch_id
+      const batchMap = new Map<string, string>();
+      (data ?? []).forEach((item: any) => {
+        const bs = item.batch_subjects;
+        if (bs?.batch_id && !batchMap.has(bs.batch_id)) {
+          batchMap.set(bs.batch_id, bs.batches?.name ?? 'Unknown Batch');
+        }
+      });
+      return Array.from(batchMap.entries()).map(([batchId, name]) => ({
+        batchId,
+        name,
       }));
     } catch {
       return [];
@@ -273,10 +296,16 @@ export const attendanceAnalyticsService = {
         batchIds = [filters.batchId];
       } else {
         const { data: batchTeachers } = await supabase
-          .from('batch_teachers')
-          .select('batch_id')
+          .from('batch_subject_teachers')
+          .select('batch_subjects!inner(batch_id)')
           .eq('teacher_id', teacherId);
-        batchIds = (batchTeachers ?? []).map((b: any) => b.batch_id);
+        // Deduplicate by batch_id
+        const bsSet = new Set<string>();
+        (batchTeachers ?? []).forEach((item: any) => {
+          const bid = item.batch_subjects?.batch_id;
+          if (bid) bsSet.add(bid);
+        });
+        batchIds = Array.from(bsSet);
       }
 
       if (batchIds.length === 0) return [];
@@ -448,13 +477,19 @@ export const attendanceAnalyticsService = {
 
       const classIds = (liveClasses ?? []).map((c: any) => c.class_id);
 
-      // Get student's batch
-      const { data: batchTeachers } = await supabase
-        .from('batch_teachers')
-        .select('batch_id')
+      // Get student's batch via batch_subject_teachers
+      const { data: bstData } = await supabase
+        .from('batch_subject_teachers')
+        .select('batch_subjects!inner(batch_id)')
         .eq('teacher_id', teacherId);
 
-      const batchIds = (batchTeachers ?? []).map((b: any) => b.batch_id);
+      // Deduplicate by batch_id
+      const bsSet = new Set<string>();
+      (bstData ?? []).forEach((item: any) => {
+        const bid = item.batch_subjects?.batch_id;
+        if (bid) bsSet.add(bid);
+      });
+      const batchIds = Array.from(bsSet);
 
       const { data: batchStudents } = await supabase
         .from('batch_students')
@@ -564,14 +599,21 @@ export const attendanceAnalyticsService = {
     filters: { dateFrom?: string; dateTo?: string; status?: string } = {},
   ): Promise<BatchAttendanceSummary[]> {
     try {
-      const { data: batchTeachers } = await supabase
-        .from('batch_teachers')
-        .select('batch_id')
+      // Get teacher's batch IDs via batch_subject_teachers (deduplicated)
+      const { data: bst } = await supabase
+        .from('batch_subject_teachers')
+        .select('batch_subjects!inner(batch_id)')
         .eq('teacher_id', teacherId);
+      const bsSet = new Set<string>();
+      (bst ?? []).forEach((item: any) => {
+        const bid = item.batch_subjects?.batch_id;
+        if (bid) bsSet.add(bid);
+      });
+      const batchIds = Array.from(bsSet);
 
-      const batchIds = (batchTeachers ?? []).map((b: any) => b.batch_id);
       if (batchIds.length === 0) return [];
 
+      // Get batch names
       const { data: batches } = await supabase
         .from('batches')
         .select('batch_id, name')
@@ -672,12 +714,15 @@ export const attendanceAnalyticsService = {
       if (filters.dateFrom) classQuery = classQuery.gte('scheduled_at', filters.dateFrom);
       if (filters.dateTo) classQuery = classQuery.lte('scheduled_at', filters.dateTo);
       if (filters.batchId) {
-        // Filter classes that have the given batch linked
+        // Filter classes that have the given batch linked (via batch_subject_live_classes → batch_subjects)
         const { data: links } = await supabase
-          .from('live_class_batch')
-          .select('class_id')
-          .eq('batch_id', filters.batchId);
-        const linkedClassIds = (links ?? []).map((l: any) => l.class_id);
+          .from('batch_subject_live_classes')
+          .select(`
+            class_id,
+            batch_subjects!inner(batch_id)
+          `)
+          .eq('batch_subjects.batch_id', filters.batchId);
+        const linkedClassIds = [...new Set((links ?? []).map((l: any) => l.class_id))];
         if (linkedClassIds.length === 0) return [];
         classQuery = classQuery.in('class_id', linkedClassIds);
       }
@@ -873,14 +918,17 @@ export const attendanceAnalyticsService = {
 
       const batchNameMap = new Map((batches ?? []).map((b: any) => [b.batch_id, b.name]));
 
-      // Get completed classes for these batches
-      const { data: classBatchLinks } = await supabase
-        .from('live_class_batch')
-        .select('class_id, batch_id')
-        .in('batch_id', batchIds);
+      // Get completed classes for these batches (via batch_subject_live_classes)
+      const { data: classBSLinks } = await supabase
+        .from('batch_subject_live_classes')
+        .select(`
+          class_id,
+          batch_subjects!inner(batch_id)
+        `)
+        .in('batch_subjects.batch_id', batchIds);
 
       // Filter by teacher if specified
-      let classIds = [...new Set((classBatchLinks ?? []).map((l: any) => l.class_id))];
+      let classIds = [...new Set((classBSLinks ?? []).map((l: any) => l.class_id))];
 
       if (filters.teacherId) {
         const { data: teacherClasses } = await supabase
@@ -910,8 +958,15 @@ export const attendanceAnalyticsService = {
         .select('student_id, class_id, attendance_status')
         .in('class_id', classIds);
 
-      // Map class_id to batch_id
-      const classBatchMap = new Map((classBatchLinks ?? []).map((l: any) => [l.class_id, l.batch_id]));
+      // Map class_id to batch_id (deduplicated — one class may belong to multiple subjects in the same batch)
+      const classBatchMap = new Map();
+      for (const link of classBSLinks ?? []) {
+        const batchSubjects = (link.batch_subjects ?? []) as Array<{ batch_id: string }>;
+        const bid = batchSubjects[0]?.batch_id;
+        if (bid && !classBatchMap.has(link.class_id)) {
+          classBatchMap.set(link.class_id, bid);
+        }
+      }
 
       // Compute per-batch stats
       const batchStats = new Map<string, { present: number; partial: number; absent: number; students: Set<string> }>();
@@ -981,11 +1036,12 @@ export const attendanceAnalyticsService = {
 
       for (const teacherId of teacherIds) {
         // Batch count
-        const { data: batchTeachers } = await supabase
-          .from('batch_teachers')
-          .select('batch_id')
+        // Get distinct batch_subject count via batch_subject_teachers
+        const { data: bst } = await supabase
+          .from('batch_subject_teachers')
+          .select('batch_subject_id', { count: 'exact', head: true })
           .eq('teacher_id', teacherId);
-        const batchCount = batchTeachers?.length ?? 0;
+        const batchCount = bst?.length ?? 0;
 
         // Completed classes
         let classQuery = supabase
@@ -1219,10 +1275,13 @@ export const attendanceAnalyticsService = {
 
       if (filters.batchId) {
         const { data: links } = await supabase
-          .from('live_class_batch')
-          .select('class_id')
-          .eq('batch_id', filters.batchId);
-        const linkedIds = (links ?? []).map((l: any) => l.class_id);
+          .from('batch_subject_live_classes')
+          .select(`
+            class_id,
+            batch_subjects!inner(batch_id)
+          `)
+          .eq('batch_subjects.batch_id', filters.batchId);
+        const linkedIds = [...new Set((links ?? []).map((l: any) => l.class_id))];
         if (linkedIds.length === 0) return [];
         classQuery = classQuery.in('class_id', linkedIds);
       }
@@ -1249,10 +1308,16 @@ export const attendanceAnalyticsService = {
         (teacherDetails ?? []).map((t: any) => [t.teacher_id, t.profiles?.name ?? 'Unknown'])
       );
 
-      // Get batch names per class
+      // Get batch names per class (via batch_subject_live_classes → batch_subjects → batches)
       const { data: links } = await supabase
-        .from('live_class_batch')
-        .select('class_id, batch_id')
+        .from('batch_subject_live_classes')
+        .select(`
+          class_id,
+          batch_subjects!inner(
+            batch_id,
+            batches!inner(name)
+          )
+        `)
         .in('class_id', classIds);
 
       const { data: batches } = await supabase
@@ -1262,7 +1327,11 @@ export const attendanceAnalyticsService = {
       const batchNameMap = new Map((batches ?? []).map((b: any) => [b.batch_id, b.name]));
       const classBatchMap = new Map<string, string>();
       for (const link of links ?? []) {
-        classBatchMap.set(link.class_id, link.batch_id);
+        const batchSubjects = (link.batch_subjects ?? []) as Array<{ batch_id: string; batches?: Array<{ name: string }> }>;
+        const bid = batchSubjects[0]?.batch_id;
+        if (bid) {
+          classBatchMap.set(link.class_id, bid);
+        }
       }
 
       // Compute per-class stats

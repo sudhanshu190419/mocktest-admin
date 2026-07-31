@@ -56,6 +56,9 @@ import type {
   RecordingSortOptions,
   StartRecordingRequest,
   StartRecordingResponse,
+  UploadRecordingRequest,
+  AssignRecordingRequest,
+  BatchSubjectAssignment,
   PlaybackUrlRequest,
   PlaybackUrlResponse,
   RecordingWebhookPayload,
@@ -127,6 +130,7 @@ function mapRecording(db: Record<string, unknown>): Recording {
     title: db.title as string,
     description: db.description as string | null,
     recordingType: db.recording_type as Recording['recordingType'],
+    sourceType: (db.source_type as string) as Recording['sourceType'],
     status: db.status as RecordingStatus,
     durationSeconds: db.duration_seconds as number | null,
     fileSizeBytes: db.file_size_bytes as number | null,
@@ -215,16 +219,17 @@ export const recordingService = {
         };
       }
 
-      // ── Resolve batch_id from live_class_batch ────────────────────────
-      const { data: classBatch } = await supabase
-        .from('live_class_batch')
-        .select('batch_id')
-        .eq('class_id', input.classId)
-        .limit(1);
+      // ── Resolve batch_subject_ids from batch_subject_live_classes ────
+      const { data: classBSL } = await supabase
+        .from('batch_subject_live_classes')
+        .select('batch_subject_id')
+        .eq('class_id', input.classId);
 
-      const batchId = classBatch?.[0]?.batch_id ?? null;
+      const batchSubjectIds = (classBSL ?? []).map((r) => r.batch_subject_id);
 
       // ── Create recordings row ─────────────────────────────────────────
+      // source_type is 'live_class' by default (column DEFAULT), which
+      // is correct for live-generated recordings.
       const { data: recording, error: insertError } = await supabase
         .from('recordings')
         .insert({
@@ -235,7 +240,6 @@ export const recordingService = {
           description: input.description ?? null,
           recording_type: input.recordingType ?? 'live_class',
           status: 'recording',
-          batch_id: batchId,
         })
         .select()
         .single();
@@ -262,6 +266,26 @@ export const recordingService = {
           console.error('[Recording] Failed to save egress ID:', updateError.message);
           // Non-critical — the recording is created, and the egress is running.
           // The webhook will match by class_id fallback if needed.
+        }
+
+        // ── Create batch_subject_recordings assignments ────────────────
+        if (batchSubjectIds.length > 0) {
+          const assignmentRows = batchSubjectIds.map((bsId) => ({
+            batch_subject_id: bsId,
+            recording_id: recording.recording_id,
+            institute_id: liveClass.institute_id,
+          }));
+
+          const { error: assignError } = await supabase
+            .from('batch_subject_recordings')
+            .insert(assignmentRows)
+            .select();
+
+          if (assignError) {
+            console.error('[Recording] Failed to create batch_subject_recordings:', assignError.message);
+            // Non-critical — recording exists and egress is running.
+            // Admin can manually reassign later.
+          }
         }
 
         return {
@@ -322,7 +346,7 @@ export const recordingService = {
         };
       }
 
-      const egressId = recording.livekit_egress_id as string | null;
+      const egressId = recording.livekitEgressId as string | null;
       if (egressId) {
         try {
           const provider = getRecordingProvider();
@@ -427,6 +451,33 @@ export const recordingService = {
       if (filters?.batchId) {
         validateUUID(filters.batchId, 'batchId');
         query = query.eq('batch_id', filters.batchId);
+      }
+
+      if (filters?.batchSubjectId) {
+        validateUUID(filters.batchSubjectId, 'batchSubjectId');
+        // Resolve recording IDs from the junction table, then filter
+        const { data: bsRecordings } = await supabase
+          .from('batch_subject_recordings')
+          .select('recording_id')
+          .eq('batch_subject_id', filters.batchSubjectId);
+
+        const recordingIds = (bsRecordings ?? []).map((r) => r.recording_id);
+
+        if (recordingIds.length === 0) {
+          // No recordings assigned to this batch subject — return empty
+          return {
+            success: true,
+            data: {
+              recordings: [],
+              total: 0,
+              page,
+              pageSize,
+              pageCount: 0,
+            },
+          };
+        }
+
+        query = query.in('recording_id', recordingIds);
       }
 
       if (filters?.classId) {
@@ -840,6 +891,380 @@ export const recordingService = {
           error: `Retry failed: ${providerErr instanceof Error ? providerErr.message : 'Provider error'}`,
         };
       }
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─── Upload Recording ──────────────────────────────────────────────────
+
+  /**
+   * Upload a standalone recording (no live class).
+   *
+   * Creates a recording with source_type = 'uploaded', class_id = NULL,
+   * and immediately completes it (pre-existing file). Then creates
+   * batch_subject_recordings assignment rows for each specified
+   * batch_subject_id.
+   *
+   * @param input - Title, optional description, batch_subject_ids, file metadata.
+   * @returns The created recording ID and status.
+   */
+  async uploadRecording(
+    input: UploadRecordingRequest,
+  ): Promise<ApiResponse<StartRecordingResponse>> {
+    try {
+      // ── Validate input ────────────────────────────────────────────────
+      if (!input.title?.trim()) {
+        return { success: false, error: 'Title is required.' };
+      }
+      if (!input.batchSubjectIds?.length) {
+        return { success: false, error: 'At least one batch_subject_id is required.' };
+      }
+
+      // Validate all batchSubjectIds are valid UUIDs
+      for (const bsId of input.batchSubjectIds) {
+        validateUUID(bsId, 'batchSubjectId');
+      }
+
+      // ── Resolve auth context for required NOT NULL fields ────────────
+      // Both institute_id and teacher_id are NOT NULL on the recordings table
+      // with no defaults. Resolve them from the batch_subject or auth context.
+      const { data: bsRow } = await supabase
+        .from('batch_subjects')
+        .select('batch_subject_id, institute_id')
+        .eq('batch_subject_id', input.batchSubjectIds[0])
+        .single();
+
+      const instituteId = bsRow?.institute_id;
+      if (!instituteId) {
+        return { success: false, error: 'Could not resolve institute from batch_subject.' };
+      }
+
+      // Resolve teacher_id from the authenticated user's teacher_details
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let teacherId: string | undefined;
+      if (user) {
+        const { data: td } = await supabase
+          .from('teacher_details')
+          .select('teacher_id')
+          .eq('profile_id', user.id)
+          .single();
+        teacherId = td?.teacher_id;
+      }
+
+      if (!teacherId) {
+        return { success: false, error: 'Could not resolve teacher from auth context.' };
+      }
+
+      // ── Create recordings row ─────────────────────────────────────────
+      const insertData: Record<string, unknown> = {
+        institute_id: instituteId,
+        teacher_id: teacherId,
+        title: input.title.trim(),
+        description: input.description ?? null,
+        recording_type: input.recordingType ?? 'live_class',
+        source_type: 'uploaded',
+        status: 'completed',
+      };
+
+      if (input.file) {
+        insertData.storage_bucket = input.file.storageBucket;
+        insertData.storage_path = input.file.storagePath;
+        if (input.file.fileSizeBytes != null) {
+          insertData.file_size_bytes = input.file.fileSizeBytes;
+        }
+        if (input.file.durationSeconds != null) {
+          insertData.duration_seconds = input.file.durationSeconds;
+        }
+      }
+
+      const { data: recording, error: insertError } = await supabase
+        .from('recordings')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (insertError || !recording) {
+        return {
+          success: false,
+          error: `Failed to create recording: ${extractErrorMessage(insertError)}`,
+        };
+      }
+
+      // ── Create batch_subject_recordings assignments ────────────────────
+      const assignmentRows = input.batchSubjectIds.map((bsId) => ({
+        batch_subject_id: bsId,
+        recording_id: recording.recording_id,
+        institute_id: instituteId,
+      }));
+
+      const { error: assignError } = await supabase
+        .from('batch_subject_recordings')
+        .insert(assignmentRows)
+        .select();
+
+      if (assignError) {
+        console.error('[Recording] Failed to create batch_subject_recordings:', assignError.message);
+        // Non-critical — recording was created. Admin can assign later.
+      }
+
+      return {
+        success: true,
+        data: {
+          recordingId: recording.recording_id,
+          status: 'completed' as RecordingStatus,
+        },
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─── Assign Recording to Batch Subjects ────────────────────────────────
+
+  /**
+   * Assign an existing recording to one or more Batch Subjects.
+   *
+   * Creates rows in batch_subject_recordings. Skips any existing
+   * assignments (idempotent — respects the unique constraint).
+   *
+   * @param input - Recording ID and Batch Subject IDs to assign.
+   */
+  async assignToBatchSubjects(
+    input: AssignRecordingRequest,
+  ): Promise<ApiResponse<{ assigned: number }>> {
+    try {
+      validateUUID(input.recordingId, 'recordingId');
+
+      if (!input.batchSubjectIds?.length) {
+        return { success: false, error: 'At least one batch_subject_id is required.' };
+      }
+
+      for (const bsId of input.batchSubjectIds) {
+        validateUUID(bsId, 'batchSubjectId');
+      }
+
+      // Verify the recording exists
+      const recordingResult = await this.getRecording(input.recordingId);
+      if (!recordingResult.success || !recordingResult.data) {
+        return { success: false, error: recordingResult.error ?? 'Recording not found' };
+      }
+
+      // Build assignment rows
+      const { data: bsRows } = await supabase
+        .from('batch_subjects')
+        .select('batch_subject_id, institute_id')
+        .in('batch_subject_id', input.batchSubjectIds);
+
+      if (!bsRows || bsRows.length === 0) {
+        return { success: false, error: 'No valid batch_subjects found.' };
+      }
+
+      const instituteId = bsRows[0].institute_id;
+      const validIds = new Set(bsRows.map((r) => r.batch_subject_id));
+
+      // Only insert for valid batch_subject_ids that exist
+      const assignmentRows = input.batchSubjectIds
+        .filter((bsId) => validIds.has(bsId))
+        .map((bsId) => ({
+          batch_subject_id: bsId,
+          recording_id: input.recordingId,
+          institute_id: instituteId,
+        }));
+
+      if (assignmentRows.length === 0) {
+        return { success: false, error: 'No valid batch_subjects to assign.' };
+      }
+
+      const { error: insertError } = await supabase
+        .from('batch_subject_recordings')
+        .insert(assignmentRows)
+        .select();
+
+      if (insertError) {
+        // If the error is a duplicate key violation, it's fine — already assigned.
+        // pg code 23505 = unique_violation
+        if (insertError.code === '23505') {
+          return {
+            success: true,
+            data: { assigned: assignmentRows.length },
+          };
+        }
+        return { success: false, error: extractErrorMessage(insertError) };
+      }
+
+      return {
+        success: true,
+        data: { assigned: assignmentRows.length },
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─── Remove Recording from Batch Subject ───────────────────────────────
+
+  /**
+   * Remove a recording assignment from a specific Batch Subject.
+   *
+   * Only the assignment is removed (one row in batch_subject_recordings).
+   * The recording itself is preserved.
+   *
+   * @param recordingId - The recording to unassign.
+   * @param batchSubjectId - The batch subject to remove the recording from.
+   */
+  async removeFromBatchSubject(
+    recordingId: string,
+    batchSubjectId: string,
+  ): Promise<ApiResponse<void>> {
+    try {
+      validateUUID(recordingId, 'recordingId');
+      validateUUID(batchSubjectId, 'batchSubjectId');
+
+      const { error: deleteError } = await supabase
+        .from('batch_subject_recordings')
+        .delete()
+        .eq('recording_id', recordingId)
+        .eq('batch_subject_id', batchSubjectId);
+
+      if (deleteError) {
+        return { success: false, error: extractErrorMessage(deleteError) };
+      }
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─── Get Batch Subject Recordings ──────────────────────────────────────
+
+  /**
+   * Get all recordings assigned to a specific Batch Subject.
+   *
+   * @param batchSubjectId - The Batch Subject to query.
+   * @returns Paginated list of recordings with assignment metadata.
+   */
+  async getBatchSubjectRecordings(
+    batchSubjectId: string,
+    pagination?: { page?: number; pageSize?: number },
+  ): Promise<ApiResponse<RecordingListResponse & { assignments: BatchSubjectAssignment[] }>> {
+    try {
+      validateUUID(batchSubjectId, 'batchSubjectId');
+
+      const { page, pageSize, from, to } = buildPagination(pagination);
+
+      // Query batch_subject_recordings with a join to recordings
+      let query = supabase
+        .from('batch_subject_recordings')
+        .select(`
+          *,
+          recording:recordings!inner(*)
+        `, { count: 'exact' })
+        .eq('batch_subject_id', batchSubjectId)
+        .not('recording_id', 'is', null);
+
+      query = query.order('assigned_at', { ascending: false });
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const recordings: Recording[] = [];
+      const assignments: BatchSubjectAssignment[] = [];
+
+      // Resolve batch and subject names for display
+      const { data: batchSubject } = await supabase
+        .from('batch_subjects')
+        .select(`
+          batch_subject_id,
+          batches!inner(name),
+          subjects!inner(name)
+        `)
+        .eq('batch_subject_id', batchSubjectId)
+        .single();
+
+      const batchName = (batchSubject as any)?.batches?.name ?? 'Unknown Batch';
+      const subjectName = (batchSubject as any)?.subjects?.name ?? 'Unknown Subject';
+
+      for (const row of (data ?? [])) {
+        const r = row as Record<string, unknown>;
+        const recordingData = r.recording as Record<string, unknown>;
+        if (recordingData) {
+          recordings.push(mapRecording(recordingData));
+        }
+        assignments.push({
+          assignmentId: r.assignment_id as string,
+          batchSubjectId: r.batch_subject_id as string,
+          batchName,
+          subjectName,
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          recordings,
+          total: count ?? 0,
+          page,
+          pageSize,
+          pageCount: pageSize > 0 ? Math.ceil((count ?? 0) / pageSize) : 0,
+          assignments,
+        },
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─── Update Recording ────────────────────────────────────────────────
+
+  /**
+   * Update recording metadata (title, description) without affecting
+   * batch subject assignments.
+   *
+   * @param recordingId - The recording to update.
+   * @param updates - Fields to update.
+   */
+  async updateRecording(
+    recordingId: string,
+    updates: { title?: string; description?: string | null },
+  ): Promise<ApiResponse<void>> {
+    try {
+      validateUUID(recordingId, 'recordingId');
+
+      const dbUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (updates.title?.trim()) {
+        dbUpdates.title = updates.title.trim();
+      }
+      if (updates.description !== undefined) {
+        dbUpdates.description = updates.description;
+      }
+
+      if (Object.keys(dbUpdates).length <= 1) {
+        // Only updated_at was set — nothing meaningful to change
+        return { success: true };
+      }
+
+      const { error: updateError } = await supabase
+        .from('recordings')
+        .update(dbUpdates)
+        .eq('recording_id', recordingId);
+
+      if (updateError) {
+        return { success: false, error: extractErrorMessage(updateError) };
+      }
+
+      return { success: true };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
     }

@@ -81,7 +81,7 @@ export interface BatchListItem {
 
 /** Detailed batch for the detail view. */
 export interface BatchManagementDetail extends BatchListItem {
-  /** Teacher information (first teacher in batch_teachers). */
+  /** Teacher information (from batch_subject_teachers). */
   teacher: {
     teacherId: string;
     name: string;
@@ -220,7 +220,7 @@ function validateTransition(currentStatus: string, newStatus: string): string | 
   return null;
 }
 
-/** Maps a raw Supabase row (batches JOIN streams JOIN batch_teachers JOIN profiles) to BatchListItem. */
+/** Maps a raw Supabase row (batches JOIN streams) to BatchListItem. */
 function toBatchListItem(row: any): BatchListItem {
   // Compute available seats
   const capacity = row.max_seats ?? null;
@@ -350,10 +350,10 @@ export const batchManagementService = {
   /**
    * Get a paginated, filtered, and sorted list of batches.
    *
-   * Joins `batches` with `streams`, `batch_teachers` + `profiles` (via
-   * teacher_details), and `batch_students` to include display names and
-   * counts.  Supports search, status filter, stream filter, teacher filter,
-   * pagination, and sorting.
+   * Joins `batches` with `streams` and `batch_students` to include display
+   * names and counts. Teacher info is resolved separately from
+   * `batch_subject_teachers`. Supports search, status filter, stream filter,
+   * teacher filter, pagination, and sorting.
    *
    * Soft-deleted batches (deleted_at IS NOT NULL) are excluded by default.
    */
@@ -376,14 +376,6 @@ export const batchManagementService = {
           batch_students!left (
             student_id,
             status
-          ),
-          batch_teachers!left (
-            teacher_id,
-            teacher_details!inner (
-              profiles!inner (
-                name
-              )
-            )
           )
         `,
           { count: 'exact' },
@@ -409,13 +401,19 @@ export const batchManagementService = {
       }
 
       if (filters?.teacherId) {
-        // Filter via batch_teachers junction
-        const { data: batchIds } = await supabase
-          .from('batch_teachers')
-          .select('batch_id')
+        // Filter via batch_subject_teachers junction (deduplicate by batch_id)
+        const { data: bstData } = await supabase
+          .from('batch_subject_teachers')
+          .select('batch_subjects!inner(batch_id)')
           .eq('teacher_id', filters.teacherId);
 
-        const ids = (batchIds ?? []).map((r: any) => r.batch_id);
+        const batchIdSet = new Set<string>();
+        (bstData ?? []).forEach((item: any) => {
+          const bid = item.batch_subjects?.batch_id;
+          if (bid) batchIdSet.add(bid);
+        });
+        const ids = Array.from(batchIdSet);
+
         if (ids.length === 0) {
           return {
             success: true,
@@ -452,6 +450,39 @@ export const batchManagementService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // Fetch teacher info separately via batch_subject_teachers
+      const batchIds = (data ?? []).map((r: any) => r.batch_id);
+      const teacherByBatchMap = new Map<string, { teacherId: string; name: string }>();
+      if (batchIds.length > 0) {
+        const { data: bstData } = await supabase
+          .from('batch_subject_teachers')
+          .select(`
+            teacher_id,
+            batch_subjects!inner(batch_id),
+            teacher_details!inner (
+              profiles!inner (
+                name
+              )
+            )
+          `)
+          .in('batch_subjects.batch_id', batchIds);
+
+        // Get first teacher per batch (for backward compatibility)
+        const firstTeacherPerBatch = new Map<string, { teacherId: string; name: string }>();
+        (bstData ?? []).forEach((item: any) => {
+          const bid = item.batch_subjects?.batch_id;
+          if (bid && !firstTeacherPerBatch.has(bid) && item.teacher_details?.profiles?.name) {
+            firstTeacherPerBatch.set(bid, {
+              teacherId: item.teacher_id,
+              name: item.teacher_details.profiles.name,
+            });
+          }
+        });
+        for (const [bid, info] of firstTeacherPerBatch) {
+          teacherByBatchMap.set(bid, info);
+        }
+      }
+
       let items = (data ?? []).map((row: any) => {
         // Compute student count: count batch_students with active status
         const students = row.batch_students ?? [];
@@ -459,16 +490,8 @@ export const batchManagementService = {
           ? students.filter((s: any) => !s.status || s.status === 'active').length
           : 0;
 
-        // Get first teacher info
-        const teachers = row.batch_teachers ?? [];
-        let teacherId: string | null = null;
-        let teacherName: string | null = null;
-
-        if (Array.isArray(teachers) && teachers.length > 0) {
-          const first = teachers[0];
-          teacherId = first.teacher_id ?? null;
-          teacherName = first.teacher_details?.profiles?.name ?? null;
-        }
+        // Get teacher info from batch_subject_teachers
+        const tInfo = teacherByBatchMap.get(row.batch_id);
 
         // Compute available seats
         const capacity = row.max_seats ?? null;
@@ -478,8 +501,8 @@ export const batchManagementService = {
           batchId: row.batch_id,
           batchCode: row.batch_code,
           batchName: row.name,
-          teacherId,
-          teacherName,
+          teacherId: tInfo?.teacherId ?? null,
+          teacherName: tInfo?.name ?? null,
           streamId: row.stream_id,
           streamName: row.streams?.name ?? null,
           subjectId: null,
@@ -551,23 +574,30 @@ export const batchManagementService = {
 
       // 2. Fetch related data in parallel
       const [teachersRes, studentsRes, studentProfilesRes] = await Promise.allSettled([
-        // Teacher info
-        supabase
-          .from('batch_teachers')
-          .select(
-            `
-            teacher_id,
-            teacher_details!inner (
+        // Teacher info (via batch_subject_teachers -> batch_subjects)
+        // First get batch_subject_ids for this batch
+        (async () => {
+          const { data: bsIds } = await supabase
+            .from('batch_subjects')
+            .select('batch_subject_id')
+            .eq('batch_id', batchId);
+          const ids = (bsIds ?? []).map((r: any) => r.batch_subject_id);
+          if (ids.length === 0) return { data: [], error: null };
+          return supabase
+            .from('batch_subject_teachers')
+            .select(`
               teacher_id,
-              profiles!inner (
-                name,
-                email,
-                phone
+              teacher_details!inner (
+                teacher_id,
+                profiles!inner (
+                  name,
+                  email,
+                  phone
+                )
               )
-            )
-          `,
-          )
-          .eq('batch_id', batchId),
+            `)
+            .in('batch_subject_id', ids);
+        })(),
 
         // Student count
         supabase
@@ -1003,16 +1033,16 @@ export const batchManagementService = {
         };
       }
 
-      // 2. Check for scheduled mock tests (via live_class_batch or similar)
-      const { count: classCount, error: classErr } = await supabase
-        .from('live_class_batch')
-        .select('class_id', { count: 'exact', head: true })
-        .eq('batch_id', batchId);
+      // 2. Check for scheduled live classes (via batch_subject_live_classes → batch_subjects)
+      const { data: classBSData, error: classErr } = await supabase
+        .from('batch_subject_live_classes')
+        .select('class_id')
+        .eq('batch_subjects.batch_id', batchId);
 
       if (classErr) {
-        // Table may not exist or may not be accessible — ignore
-        console.warn('Could not check live_class_batch:', classErr.message);
+        console.warn('Could not check batch_subject_live_classes:', classErr.message);
       }
+      const classCount = classBSData?.length ?? 0;
 
       if (classCount && classCount > 0) {
         return {
@@ -1077,27 +1107,39 @@ export const batchManagementService = {
         count: typeof row.count === 'number' ? row.count : 0,
       }));
 
-      // 2. Count by teacher
-      const { data: teacherData } = await supabase
-        .from('batch_teachers')
-        .select(
-          `
+      // 2. Count by teacher (via batch_subject_teachers)
+      const { data: bstAll } = await supabase
+        .from('batch_subject_teachers')
+        .select(`
           teacher_id,
+          batch_subject_id,
           teacher_details!inner (
             profiles!inner (
               name
             )
-          ),
-          count:batch_id
-        `,
-        )
-        .order('count', { ascending: false })
-        .limit(10);
+          )
+        `);
 
-      const byTeacher = (teacherData ?? []).map((row: any) => ({
-        teacherName: row.teacher_details?.profiles?.name ?? 'Unknown',
-        count: typeof row.count === 'number' ? row.count : 0,
-      }));
+      // Group by teacher and count distinct batch_subjects
+      const teacherCountMap = new Map<string, { name: string; count: number }>();
+      (bstAll ?? []).forEach((item: any) => {
+        const tid = item.teacher_id;
+        if (tid) {
+          if (!teacherCountMap.has(tid)) {
+            teacherCountMap.set(tid, {
+              name: item.teacher_details?.profiles?.name ?? 'Unknown',
+              count: 0,
+            });
+          }
+          teacherCountMap.get(tid)!.count++;
+        }
+      });
+
+      // Sort by count descending, take top 10
+      const byTeacher = [...teacherCountMap.entries()]
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 10)
+        .map(([, v]) => ({ teacherName: v.name, count: v.count }));
 
       // 3. Newest batches (last 10)
       let newestQuery = supabase
@@ -1107,14 +1149,6 @@ export const batchManagementService = {
           *,
           streams!left (
             name
-          ),
-          batch_teachers!left (
-            teacher_id,
-            teacher_details!inner (
-              profiles!inner (
-                name
-              )
-            )
           )
         `,
         )
@@ -1125,6 +1159,29 @@ export const batchManagementService = {
 
       const { data: newestData } = await newestQuery;
 
+      // Batch-fetch teacher info for all newest batches
+      const newestBatchIds = (newestData ?? []).map((r: any) => r.batch_id);
+      const newestTeacherMap = new Map<string, string>();
+      if (newestBatchIds.length > 0) {
+        const { data: bstNew } = await supabase
+          .from('batch_subject_teachers')
+          .select(`
+            teacher_id,
+            batch_subjects!inner(batch_id),
+            teacher_details!inner (
+              profiles!inner (name)
+            )
+          `)
+          .in('batch_subjects.batch_id', newestBatchIds);
+
+        (bstNew ?? []).forEach((item: any) => {
+          const bid = item.batch_subjects?.batch_id;
+          if (bid && !newestTeacherMap.has(bid) && item.teacher_details?.profiles?.name) {
+            newestTeacherMap.set(bid, item.teacher_details.profiles.name);
+          }
+        });
+      }
+
       // Build newest batches with student counts
       const newestBatches = await Promise.all(
         (newestData ?? []).map(async (row: any) => {
@@ -1134,12 +1191,7 @@ export const batchManagementService = {
             .eq('batch_id', row.batch_id)
             .eq('status', 'active');
 
-          const teachers = row.batch_teachers ?? [];
-          const teacherName = Array.isArray(teachers) && teachers.length > 0
-            ? teachers[0]?.teacher_details?.profiles?.name ?? null
-            : null;
-
-          return toBatchListItem({ ...row, student_count: sCount ?? 0, teacher_name: teacherName });
+          return toBatchListItem({ ...row, student_count: sCount ?? 0, teacher_name: newestTeacherMap.get(row.batch_id) ?? null });
         }),
       );
 
@@ -1179,30 +1231,39 @@ export const batchManagementService = {
           *,
           streams!left (
             name
-          ),
-          batch_teachers!left (
-            teacher_id,
-            teacher_details!inner (
-              profiles!inner (
-                name
-              )
-            )
           )
         `,
         )
         .is('deleted_at', null)
         .in('batch_id', topBatchIds);
 
-      const largestBatches = (topData ?? []).map((row: any) => {
-        const teachers = row.batch_teachers ?? [];
-        const teacherName = Array.isArray(teachers) && teachers.length > 0
-          ? teachers[0]?.teacher_details?.profiles?.name ?? null
-          : null;
+      // Batch-fetch teacher info for largest batches
+      const topTeacherMap = new Map<string, string>();
+      if (topBatchIds.length > 0) {
+        const { data: bstTop } = await supabase
+          .from('batch_subject_teachers')
+          .select(`
+            teacher_id,
+            batch_subjects!inner(batch_id),
+            teacher_details!inner (
+              profiles!inner (name)
+            )
+          `)
+          .in('batch_subjects.batch_id', topBatchIds);
 
+        (bstTop ?? []).forEach((item: any) => {
+          const bid = item.batch_subjects?.batch_id;
+          if (bid && !topTeacherMap.has(bid) && item.teacher_details?.profiles?.name) {
+            topTeacherMap.set(bid, item.teacher_details.profiles.name);
+          }
+        });
+      }
+
+      const largestBatches = (topData ?? []).map((row: any) => {
         return toBatchListItem({
           ...row,
           student_count: studentCountMap.get(row.batch_id) ?? 0,
-          teacher_name: teacherName,
+          teacher_name: topTeacherMap.get(row.batch_id) ?? null,
         });
       }).sort((a: BatchListItem, b: BatchListItem) => b.studentCount - a.studentCount);
 

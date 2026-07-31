@@ -66,6 +66,23 @@ export type RecordingStatus =
  */
 export type RecordingType = 'live_class' | 'practice' | 'demo';
 
+/**
+ * Origin of the recording — how it entered the system.
+ *
+ * Mirrors the `recording_source_type` PostgreSQL enum (added in migration 072).
+ *
+ * - `live_class`:  Automatically generated from a Live Class (class_id IS NOT NULL).
+ * - `uploaded`:    Uploaded directly by a teacher or admin (class_id IS NULL).
+ *
+ * This is distinct from RecordingType:
+ *   - RecordingType describes CONTENT NATURE (e.g. practice session, demo)
+ *   - RecordingSourceType describes ORIGIN (live class vs uploaded file)
+ *
+ * @see public.recordings.source_type column
+ * @see supabase/migrations/072_fix_recordings_class_id_source_type.sql
+ */
+export type RecordingSourceType = 'live_class' | 'uploaded';
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Core Models
 // ═══════════════════════════════════════════════════════════════════════════
@@ -119,7 +136,9 @@ export interface Recording {
   retryCount: number;
   /** Timestamp of the last retry attempt. */
   lastRetriedAt: string | null;
-  /** Batch this recording is visible to. Denormalized for RLS. */
+  /** Origin of this recording (live_class vs uploaded). Added in migration 072. */
+  sourceType: RecordingSourceType;
+  /** Batch this recording is visible to. Deprecated — use batch_subject_recordings. */
   batchId: string | null;
   /** Soft-delete flag. TRUE = hidden from students but visible to teacher. */
   isDeleted: boolean;
@@ -164,7 +183,7 @@ export interface RecordingWithClass extends Recording {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Input required to start a new recording.
+ * Input required to start a new recording from a live class.
  */
 export interface StartRecordingRequest {
   /** The live class to record. */
@@ -178,13 +197,62 @@ export interface StartRecordingRequest {
 }
 
 /**
- * Response returned when a recording is successfully started.
+ * Input required to upload a standalone recording (no live class).
+ */
+export interface UploadRecordingRequest {
+  /** Display title for the recording. Minimum 3 characters. */
+  title: string;
+  /** Optional description. */
+  description?: string | null;
+  /** Recording type. Defaults to `uploaded`. */
+  recordingType?: RecordingType;
+  /** Batch Subject IDs to assign this recording to. */
+  batchSubjectIds: string[];
+  /** File metadata. */
+  file?: {
+    /** Storage bucket name. */
+    storageBucket: string;
+    /** Storage object key (path). */
+    storagePath: string;
+    /** File size in bytes. */
+    fileSizeBytes?: number;
+    /** Duration in seconds. */
+    durationSeconds?: number;
+  };
+}
+
+/**
+ * Response returned when a recording is successfully started or uploaded.
  */
 export interface StartRecordingResponse {
   /** The newly created recording ID. */
   recordingId: string;
-  /** Initial status (always `recording`). */
+  /** Initial status (always `recording` for live, 'completed' for uploads). */
   status: RecordingStatus;
+}
+
+/**
+ * Request to assign an existing recording to one or more Batch Subjects.
+ */
+export interface AssignRecordingRequest {
+  /** The recording to assign. */
+  recordingId: string;
+  /** Batch Subject IDs to assign this recording to. */
+  batchSubjectIds: string[];
+}
+
+/**
+ * Minimal info about a batch subject assignment (used in responses).
+ */
+export interface BatchSubjectAssignment {
+  /** Assignment ID from batch_subject_recordings. */
+  assignmentId: string;
+  /** Batch Subject ID. */
+  batchSubjectId: string;
+  /** Resolved batch name (populated by JOINs). */
+  batchName: string;
+  /** Resolved subject name (populated by JOINs). */
+  subjectName: string;
 }
 
 /**
@@ -230,6 +298,8 @@ export interface RecordingFilters {
   recordingType?: RecordingType;
   /** Filter by batch. Teacher-only filter — students always filtered by their own batches. */
   batchId?: string;
+  /** Filter by batch_subject. Uses batch_subject_recordings junction table. */
+  batchSubjectId?: string;
   /** Filter by teacher. Admin-only filter. */
   teacherId?: string;
   /** Filter by source class. */

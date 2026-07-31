@@ -38,8 +38,11 @@ export interface LiveClassListItem {
   status: LiveClassStatus;
   scheduledAt: string;
   durationMin: number;
+  /** First batch subject for backward compatibility. */
   batchId: string;
   batchName: string;
+  /** All batch subjects this class is assigned to. */
+  assignedBatchSubjects: LiveClassBatchSubject[];
   chapterId: string | null;
   chapterName: string | null;
   teacherName: string;
@@ -64,7 +67,9 @@ export interface LiveClassDetail extends LiveClassListItem {
     peakParticipants: number | null;
     provider: string | null;
   } | null;
+  /** @deprecated Use assignedBatchSubjects instead. */
   batches: { batchId: string; batchName: string }[];
+  /** @deprecated Use assignedBatchSubjects instead. */
   allBatches: { batchId: string; batchName: string }[];
 }
 
@@ -72,7 +77,7 @@ export interface LiveClassDetail extends LiveClassListItem {
 export interface ScheduleLiveClassInput {
   teacherId: string;
   title: string;
-  batchIds: string[];
+  batchSubjectIds: string[];
   chapterId?: string | null;
   scheduledAt: string;   // ISO 8601 timestamp (must be in the future)
   durationMin: number;   // 1–480
@@ -85,10 +90,18 @@ export interface UpdateScheduledClassInput {
   title?: string;
   description?: string;
   chapterId?: string | null;
-  batchIds?: string[];
+  batchSubjectIds?: string[];
   scheduledAt?: string;
   durationMin?: number;
   isRecorded?: boolean;
+}
+
+/** A batch subject assignment for display on a live class card. */
+export interface LiveClassBatchSubject {
+  batchSubjectId: string;
+  batchId: string;
+  batchName: string;
+  subjectName: string;
 }
 
 /** Response from scheduleLiveClass containing the created class. */
@@ -248,22 +261,40 @@ function assertValidDuration(durationMin: number): void {
 }
 
 /**
- * Validates that all batch IDs are assigned to the teacher.
+ * Validates that all batch subject IDs are assigned to the teacher.
  *
- * @throws LiveClassValidationError if any batch is not assigned.
+ * @throws LiveClassValidationError if any batch subject is not assigned.
  */
-async function assertBatchesAssignedToTeacher(
+async function assertBatchSubjectsAssignedToTeacher(
   teacherId: string,
-  batchIds: string[],
+  batchSubjectIds: string[],
 ): Promise<void> {
-  for (const batchId of batchIds) {
-    const isValid = await teacherService.validateBatchForTeacher(teacherId, batchId);
-    if (!isValid) {
-      throw new LiveClassValidationError(
-        `Batch "${batchId}" is not assigned to this teacher. ` +
-        'Please select a batch from your assigned batches.',
-      );
-    }
+  if (batchSubjectIds.length === 0) {
+    throw new LiveClassValidationError(
+      'At least one batch subject must be selected.',
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('batch_subject_teachers')
+    .select('batch_subject_id')
+    .eq('teacher_id', teacherId)
+    .in('batch_subject_id', batchSubjectIds);
+
+  if (error) {
+    throw new LiveClassValidationError(
+      `Failed to validate batch subject assignments: ${error.message}`,
+    );
+  }
+
+  const validIds = new Set((data ?? []).map((r: any) => r.batch_subject_id));
+  const invalidIds = batchSubjectIds.filter((id) => !validIds.has(id));
+
+  if (invalidIds.length > 0) {
+    throw new LiveClassValidationError(
+      `${invalidIds.length} batch subject(s) are not assigned to this teacher. ` +
+      'Only batch subjects you are assigned to can be selected.',
+    );
   }
 }
 
@@ -304,17 +335,17 @@ async function resolveBatchNames(
 }
 
 /**
- * Enriches a raw live_classes row with resolved names (batch, chapter).
+ * Enriches a raw live_classes row with resolved names (batch subjects, chapter).
  */
 async function enrichClassWithNames(
   liveClass: any,
 ): Promise<LiveClassListItem> {
-  const [batchNames, chapterName] = await Promise.all([
-    resolveClassBatchNames(liveClass.class_id),
+  const [batchSubjects, chapterName] = await Promise.all([
+    resolveClassBatchSubjects(liveClass.class_id),
     liveClass.chapter_id ? resolveChapterName(liveClass.chapter_id) : Promise.resolve(null),
   ]);
 
-  const firstBatch = batchNames[0] ?? { batchId: '', batchName: 'Unassigned' };
+  const firstBS = batchSubjects[0] ?? { batchSubjectId: '', batchId: '', batchName: 'Unassigned', subjectName: '' };
   const teacherName = ''; // TODO: resolve teacher name via profiles join for production — currently returns empty string to avoid N+1 queries
 
   return {
@@ -323,8 +354,9 @@ async function enrichClassWithNames(
     status: liveClass.status as LiveClassStatus,
     scheduledAt: liveClass.scheduled_at,
     durationMin: liveClass.duration_min,
-    batchId: firstBatch.batchId,
-    batchName: firstBatch.batchName,
+    batchId: firstBS.batchId,
+    batchName: firstBS.batchName,
+    assignedBatchSubjects: batchSubjects,
     chapterId: liveClass.chapter_id,
     chapterName,
     teacherName,
@@ -335,19 +367,29 @@ async function enrichClassWithNames(
 }
 
 /**
- * Resolves batch names for a given class from live_class_batch.
+ * Resolves batch subject names for a given class from batch_subject_live_classes.
  */
-async function resolveClassBatchNames(
+async function resolveClassBatchSubjects(
   classId: string,
-): Promise<{ batchId: string; batchName: string }[]> {
+): Promise<LiveClassBatchSubject[]> {
   const { data } = await supabase
-    .from('live_class_batch')
-    .select('batch_id, batches(name)')
+    .from('batch_subject_live_classes')
+    .select(`
+      batch_subject_id,
+      batch_subjects!inner (
+        batch_subject_id,
+        batch_id,
+        batches!inner (name),
+        subjects!inner (name)
+      )
+    `)
     .eq('class_id', classId);
 
   return (data ?? []).map((item: any) => ({
-    batchId: item.batch_id,
-    batchName: item.batches?.name ?? 'Unknown Batch',
+    batchSubjectId: item.batch_subject_id,
+    batchId: item.batch_subjects?.batch_id ?? '',
+    batchName: item.batch_subjects?.batches?.name ?? 'Unknown Batch',
+    subjectName: item.batch_subjects?.subjects?.name ?? 'Unknown Subject',
   }));
 }
 
@@ -400,14 +442,14 @@ export const teacherLiveClassService = {
     assertFutureTime(input.scheduledAt);
     assertValidDuration(input.durationMin);
 
-    if (!input.batchIds || input.batchIds.length === 0) {
+    if (!input.batchSubjectIds || input.batchSubjectIds.length === 0) {
       throw new LiveClassValidationError(
-        'At least one batch must be selected.',
+        'At least one batch subject must be selected.',
       );
     }
 
-    // ── Validate teacher permissions ──────────────────────────────────
-    await assertBatchesAssignedToTeacher(input.teacherId, input.batchIds);
+    // ── Validate teacher permissions for batch subjects ────────────────
+    await assertBatchSubjectsAssignedToTeacher(input.teacherId, input.batchSubjectIds);
 
     // ════════════════════════════════════════════════════════════════════
     //  DEBUG: STEP 2 — Resolve auth user
@@ -493,80 +535,29 @@ export const teacherLiveClassService = {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  DEBUG: STEP 5 — Prepare batch links and debug before INSERT
+    //  DEBUG: STEP 5 — Create assignment rows in batch_subject_live_classes
     // ════════════════════════════════════════════════════════════════════
-    const batchLinks = input.batchIds.map((batchId) => ({
+    const assignmentRows = input.batchSubjectIds.map((batchSubjectId) => ({
+      batch_subject_id: batchSubjectId,
       class_id: inserted.class_id,
-      batch_id: batchId,
+      institute_id,
       assigned_by: authUserId,
     }));
 
-    // ── Call helper functions individually ────────────────────────────
-    const [rpcMyTeacherId, rpcClassTeacherId, rpcAuthUid] = await Promise.all([
-      supabase.rpc('get_my_teacher_id'),
-      supabase.rpc('get_live_class_teacher_id', { class_id: inserted.class_id }),
-      supabase.auth.getSession(),
-    ]);
+    console.log('[DEBUG] [STEP 5] Inserting into batch_subject_live_classes:', JSON.stringify(assignmentRows, null, 2));
 
-    const authUid = rpcAuthUid?.data?.session?.user?.id ?? 'UNAVAILABLE';
-    const myTeacherId = rpcMyTeacherId?.data ?? 'RPC_FAILED';
-    const classTeacherId = rpcClassTeacherId?.data ?? 'RPC_FAILED';
+    const { error: assignErr } = await supabase
+      .from('batch_subject_live_classes')
+      .insert(assignmentRows);
 
-    const storedTeacherId = verifyData?.teacher_id ?? 'VERIFY_FAILED';
-
-    // ── Policy check evaluation ───────────────────────────────────────
-    const policyPass = (classTeacherId !== 'RPC_FAILED' && myTeacherId !== 'RPC_FAILED' && classTeacherId !== null && myTeacherId !== null)
-      ? (classTeacherId === myTeacherId)
-      : 'UNKNOWN (RPC failed or returned null)';
-
-    // ── Log everything in the requested format ────────────────────────
-    console.log('');
-    console.log('==============================');
-    console.log('AUTH DEBUG');
-    console.log('==============================');
-    console.log('auth.uid():', authUid);
-    console.log('');
-    console.log('==============================');
-    console.log('TEACHER DEBUG');
-    console.log('==============================');
-    console.log('get_my_teacher_id():', myTeacherId);
-    console.log('');
-    console.log('==============================');
-    console.log('CLASS DEBUG');
-    console.log('==============================');
-    console.log('class_id:', inserted.class_id);
-    console.log('get_live_class_teacher_id(class_id):', classTeacherId);
-    console.log('teacher_id stored in live_classes:', storedTeacherId);
-    console.log('');
-    console.log('==============================');
-    console.log('INSERT ROW');
-    console.log('==============================');
-    console.log('Rows:', JSON.stringify(batchLinks, null, 2));
-    console.log('');
-    console.log('==============================');
-    console.log('POLICY CHECK');
-    console.log('==============================');
-    console.log('get_live_class_teacher_id(class_id) == get_my_teacher_id()');
-    console.log('  ', classTeacherId, '==', myTeacherId);
-    console.log('  ==>', policyPass);
-    console.log('');
-
-    // ── Now perform the actual INSERT ────────────────────────────────
-    const { data: batchInsertData, error: batchLinkErr } = await supabase
-      .from('live_class_batch')
-      .insert(batchLinks)
-      .select();
-
-    if (batchLinkErr) {
-      console.error('[DEBUG] [STEP 5] ❌ live_class_batch INSERT FAILED:');
-      console.error('[DEBUG] [STEP 5]   message:', batchLinkErr.message);
-      console.error('[DEBUG] [STEP 5]   code:', batchLinkErr.code);
-      console.error('[DEBUG] [STEP 5]   details:', batchLinkErr.details);
-      console.error('[DEBUG] [STEP 5]   hint:', batchLinkErr.hint);
-      console.error('[DEBUG] [STEP 5]   Full error:', JSON.stringify(batchLinkErr, Object.getOwnPropertyNames(batchLinkErr), 2));
+    if (assignErr) {
+      console.error('[DEBUG] [STEP 5] ❌ batch_subject_live_classes INSERT FAILED:');
+      console.error('[DEBUG] [STEP 5]   message:', assignErr.message);
+      console.error('[DEBUG] [STEP 5]   code:', assignErr.code);
+      console.error('[DEBUG] [STEP 5]   details:', assignErr.details);
+      console.error('[DEBUG] [STEP 5]   hint:', assignErr.hint);
     } else {
-      console.log('[DEBUG] [STEP 5] ✅ live_class_batch INSERT succeeded');
-      console.log('[DEBUG] [STEP 5] Inserted rows:', JSON.stringify(batchInsertData, null, 2));
+      console.log('[DEBUG] [STEP 5] ✅ batch_subject_live_classes INSERT succeeded');
     }
 
     console.log('[DEBUG] [DONE] scheduleLiveClass returning');
@@ -756,13 +747,24 @@ export const teacherLiveClassService = {
     }
 
     // If filtering by batch, first get class IDs linked to that batch
+    // via batch subjects
     if (batchId) {
-      const { data: batchLinks } = await supabase
-        .from('live_class_batch')
-        .select('class_id')
+      const { data: bsLinks } = await supabase
+        .from('batch_subjects')
+        .select('batch_subject_id')
         .eq('batch_id', batchId);
 
-      const classIds = (batchLinks ?? []).map((bl: any) => bl.class_id);
+      const bsIds = (bsLinks ?? []).map((bs: any) => bs.batch_subject_id);
+      if (bsIds.length === 0) {
+        return { classes: [], total: 0, page, pageSize };
+      }
+
+      const { data: classLinks } = await supabase
+        .from('batch_subject_live_classes')
+        .select('class_id')
+        .in('batch_subject_id', bsIds);
+
+      const classIds = (classLinks ?? []).map((cl: any) => cl.class_id);
       if (classIds.length === 0) {
         return { classes: [], total: 0, page, pageSize };
       }
@@ -811,9 +813,9 @@ export const teacherLiveClassService = {
     }
 
     // ── Fetch related data in parallel ────────────────────────────────
-    const [batchNames, chapterName, sessionData] =
+    const [batchSubjects, chapterName, sessionData] =
       await Promise.all([
-        resolveClassBatchNames(classId),
+        resolveClassBatchSubjects(classId),
         resolveChapterName(liveClass.chapter_id),
         supabase
           .from('live_sessions')
@@ -823,13 +825,13 @@ export const teacherLiveClassService = {
           .then(res => res, () => ({ data: null, error: null })),
       ]);
 
-    // ── Compute enrolled student count for the first batch ────────────
+    // ── Compute enrolled student count for the first batch subject's batch ──
     let enrolledStudentCount = 0;
-    if (batchNames.length > 0) {
+    if (batchSubjects.length > 0) {
       const { count } = await supabase
         .from('batch_students')
         .select('*', { count: 'exact', head: true })
-        .eq('batch_id', batchNames[0].batchId);
+        .eq('batch_id', batchSubjects[0].batchId);
       enrolledStudentCount = count ?? 0;
     }
 
@@ -844,10 +846,17 @@ export const teacherLiveClassService = {
         }
       : null;
 
-    const firstBatch = batchNames[0] ?? {
+    const firstBS = batchSubjects[0] ?? {
+      batchSubjectId: '',
       batchId: '',
       batchName: 'Unassigned',
+      subjectName: '',
     };
+
+    const batchNames = batchSubjects.map((s) => ({
+      batchId: s.batchId,
+      batchName: s.batchName,
+    }));
 
     return {
       classId: liveClass.class_id,
@@ -855,8 +864,9 @@ export const teacherLiveClassService = {
       status: liveClass.status as LiveClassStatus,
       scheduledAt: liveClass.scheduled_at,
       durationMin: liveClass.duration_min,
-      batchId: firstBatch.batchId,
-      batchName: firstBatch.batchName,
+      batchId: firstBS.batchId,
+      batchName: firstBS.batchName,
+      assignedBatchSubjects: batchSubjects,
       chapterId: liveClass.chapter_id,
       chapterName,
       teacherName: '', // Would need a profiles join for full name
@@ -917,9 +927,9 @@ export const teacherLiveClassService = {
       assertValidDuration(updates.durationMin);
     }
 
-    // ── Validate new batch assignments (if changing) ───────────────────
-    if (updates.batchIds && updates.batchIds.length > 0) {
-      await assertBatchesAssignedToTeacher(teacherId, updates.batchIds);
+    // ── Validate new batch subject assignments (if changing) ───────────
+    if (updates.batchSubjectIds && updates.batchSubjectIds.length > 0) {
+      await assertBatchSubjectsAssignedToTeacher(teacherId, updates.batchSubjectIds);
     }
 
     // ── Build update payload (only provided fields) ────────────────────
@@ -944,49 +954,47 @@ export const teacherLiveClassService = {
       );
     }
 
-    // ── Update batch links if batchIds changed ────────────────────────
-    if (updates.batchIds !== undefined) {
-      // Remove existing links
+    // ── Update batch subject links if batchSubjectIds changed ─────────
+    if (updates.batchSubjectIds !== undefined) {
+      // Remove existing links from batch_subject_live_classes
       const { error: deleteErr } = await supabase
-        .from('live_class_batch')
+        .from('batch_subject_live_classes')
         .delete()
         .eq('class_id', classId);
 
       if (deleteErr) {
-        console.error('[LiveClass] Failed to remove old batch links:', deleteErr.message);
+        console.error('[LiveClass] Failed to remove old batch subject links:', deleteErr.message);
       }
 
       // Insert new links
-      if (updates.batchIds.length > 0) {
+      if (updates.batchSubjectIds.length > 0) {
         const authUserId = await getAuthProfileId();
-        const newLinks = updates.batchIds.map((batchId) => ({
+
+        // Need institute_id for the new assignments
+        const liveClass = await validateTeacherOwnsClass(classId, teacherId);
+        const institute_id = liveClass.institute_id;
+
+        const newLinks = updates.batchSubjectIds.map((batchSubjectId) => ({
+          batch_subject_id: batchSubjectId,
           class_id: classId,
-          batch_id: batchId,
+          institute_id,
           assigned_by: authUserId,
         }));
 
-        // DEBUG: Log batch links before insert
-        console.log('[DEBUG] [update] Inserting batch links:', JSON.stringify(newLinks, null, 2));
+        console.log('[DEBUG] [update] Inserting batch subject links:', JSON.stringify(newLinks, null, 2));
 
-        const { data: insData, error: insertErr } = await supabase
-          .from('live_class_batch')
-          .insert(newLinks)
-          .select();
+        const { error: insertErr } = await supabase
+          .from('batch_subject_live_classes')
+          .insert(newLinks);
 
         if (insertErr) {
-          console.error('[DEBUG] [update] ❌ live_class_batch INSERT FAILED:');
+          console.error('[DEBUG] [update] ❌ batch_subject_live_classes INSERT FAILED:');
           console.error('[DEBUG] [update]   message:', insertErr.message);
           console.error('[DEBUG] [update]   code:', insertErr.code);
           console.error('[DEBUG] [update]   details:', insertErr.details);
           console.error('[DEBUG] [update]   hint:', insertErr.hint);
-          console.error('[DEBUG] [update]   Full error:', JSON.stringify(insertErr, Object.getOwnPropertyNames(insertErr), 2));
-
-          // Also call debug RPC
-          const { data: dd } = await supabase
-            .rpc('debug_live_class_rls', { p_class_id: classId });
-          console.log('[DEBUG] [update] Debug RPC result:', JSON.stringify(dd, null, 2));
         } else {
-          console.log('[DEBUG] [update] ✅ live_class_batch INSERT succeeded:', JSON.stringify(insData, null, 2));
+          console.log('[DEBUG] [update] ✅ batch_subject_live_classes INSERT succeeded');
         }
       }
     }

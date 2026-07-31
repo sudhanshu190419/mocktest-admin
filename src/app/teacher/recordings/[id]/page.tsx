@@ -18,6 +18,7 @@ import {
   useRecording,
   useRecordingStatus,
   usePlaybackUrl,
+  useRecordingAssignments,
   useDeleteRecording,
   useRetryRecording,
 } from '@/hooks/recording/useRecordings';
@@ -27,7 +28,7 @@ import { RecordingStatusBadge } from '@/components/recording/RecordingStatusBadg
 import { RecordingDuration } from '@/components/recording/RecordingDuration';
 import { ProcessingIndicator } from '@/components/recording/ProcessingIndicator';
 import { RecordingError } from '@/components/recording/RecordingError';
-import type { Recording, RecordingStatus } from '@/types/recording';
+import type { Recording, RecordingStatus, BatchSubjectAssignment } from '@/types/recording';
 import {
   Play,
   Share,
@@ -36,7 +37,7 @@ import {
   VideoCamera,
   Clock,
   CalendarBlank,
-
+  Books,
   FileText,
   WarningCircle,
   Eye,
@@ -240,6 +241,12 @@ export default function RecordingDetailPage() {
   );
 
   const playbackUrl = playbackData?.data?.playbackUrl as string | undefined;
+
+  // Batch subject assignments for this recording
+  const { data: assignmentsData } = useRecordingAssignments(
+    recording?.recordingId ?? null,
+  );
+  const assignments = assignmentsData?.success ? (assignmentsData.data ?? []) : [];
 
   // ── Mutations ────────────────────────────────────────────────────────────
   const {
@@ -588,6 +595,30 @@ export default function RecordingDetailPage() {
               Recording Info
             </h3>
             <div className="space-y-4">
+              {/* Assigned Batch Subjects */}
+              {assignments.length > 0 && (
+                <div className="border-b border-gray-100 pb-4 dark:border-gray-700">
+                  <InfoRow
+                    icon={<Books size={16} />}
+                    label="Assigned To"
+                    value={
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {assignments.map((a: BatchSubjectAssignment) => (
+                          <span
+                            key={a.assignmentId}
+                            className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+                          >
+                            {a.subjectName}
+                            <span className="mx-1 text-blue-300 dark:text-blue-600">•</span>
+                            {a.batchName}
+                          </span>
+                        ))}
+                      </div>
+                    }
+                  />
+                </div>
+              )}
+
               <InfoRow
                 icon={<VideoCamera size={16} />}
                 label="Status"

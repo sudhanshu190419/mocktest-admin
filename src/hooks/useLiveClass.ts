@@ -245,12 +245,18 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       // ── Resolve batch IDs for this class (for notification audience targeting) ─
       let batchIds: string[] = [];
       try {
-        const { data: classBatches } = await supabase
-          .from('live_class_batch')
-          .select('batch_id')
+        // First try batch_subject_live_classes
+        const { data: classBS } = await supabase
+          .from('batch_subject_live_classes')
+          .select(`
+            batch_subject_id,
+            batch_subjects!inner (batch_id)
+          `)
           .eq('class_id', result.classId);
-        if (classBatches) {
-          batchIds = classBatches.map((b: { batch_id: string }) => b.batch_id);
+        if (classBS && classBS.length > 0) {
+          batchIds = [...new Set((classBS as any[]).map((item: any) => item.batch_subjects?.batch_id))].filter(Boolean);
+        } else {
+          // Fallback removed — all live classes use batch_subject_live_classes
         }
       } catch {
         // Non-critical — batch IDs are only used for notification audience.
@@ -396,12 +402,16 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       let batchIds: string[] = [];
       let instituteId = '';
       try {
-        const { data: classBatches } = await supabase
-          .from('live_class_batch')
-          .select('batch_id')
+        // Resolve batch IDs via batch_subject_live_classes
+        const { data: classBSLinks } = await supabase
+          .from('batch_subject_live_classes')
+          .select(`
+            batch_subject_id,
+            batch_subjects!inner(batch_id)
+          `)
           .eq('class_id', classId);
-        if (classBatches) {
-          batchIds = classBatches.map((b: { batch_id: string }) => b.batch_id);
+        if (classBSLinks && classBSLinks.length > 0) {
+          batchIds = [...new Set((classBSLinks as any[]).map((item: any) => item.batch_subjects?.batch_id))].filter(Boolean);
         }
         // Also fetch institute_id from the live_classes record
         const { data: cls } = await supabase
