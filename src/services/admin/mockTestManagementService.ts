@@ -51,6 +51,7 @@ import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { MockTestStatus } from '@/types/mockTest';
 import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -204,6 +205,25 @@ function validateTransition(currentStatus: string, newStatus: string): string | 
     return `Invalid status transition: "${currentStatus}" → "${newStatus}". Allowed: ${allowed.join(', ')}`;
   }
   return null;
+}
+
+/**
+ * Maps a mock test status transition to an audit action.
+ *
+ * pending_approval → published is the admin approval decision; published →
+ * draft is unpublish; archived → published is restore; published → archived
+ * is archive. Everything else falls back to `update` (defensive).
+ */
+function mapMockTestTransitionAction(
+  currentStatus: string,
+  newStatus: string,
+): import('@/types/audit').AuditAction {
+  if (currentStatus === 'pending_approval' && newStatus === 'published') return 'approve';
+  if (currentStatus === 'pending_approval' && newStatus === 'draft') return 'reject';
+  if (currentStatus === 'published' && newStatus === 'draft') return 'unpublish';
+  if (currentStatus === 'archived' && newStatus === 'published') return 'restore';
+  if (newStatus === 'archived') return 'archive';
+  return 'update';
 }
 
 /** Maps a raw Supabase row (mock_tests JOIN streams JOIN subjects) to MockTestListItem. */
@@ -549,6 +569,16 @@ export const mockTestManagementService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: mock test status change ───────────────────────────────
+      await auditService.log({
+        action: mapMockTestTransitionAction(current.status, newStatus),
+        resourceType: 'mock_tests',
+        resourceId: testId,
+        oldValue: { status: current.status },
+        newValue: { status: newStatus },
+        metadata: { testId, previousStatus: current.status, newStatus },
+      });
 
       return { success: true, data: null };
     } catch (err) {

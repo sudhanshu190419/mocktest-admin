@@ -47,6 +47,7 @@ import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { QuestionStatus } from '@/types/mockTest';
 import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -234,6 +235,29 @@ function isValidTransition(currentStatus: string, nextStatus: string): boolean {
   if (currentStatus === 'published' && nextStatus === 'archived') return true;
   if (currentStatus === 'archived' && nextStatus === 'published') return true;
   return false;
+}
+
+/**
+ * Maps a question approval status transition to an audit action.
+ *
+ * Used so every approval decision writes a single audit event with the
+ * correct semantic action (approve / reject / restore / archive). Falls
+ * back to `update` for any unrecognised transition (defensive).
+ *
+ * @param currentStatus - Status BEFORE the transition (may be undefined for bulk ops).
+ * @param newStatus     - Status AFTER the transition.
+ */
+function mapQuestionTransitionAction(
+  currentStatus: string | undefined,
+  newStatus: string,
+): import('@/types/audit').AuditAction {
+  if (currentStatus === 'pending_approval' && newStatus === 'published') return 'approve';
+  if (currentStatus === 'pending_approval' && newStatus === 'draft') return 'reject';
+  if (currentStatus === 'archived' && newStatus === 'published') return 'restore';
+  if (newStatus === 'published') return 'approve';
+  if (newStatus === 'draft') return 'reject';
+  if (newStatus === 'archived') return 'archive';
+  return 'update';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -641,6 +665,16 @@ export const questionApprovalService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: question approval decision ────────────────────────────
+      await auditService.log({
+        action: mapQuestionTransitionAction(current.status, newStatus),
+        resourceType: 'questions',
+        resourceId: questionId,
+        oldValue: { status: current.status },
+        newValue: { status: newStatus },
+        metadata: { questionId, previousStatus: current.status, newStatus },
+      });
+
       return { success: true, data: null };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -736,6 +770,15 @@ export const questionApprovalService = {
           return { success: false, error: extractErrorMessage(restoreErr) };
         }
 
+        // ── Audit: bulk question approval (single event) ────────────────
+        await auditService.log({
+          action: mapQuestionTransitionAction(undefined, newStatus),
+          resourceType: 'questions',
+          resourceId: null,
+          newValue: { status: newStatus },
+          metadata: { questionIds, count: questionIds.length, newStatus },
+        });
+
         return { success: true, data: { updatedCount: questionIds.length } };
       }
 
@@ -765,6 +808,15 @@ export const questionApprovalService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: bulk question status change (single event) ────────────
+      await auditService.log({
+        action: mapQuestionTransitionAction(undefined, newStatus),
+        resourceType: 'questions',
+        resourceId: null,
+        newValue: { status: newStatus },
+        metadata: { questionIds, count: questionIds.length, newStatus },
+      });
 
       return { success: true, data: { updatedCount: questionIds.length } };
     } catch (err) {

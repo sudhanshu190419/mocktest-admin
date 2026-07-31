@@ -584,6 +584,41 @@ export const adminKeys = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
+  //  Audit Logs (admin Audit Log Management — super admin only)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  auditLogs: {
+    /** Root key for all audit log queries. */
+    all: () => [...adminKeys.all, 'auditLogs'] as const,
+
+    /** Key for every audit log list query (broad invalidation). */
+    lists: () => [...adminKeys.auditLogs.all(), 'list'] as const,
+
+    /** Key for a specific paginated + filtered audit log list. */
+    list: (
+      instituteId: string | null,
+      filters?: Record<string, unknown>,
+      sort?: Record<string, unknown>,
+      pagination?: Record<string, unknown>,
+    ) =>
+      [...adminKeys.auditLogs.lists(), instituteId, filters, sort, pagination] as const,
+
+    /** Key for every audit log detail query. */
+    details: () => [...adminKeys.auditLogs.all(), 'detail'] as const,
+
+    /** Key for a single audit log detail by logId. */
+    detail: (logId: string) =>
+      [...adminKeys.auditLogs.details(), logId] as const,
+
+    /** Key for dashboard summary counts. */
+    summary: () => [...adminKeys.auditLogs.all(), 'summary'] as const,
+
+    /** Key for a specific summary (keyed by instituteId). */
+    summaryList: (instituteId: string | null) =>
+      [...adminKeys.auditLogs.summary(), instituteId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   //  Commerce (admin Commerce Verification module)
   // ═════════════════════════════════════════════════════════════════════════
 

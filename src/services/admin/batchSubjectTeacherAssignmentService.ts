@@ -26,6 +26,7 @@
 import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -358,6 +359,13 @@ export const batchSubjectTeacherAssignmentService = {
         return { success: false, error: extractErrorMessage(insertErr) };
       }
 
+      // ── Audit: teacher assigned to batch subject ──────────────────────
+      await auditService.logAssign({
+        resourceType: 'batch_subject_teachers',
+        resourceId: null,
+        metadata: { batchSubjectId, teacherId },
+      });
+
       return {
         success: true,
         data: { assigned: true, existing: false },
@@ -396,6 +404,13 @@ export const batchSubjectTeacherAssignmentService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: teacher unassigned from batch subject ──────────────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_teachers',
+        resourceId: null,
+        metadata: { batchSubjectId, teacherId },
+      });
 
       return { success: true };
     } catch (err) {
@@ -460,6 +475,13 @@ export const batchSubjectTeacherAssignmentService = {
         }
         return { success: false, error: extractErrorMessage(insertErr) };
       }
+
+      // ── Audit: teachers assigned to batch subject (single bulk event) ──
+      await auditService.logAssign({
+        resourceType: 'batch_subject_teachers',
+        resourceId: null,
+        metadata: { batchSubjectId, teacherIds, count: teacherIds.length },
+      });
 
       return { success: true, data: { assigned: teacherIds.length } };
     } catch (err) {

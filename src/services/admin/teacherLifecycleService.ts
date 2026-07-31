@@ -40,6 +40,7 @@ import { extractErrorMessage } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { AccountStatus } from '@/types/auth';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -131,6 +132,27 @@ const SORT_FIELD_MAP: Record<string, string> = {
 
 function mapSortField(sortBy?: TeacherListSortOptions['sortBy']): string {
   return SORT_FIELD_MAP[sortBy ?? 'createdAt'] ?? 'created_at';
+}
+
+/**
+ * Maps a bulk lifecycle target status to the audit action to record.
+ *
+ * The single bulk operation records ONE audit event (not one per teacher)
+ * with the full profile ID list in metadata.
+ */
+function mapBulkLifecycleAction(
+  newStatus: AccountStatus,
+): import('@/types/audit').AuditAction {
+  switch (newStatus) {
+    case 'suspended':
+      return 'suspend';
+    case 'rejected':
+      return 'reject';
+    case 'approved':
+      return 'reactivate';
+    default:
+      return 'update';
+  }
 }
 
 /** Maps a raw Supabase row (profiles JOIN teacher_details) to TeacherListItem. */
@@ -462,27 +484,67 @@ export const teacherLifecycleService = {
 
   /** Approve a pending teacher (pending → approved). */
   async approve(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'approved');
+    const result = await this.updateStatus(profileId, 'approved');
+    if (result.success) {
+      await auditService.logApprove({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'teacher', newStatus: 'approved', previousStatus: 'pending' },
+      });
+    }
+    return result;
   },
 
   /** Reject a pending teacher (pending → rejected). */
   async reject(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'rejected');
+    const result = await this.updateStatus(profileId, 'rejected');
+    if (result.success) {
+      await auditService.logReject({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'teacher', newStatus: 'rejected', previousStatus: 'pending' },
+      });
+    }
+    return result;
   },
 
   /** Suspend an active teacher (approved → suspended). */
   async suspend(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'suspended');
+    const result = await this.updateStatus(profileId, 'suspended');
+    if (result.success) {
+      await auditService.logSuspend({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'teacher', newStatus: 'suspended' },
+      });
+    }
+    return result;
   },
 
   /** Activate a suspended or inactive teacher (suspended/inactive → approved). */
   async activate(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'approved');
+    const result = await this.updateStatus(profileId, 'approved');
+    if (result.success) {
+      await auditService.logReactivate({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'teacher', newStatus: 'approved', previousStatus: 'suspended/inactive' },
+      });
+    }
+    return result;
   },
 
   /** Deactivate an active teacher (approved → inactive). */
   async deactivate(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'inactive');
+    const result = await this.updateStatus(profileId, 'inactive');
+    if (result.success) {
+      await auditService.logUpdate({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'teacher', newStatus: 'inactive', previousStatus: 'approved' },
+      });
+    }
+    return result;
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -513,6 +575,15 @@ export const teacherLifecycleService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: bulk teacher status change (single event) ──────────────
+      await auditService.log({
+        action: mapBulkLifecycleAction(newStatus),
+        resourceType: 'profiles',
+        resourceId: null,
+        newValue: { accountStatus: newStatus },
+        metadata: { role: 'teacher', profileIds, count: profileIds.length, newStatus },
+      });
 
       // Return the count of input IDs optimistically — Supabase update()
       // does not reliably return matched row counts in the v2 client.

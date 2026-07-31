@@ -27,6 +27,7 @@
 import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -387,6 +388,13 @@ export const batchSubjectMockTestService = {
             }
           }
 
+          // ── Audit: mock tests assigned (single bulk event) ────────────
+          await auditService.logAssign({
+            resourceType: 'batch_subject_mock_tests',
+            resourceId: null,
+            metadata: { batchSubjectId, testIds, assigned, skipped },
+          });
+
           return {
             success: true,
             data: { assigned, skipped },
@@ -396,6 +404,13 @@ export const batchSubjectMockTestService = {
 
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: mock tests assigned (single bulk event) ────────────────
+      await auditService.logAssign({
+        resourceType: 'batch_subject_mock_tests',
+        resourceId: null,
+        metadata: { batchSubjectId, testIds, assigned: testIds.length, skipped: 0 },
+      });
 
       return {
         success: true,
@@ -437,6 +452,13 @@ export const batchSubjectMockTestService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: mock test unassigned ───────────────────────────────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_mock_tests',
+        resourceId: null,
+        metadata: { batchSubjectId, assignmentId },
+      });
+
       return { success: true, data: null };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -477,6 +499,13 @@ export const batchSubjectMockTestService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: mock tests unassigned (single bulk event) ──────────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_mock_tests',
+        resourceId: null,
+        metadata: { batchSubjectId, assignmentIds, count: assignmentIds.length },
+      });
 
       return { success: true, data: null };
     } catch (err) {

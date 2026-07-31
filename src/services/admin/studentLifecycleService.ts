@@ -40,6 +40,7 @@ import { extractErrorMessage } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { AccountStatus } from '@/types/auth';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -131,6 +132,27 @@ const SORT_FIELD_MAP: Record<string, string> = {
 
 function mapSortField(sortBy?: StudentListSortOptions['sortBy']): string {
   return SORT_FIELD_MAP[sortBy ?? 'createdAt'] ?? 'created_at';
+}
+
+/**
+ * Maps a bulk lifecycle target status to the audit action to record.
+ *
+ * The single bulk operation records ONE audit event (not one per student)
+ * with the full profile ID list in metadata.
+ */
+function mapBulkLifecycleAction(
+  newStatus: AccountStatus,
+): import('@/types/audit').AuditAction {
+  switch (newStatus) {
+    case 'suspended':
+      return 'suspend';
+    case 'rejected':
+      return 'reject';
+    case 'approved':
+      return 'reactivate';
+    default:
+      return 'update';
+  }
 }
 
 /** Maps a raw Supabase row (profiles JOIN student_details) to StudentListItem. */
@@ -458,27 +480,67 @@ export const studentLifecycleService = {
 
   /** Approve a pending student (pending → approved). */
   async approve(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'approved');
+    const result = await this.updateStatus(profileId, 'approved');
+    if (result.success) {
+      await auditService.logApprove({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'student', newStatus: 'approved', previousStatus: 'pending' },
+      });
+    }
+    return result;
   },
 
   /** Reject a pending student (pending → rejected). */
   async reject(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'rejected');
+    const result = await this.updateStatus(profileId, 'rejected');
+    if (result.success) {
+      await auditService.logReject({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'student', newStatus: 'rejected', previousStatus: 'pending' },
+      });
+    }
+    return result;
   },
 
   /** Suspend an active student (approved → suspended). */
   async suspend(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'suspended');
+    const result = await this.updateStatus(profileId, 'suspended');
+    if (result.success) {
+      await auditService.logSuspend({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'student', newStatus: 'suspended' },
+      });
+    }
+    return result;
   },
 
   /** Activate a suspended or inactive student (suspended/inactive → approved). */
   async activate(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'approved');
+    const result = await this.updateStatus(profileId, 'approved');
+    if (result.success) {
+      await auditService.logReactivate({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'student', newStatus: 'approved', previousStatus: 'suspended/inactive' },
+      });
+    }
+    return result;
   },
 
   /** Deactivate an active student (approved → inactive). */
   async deactivate(profileId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(profileId, 'inactive');
+    const result = await this.updateStatus(profileId, 'inactive');
+    if (result.success) {
+      await auditService.logUpdate({
+        resourceType: 'profiles',
+        resourceId: profileId,
+        metadata: { role: 'student', newStatus: 'inactive', previousStatus: 'approved' },
+      });
+    }
+    return result;
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -506,6 +568,15 @@ export const studentLifecycleService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: bulk student status change (single event) ──────────────
+      await auditService.log({
+        action: mapBulkLifecycleAction(newStatus),
+        resourceType: 'profiles',
+        resourceId: null,
+        newValue: { accountStatus: newStatus },
+        metadata: { role: 'student', profileIds, count: profileIds.length, newStatus },
+      });
 
       return { success: true, data: { updatedCount: profileIds.length } };
     } catch (err) {

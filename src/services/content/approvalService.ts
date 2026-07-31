@@ -38,6 +38,7 @@ import {
   rejectContent,
 } from './contentService';
 import { canApproveAcademicResources, approvalPermissionDenied } from '../admin/approvalGuard';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -448,6 +449,20 @@ export async function createApprovalRequest(
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: resource submitted for review ─────────────────────────
+      await auditService.log({
+        action: 'submit',
+        resourceType,
+        resourceId,
+        metadata: {
+          requestedBy,
+          teacherId: content.teacherId,
+          version: nextVersion,
+          previousStatus: content.status,
+          newStatus: 'pending_review',
+        },
+      });
+
       // ── Transition resource lifecycle to pending_review ───────────────
       // Delegates to contentService which handles state machine validation
       const lifecycleResult = await publishContent(resourceId);
@@ -622,6 +637,24 @@ export async function approveRequest(
       }
     }
 
+    // ── Audit: content approved ────────────────────────────────────────
+    await auditService.logApprove({
+      resourceType: request.resourceType,
+      resourceId: request.resourceId,
+      oldValue: { status: 'pending' },
+      newValue: { status: 'approved' },
+      metadata: {
+        approvalId,
+        teacherId: request.teacherId,
+        requestedBy: request.requestedBy,
+        reviewedBy,
+        remarks: remarks ?? null,
+        previousStatus: 'pending',
+        newStatus: 'approved',
+      },
+      reason: remarks ?? undefined,
+    });
+
     return { success: true, data: mapApprovalRequest(data) };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -724,6 +757,24 @@ export async function rejectRequest(
         };
       }
     }
+
+    // ── Audit: content rejected ────────────────────────────────────────
+    await auditService.logReject({
+      resourceType: request.resourceType,
+      resourceId: request.resourceId,
+      oldValue: { status: 'pending' },
+      newValue: { status: 'rejected' },
+      metadata: {
+        approvalId,
+        teacherId: request.teacherId,
+        requestedBy: request.requestedBy,
+        reviewedBy,
+        remarks: remarks.trim(),
+        previousStatus: 'pending',
+        newStatus: 'rejected',
+      },
+      reason: remarks.trim(),
+    });
 
     return { success: true, data: mapApprovalRequest(data) };
   } catch (err) {

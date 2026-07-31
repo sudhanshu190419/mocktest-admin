@@ -28,6 +28,7 @@
 import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
+import { auditService } from '@/services/audit/auditService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -460,6 +461,13 @@ export const batchSubjectContentService = {
         }
       }
 
+      // ── Audit: content assigned to batch subject ──────────────────────
+      await auditService.logAssign({
+        resourceType: 'batch_subject_contents',
+        resourceId: null,
+        metadata: { batchSubjectId, contentIds, assigned, sectionName: sectionName ?? null },
+      });
+
       return { success: true, data: { assigned } };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -495,6 +503,13 @@ export const batchSubjectContentService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: content unassigned from batch subject ──────────────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_contents',
+        resourceId: null,
+        metadata: { batchSubjectId, contentId },
+      });
 
       return { success: true, data: null };
     } catch (err) {
@@ -536,6 +551,13 @@ export const batchSubjectContentService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: content items unassigned (single bulk event) ───────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_contents',
+        resourceId: null,
+        metadata: { batchSubjectId, contentIds, count: contentIds.length },
+      });
 
       return { success: true, data: null };
     } catch (err) {
@@ -1066,6 +1088,13 @@ export const batchSubjectContentService = {
           return { success: false, error: extractErrorMessage(singleErr) };
         }
       }
+
+      // ── Audit: subjects assigned to batch (single bulk event) ─────────
+      await auditService.logAssign({
+        resourceType: 'batch_subjects',
+        resourceId: null,
+        metadata: { batchId, subjectIds, assigned },
+      });
 
       return { success: true, data: { assigned } };
     } catch (err) {

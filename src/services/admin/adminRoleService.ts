@@ -46,6 +46,7 @@ import type {
   GrantAdminRoleResult,
 } from '@/types/adminRoles';
 import { checkPermission } from './permissionService';
+import { auditService } from '@/services/audit/auditService';
 
 // ─── Edge Function helpers ───────────────────────────────────────────────────
 
@@ -373,9 +374,25 @@ export const adminRoleService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: admin role granted ────────────────────────────────────
+      const granted = mapDbAdminRole(data as DbAdminRole);
+      await auditService.logGrant(
+        {
+          resourceType: 'admin_roles',
+          resourceId: granted.adminRoleId,
+          metadata: {
+            profileId: input.profileId,
+            adminRole: input.adminRole,
+            grantedBy,
+            accessStatus: 'pending',
+          },
+        },
+        { strict: true },
+      );
+
       return {
         success: true,
-        data: { granted: true, existing: false, assignment: mapDbAdminRole(data as DbAdminRole) },
+        data: { granted: true, existing: false, assignment: granted },
       };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -413,6 +430,16 @@ export const adminRoleService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: admin role revoked ────────────────────────────────────
+      await auditService.logRevoke(
+        {
+          resourceType: 'admin_roles',
+          resourceId: adminRoleId,
+          metadata: { adminRoleId, accessStatus: 'revoked' },
+        },
+        { strict: true },
+      );
+
       return { success: true };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -449,6 +476,16 @@ export const adminRoleService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: admin role suspended ──────────────────────────────────
+      await auditService.logSuspend(
+        {
+          resourceType: 'admin_roles',
+          resourceId: adminRoleId,
+          metadata: { adminRoleId, accessStatus: 'suspended' },
+        },
+        { strict: true },
+      );
 
       return { success: true };
     } catch (err) {
@@ -490,6 +527,16 @@ export const adminRoleService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: admin role reactivated ────────────────────────────────
+      await auditService.logReactivate(
+        {
+          resourceType: 'admin_roles',
+          resourceId: adminRoleId,
+          metadata: { adminRoleId, accessStatus: 'approved' },
+        },
+        { strict: true },
+      );
 
       return { success: true };
     } catch (err) {
@@ -602,6 +649,23 @@ export const adminRoleService = {
           error: result?.error ?? 'Failed to create admin account. Please try again.',
         };
       }
+
+      // ── Audit: admin account created (strict — security sensitive) ──
+      await auditService.logCreate(
+        {
+          resourceType: 'admin_roles',
+          resourceId: result.profileId,
+          metadata: {
+            name: input.name.trim(),
+            phone: input.phone.trim(),
+            email: input.email?.trim() ?? null,
+            adminRole: result.adminRole ?? input.adminRole,
+            accessStatus: result.accessStatus ?? 'approved',
+            grantedBy: undefined,
+          },
+        },
+        { strict: true },
+      );
 
       return {
         success: true,

@@ -49,6 +49,7 @@
 import { supabase } from '@/config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
+import { auditService } from '@/services/audit/auditService';
 import type {
   Recording,
   RecordingStatus,
@@ -287,6 +288,18 @@ export const recordingService = {
             // Admin can manually reassign later.
           }
         }
+
+        // ── Audit: live-class recording started ────────────────────────
+        await auditService.logCreate({
+          resourceType: 'recordings',
+          resourceId: recording.recording_id,
+          metadata: {
+            classId: input.classId,
+            batchSubjectIds,
+            title: input.title.trim(),
+            sourceType: 'live_class',
+          },
+        });
 
         return {
           success: true,
@@ -668,6 +681,14 @@ export const recordingService = {
         return { success: false, error: extractErrorMessage(dbError) };
       }
 
+      // ── Audit: recording soft-deleted ─────────────────────────────────
+      await auditService.logSoftDelete({
+        resourceType: 'recordings',
+        resourceId: recordingId,
+        newValue: { isDeleted: true, deletedAt: now },
+        metadata: { recordingId, title: getResult.success ? getResult.data?.title ?? null : null },
+      });
+
       // ── STEP 2: Delete from R2 (best-effort, non-blocking) ────────
       if (storagePath) {
         try {
@@ -1011,6 +1032,17 @@ export const recordingService = {
         // Non-critical — recording was created. Admin can assign later.
       }
 
+      // ── Audit: standalone recording uploaded + assigned ───────────────
+      await auditService.logCreate({
+        resourceType: 'recordings',
+        resourceId: recording.recording_id,
+        metadata: {
+          batchSubjectIds: input.batchSubjectIds,
+          title: input.title.trim(),
+          sourceType: 'uploaded',
+        },
+      });
+
       return {
         success: true,
         data: {
@@ -1096,6 +1128,17 @@ export const recordingService = {
         return { success: false, error: extractErrorMessage(insertError) };
       }
 
+      // ── Audit: recording assigned to batch subjects ───────────────────
+      await auditService.logAssign({
+        resourceType: 'batch_subject_recordings',
+        resourceId: input.recordingId,
+        metadata: {
+          recordingId: input.recordingId,
+          batchSubjectIds: assignmentRows.map((r) => r.batch_subject_id),
+          assigned: assignmentRows.length,
+        },
+      });
+
       return {
         success: true,
         data: { assigned: assignmentRows.length },
@@ -1133,6 +1176,13 @@ export const recordingService = {
       if (deleteError) {
         return { success: false, error: extractErrorMessage(deleteError) };
       }
+
+      // ── Audit: recording unassigned from batch subject ────────────────
+      await auditService.logUnassign({
+        resourceType: 'batch_subject_recordings',
+        resourceId: recordingId,
+        metadata: { recordingId, batchSubjectId },
+      });
 
       return { success: true };
     } catch (err) {
