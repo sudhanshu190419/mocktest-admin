@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   useQuestionApprovalDetail,
+  useQuestionApprovalList,
   useApproveQuestion,
   useRejectQuestion,
   usePublishQuestion,
@@ -12,6 +13,7 @@ import {
 } from '@/hooks/admin/useQuestionApproval';
 import { useAuth } from '@/context/AuthContext';
 import { getSignedImageUrlMap } from '@/services/storage/questionImageService';
+import { ReviewNavigation } from '@/components/admin/ReviewNavigation';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -278,6 +280,17 @@ export default function QuestionReviewPage() {
 
   const { data: question, isLoading, isError, error, refetch } = useQuestionApprovalDetail(questionId);
 
+  // ── Pending queue for Prev/Next navigation ───────────────────────────
+  const { data: pendingQueueData, isLoading: pendingQueueLoading } = useQuestionApprovalList(
+    { status: 'pending_approval' },
+    { sortBy: 'createdAt', sortDirection: 'desc' },
+    { page: 1, pageSize: 200 },
+  );
+  const pendingQueue = (pendingQueueData?.data ?? []).map((q) => ({
+    id: q.questionId,
+    label: q.questionText,
+  }));
+
   // ── Signed URL State ─────────────────────────────────────────────────
   const [imageUrlMap, setImageUrlMap] = useState<Map<string, string>>(new Map());
 
@@ -526,6 +539,17 @@ export default function QuestionReviewPage() {
             </Link>
           </div>
         }
+      />
+
+      {/* ════════════════════════════════════════════════════════════════
+          Pending Queue Navigation (Previous / Next)
+         ════════════════════════════════════════════════════════════════ */}
+      <ReviewNavigation
+        items={pendingQueue}
+        currentId={questionId}
+        hrefFor={(id) => `/admin/questions/${id}`}
+        itemLabel="pending question"
+        loading={pendingQueueLoading}
       />
 
       {/* ════════════════════════════════════════════════════════════════

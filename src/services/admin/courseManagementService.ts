@@ -50,6 +50,7 @@ import { supabase } from '@/config/supabase';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
+import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -914,6 +915,11 @@ export const courseManagementService = {
     newStatus: CourseStatus,
   ): Promise<ApiResponse<null>> {
     try {
+      // ── Authorization: only super/academic admins may publish ──────────
+      if (!(await canApproveAcademicResources())) {
+        return approvalPermissionDenied();
+      }
+
       validateUUID(courseId, 'courseId');
 
       // 1. Fetch current course to validate transition

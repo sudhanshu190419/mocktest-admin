@@ -11,7 +11,7 @@
  *
  * 1. **Profile is the source of truth for roles.**
  *    The `profiles.role` column in PostgreSQL is authoritative. The auth
- *    user's `raw_user_meta_data.role` is NOT used—the service always
+ *    user's `raw_user_meta_data.role` is NOT usedï¿½the service always
  *    queries `public.profiles` after authentication.
  *
  * 2. **Profile creation is owned by the database.**
@@ -32,6 +32,7 @@
 import { supabase } from '../config/supabase';
 import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { getTokenExpirySummary } from '../utils/supabase';
+import type { AdminRoleAssignment, DbAdminRole } from '../types/adminRoles';
 import type {
   AuthResponse,
   DbProfile,
@@ -123,6 +124,43 @@ async function fetchProfile(userId: string): Promise<DbProfile | null> {
 
 // ---- Profile Mapping --------------------------------------------------------
 
+/**
+ * Fetches admin role assignments for a profile.
+ *
+ * Only called for admins (profiles.role = 'admin'). Returns an empty array
+ * when the query fails so admin login is never blocked by a roles fetch
+ * error â€” the user still authenticates; they simply have no roles attached.
+ */
+async function fetchAdminRoles(profileId: string): Promise<AdminRoleAssignment[]> {
+  try {
+    const { data, error } = await supabase
+      .from('admin_roles')
+      .select('*')
+      .eq('profile_id', profileId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('[Auth] fetchAdminRoles failed:', error.message);
+      return [];
+    }
+
+    return ((data as DbAdminRole[] | null) ?? []).map((row) => ({
+      adminRoleId: row.admin_role_id,
+      profileId: row.profile_id,
+      instituteId: row.institute_id,
+      adminRole: row.admin_role,
+      accessStatus: row.access_status,
+      grantedBy: row.granted_by,
+      accessGrantedAt: row.access_granted_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (err) {
+    console.warn('[Auth] fetchAdminRoles unexpected error:', err);
+    return [];
+  }
+}
+
 function buildUserProfile(
   authUser: {
     id: string;
@@ -136,6 +174,7 @@ function buildUserProfile(
     };
   },
   profile?: DbProfile | null,
+  adminRoles?: AdminRoleAssignment[],
 ): UserProfile {
   return {
     id: authUser.id,
@@ -149,6 +188,7 @@ function buildUserProfile(
     phone: profile?.phone ?? authUser.phone ?? null,
     avatarUrl: profile?.avatar_url ?? null,
     createdAt: authUser.created_at ?? new Date().toISOString(),
+    adminRoles,
   };
 }
 
@@ -244,7 +284,11 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<Use
       // DB query failed -- fall through with metadata-derived profile.
     }
 
-    const userProfile = buildUserProfile(data.user, profile);
+    // Domain 18: attach admin role assignments for admin users
+    const adminRoles =
+      profile?.role === 'admin' ? await fetchAdminRoles(data.user.id) : undefined;
+
+    const userProfile = buildUserProfile(data.user, profile, adminRoles);
 
     return { success: true, data: userProfile };
   } catch (err) {
@@ -302,7 +346,11 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
       // DB query failed -- fall through with metadata-derived profile.
     }
 
-    const userProfile = buildUserProfile(authData.user, profile);
+    // Domain 18: attach admin role assignments for admin users
+    const adminRoles =
+      profile?.role === 'admin' ? await fetchAdminRoles(authData.user.id) : undefined;
+
+    const userProfile = buildUserProfile(authData.user, profile, adminRoles);
 
     return { success: true, data: userProfile };
   } catch (err) {
@@ -345,12 +393,12 @@ export async function signOut(): Promise<AuthResponse<null>> {
 }
 
 export async function getCurrentUser(): Promise<AuthResponse<UserProfile>> {
-  console.log('[LiveKit Debug] getCurrentUser — fetching authenticated user from server...');
+  console.log('[LiveKit Debug] getCurrentUser ï¿½ fetching authenticated user from server...');
   try {
     const { data, error } = await supabase.auth.getUser();
 
     if (error) {
-      console.error('[LiveKit Debug] getCurrentUser — getUser() failed:', {
+      console.error('[LiveKit Debug] getCurrentUser ï¿½ getUser() failed:', {
         errorName: error.name,
         errorMessage: error.message,
         errorStatus: (error as any)?.status,
@@ -359,11 +407,11 @@ export async function getCurrentUser(): Promise<AuthResponse<UserProfile>> {
     }
 
     if (!data.user) {
-      console.warn('[LiveKit Debug] getCurrentUser — getUser() returned no user.');
+      console.warn('[LiveKit Debug] getCurrentUser ï¿½ getUser() returned no user.');
       return { success: false, error: 'No authenticated user found.' };
     }
 
-    console.log('[LiveKit Debug] getCurrentUser — user found:', {
+    console.log('[LiveKit Debug] getCurrentUser ï¿½ user found:', {
       userId: data.user.id,
       email: data.user.email,
       phone: data.user.phone,
@@ -377,22 +425,26 @@ export async function getCurrentUser(): Promise<AuthResponse<UserProfile>> {
       // DB query failed -- fall through with metadata-derived profile.
     }
 
-    const userProfile = buildUserProfile(data.user, profile);
+    // Domain 18: attach admin role assignments for admin users
+    const adminRoles =
+      profile?.role === 'admin' ? await fetchAdminRoles(data.user.id) : undefined;
+
+    const userProfile = buildUserProfile(data.user, profile, adminRoles);
 
     return { success: true, data: userProfile };
   } catch (err) {
-    console.error('[LiveKit Debug] getCurrentUser — unexpected error:', err);
+    console.error('[LiveKit Debug] getCurrentUser ï¿½ unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
 export async function getSession(): Promise<AuthResponse<SessionData>> {
-  console.log('[LiveKit Debug] getSession — retrieving session from local cache...');
+  console.log('[LiveKit Debug] getSession ï¿½ retrieving session from local cache...');
   try {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) {
-      console.error('[LiveKit Debug] getSession — getSession() failed:', {
+      console.error('[LiveKit Debug] getSession ï¿½ getSession() failed:', {
         errorName: error.name,
         errorMessage: error.message,
       });
@@ -402,7 +454,7 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
     const session = data.session;
 
     if (!session) {
-      console.warn('[LiveKit Debug] getSession — no active session found.');
+      console.warn('[LiveKit Debug] getSession ï¿½ no active session found.');
       return {
         success: true,
         data: {
@@ -414,7 +466,7 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
       };
     }
 
-    console.log('[LiveKit Debug] getSession — active session found:', {
+    console.log('[LiveKit Debug] getSession ï¿½ active session found:', {
       userId: session.user.id,
       email: session.user.email,
       phone: session.user.phone,
@@ -432,7 +484,11 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
       // DB query failed -- fall through with metadata-derived profile.
     }
 
-    const userProfile = buildUserProfile(session.user, profile);
+    // Domain 18: attach admin role assignments for admin users
+    const adminRoles =
+      profile?.role === 'admin' ? await fetchAdminRoles(session.user.id) : undefined;
+
+    const userProfile = buildUserProfile(session.user, profile, adminRoles);
 
     return {
       success: true,
@@ -444,29 +500,29 @@ export async function getSession(): Promise<AuthResponse<SessionData>> {
       },
     };
   } catch (err) {
-    console.error('[LiveKit Debug] getSession — unexpected error:', err);
+    console.error('[LiveKit Debug] getSession ï¿½ unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
 export async function refreshSession(): Promise<AuthResponse<SessionData>> {
-  console.log('[LiveKit Debug] refreshSession — BEFORE calling supabase.auth.refreshSession()');
+  console.log('[LiveKit Debug] refreshSession ï¿½ BEFORE calling supabase.auth.refreshSession()');
 
   const beforeSession = await supabase.auth.getSession();
   if (beforeSession.data?.session?.access_token) {
-    console.log('[LiveKit Debug] refreshSession — session BEFORE refresh:', {
+    console.log('[LiveKit Debug] refreshSession ï¿½ session BEFORE refresh:', {
       userId: beforeSession.data.session.user.id,
       tokenExpiry: getTokenExpirySummary(beforeSession.data.session.access_token),
     });
   } else {
-    console.warn('[LiveKit Debug] refreshSession — no session to refresh.');
+    console.warn('[LiveKit Debug] refreshSession ï¿½ no session to refresh.');
   }
 
   try {
     const { data, error } = await supabase.auth.refreshSession();
 
     if (error) {
-      console.error('[LiveKit Debug] refreshSession — refreshSession() FAILED:', {
+      console.error('[LiveKit Debug] refreshSession ï¿½ refreshSession() FAILED:', {
         errorName: error.name,
         errorMessage: error.message,
         errorStatus: (error as any)?.status,
@@ -477,14 +533,14 @@ export async function refreshSession(): Promise<AuthResponse<SessionData>> {
     const session = data.session;
 
     if (!session) {
-      console.error('[LiveKit Debug] refreshSession — refresh succeeded but returned no session.');
+      console.error('[LiveKit Debug] refreshSession ï¿½ refresh succeeded but returned no session.');
       return {
         success: false,
         error: 'Session refresh failed. Please sign in again.',
       };
     }
 
-    console.log('[LiveKit Debug] refreshSession — refresh SUCCEEDED:', {
+    console.log('[LiveKit Debug] refreshSession ï¿½ refresh SUCCEEDED:', {
       userId: session.user.id,
       newTokenExpiry: getTokenExpirySummary(session.access_token),
       hasRefreshToken: !!session.refresh_token,
@@ -498,7 +554,11 @@ export async function refreshSession(): Promise<AuthResponse<SessionData>> {
       // DB query failed -- fall through with metadata-derived profile.
     }
 
-    const userProfile = buildUserProfile(session.user, profile);
+    // Domain 18: attach admin role assignments for admin users
+    const adminRoles =
+      profile?.role === 'admin' ? await fetchAdminRoles(session.user.id) : undefined;
+
+    const userProfile = buildUserProfile(session.user, profile, adminRoles);
 
     return {
       success: true,
@@ -510,7 +570,7 @@ export async function refreshSession(): Promise<AuthResponse<SessionData>> {
       },
     };
   } catch (err) {
-    console.error('[LiveKit Debug] refreshSession — unexpected error:', err);
+    console.error('[LiveKit Debug] refreshSession ï¿½ unexpected error:', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }

@@ -555,6 +555,35 @@ export const adminKeys = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
+  //  Approval Workspace (admin centralized review hub)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  approvalWorkspace: {
+    /** Root key for all approval workspace queries. */
+    all: () => [...adminKeys.all, 'approvalWorkspace'] as const,
+
+    /** Key for the aggregated workspace statistics (keyed by instituteId). */
+    stats: (instituteId?: string | null) =>
+      [...adminKeys.approvalWorkspace.all(), 'stats', instituteId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Admin Management (admin Admin Management module — super admin only)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  adminManagement: {
+    /** Root key for all admin management queries. */
+    all: () => [...adminKeys.all, 'adminManagement'] as const,
+
+    /** Key for every admin users list query (broad invalidation). */
+    lists: () => [...adminKeys.adminManagement.all(), 'list'] as const,
+
+    /** Key for the admin users list (keyed by instituteId + search). */
+    list: (instituteId: string | null, search?: string) =>
+      [...adminKeys.adminManagement.lists(), instituteId, search] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   //  Commerce (admin Commerce Verification module)
   // ═════════════════════════════════════════════════════════════════════════
 

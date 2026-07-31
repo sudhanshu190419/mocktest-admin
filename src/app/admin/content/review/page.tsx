@@ -86,7 +86,13 @@ export default function AdminContentReviewPage() {
             {TYPE_ICONS[c.contentType] ?? '📄'}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{c.title}</p>
+            <Link
+              href={`/admin/content/review/${c.contentId}`}
+              className="truncate text-sm font-medium text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+              title="Open review panel"
+            >
+              {c.title}
+            </Link>
             <p className="text-[11px] text-gray-500 capitalize">{c.contentType} · {formatFileSize(c.fileSizeBytes)}</p>
           </div>
         </div>
@@ -132,6 +138,11 @@ export default function AdminContentReviewPage() {
           {/* Pending Review actions */}
           {c.status === 'pending_review' && (
             <>
+              <Link
+                href={`/admin/content/review/${c.contentId}`}
+                className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50">
+                Review
+              </Link>
               <button type="button"
                 onClick={(e) => { e.stopPropagation(); approveContent(c.contentId); }}
                 className="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">

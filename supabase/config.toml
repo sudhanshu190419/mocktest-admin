@@ -8,3 +8,10 @@
 
 [functions.razorpay-webhook]
 verify_jwt = false
+
+# Admin Identity — secure admin account creation (super admin only).
+# verify_jwt = true (default) so the runtime requires a valid Supabase JWT;
+# the function independently verifies the caller is an approved super admin
+# using the service role (never trusting client-supplied role values).
+[functions.admin-identity-create]
+verify_jwt = true

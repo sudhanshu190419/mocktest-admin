@@ -5,6 +5,7 @@ import { supabase } from '@/config/supabase';
 import { MOCK_TEACHER, EMPTY_TEACHER } from '@/data/mockData';
 import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacherIdentity';
 import type { TeacherProfile } from '@/data/mockData';
+import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
 
 interface AuthContextType {
   session: Session | null;
@@ -85,6 +86,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return String(error) || 'An unexpected authentication error occurred.';
   };
 
+  /**
+   * Fetches admin role assignments for a profile (Domain 18).
+   *
+   * Only called for admins (profiles.role = 'admin'). Returns an empty
+   * array when the query fails so admin login is never blocked by a roles
+   * fetch error — the user still authenticates; they simply have no roles
+   * attached (permission fallback grants full access in that case).
+   */
+  const fetchAdminRoles = async (profileId: string): Promise<AdminRoleAssignment[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('admin_roles')
+        .select('*')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('[Auth] fetchAdminRoles failed:', error.message);
+        return [];
+      }
+
+      return ((data as DbAdminRole[] | null) ?? []).map((row) => ({
+        adminRoleId: row.admin_role_id,
+        profileId: row.profile_id,
+        instituteId: row.institute_id,
+        adminRole: row.admin_role,
+        accessStatus: row.access_status,
+        grantedBy: row.granted_by,
+        accessGrantedAt: row.access_granted_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    } catch (err) {
+      console.warn('[Auth] fetchAdminRoles unexpected error:', err);
+      return [];
+    }
+  };
+
   const loadTeacherProfileDetails = async (userId: string) => {
     try {
       // 1. Fetch public profile
@@ -97,6 +136,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (profileData) {
         setInstituteId(profileData.institute_id ?? null);
       }
+
+      // 1b. Load admin roles for admin users (Domain 18). Loaded before the
+      // profile is set so the first render already carries them.
+      const adminRoles =
+        profileData && profileData.role === 'admin'
+          ? await fetchAdminRoles(userId)
+          : undefined;
 
       // Clear any stale identity cache before re-resolving
       clearTeacherIdentityCache();
@@ -124,6 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           accountStatus: profileData?.account_status || 'approved',
           name: profileData?.name || baseProfile.name,
           email: profileData?.email || baseProfile.email,
+          adminRoles,
         });
 
         // Cache identity with profileId only (no teacher_details record yet)
@@ -145,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           department: teacherData.department || baseProfile.department,
           designation: teacherData.designation || baseProfile.designation,
           bio: teacherData.bio || baseProfile.bio,
+          adminRoles,
         });
 
         // Cache the full teacher identity for all downstream services

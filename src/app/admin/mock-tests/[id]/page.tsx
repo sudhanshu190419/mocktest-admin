@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   useMockTestDetail,
+  useMockTestList,
   useMockTestQuestions,
   usePublishMockTest,
   useArchiveMockTest,
@@ -12,6 +13,7 @@ import {
   useDuplicateMockTest,
   useDeleteMockTest,
 } from '@/hooks/admin/useMockTestManagement';
+import { ReviewNavigation } from '@/components/admin/ReviewNavigation';
 import {
   useMockTestReleaseStatus,
   useReleaseMockResults,
@@ -213,6 +215,17 @@ export default function MockTestDetailPage() {
 
   const { data: test, isLoading, isError, error, refetch } = useMockTestDetail(mockTestId);
   const { data: questions, isLoading: questionsLoading } = useMockTestQuestions(mockTestId);
+
+  // ── Pending queue for Prev/Next navigation ───────────────────────────
+  const { data: pendingQueueData, isLoading: pendingQueueLoading } = useMockTestList(
+    { status: 'pending_approval' },
+    { sortBy: 'createdAt', sortDirection: 'desc' },
+    { page: 1, pageSize: 200 },
+  );
+  const pendingQueue = (pendingQueueData?.data ?? []).map((t) => ({
+    id: t.testId,
+    label: t.title,
+  }));
 
   // ── Confirmation & Feedback State ────────────────────────────────────
   const [confirmAction, setConfirmAction] = useState<{
@@ -476,6 +489,17 @@ export default function MockTestDetailPage() {
             ← Back to List
           </Link>
         }
+      />
+
+      {/* ════════════════════════════════════════════════════════════════
+          Pending Queue Navigation (Previous / Next)
+         ════════════════════════════════════════════════════════════════ */}
+      <ReviewNavigation
+        items={pendingQueue}
+        currentId={mockTestId}
+        hrefFor={(id) => `/admin/mock-tests/${id}`}
+        itemLabel="pending mock test"
+        loading={pendingQueueLoading}
       />
 
       {/* ════════════════════════════════════════════════════════════════

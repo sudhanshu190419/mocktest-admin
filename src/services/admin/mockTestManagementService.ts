@@ -50,6 +50,7 @@ import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supa
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { MockTestStatus } from '@/types/mockTest';
+import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -497,6 +498,11 @@ export const mockTestManagementService = {
     newStatus: MockTestStatus,
   ): Promise<ApiResponse<null>> {
     try {
+      // ── Authorization: only super/academic admins may publish ──────────
+      if (!(await canApproveAcademicResources())) {
+        return approvalPermissionDenied();
+      }
+
       validateUUID(testId, 'testId');
 
       // 1. Fetch current test to validate transition

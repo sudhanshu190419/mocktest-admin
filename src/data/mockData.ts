@@ -1,3 +1,5 @@
+import type { AdminRoleAssignment } from '@/types/adminRoles';
+
 export interface TeacherProfile {
   id: string;
   name: string;
@@ -5,6 +7,13 @@ export interface TeacherProfile {
   phone: string;
   role: 'teacher' | 'admin' | 'student' | 'user';
   accountStatus: 'pending' | 'approved' | 'rejected' | 'suspended' | 'inactive';
+  /**
+   * Admin role assignments (Domain 18).
+   *
+   * Populated ONLY for admins (profiles.role = 'admin') during profile
+   * loading in AuthContext. Teachers/students leave this undefined.
+   */
+  adminRoles?: AdminRoleAssignment[];
   department: string;
   designation: string;
   rating: number;

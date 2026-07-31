@@ -37,6 +37,7 @@ import {
   approveContent,
   rejectContent,
 } from './contentService';
+import { canApproveAcademicResources, approvalPermissionDenied } from '../admin/approvalGuard';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -492,6 +493,11 @@ export async function assignReviewer(
   reviewerId: string,
 ): Promise<ApiResponse<ApprovalRequest>> {
   try {
+    // ── Authorization: only super/academic admins may assign reviewers ────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
     validateUUID(approvalId, 'approvalId');
     validateUUID(reviewerId, 'reviewerId');
 
@@ -560,6 +566,11 @@ export async function approveRequest(
   const { approvalId, reviewedBy, remarks } = params;
 
   try {
+    // ── Authorization: only super/academic admins may approve ────────────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
     validateUUID(approvalId, 'approvalId');
     validateUUID(reviewedBy, 'reviewedBy');
 
@@ -650,6 +661,11 @@ export async function rejectRequest(
   const { approvalId, reviewedBy, remarks } = params;
 
   try {
+    // ── Authorization: only super/academic admins may reject ─────────────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
     validateUUID(approvalId, 'approvalId');
     validateUUID(reviewedBy, 'reviewedBy');
 
@@ -739,6 +755,11 @@ export async function reopenRequest(
   approvalId: string,
 ): Promise<ApiResponse<ApprovalRequest>> {
   try {
+    // ── Authorization: only super/academic admins may reopen ─────────────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
     validateUUID(approvalId, 'approvalId');
 
     // ── Fetch existing request ─────────────────────────────────────────

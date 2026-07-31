@@ -46,6 +46,7 @@ import { extractErrorMessage } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { QuestionStatus } from '@/types/mockTest';
+import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -589,6 +590,11 @@ export const questionApprovalService = {
     approvedBy?: string | null,
   ): Promise<ApiResponse<null>> {
     try {
+      // ── Authorization: only super/academic admins may approve ──────────
+      if (!(await canApproveAcademicResources())) {
+        return approvalPermissionDenied();
+      }
+
       // 1. Fetch current question to validate transition
       const { data: current, error: fetchErr } = await supabase
         .from('questions')
@@ -694,6 +700,11 @@ export const questionApprovalService = {
     approvedBy?: string | null,
   ): Promise<ApiResponse<{ updatedCount: number }>> {
     try {
+      // ── Authorization: only super/academic admins may approve ──────────
+      if (!(await canApproveAcademicResources())) {
+        return approvalPermissionDenied();
+      }
+
       if (questionIds.length === 0) {
         return { success: true, data: { updatedCount: 0 } };
       }

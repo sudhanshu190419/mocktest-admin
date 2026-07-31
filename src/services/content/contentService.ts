@@ -35,6 +35,7 @@ import {
   replaceFile as storageReplaceFile,
   uploadThumbnail as storageUploadThumbnail,
 } from '../storage/storageService';
+import { canApproveAcademicResources, approvalPermissionDenied } from '../admin/approvalGuard';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -839,6 +840,11 @@ export async function publishContent(contentId: string): Promise<ApiResponse<Con
  * @param contentId - The UUID of the content to approve.
  */
 export async function approveContent(contentId: string): Promise<ApiResponse<Content>> {
+  // ── Authorization: only super/academic admins may approve content ───────
+  if (!(await canApproveAcademicResources())) {
+    return approvalPermissionDenied();
+  }
+
   // Delegates to transitionStatus which handles published_at auto-setting
   return transitionStatus(contentId, 'approved');
 }
@@ -858,6 +864,11 @@ export async function approveContent(contentId: string): Promise<ApiResponse<Con
  * @param contentId - The UUID of the content to reject.
  */
 export async function rejectContent(contentId: string): Promise<ApiResponse<Content>> {
+  // ── Authorization: only super/academic admins may reject content ────────
+  if (!(await canApproveAcademicResources())) {
+    return approvalPermissionDenied();
+  }
+
   return transitionStatus(contentId, 'rejected');
 }
 

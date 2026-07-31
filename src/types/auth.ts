@@ -9,6 +9,8 @@
  * - The `DbProfile` type mirrors the `profiles` table schema in PostgreSQL.
  */
 
+import type { AdminRoleAssignment } from './adminRoles';
+
 // ─── Auth Response ───────────────────────────────────────────────────────────
 
 /**
@@ -146,6 +148,18 @@ export interface UserProfile {
 
   /** ISO-8601 timestamp of when the user was created. */
   createdAt: string;
+
+  /**
+   * Admin role assignments (Domain 18).
+   *
+   * Populated ONLY for admins (profiles.role = 'admin') during login.
+   * Teachers and students always receive `undefined` — this field is
+   * intentionally optional so existing consumers are unaffected.
+   *
+   * @see src/services/admin/adminRoleService.ts
+   * @see src/services/admin/permissionService.ts
+   */
+  adminRoles?: AdminRoleAssignment[];
 }
 
 // ─── Session Data ───────────────────────────────────────────────────────────
