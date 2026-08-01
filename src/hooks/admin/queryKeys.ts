@@ -619,6 +619,21 @@ export const adminKeys = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
+  //  Trusted Devices (admin Trusted Device Management — super admin only)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  trustedDevices: {
+    /** Root key for all trusted device queries. */
+    all: () => [...adminKeys.all, 'trustedDevices'] as const,
+
+    /** Key for the pending approval queue (broad invalidation). */
+    pending: () => [...adminKeys.trustedDevices.all(), 'pending'] as const,
+
+    /** Key for the approved devices list. */
+    approved: () => [...adminKeys.trustedDevices.all(), 'approved'] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   //  Commerce (admin Commerce Verification module)
   // ═════════════════════════════════════════════════════════════════════════
 

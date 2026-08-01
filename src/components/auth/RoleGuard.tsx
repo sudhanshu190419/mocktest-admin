@@ -2,8 +2,9 @@
 
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getPostLoginDestination } from '@/lib/auth/routing';
+import { getDeviceStatusRoute } from '@/types/trustedDevice';
 import { CircleNotch } from '@phosphor-icons/react';
 
 /**
@@ -79,19 +80,30 @@ export default function RoleGuard({
   allowedAccountStatuses,
   children,
 }: RoleGuardProps) {
-  const { teacherProfile, loading } = useAuth();
+  const { teacherProfile, loading, deviceStatus } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [redirected, setRedirected] = React.useState(false);
 
   React.useEffect(() => {
-    if (redirected) return;
+    // TEMP DEBUG: redirect-decision logging (remove after diagnosis)
+    console.log('[TD-roleGuard] effect run', { loading, pathname, deviceStatus, redirected });
+    if (redirected) {
+      console.log('[TD-roleGuard] effect BAILED — redirected latch is TRUE and never reset', { pathname, deviceStatus });
+      return;
+    }
 
     // ── 1. Wait for auth to initialise ──────────────────────────────────
-    if (loading) return;
+    if (loading) {
+      console.log('[TD-roleGuard] holding — auth loading');
+      return;
+    }
 
     // ── 2. Not authenticated → redirect to root ─────────────────────────
     if (!teacherProfile) {
+      console.log('[TD-roleGuard] REDIRECT → / (not authenticated)');
       setRedirected(true);
+      console.log('[TD-roleGuard] redirected latch SET (not authenticated)');
       router.replace('/');
       return;
     }
@@ -102,9 +114,33 @@ export default function RoleGuard({
     if (!allowedRoles.includes(role)) {
       // Role not allowed — redirect to the correct destination
       const destination = getPostLoginDestination(role, accountStatus);
+      console.log('[TD-roleGuard] REDIRECT →', destination, '(role not allowed:', role + ')');
       setRedirected(true);
+      console.log('[TD-roleGuard] redirected latch SET (role not allowed)');
       router.replace(destination);
       return;
+    }
+
+    // ── 3b. Trusted Device gating (admins only — teacher/student
+    // behavior is unchanged because their deviceStatus is always
+    // 'bypass'). While the challenge is resolving ('checking'), hold
+    // the spinner instead of flashing protected content. When the
+    // device is blocked, redirect to the matching device screen.
+    if (role === 'admin') {
+      const deviceRouteForLog = getDeviceStatusRoute(deviceStatus);
+      console.log('[TD-roleGuard] admin device gate', { deviceStatus, deviceRouteForLog, pathname });
+      if (deviceStatus === 'checking') {
+        console.log('[TD-roleGuard] HOLDING SPINNER — deviceStatus stuck at "checking"');
+        return;
+      }
+      const deviceRoute = getDeviceStatusRoute(deviceStatus);
+      if (deviceRoute && pathname !== deviceRoute) {
+        console.log('[TD-roleGuard] REDIRECT →', deviceRoute, '(device blocked:', deviceStatus + ')');
+        setRedirected(true);
+        console.log('[TD-roleGuard] redirected latch SET (device blocked)');
+        router.replace(deviceRoute);
+        return;
+      }
     }
 
     // ── 4. Check account status (admins bypass this check) ──────────────
@@ -116,22 +152,48 @@ export default function RoleGuard({
     ) {
       // Account status not in the allowed list — redirect
       const destination = getPostLoginDestination(role, accountStatus);
+      console.log('[TD-roleGuard] REDIRECT →', destination, '(account status blocked:', accountStatus + ')');
       setRedirected(true);
+      console.log('[TD-roleGuard] redirected latch SET (account status blocked)');
       router.replace(destination);
       return;
     }
 
     // ── 5. All checks pass — children will be rendered ──────────────────
-  }, [teacherProfile, loading, allowedRoles, allowedAccountStatuses, router, redirected]);
+    console.log('[TD-roleGuard] ALL CHECKS PASS — rendering on', pathname);
+  }, [
+    teacherProfile,
+    loading,
+    allowedRoles,
+    allowedAccountStatuses,
+    deviceStatus,
+    pathname,
+    router,
+    redirected,
+  ]);
 
-  // ── Loading state ─────────────────────────────────────────────────────
-  if (loading || redirected) {
+  // ── Loading / device-checking state ───────────────────────────────────
+  // A 'checking' device status means the trusted-device challenge is still
+  // resolving — hold the spinner instead of flashing protected content.
+  const deviceChecking = teacherProfile?.role === 'admin' && deviceStatus === 'checking';
+  if (loading || redirected || deviceChecking) {
+    console.log('[SPINNER]', {
+      component: 'RoleGuard',
+      pathname,
+      loading,
+      redirected,
+      deviceStatus,
+    });
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-navy-900 to-slate-900 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <CircleNotch size={28} className="animate-spin text-amber-400" />
           <p className="text-xs text-slate-400 font-mono">
-            {loading ? 'Verifying credentials...' : 'Redirecting...'}
+            {loading
+              ? 'Verifying credentials...'
+              : deviceChecking
+                ? 'Verifying device...'
+                : 'Redirecting...'}
           </p>
         </div>
       </div>
@@ -147,6 +209,14 @@ export default function RoleGuard({
 
   if (!allowedRoles.includes(role)) {
     return null;
+  }
+
+  // Blocked device — render nothing (the effect handles the redirect).
+  if (role === 'admin') {
+    const deviceRoute = getDeviceStatusRoute(deviceStatus);
+    if (deviceRoute && pathname !== deviceRoute) {
+      return null;
+    }
   }
 
   if (

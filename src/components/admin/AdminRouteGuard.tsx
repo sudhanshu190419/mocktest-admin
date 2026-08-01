@@ -6,6 +6,8 @@ import { CircleNotch } from '@phosphor-icons/react';
 import type { AdminPermission } from '@/types/adminRoles';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { getRequiredPermission } from '@/lib/admin/routePermissions';
+import { getDeviceStatusRoute } from '@/types/trustedDevice';
+import { useAuth } from '@/context/AuthContext';
 
 /**
  * Props for the AdminRouteGuard component.
@@ -81,28 +83,78 @@ export function AdminRouteGuard({
   const pathname = usePathname();
   const router = useRouter();
   const { can } = usePermissions();
+  const { deviceStatus, loading } = useAuth();
 
   // Resolve the required permission from the matrix when not provided
   const requiredPermission = permission ?? getRequiredPermission(pathname);
 
   const denied = requiredPermission ? !can(requiredPermission) : false;
 
-  // Redirect on denial — but only once per guard instance
+  // Trusted Device gating (Phase 7D). While the challenge is resolving
+  // ('checking') hold the spinner. When the device is blocked, redirect to
+  // the matching device status screen. The device screens themselves are
+  // rendered (their pathname matches the device route).
+  const deviceRoute = getDeviceStatusRoute(deviceStatus);
+  const onDeviceScreen = deviceRoute !== null && pathname === deviceRoute;
+  const deviceBlocked = deviceRoute !== null && !onDeviceScreen;
+  const deviceChecking = deviceStatus === 'checking';
+
+  // TEMP DEBUG: device-gate + redirect-decision logging (remove after diagnosis)
+  console.log('[TD-adminGuard] device gate computed', {
+    deviceStatus,
+    deviceRoute,
+    onDeviceScreen,
+    deviceBlocked,
+    deviceChecking,
+    denied,
+    pathname,
+  });
+
+  // Redirect on denial or device block — but only once per guard instance
   const redirectingRef = useRef(false);
   useEffect(() => {
+    console.log('[TD-adminGuard] effect run', { denied, deviceBlocked, deviceRoute, pathname, alreadyRedirected: redirectingRef.current });
+    if (redirectingRef.current) {
+      console.log('[TD-adminGuard] effect BAILED — redirectingRef latch is TRUE and never reset', { pathname, deviceStatus });
+      return;
+    }
+    if (deviceBlocked) {
+      console.log('[TD-adminGuard] REDIRECT →', deviceRoute, '(device blocked:', deviceStatus + ')');
+      redirectingRef.current = true;
+      console.log('[TD-adminGuard] redirectingRef latch SET (device blocked)');
+      router.replace(deviceRoute!);
+      return;
+    }
     if (!denied || redirectingRef.current) return;
+    console.log('[TD-adminGuard] REDIRECT →', redirectTo, '(permission denied)');
     redirectingRef.current = true;
+    console.log('[TD-adminGuard] redirectingRef latch SET (permission denied)');
     router.replace(redirectTo);
-  }, [denied, redirectTo, router]);
+  }, [denied, deviceBlocked, deviceRoute, redirectTo, router]);
 
-  // Show a brief spinner while redirecting (avoid a flash of the protected page)
-  if (denied) {
+  // Show a brief spinner while the device challenge is in flight or while
+  // redirecting (avoid a flash of the protected page).
+  if (deviceChecking || deviceBlocked || denied) {
+    console.log('[SPINNER]', {
+      component: 'AdminRouteGuard',
+      pathname,
+      loading,
+      deviceStatus,
+      deviceChecking,
+      deviceBlocked,
+      denied,
+      onDeviceScreen,
+    });
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 dark:bg-gray-950/50">
         <div className="flex flex-col items-center gap-3">
           <CircleNotch size={28} className="animate-spin text-amber-500" />
           <p className="font-mono text-xs text-gray-500 dark:text-gray-400">
-            Checking permissions...
+            {deviceChecking
+              ? 'Verifying device...'
+              : deviceBlocked
+                ? 'Redirecting to device status...'
+                : 'Checking permissions...'}
           </p>
         </div>
       </div>

@@ -72,6 +72,7 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
 
   // ── Super admin only ──────────────────────────────────────────────────
   { prefix: '/admin/admin-management', permission: 'manageAdmins' },
+  { prefix: '/admin/devices', permission: 'manageAdmins' },
   { prefix: '/admin/audit-logs', permission: 'viewAuditLogs' },
   { prefix: '/admin/settings', permission: 'manageSystemSettings' },
   // Future phases (not yet built): trash/restore
