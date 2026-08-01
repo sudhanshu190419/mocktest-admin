@@ -19,7 +19,15 @@
 //     - rejected     → { trusted: false, status: 'rejected' }
 //     - revoked      → { trusted: false, status: 'revoked' }
 //     - expired      → { trusted: false, status: 'expired' }
-//     - no device    → create a NEW pending request → { trusted: false, status: 'pending' }
+//     - token miss + fingerprint matches an APPROVED machine (Phase 7E)
+//         → re-issue a fresh token onto the SAME row (rotate device_token_hash,
+//           update device_name/user_agent/ip) → { trusted: true, status: 'approved', deviceToken }
+//     - token miss + fingerprint matches a NON-approved row
+//         → surface that existing status (never reissue, never duplicate)
+//     - token miss + no fingerprint match → create a NEW pending request
+//         → { trusted: false, status: 'pending' }
+//     - token match on an approved legacy row with NULL fingerprint (Phase 7E)
+//         → auto-bind fingerprint_hash on this successful token lookup
 //
 // ## Security
 //
@@ -64,6 +72,7 @@ interface DeviceRow {
   device_token_hash: string;
   device_name: string;
   status: string;
+  fingerprint_hash: string | null;
   expires_at: string | null;
 }
 
@@ -160,7 +169,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Step 6: Look up the device by (profile_id, hash) ───────────────────
   const { data: device, error: deviceError } = await serviceClient
     .from('trusted_devices')
-    .select('device_id, profile_id, institute_id, device_token_hash, device_name, status, expires_at')
+    .select('device_id, profile_id, institute_id, device_token_hash, device_name, status, fingerprint_hash, expires_at')
     .eq('profile_id', callerProfileId)
     .eq('device_token_hash', tokenHash)
     .maybeSingle();
@@ -172,19 +181,127 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const nowIso = new Date().toISOString();
 
-  // ── Step 7: No device → create a NEW pending request ───────────────────
-  // IDEMPOTENT (Bug 1 fix): if a pending request already exists for this
-  // profile, return it instead of inserting another row. This stops a single
-  // login (which can fire multiple challenges from signIn + onAuthStateChange
-  // + Strict Mode) from generating duplicate pending rows. The partial unique
-  // index uq_trusted_devices_one_pending_per_profile (migration 078) is the
-  // race-safe backstop: a concurrent double-insert is rejected and we fall
-  // back to reusing the existing pending row.
+  // ── Step 7: No token match → fingerprint fallback (Phase 7E) ───────────
+  // Same PHYSICAL MACHINE, different browser → the token is new but the
+  // machine may already be trusted. Look the machine up by fingerprint before
+  // creating a pending request.
+  //
+  // SECURITY RULE: token reissue happens ONLY when the fingerprint matches an
+  // APPROVED row. pending / rejected / revoked / expired / inactive rows keep
+  // their exact current behavior — we surface that status instead of minting a
+  // duplicate pending row for the same machine.
+  const fingerprintHash = body.fingerprint?.trim() || null;
+  console.log('[STEP 7] Incoming fingerprint:', fingerprintHash);
+  if (!device && fingerprintHash) {
+    const { data: fingerprintDevices, error: fingerprintError } =
+      await serviceClient
+        .from('trusted_devices')
+        .select('device_id, profile_id, institute_id, device_token_hash, device_name, status, fingerprint_hash, expires_at')
+        .eq('profile_id', callerProfileId)
+        .eq('fingerprint_hash', fingerprintHash);
+        // NOTE: no ORDER BY — an approved match is found via .find() below,
+        // which is order-independent and unambiguous (one approved row max).
+
+    console.log('[STEP 7] Fingerprint rows:', fingerprintDevices);
+
+    if (fingerprintError) {
+      structuredLog('DEVICE_FINGERPRINT_LOOKUP_FAILED', {
+        error: fingerprintError.message,
+      });
+      return errorResponse('Could not validate the device. Please try again.', 500);
+    }
+
+    if (fingerprintDevices && fingerprintDevices.length > 0) {
+      const approvedMatch = fingerprintDevices.find(
+        (d) => d.status === 'approved',
+      );
+      console.log('[STEP 7] Approved match:', approvedMatch);
+
+      if (approvedMatch) {
+        // 7a. APPROVED machine → re-issue a fresh token onto the SAME row.
+        // Do NOT create another row; do NOT touch status/approved_at. The
+        // one-approved-device rule is preserved (still one approved row).
+        const { error: reissueError } = await serviceClient
+          .from('trusted_devices')
+          .update({
+            device_token_hash: tokenHash, // bind the new browser's token
+            device_name: body.deviceName?.trim() || approvedMatch.device_name || 'Unknown device',
+            user_agent: userAgent,
+            last_ip_address: clientIp,
+            last_used_at: nowIso,
+            // Keep fingerprint_hash — the machine identity is unchanged.
+          })
+          .eq('device_id', approvedMatch.device_id);
+
+        if (reissueError) {
+          structuredLog('DEVICE_FINGERPRINT_REISSUE_FAILED', {
+            deviceId: approvedMatch.device_id,
+            error: reissueError.message,
+          });
+          return errorResponse('Could not validate the device. Please try again.', 500);
+        }
+
+        // Audit: token reissued for the approved machine (actor = the admin,
+        // via caller-JWT client). Non-fatal by design.
+        await writeDeviceAudit(authHeader ?? '', {
+          p_action: 'update',
+          p_resource_type: 'trusted_devices',
+          p_resource_id: approvedMatch.device_id,
+          p_old_value: { device_token_hash: '[rotated]' },
+          p_new_value: { status: 'approved', device_name: body.deviceName?.trim() || approvedMatch.device_name || 'Unknown device' },
+          p_metadata: {
+            fingerprint_reissue: true,
+            device_name: body.deviceName?.trim() || approvedMatch.device_name || 'Unknown device',
+            ip_address: clientIp,
+          },
+          p_ip_address: clientIp,
+          p_user_agent: userAgent,
+        });
+
+        structuredLog('DEVICE_FINGERPRINT_REISSUED', {
+          deviceId: approvedMatch.device_id,
+          profileId: callerProfileId,
+        });
+
+        return jsonResponse({
+          trusted: true,
+          status: 'approved',
+          deviceId: approvedMatch.device_id,
+          deviceToken,
+        });
+      }
+
+      // 7b. Fingerprint matches a NON-approved row (pending / rejected /
+      // revoked / expired / inactive) → surface that exact status exactly as
+      // today. Never reissue; never create a duplicate pending for the same
+      // machine.
+      const matched = fingerprintDevices[0];
+      structuredLog('DEVICE_FINGERPRINT_STATUS_SURFACED', {
+        deviceId: matched.device_id,
+        status: matched.status,
+        profileId: callerProfileId,
+      });
+      return jsonResponse({
+        trusted: false,
+        status: matched.status,
+        deviceId: matched.device_id,
+      });
+    }
+  }
+
+  // ── Step 8: No token match, no fingerprint match → create a NEW pending ──
+  // request. IDEMPOTENT (Bug 1 fix): if a pending request already exists for
+  // this profile, return it instead of inserting another row. This stops a
+  // single login (which can fire multiple challenges from signIn +
+  // onAuthStateChange + Strict Mode) from generating duplicate pending rows.
+  // The partial unique index uq_trusted_devices_one_pending_per_profile
+  // (migration 078) is the race-safe backstop: a concurrent double-insert is
+  // rejected and we fall back to reusing the existing pending row.
   if (!device) {
     const deviceName =
       body.deviceName?.trim() || 'Unknown device';
 
-    // 7a. Reuse an existing pending request for this profile.
+    // 8a. Reuse an existing pending request for this profile.
     const { data: existingPending } = await serviceClient
       .from('trusted_devices')
       .select('device_id')
@@ -204,7 +321,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // 7b. No pending request exists — insert a new one.
+    // 8b. No pending request exists — insert a new one (stores the
+    // fingerprint so a later login from another browser on the same machine
+    // can re-issue instead of creating another request).
     const { data: newDevice, error: insertError } = await serviceClient
       .from('trusted_devices')
       .insert({
@@ -212,7 +331,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         institute_id: profile.institute_id,
         device_token_hash: tokenHash,
         device_name: deviceName,
-        fingerprint_hash: body.fingerprint?.trim() || null,
+        fingerprint_hash: fingerprintHash,
         user_agent: userAgent,
         last_ip_address: clientIp,
         status: 'pending',
@@ -290,7 +409,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // ── Step 8: Evaluate the existing device's status ──────────────────────
+  // ── Step 9: Evaluate the existing device's status ──────────────────────
   switch (device.status) {
     case 'approved': {
       // Check expiry first — an expired approved device is treated as expired.
@@ -302,10 +421,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonResponse({ trusted: false, status: 'expired' });
       }
 
-      // Touch last_used_at + last_ip_address.
+      // Phase 7E LEGACY BINDING: if this approved row has no fingerprint yet
+      // (pre-7E enrollment), bind it NOW on this successful token lookup. This
+      // lets old approved devices migrate automatically so future logins from
+      // other browsers on the same machine can re-issue via fingerprint.
+      // SECURITY: this binding ONLY happens when the token lookup SUCCEEDED —
+      // never on a failed token lookup (a new browser must not claim an
+      // approved row merely by presenting a fingerprint).
+      const update: Record<string, unknown> = {
+        last_used_at: nowIso,
+        last_ip_address: clientIp,
+      };
+      if (!device.fingerprint_hash && fingerprintHash) {
+        update.fingerprint_hash = fingerprintHash;
+        structuredLog('DEVICE_FINGERPRINT_LEGACY_BOUND', {
+          deviceId: device.device_id,
+          profileId: callerProfileId,
+        });
+      }
+
+      // Touch last_used_at + last_ip_address (+ bind fingerprint if legacy).
       await serviceClient
         .from('trusted_devices')
-        .update({ last_used_at: nowIso, last_ip_address: clientIp })
+        .update(update)
         .eq('device_id', device.device_id);
 
       return jsonResponse({

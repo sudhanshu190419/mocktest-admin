@@ -99,6 +99,13 @@ export async function createDeviceNotification(
   const nowIso = new Date().toISOString();
 
   // 1. Create the notification event row.
+  // CLOCK-SKEW FIX: ck_notifications_dispatched_at requires
+  // (dispatched_at is null or dispatched_at >= created_at). If dispatched_at
+  // came from the edge runtime clock while created_at defaulted to the
+  // database's now(), a slightly-behind edge clock produced
+  // dispatched_at < created_at → constraint violation → the Super Admin
+  // notification was silently dropped. Setting BOTH timestamps from the same
+  // nowIso guarantees dispatched_at >= created_at always holds.
   const { data: notifData, error: notifError } = await serviceClient
     .from('notifications')
     .insert({
@@ -112,6 +119,7 @@ export async function createDeviceNotification(
       reference_type: 'trusted_devices',
       reference_id: referenceId,
       total_recipients: recipientIds.length,
+      created_at: nowIso,
       dispatched_at: nowIso,
     })
     .select('notification_id')

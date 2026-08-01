@@ -7,6 +7,7 @@ import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacher
 import type { TeacherProfile } from '@/data/mockData';
 import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
 import { trustedDeviceService } from '@/services/security/trustedDeviceService';
+import { computeDeviceFingerprint } from '@/services/security/fingerprintService';
 import {
   clearStoredDeviceToken,
   getStoredDeviceToken,
@@ -237,12 +238,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return isBlockingDeviceStatus(prev) ? prev : 'checking';
     });
 
+    // Phase 7E: compute the machine fingerprint ONCE per evaluation and reuse
+    // it for every retry in this challenge. Best-effort — a null fingerprint
+    // (fingerprint generation failed) must never block login; the token path
+    // still works and the edge function simply skips fingerprint lookup.
+    const fingerprint = await computeDeviceFingerprint();
+    console.log('[TD-eval] fingerprint:', fingerprint ? 'computed' : 'null (best-effort)');
+
     const runChallenge = (async () => {
       try {
         const storedToken = await getStoredDeviceToken();
         console.log('[TD-eval] storedToken from cookie:', storedToken ? 'present' : 'null');
         const result = await trustedDeviceService.challengeDevice({
           deviceToken: storedToken ?? undefined,
+          fingerprint: fingerprint ?? undefined,
           deviceName: deriveDeviceName(),
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
         });
