@@ -659,8 +659,7 @@ export async function deleteMockTest(testId: string, reason?: string): Promise<A
     await auditService.logSoftDelete({
       resourceType: 'mock_tests',
       resourceId: testId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { testId },
+      metadata: { testId, deletedAt: now, deletedBy },
       reason,
     });
 

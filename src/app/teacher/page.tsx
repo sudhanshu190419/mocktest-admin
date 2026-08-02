@@ -205,9 +205,9 @@ export default function TeacherDashboardPage() {
     if (results.length === 0) return [];
     const studentMap = new Map<string, { totalPct: number; count: number; name: string }>();
     for (const r of results) {
-      // Group by studentId (first 8 chars as display)
+      // Group by studentId, displaying the real student name when available
       const key = r.studentId;
-      const existing = studentMap.get(key) ?? { totalPct: 0, count: 0, name: `Student #${key.slice(0, 6)}` };
+      const existing = studentMap.get(key) ?? { totalPct: 0, count: 0, name: r.studentName || `Student #${key.slice(0, 6)}` };
       existing.totalPct += r.percentage;
       existing.count += 1;
       studentMap.set(key, existing);
@@ -221,16 +221,16 @@ export default function TeacherDashboardPage() {
   // Weak students (bottom 5 by avg percentage)
   const weakStudents = useMemo(() => {
     if (results.length === 0) return [];
-    const studentMap = new Map<string, { totalPct: number; count: number }>();
+    const studentMap = new Map<string, { totalPct: number; count: number; name: string }>();
     for (const r of results) {
       const key = r.studentId;
-      const existing = studentMap.get(key) ?? { totalPct: 0, count: 0 };
+      const existing = studentMap.get(key) ?? { totalPct: 0, count: 0, name: r.studentName || `Student #${key.slice(0, 6)}` };
       existing.totalPct += r.percentage;
       existing.count += 1;
       studentMap.set(key, existing);
     }
     return Array.from(studentMap.entries())
-      .map(([id, s]) => ({ studentId: id, name: `Student #${id.slice(0, 6)}`, avgPct: s.totalPct / s.count }))
+      .map(([id, s]) => ({ studentId: id, name: s.name, avgPct: s.totalPct / s.count }))
       .sort((a, b) => a.avgPct - b.avgPct)
       .slice(0, 5);
   }, [results]);
@@ -440,7 +440,9 @@ export default function TeacherDashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                        Test result {r.isReleased ? 'published' : 'generated'}
+                        {r.studentName
+                          ? `${r.studentName}'s test result ${r.isReleased ? 'published' : 'generated'}`
+                          : `Test result ${r.isReleased ? 'published' : 'generated'}`}
                       </p>
                       <p className="text-xs text-gray-500">
                         {r.correctCount}/{r.correctCount + r.wrongCount + r.skippedCount} correct · {formatDuration(r.totalTimeSeconds)}

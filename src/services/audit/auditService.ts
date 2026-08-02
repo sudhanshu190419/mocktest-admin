@@ -245,6 +245,18 @@ export async function logRestore(
   return log({ ...payload, action: 'restore' }, options);
 }
 
+/**
+ * Records a `permanent_delete` event (Recycle Bin purge — Super Admin only).
+ *
+ * The `permanent_delete` enum value was added by Migration 080 (Phase 8A).
+ */
+export async function logPermanentDelete(
+  payload: HelperPayload,
+  options?: AuditLogOptions,
+): Promise<AuditResult> {
+  return log({ ...payload, action: 'permanent_delete' }, options);
+}
+
 /** Records an `approve` event. */
 export async function logApprove(
   payload: HelperPayload,
@@ -359,6 +371,7 @@ export const auditService = {
   logUpdate,
   logDelete,
   logSoftDelete,
+  logPermanentDelete,
   logRestore,
   logApprove,
   logReject,

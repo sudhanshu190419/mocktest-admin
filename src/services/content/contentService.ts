@@ -802,8 +802,7 @@ export async function deleteContent(contentId: string, reason?: string): Promise
     await auditService.logSoftDelete({
       resourceType: 'content',
       resourceId: contentId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { contentId, title: current.title },
+      metadata: { contentId, title: current.title, deletedAt: now, deletedBy },
       reason,
     });
 

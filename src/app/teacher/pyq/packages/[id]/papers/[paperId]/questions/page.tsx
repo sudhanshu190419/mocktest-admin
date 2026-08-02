@@ -165,7 +165,7 @@ export default function PyqManageQuestionsPage({
         description={`${assignedMappings?.length ?? 0} question(s) assigned`}
         breadcrumbs={[
           { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/edit` },
+          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: paper.title, href: `/teacher/pyq/packages/${packageId}/papers/${paperId}/edit` },
           { label: 'Questions' },

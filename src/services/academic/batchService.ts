@@ -614,8 +614,7 @@ export async function deleteBatch(batchId: string, reason?: string): Promise<Api
     await auditService.logSoftDelete({
       resourceType: 'batches',
       resourceId: batchId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { batchId },
+      metadata: { batchId, deletedAt: now, deletedBy },
       reason,
     });
 

@@ -284,7 +284,7 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
         description={`Add a new exam paper to "${pkg.name}"`}
         breadcrumbs={[
           { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/edit` },
+          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: 'Create Paper' },
         ]}

@@ -384,8 +384,7 @@ export async function deleteTopic(topicId: string, reason?: string): Promise<Api
     await auditService.logSoftDelete({
       resourceType: 'topics',
       resourceId: topicId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { topicId },
+      metadata: { topicId, deletedAt: now, deletedBy },
       reason,
     });
 

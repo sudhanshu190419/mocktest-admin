@@ -20,10 +20,11 @@ function ResultRow({ result }: { result: MockResult }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-gray-900">
-            Result #{result.resultId.slice(0, 8)}
+            {result.studentName || 'Unknown Student'}
           </span>
           <StatusBadge status={result.isReleased ? 'published' : 'draft'} />
         </div>
+        <p className="text-[11px] text-gray-400">Student ID: {result.studentId.slice(0, 8)}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
           <span>{result.correctCount} correct</span>
           <span>·</span>

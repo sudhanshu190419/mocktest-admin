@@ -29,6 +29,8 @@
 
 import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
+import { auditService } from '@/services/audit/auditService';
+import { assertPaperOwnership } from './pyqOwnershipGuard';
 import type { ApiResponse } from '@/types/academic';
 import type {
   PyqQuestionMapping,
@@ -306,6 +308,9 @@ export const pyqQuestionMappingService = {
   /**
    * Add a single question to a PYQ paper.
    *
+   * OWNERSHIP: only the paper owner (created_by == current profile) or a
+   * Super Admin may add questions to a paper.
+   *
    * Performs full validation:
    * - Paper exists
    * - Question exists
@@ -325,6 +330,12 @@ export const pyqQuestionMappingService = {
     officialNegativeMarks?: number | null;
   }): Promise<ApiResponse<PyqQuestionMapping>> {
     try {
+      // ── Ownership: owner or Super Admin (server-side) ───────────────
+      const ownership = await assertPaperOwnership(input.paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
+
       // ── Validate basic input ───────────────────────────────────────────
       if (!input.paperId) {
         return { success: false, error: 'paperId is required.' };
@@ -407,6 +418,13 @@ export const pyqQuestionMappingService = {
       // ── Refresh paper question count ───────────────────────────────────
       await refreshPaperQuestionCount(input.paperId);
 
+      // ── Audit: mapping created ─────────────────────────────────────────
+      await auditService.logCreate({
+        resourceType: 'pyq_question_mappings',
+        resourceId: data.mapping_id,
+        metadata: { paperId: input.paperId, questionId: input.questionId },
+      });
+
       return { success: true, data: toPyqQuestionMapping(data) };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -420,6 +438,8 @@ export const pyqQuestionMappingService = {
   /**
    * Remove a question from a PYQ paper.
    *
+   * OWNERSHIP: only the paper owner or a Super Admin may remove questions.
+   *
    * This is a hard delete of the junction row. The question itself is not
    * deleted — only removed from this paper's question set.
    *
@@ -431,6 +451,12 @@ export const pyqQuestionMappingService = {
     questionId: string,
   ): Promise<ApiResponse<void>> {
     try {
+      // ── Ownership: owner or Super Admin (server-side) ───────────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
+
       validateUUID(paperId, 'paperId');
       validateUUID(questionId, 'questionId');
 
@@ -453,6 +479,13 @@ export const pyqQuestionMappingService = {
       // ── Refresh paper question count ───────────────────────────────────
       await refreshPaperQuestionCount(paperId);
 
+      // ── Audit: mapping removed ─────────────────────────────────────────
+      await auditService.log({
+        action: 'delete',
+        resourceType: 'pyq_question_mappings',
+        metadata: { paperId, questionId },
+      });
+
       return { success: true };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -466,6 +499,8 @@ export const pyqQuestionMappingService = {
   /**
    * Add multiple questions to a PYQ paper in a single batch operation.
    *
+   * OWNERSHIP: only the paper owner or a Super Admin may add questions.
+   *
    * Each assignment is validated individually before any insert is performed.
    * If any assignment fails validation, the entire batch is rejected.
    *
@@ -477,6 +512,12 @@ export const pyqQuestionMappingService = {
     assignments: PyqQuestionAssignment[],
   ): Promise<ApiResponse<PyqQuestionMapping[]>> {
     try {
+      // ── Ownership: owner or Super Admin (server-side) ───────────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
+
       validateUUID(paperId, 'paperId');
 
       // ── Validate batch structure ───────────────────────────────────────
@@ -552,6 +593,12 @@ export const pyqQuestionMappingService = {
       // ── Refresh paper question count ───────────────────────────────────
       await refreshPaperQuestionCount(paperId);
 
+      // ── Audit: bulk mappings created ───────────────────────────────────
+      await auditService.logCreate({
+        resourceType: 'pyq_question_mappings',
+        metadata: { paperId, addedCount: resolvedRecords.length },
+      });
+
       return {
         success: true,
         data: (data ?? []).map(toPyqQuestionMapping),
@@ -568,6 +615,8 @@ export const pyqQuestionMappingService = {
   /**
    * Reorder the questions in a PYQ paper.
    *
+   * OWNERSHIP: only the paper owner or a Super Admin may reorder questions.
+   *
    * Accepts an array of items, each specifying a question ID and the new
    * order position. Only the provided mappings' order is updated — all
    * other mappings retain their current order.
@@ -580,6 +629,12 @@ export const pyqQuestionMappingService = {
     items: PyqReorderItem[],
   ): Promise<ApiResponse<PyqQuestionMapping[]>> {
     try {
+      // ── Ownership: owner or Super Admin (server-side) ───────────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
+
       validateUUID(paperId, 'paperId');
 
       if (items.length === 0) {
@@ -623,6 +678,13 @@ export const pyqQuestionMappingService = {
         }
       }
 
+      // ── Audit: mappings reordered ─────────────────────────────────────
+      await auditService.logUpdate({
+        resourceType: 'pyq_question_mappings',
+        resourceId: paperId,
+        metadata: { paperId, reorderedCount: items.length },
+      });
+
       // ── Fetch and return the updated list ──────────────────────────────
       return this.getMappings(paperId, 'orderSequence', 'asc');
     } catch (err) {
@@ -637,11 +699,20 @@ export const pyqQuestionMappingService = {
   /**
    * Get the next available order_sequence for a paper.
    *
+   * OWNERSHIP: paper owner or Super Admin only (helper used inside the paper
+   * editor).
+   *
    * @param paperId - The UUID of the PYQ paper.
    * @returns The next sequence number (current max + 1, or 1 if no mappings exist).
    */
   async getNextOrderSequence(paperId: string): Promise<ApiResponse<number>> {
     try {
+      // ── Ownership: owner or Super Admin (server-side) ───────────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
+
       validateUUID(paperId, 'paperId');
 
       const { data, error } = await supabase

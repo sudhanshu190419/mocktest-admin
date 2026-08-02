@@ -402,7 +402,7 @@ export default function EditPyqPaperPage({
         description="Edit PYQ paper details and configuration"
         breadcrumbs={[
           { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/edit` },
+          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
           { label: paper.title },
         ]}
@@ -663,7 +663,7 @@ export default function EditPyqPaperPage({
         onClose={() => setConfirmAction(null)}
         onConfirm={handleDelete}
         title="Delete Paper"
-        message="Are you sure you want to permanently delete this paper? This action cannot be undone."
+        message="This paper will be moved to the Recycle Bin and can be restored later. Only papers with no mapped questions can be deleted."
         confirmLabel="Delete"
         variant="danger"
       />

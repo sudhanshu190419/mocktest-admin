@@ -186,7 +186,7 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
       case 'delete':
         return {
           title: 'Delete Paper',
-          message: 'Are you sure you want to permanently delete this paper? This action cannot be undone.',
+          message: 'This paper will be moved to the Recycle Bin and can be restored later. Only papers with no mapped questions can be deleted.',
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -220,12 +220,12 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
   return (
     <div>
       <PageHeader
-        title={pkg.name}
-        description={`${totalCount} paper${totalCount !== 1 ? 's' : ''} in this package`}
+        title="My Papers"
+        description={`${totalCount} paper${totalCount !== 1 ? 's' : ''} created by you in "${pkg.name}"`}
         breadcrumbs={[
           { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/edit` },
-          { label: 'Papers' },
+          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
+          { label: 'My Papers' },
         ]}
         actions={
           <Link
@@ -239,6 +239,30 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
           </Link>
         }
       />
+
+      {/* Package information — read-only (packages are managed by Super Admin) */}
+      <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4 dark:border-gray-700 dark:bg-gray-900">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Stream</p>
+          <p className="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{pkg.streamName ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Price</p>
+          <p className="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">₹{pkg.price}</p>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Year Range</p>
+          <p className="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">
+            {pkg.yearFrom ?? '—'} – {pkg.yearTo ?? '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Package Status</p>
+          <div className="mt-0.5">
+            <StatusBadge status={pkg.isActive && pkg.publishedAt ? 'published' : 'draft'} />
+          </div>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchBar
@@ -263,7 +287,7 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
         >
           <option value="">All Status</option>
           <option value="published">Published</option>
-          <option value="unpublished">Unpublished</option>
+          <option value="unpublished">Draft</option>
         </select>
       </div>
 
@@ -280,8 +304,8 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
         onPageChange={setPage}
         emptyState={
           <EmptyState
-            title="No papers found"
-            description={search ? 'Try a different search term.' : 'Get started by creating your first paper in this package.'}
+            title="No papers created yet"
+            description={search ? 'Try a different search term.' : 'Create your first paper in this package to get started.'}
             action={
               <Link
                 href={`/teacher/pyq/packages/${packageId}/papers/create`}

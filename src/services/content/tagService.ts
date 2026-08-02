@@ -381,8 +381,7 @@ export async function deleteTag(tagId: string, reason?: string): Promise<ApiResp
     await auditService.logSoftDelete({
       resourceType: 'tags',
       resourceId: tagId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { tagId },
+      metadata: { tagId, deletedAt: now, deletedBy },
       reason,
     });
 

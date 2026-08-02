@@ -419,8 +419,7 @@ export async function deleteStream(streamId: string, reason?: string): Promise<A
     await auditService.logSoftDelete({
       resourceType: 'streams',
       resourceId: streamId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { streamId },
+      metadata: { streamId, deletedAt: now, deletedBy },
       reason,
     });
 

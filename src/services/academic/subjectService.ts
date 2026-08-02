@@ -401,8 +401,7 @@ export async function deleteSubject(subjectId: string, reason?: string): Promise
     await auditService.logSoftDelete({
       resourceType: 'subjects',
       resourceId: subjectId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { subjectId },
+      metadata: { subjectId, deletedAt: now, deletedBy },
       reason,
     });
 

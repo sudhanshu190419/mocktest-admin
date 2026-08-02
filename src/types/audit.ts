@@ -30,6 +30,7 @@ export type AuditAction =
   | 'update'
   | 'delete'
   | 'soft_delete'
+  | 'permanent_delete'
   | 'restore'
   | 'publish'
   | 'unpublish'

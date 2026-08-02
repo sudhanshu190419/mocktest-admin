@@ -1075,8 +1075,7 @@ export const batchManagementService = {
       await auditService.logSoftDelete({
         resourceType: 'batches',
         resourceId: batchId,
-        newValue: { deletedAt: now, deletedBy },
-        metadata: { batchId },
+        metadata: { batchId, deletedAt: now, deletedBy },
         reason,
       });
 

@@ -1609,6 +1609,12 @@ export interface MockResult {
   testId: string;
   /** Student who took the attempt (FK → public.student_details). Denormalized. */
   studentId: string;
+  /**
+   * Display name of the student who took the attempt, resolved at query time
+   * via `student_details → profiles`. NULL when not joined (e.g. RLS hides
+   * the profile) or when the profile has no name.
+   */
+  studentName?: string | null;
   /** Institute (FK → public.institutes). Denormalized for RLS. */
   instituteId: string;
   /** Aggregate score across all questions. Can be negative with severe negative marking. */

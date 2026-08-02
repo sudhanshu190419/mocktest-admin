@@ -1054,8 +1054,7 @@ export const courseManagementService = {
       await auditService.logSoftDelete({
         resourceType: 'courses',
         resourceId: courseId,
-        newValue: { deletedAt: now, deletedBy },
-        metadata: { courseId },
+        metadata: { courseId, deletedAt: now, deletedBy },
         reason,
       });
 

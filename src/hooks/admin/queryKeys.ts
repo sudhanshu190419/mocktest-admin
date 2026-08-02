@@ -697,4 +697,31 @@ export const adminKeys = {
     orderDetailItem: (orderId: string) =>
       [...adminKeys.commerce.orderDetail(), orderId] as const,
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Recycle Bin / Trash (admin Recycle Bin — super admin only)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  trash: {
+    /** Root key for all Recycle Bin queries. */
+    all: () => [...adminKeys.all, 'trash'] as const,
+
+    /** Key for every trash list query (broad invalidation). */
+    lists: () => [...adminKeys.trash.all(), 'list'] as const,
+
+    /** Key for a specific paginated + filtered trash list. */
+    list: (
+      filters?: Record<string, unknown>,
+      sort?: Record<string, unknown>,
+      pagination?: Record<string, unknown>,
+    ) =>
+      [...adminKeys.trash.lists(), filters, sort, pagination] as const,
+
+    /** Key for every trash item detail query. */
+    details: () => [...adminKeys.trash.all(), 'detail'] as const,
+
+    /** Key for a single deleted item detail (keyed by resource type + id). */
+    detail: (resourceType: string, resourceId: string) =>
+      [...adminKeys.trash.details(), resourceType, resourceId] as const,
+  },
 };

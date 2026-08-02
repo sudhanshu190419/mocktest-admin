@@ -44,9 +44,21 @@ export default function ResultsListPage() {
 
   const columns: Column<MockResult>[] = [
     {
-      key: 'resultId',
-      header: 'Result ID',
-      render: (r) => <span className="font-mono text-xs">{r.resultId.slice(0, 12)}...</span>,
+      key: 'studentName',
+      header: 'Student',
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[11px] font-bold text-white">
+            {(r.studentName || '?').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {r.studentName || 'Unknown Student'}
+            </p>
+            <p className="text-xs text-gray-400">ID: {r.studentId.slice(0, 8)}</p>
+          </div>
+        </div>
+      ),
     },
     {
       key: 'totalScore',

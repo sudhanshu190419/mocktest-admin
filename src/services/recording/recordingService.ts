@@ -71,6 +71,24 @@ import type {
 //  Error Types
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Phase 8C.1 — auto-purge gate.
+ *
+ * The Enterprise Recycle Bin / Restore workflow (Phase 8C) is NOT built yet.
+ * Soft-deleted recordings must never be permanently removed before restore
+ * exists, or recoverable data would be destroyed. Keeping this flag false
+ * makes `getExpiredSoftDeletes()` return an empty list, so any cleanup cron
+ * finds nothing to hard-delete. ACTIVE recordings are unaffected — this
+ * method only ever returned soft-deleted rows older than the cutoff.
+ *
+ * Re-enable ONLY after the Recycle Bin workflow (Phase 8C) is complete and
+ * recordings can be restored or purged deliberately by a Super Admin.
+ */
+const RECORDING_AUTO_PURGE_ENABLED = false;
+
+/** One-time warning flag — avoids log spam if the cleanup cron polls often. */
+let _purgeGateWarned = false;
+
 export class RecordingProviderError extends Error {
   constructor(message: string) {
     super(message);
@@ -697,8 +715,7 @@ export const recordingService = {
       await auditService.logSoftDelete({
         resourceType: 'recordings',
         resourceId: recordingId,
-        newValue: { isDeleted: true, deletedAt: now, deletedBy },
-        metadata: { recordingId, title: getResult.success ? getResult.data?.title ?? null : null },
+        metadata: { recordingId, title: getResult.success ? getResult.data?.title ?? null : null, isDeleted: true, deletedAt: now, deletedBy },
         reason,
       });
 
@@ -748,6 +765,21 @@ export const recordingService = {
     daysOld: number = 90,
   ): Promise<ApiResponse<Recording[]>> {
     try {
+      // ── Phase 8C.1: auto-purge gated until the Recycle Bin exists ────
+      // Soft-deleted recordings are recoverable data. The cleanup cron must
+      // not hard-delete them while there is no restore path. Return empty so
+      // the cron finds nothing to purge; active recordings are untouched.
+      if (!RECORDING_AUTO_PURGE_ENABLED) {
+        if (!_purgeGateWarned) {
+          _purgeGateWarned = true;
+          console.warn(
+            '[Recording] Auto-purge disabled (Phase 8C.1 gate). ' +
+              'Soft-deleted recordings are preserved until the Recycle Bin workflow is live.',
+          );
+        }
+        return { success: true, data: [] };
+      }
+
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - daysOld);
 

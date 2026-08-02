@@ -36,10 +36,10 @@ import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { createMockTest } from '@/services/mockTest/mockTestService';
 import { addQuestionsToMockTest } from '@/services/mockTest/mockTestQuestionService';
 import { publishMockTestWorkflow } from '@/services/mockTest/mockTestPublishService';
-import { resolveTeacherIdentity } from '@/services/teacherIdentity';
+import { auditService } from '@/services/audit/auditService';
+import { assertPaperOwnership } from './pyqOwnershipGuard';
 import type { ApiResponse } from '@/types/academic';
 import type { MockTest } from '@/types/mockTest';
-import type { MockTestQuestion } from '@/types/mockTest';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -152,6 +152,11 @@ export const pyqMockMappingService = {
   /**
    * Generate a mock test from a PYQ paper's mapped questions.
    *
+   * OWNERSHIP: paper owner or Super Admin only (server-side). The paper's
+   * `created_by` must equal the current profile — Super Admin bypasses.
+   * The mock mapping's `created_by` is stamped with the authenticated
+   * profile, never client input.
+   *
    * Validates:
    * - Paper exists (fetches institute_id, stream_id)
    * - Paper has at least 1 mapped question
@@ -172,15 +177,12 @@ export const pyqMockMappingService = {
     try {
       validateUUID(paperId, 'paperId');
 
-      // ── Resolve teacher identity ─────────────────────────────────────
-      const identity = await resolveTeacherIdentity();
-      if (!identity) {
-        return {
-          success: false,
-          error:
-            'Cannot generate mock test: no teacher identity found for the current user.',
-        };
+      // ── Ownership: paper owner or Super Admin (server-side) ─────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success || !ownership.data) {
+        return { success: false, error: ownership.error ?? 'Could not verify paper ownership.' };
       }
+      const actorProfileId = ownership.data.profileId;
 
       // ── Fetch paper details ──────────────────────────────────────────
       const { data: paper, error: paperErr } = await supabase
@@ -339,7 +341,7 @@ export const pyqMockMappingService = {
           paper_id: paperId,
           test_id: mockTest.testId,
           institute_id: paper.institute_id,
-          created_by: identity.profileId,
+          created_by: actorProfileId,
         })
         .select()
         .single<DbPyqMockMapping>();
@@ -356,6 +358,13 @@ export const pyqMockMappingService = {
           error: extractErrorMessage(mappingErr),
         };
       }
+
+      // ── Audit: mock mapping generated ────────────────────────────────
+      await auditService.logCreate({
+        resourceType: 'pyq_mock_mappings',
+        resourceId: mappingData.mapping_id,
+        metadata: { paperId, testId: mockTest.testId },
+      });
 
       return {
         success: true,
@@ -403,6 +412,9 @@ export const pyqMockMappingService = {
   /**
    * Regenerate a mock test for a PYQ paper, replacing any existing one.
    *
+   * OWNERSHIP: paper owner or Super Admin only (server-side) — checked
+   * before any existing mapping/test is removed.
+   *
    * Flow:
    * 1. Fetch existing mapping (abort if none exists)
    * 2. Delete the old mock mapping row
@@ -415,6 +427,12 @@ export const pyqMockMappingService = {
   async regenerateMockFromPaper(paperId: string): Promise<ApiResponse<GenerateMockResult>> {
     try {
       validateUUID(paperId, 'paperId');
+
+      // ── Ownership: paper owner or Super Admin (server-side) ─────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success) {
+        return { success: false, error: ownership.error };
+      }
 
       // ── Fetch existing mapping ──────────────────────────────────────────
       const existing = await this.getMockMapping(paperId);

@@ -13,6 +13,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: 'danger' | 'warning' | 'default';
   loading?: boolean;
+  /** Optional extra content rendered between the message and the buttons (e.g. a reason input). */
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -25,6 +27,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'danger',
   loading = false,
+  children,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +79,7 @@ export function ConfirmDialog({
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
           {message}
         </p>
+        {children}
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"

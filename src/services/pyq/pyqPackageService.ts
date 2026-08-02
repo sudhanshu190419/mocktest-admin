@@ -30,7 +30,11 @@
 import { supabase } from '@/config/supabase';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
-import { resolveTeacherIdentity } from '@/services/teacherIdentity';
+import { auditService } from '@/services/audit/auditService';
+import {
+  isCurrentUserSuperAdmin,
+  resolveCurrentProfileId,
+} from './pyqOwnershipGuard';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type {
   PyqPackage,
@@ -113,6 +117,9 @@ export const pyqPackageService = {
    *
    * Joins `pyq_packages` with `streams` to include the stream display name.
    * Supports search, stream filter, status filter, pagination, and sorting.
+   *
+   * Read access is open to authenticated users (teachers browse packages to
+   * create papers inside them) — only MUTATIONS are Super Admin gated.
    */
   async getPackages(
     filters?: PyqPackageFilters,
@@ -130,7 +137,8 @@ export const pyqPackageService = {
           )
         `,
           { count: 'exact' },
-        );
+        )
+        .is('deleted_at', null);
 
       // ── Filters ─────────────────────────────────────────────────────
       if (filters?.instituteId) {
@@ -206,6 +214,7 @@ export const pyqPackageService = {
         `,
         )
         .eq('package_id', packageId)
+        .is('deleted_at', null)
         .single();
 
       if (error) {
@@ -228,25 +237,42 @@ export const pyqPackageService = {
   /**
    * Create a new PYQ package.
    *
-   * Automatically populates `institute_id` via the current teacher's identity.
-   * Defaults: is_active = false, published_at = null, total_papers = 0.
+   * SUPER ADMIN ONLY — teachers cannot create packages (Phase 9B business
+   * rule). Automatically populates `institute_id` from the authenticated
+   * profile (packages are institute-owned), or from `input.instituteId` when
+   * provided. Defaults: is_active = false, published_at = null, total_papers = 0.
    *
    * @param input - The package creation payload.
    */
   async createPackage(input: CreatePyqPackageInput): Promise<ApiResponse<PyqPackage>> {
     try {
-      // ── Resolve institute from current teacher identity ────────────
-      const identity = await resolveTeacherIdentity();
-      if (!identity || !identity.instituteId) {
+      // ── Authorization: Super Admin only ────────────────────────────
+      if (!(await isCurrentUserSuperAdmin())) {
+        return {
+          success: false,
+          error: 'Only a Super Admin can create PYQ packages.',
+        };
+      }
+
+      // ── Resolve institute from current profile (institute-owned) ──
+      const profileId = await resolveCurrentProfileId();
+      const { data: profile } = profileId
+        ? await supabase
+            .from('profiles')
+            .select('institute_id')
+            .eq('profile_id', profileId)
+            .maybeSingle()
+        : { data: null };
+
+      const instituteId = input.instituteId ?? profile?.institute_id ?? null;
+      if (!instituteId) {
         return {
           success: false,
           error:
             'Cannot create a PYQ package: no institute found for the current user. ' +
-            'Ensure the authenticated user has a corresponding teacher_details record.',
+            'Ensure the authenticated profile has an institute assigned.',
         };
       }
-
-      const instituteId = identity.instituteId;
 
       // ── Validate required fields ─────────────────────────────────────
       if (!input.name?.trim()) {
@@ -329,6 +355,13 @@ export const pyqPackageService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: package created ─────────────────────────────────────
+      await auditService.logCreate({
+        resourceType: 'pyq_packages',
+        resourceId: data.package_id,
+        metadata: { packageId: data.package_id, name: data.name },
+      });
+
       return { success: true, data: toPyqPackage(data) };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -342,8 +375,9 @@ export const pyqPackageService = {
   /**
    * Update an existing PYQ package.
    *
-   * Only the fields provided in `input` are updated. Partial updates are
-   * safe — omitted fields retain their current database values.
+   * SUPER ADMIN ONLY — teachers cannot edit package metadata (Phase 9B
+   * business rule). Only the fields provided in `input` are updated. Partial
+   * updates are safe — omitted fields retain their current database values.
    *
    * @param packageId - The UUID of the package to update.
    * @param input     - The fields to update (all optional).
@@ -354,6 +388,14 @@ export const pyqPackageService = {
   ): Promise<ApiResponse<PyqPackage>> {
     try {
       validateUUID(packageId, 'packageId');
+
+      // ── Authorization: Super Admin only ────────────────────────────
+      if (!(await isCurrentUserSuperAdmin())) {
+        return {
+          success: false,
+          error: 'Only a Super Admin can edit PYQ packages.',
+        };
+      }
 
       // ── Build update payload (only provided fields) ──────────────────
       const dbRecord: Record<string, unknown> = {};
@@ -446,6 +488,13 @@ export const pyqPackageService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: package updated ─────────────────────────────────────
+      await auditService.logUpdate({
+        resourceType: 'pyq_packages',
+        resourceId: packageId,
+        newValue: dbRecord as Record<string, unknown>,
+      });
+
       return { success: true, data: toPyqPackage(data) };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -459,13 +508,18 @@ export const pyqPackageService = {
   /**
    * Publish a PYQ package, making it active and available for purchase.
    *
-   * Sets is_active = true and published_at = NOW().
+   * SUPER ADMIN ONLY. Sets is_active = true and published_at = NOW().
    *
    * @param packageId - The UUID of the package to publish.
    */
   async publishPackage(packageId: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(packageId, 'packageId');
+
+      // ── Authorization: Super Admin only ────────────────────────────
+      if (!(await isCurrentUserSuperAdmin())) {
+        return { success: false, error: 'Only a Super Admin can publish PYQ packages.' };
+      }
 
       // 1. Fetch current package to validate
       const { data: current, error: fetchErr } = await supabase
@@ -505,6 +559,12 @@ export const pyqPackageService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: package published ────────────────────────────────────
+      await auditService.logPublish({
+        resourceType: 'pyq_packages',
+        resourceId: packageId,
+      });
+
       return { success: true, data: null };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -518,13 +578,19 @@ export const pyqPackageService = {
   /**
    * Unpublish a PYQ package, hiding it from the store.
    *
-   * Sets is_active = false. Preserves published_at for audit trail.
+   * SUPER ADMIN ONLY. Sets is_active = false. Preserves published_at for
+   * audit trail.
    *
    * @param packageId - The UUID of the package to unpublish.
    */
   async unpublishPackage(packageId: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(packageId, 'packageId');
+
+      // ── Authorization: Super Admin only ────────────────────────────
+      if (!(await isCurrentUserSuperAdmin())) {
+        return { success: false, error: 'Only a Super Admin can unpublish PYQ packages.' };
+      }
 
       // 1. Fetch current package
       const { data: current, error: fetchErr } = await supabase
@@ -555,6 +621,13 @@ export const pyqPackageService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      // ── Audit: package unpublished ─────────────────────────────────
+      await auditService.log({
+        action: 'unpublish',
+        resourceType: 'pyq_packages',
+        resourceId: packageId,
+      });
+
       return { success: true, data: null };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
@@ -566,16 +639,24 @@ export const pyqPackageService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Delete a PYQ package.
+   * Soft-delete a PYQ package (Enterprise Soft Delete — Phase 8/9B).
    *
-   * Only allowed when the package has no papers (total_papers = 0).
-   * Returns a friendly error message if the package has papers.
+   * SUPER ADMIN ONLY. Only allowed when the package has no papers
+   * (total_papers = 0). Returns a friendly error message if the package has
+   * papers. Sets deleted_at / deleted_by / delete_reason — the row is never
+   * physically deleted and can be restored from the Recycle Bin (Phase 9C).
    *
    * @param packageId - The UUID of the package to delete.
+   * @param reason    - Optional reason captured for audit / delete_reason.
    */
-  async deletePackage(packageId: string): Promise<ApiResponse<null>> {
+  async deletePackage(packageId: string, reason?: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(packageId, 'packageId');
+
+      // ── Authorization: Super Admin only ────────────────────────────
+      if (!(await isCurrentUserSuperAdmin())) {
+        return { success: false, error: 'Only a Super Admin can delete PYQ packages.' };
+      }
 
       // 1. Check for existing papers
       const { data: current, error: fetchErr } = await supabase
@@ -598,10 +679,17 @@ export const pyqPackageService = {
         };
       }
 
-      // 2. Delete (hard delete — pyq_packages has no soft-delete column)
+      // 2. Soft-delete (Enterprise Soft Delete — never a hard delete)
+      const now = new Date().toISOString();
+      const profileId = await resolveCurrentProfileId();
+
       const { error } = await supabase
         .from('pyq_packages')
-        .delete()
+        .update({
+          deleted_at: now,
+          deleted_by: profileId,
+          delete_reason: reason ?? null,
+        })
         .eq('package_id', packageId);
 
       if (error) {
@@ -614,6 +702,14 @@ export const pyqPackageService = {
         }
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit: package soft-deleted ────────────────────────────────
+      await auditService.logSoftDelete({
+        resourceType: 'pyq_packages',
+        resourceId: packageId,
+        metadata: { deletedAt: now, deletedBy: profileId },
+        reason,
+      });
 
       return { success: true, data: null };
     } catch (err) {
@@ -636,7 +732,8 @@ export const pyqPackageService = {
         let q = supabase
           .from('pyq_packages')
           .select('package_id', { count: 'exact', head: true })
-          .eq('is_active', isActive);
+          .eq('is_active', isActive)
+          .is('deleted_at', null);
         if (instituteId) {
           q = q.eq('institute_id', instituteId);
         }
@@ -647,7 +744,8 @@ export const pyqPackageService = {
         let q = supabase
           .from('pyq_packages')
           .select('package_id', { count: 'exact', head: true })
-          .not('published_at', 'is', null);
+          .not('published_at', 'is', null)
+          .is('deleted_at', null);
         if (instituteId) {
           q = q.eq('institute_id', instituteId);
         }
@@ -658,7 +756,8 @@ export const pyqPackageService = {
         let q = supabase
           .from('pyq_packages')
           .select('package_id', { count: 'exact', head: true })
-          .is('published_at', null);
+          .is('published_at', null)
+          .is('deleted_at', null);
         if (instituteId) {
           q = q.eq('institute_id', instituteId);
         }
@@ -668,7 +767,8 @@ export const pyqPackageService = {
       const [total, active, inactive, published, unpublished] = await Promise.all([
         supabase
           .from('pyq_packages')
-          .select('package_id', { count: 'exact', head: true }),
+          .select('package_id', { count: 'exact', head: true })
+          .is('deleted_at', null),
         makeQuery(true),
         makeQuery(false),
         makePublishedQuery(),

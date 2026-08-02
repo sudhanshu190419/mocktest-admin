@@ -60,6 +60,8 @@ interface DbMockResult {
   attempt_id: string;
   test_id: string;
   student_id: string;
+  /** Embedded student profile name (student_details → profiles). NULL when not joined. */
+  student_details?: { profiles?: { name: string | null } | null } | null;
   institute_id: string;
   total_score: number;
   max_score: number;
@@ -119,6 +121,7 @@ function mapMockResult(db: DbMockResult): MockResult {
     attemptId: db.attempt_id,
     testId: db.test_id,
     studentId: db.student_id,
+    studentName: db.student_details?.profiles?.name ?? null,
     instituteId: db.institute_id,
     totalScore: db.total_score,
     maxScore: db.max_score,
@@ -218,7 +221,7 @@ export async function getResultByAttemptId(
 
     const { data, error } = await supabase
       .from('mock_results')
-      .select('*')
+      .select('*, student_details(profiles(name))')
       .eq('attempt_id', attemptId)
       .single<DbMockResult>();
 
@@ -259,7 +262,7 @@ export async function getResult(
 
     const { data, error } = await supabase
       .from('mock_results')
-      .select('*')
+      .select('*, student_details(profiles(name))')
       .eq('result_id', resultId)
       .single<DbMockResult>();
 
@@ -306,7 +309,7 @@ export async function getStudentResults(
 
     let query = supabase
       .from('mock_results')
-      .select('*', { count: 'exact' })
+      .select('*, student_details(profiles(name))', { count: 'exact' })
       .eq('student_id', studentId);
 
     // Apply optional filters
@@ -403,7 +406,7 @@ export async function getMockTestResults(
 
     let query = supabase
       .from('mock_results')
-      .select('*', { count: 'exact' })
+      .select('*, student_details(profiles(name))', { count: 'exact' })
       .eq('test_id', testId);
 
     // Apply optional filters
@@ -500,7 +503,7 @@ export async function getInstituteResults(
 
     let query = supabase
       .from('mock_results')
-      .select('*', { count: 'exact' })
+      .select('*, student_details(profiles(name))', { count: 'exact' })
       .eq('institute_id', instituteId);
 
     // Apply optional filters
@@ -737,7 +740,7 @@ export async function getResults(
 
     let query = supabase
       .from('mock_results')
-      .select('*', { count: 'exact' });
+      .select('*, student_details(profiles(name))', { count: 'exact' });
 
     // Apply filters
     if (filters?.attemptId) {

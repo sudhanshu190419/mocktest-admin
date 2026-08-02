@@ -898,8 +898,7 @@ export async function deleteQuestion(questionId: string, reason?: string): Promi
     await auditService.logSoftDelete({
       resourceType: 'questions',
       resourceId: questionId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { questionId },
+      metadata: { questionId, deletedAt: now, deletedBy },
       reason,
     });
 

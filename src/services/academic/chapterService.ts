@@ -391,8 +391,7 @@ export async function deleteChapter(chapterId: string, reason?: string): Promise
     await auditService.logSoftDelete({
       resourceType: 'chapters',
       resourceId: chapterId,
-      newValue: { deletedAt: now, deletedBy },
-      metadata: { chapterId },
+      metadata: { chapterId, deletedAt: now, deletedBy },
       reason,
     });
 

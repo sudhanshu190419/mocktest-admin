@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useCreatePyqPackage } from '@/hooks/pyq/usePyqPackages';
 import { useStreams } from '@/hooks/academic/useStreams';
-import { useAuth } from '@/context/AuthContext';
 import { AddStreamModal } from '@/features/question-bank/components/AddStreamModal';
-import { PageHeader } from '@/components/ui/PageHeader';
 import type { Stream } from '@/types/academic';
 
-interface FormData {
+// ═══════════════════════════════════════════════════════════════════════════
+//  Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Form field values (string-based for year inputs; parsed by the caller). */
+export interface PyqPackageFormValues {
   name: string;
   description: string;
   streamId: string;
@@ -21,7 +22,31 @@ interface FormData {
   yearTo: string;
 }
 
-const emptyForm: FormData = {
+export interface PyqPackageFormProps {
+  /** Pre-populated values (edit mode). Omit for create mode. */
+  initialData?: PyqPackageFormValues | null;
+  /** True while the parent mutation is pending. */
+  isSubmitting?: boolean;
+  /** Label for the primary submit button. */
+  submitLabel?: string;
+  /** Server/form-level error banner (e.g. "Only a Super Admin can …"). */
+  error?: string | null;
+  /** Success banner (edit mode). */
+  successMessage?: string | null;
+  /** Where the Cancel / back link goes. */
+  cancelHref: string;
+  /** Optional extra action buttons on the left of the footer (edit mode). */
+  footerLeft?: React.ReactNode;
+  /** Called with the validated form values. */
+  onSubmit: (values: PyqPackageFormValues) => void;
+}
+
+const CURRENCY_OPTIONS = [
+  { value: 'INR', label: '₹ INR' },
+  { value: 'USD', label: '$ USD' },
+];
+
+const EMPTY_VALUES: PyqPackageFormValues = {
   name: '',
   description: '',
   streamId: '',
@@ -32,17 +57,23 @@ const emptyForm: FormData = {
   yearTo: '',
 };
 
-const CURRENCY_OPTIONS = [
-  { value: 'INR', label: '₹ INR' },
-  { value: 'USD', label: '$ USD' },
-];
+// ═══════════════════════════════════════════════════════════════════════════
+//  Component
+// ═══════════════════════════════════════════════════════════════════════════
 
-export default function CreatePyqPackagePage() {
-  const router = useRouter();
-  const { instituteId } = useAuth();
-  const createPackage = useCreatePyqPackage();
-
-  const [formData, setFormData] = useState<FormData>(emptyForm);
+export function PyqPackageForm({
+  initialData,
+  isSubmitting = false,
+  submitLabel = 'Save Changes',
+  error,
+  successMessage,
+  cancelHref,
+  footerLeft,
+  onSubmit,
+}: PyqPackageFormProps) {
+  const [formData, setFormData] = useState<PyqPackageFormValues>(
+    initialData ?? EMPTY_VALUES,
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ── Stream creation modal ────────────────────────────────────────────────
@@ -57,7 +88,7 @@ export default function CreatePyqPackagePage() {
   const rawStreams: Stream[] = streamsData?.data ?? [];
 
   const handleChange = useCallback(
-    (field: keyof FormData, value: string | number) => {
+    (field: keyof PyqPackageFormValues, value: string | number) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: '' }));
     },
@@ -112,45 +143,16 @@ export default function CreatePyqPackagePage() {
   }, [formData]);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    (e: React.FormEvent) => {
       e.preventDefault();
       if (!validate()) return;
-
-      createPackage.mutate(
-        {
-          name: formData.name.trim(),
-          description: formData.description || null,
-          streamId: formData.streamId,
-          price: formData.price,
-          currency: formData.currency,
-          thumbnailPath: formData.thumbnailPath || null,
-          yearFrom: formData.yearFrom ? parseInt(formData.yearFrom) : null,
-          yearTo: formData.yearTo ? parseInt(formData.yearTo) : null,
-        },
-        {
-          onSuccess: (pkg) => {
-            router.push(`/teacher/pyq/packages/${pkg.packageId}/edit`);
-          },
-          onError: (error) => {
-            setErrors({ form: error.message });
-          },
-        },
-      );
+      onSubmit(formData);
     },
-    [formData, validate, createPackage, router],
+    [formData, validate, onSubmit],
   );
 
   return (
-    <div className="max-w-3xl">
-      <PageHeader
-        title="Create PYQ Package"
-        description="Configure the PYQ package settings. Papers can be added after creation."
-        breadcrumbs={[
-          { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: 'Create Package' },
-        ]}
-      />
-
+    <>
       {addStreamFeedback && (
         <div
           className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
@@ -160,6 +162,12 @@ export default function CreatePyqPackagePage() {
           }`}
         >
           {addStreamFeedback.message}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400">
+          {successMessage}
         </div>
       )}
 
@@ -327,39 +335,42 @@ export default function CreatePyqPackagePage() {
         </div>
 
         {/* Form error */}
-        {errors.form && (
+        {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {errors.form}
+            {error}
           </div>
         )}
 
-        {/* Submit */}
-        <div className="flex items-center gap-3 border-t border-gray-200 pt-6">
-          <button
-            type="submit"
-            disabled={createPackage.isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {createPackage.isPending ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Creating...
-              </>
-            ) : (
-              'Create Package'
-            )}
-          </button>
-          <Link
-            href="/teacher/pyq/packages"
-            className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-          >
-            Cancel
-          </Link>
+        {/* Actions */}
+        <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+          {footerLeft ?? <div />}
+          <div className="flex items-center gap-3">
+            <Link
+              href={cancelHref}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Saving...
+                </>
+              ) : (
+                submitLabel
+              )}
+            </button>
+          </div>
         </div>
       </form>
-    </div>
+    </>
   );
 }

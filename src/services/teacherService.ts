@@ -28,6 +28,38 @@ export const teacherService = {
       // Check if we are in demo mode or if this is the default simulation/mock teacher profile
       const isDefaultMockTeacher = teacherId === 'tch-8492-phy' || teacherId.toLowerCase().includes('t-sim-101');
 
+      // ── [DBG] TEMPORARY: progressive query tracing — identify where rows disappear (remove after diagnosis) ──
+      // A: batch_subject_teachers only
+      const dbgA = await supabase
+        .from('batch_subject_teachers')
+        .select('*')
+        .eq('teacher_id', teacherId);
+      console.log('[DBG-A] batch_subject_teachers only → count:', dbgA.data?.length ?? 0, '| error:', dbgA.error?.message ?? null);
+      console.log('[DBG-A] rows:', JSON.stringify(dbgA.data ?? []));
+
+      // B: + batch_subjects!inner
+      const dbgB = await supabase
+        .from('batch_subject_teachers')
+        .select('batch_subject_id, batch_subjects!inner(batch_subject_id, batch_id)')
+        .eq('teacher_id', teacherId);
+      console.log('[DBG-B] + batch_subjects!inner → count:', dbgB.data?.length ?? 0, '| error:', dbgB.error?.message ?? null);
+      console.log('[DBG-B] rows:', JSON.stringify(dbgB.data ?? []));
+      if (!dbgB.error && (dbgB.data?.length ?? 0) < (dbgA.data?.length ?? 0)) {
+        console.log('[DBG] Rows disappeared after adding batch_subjects!inner (A=' + (dbgA.data?.length ?? 0) + ' → B=' + (dbgB.data?.length ?? 0) + ')');
+      }
+
+      // C: + batches!inner
+      const dbgC = await supabase
+        .from('batch_subject_teachers')
+        .select('batch_subject_id, batch_subjects!inner(batch_subject_id, batch_id, batches!inner(batch_id, name, batch_code, status, max_seats))')
+        .eq('teacher_id', teacherId);
+      console.log('[DBG-C] + batches!inner → count:', dbgC.data?.length ?? 0, '| error:', dbgC.error?.message ?? null);
+      console.log('[DBG-C] rows:', JSON.stringify(dbgC.data ?? []));
+      if (!dbgC.error && (dbgC.data?.length ?? 0) < (dbgB.data?.length ?? 0)) {
+        console.log('[DBG] Rows disappeared after adding batches!inner (B=' + (dbgB.data?.length ?? 0) + ' → C=' + (dbgC.data?.length ?? 0) + ')');
+      }
+      // ── [DBG] END temporary tracing ──
+
       // Query batch_subject_teachers to get all batch subjects assigned to this teacher
       const { data, error } = await supabase
         .from('batch_subject_teachers')
@@ -42,7 +74,7 @@ export const teacherService = {
               name,
               batch_code,
               status,
-              max_students
+              max_seats
             ),
             subjects!inner (
               name
@@ -50,6 +82,14 @@ export const teacherService = {
           )
         `)
         .eq('teacher_id', teacherId);
+
+      // ── [DBG] TEMPORARY: log the current (production) query result = Query D (+ subjects!inner) ──
+      console.log('[DBG-D] current query (+ subjects!inner) → count:', data?.length ?? 0, '| error:', error?.message ?? null);
+      console.log('[DBG-D] rows:', JSON.stringify(data ?? []));
+      if (!error && (data?.length ?? 0) < (dbgC.data?.length ?? 0)) {
+        console.log('[DBG] Rows disappeared after adding subjects!inner (C=' + (dbgC.data?.length ?? 0) + ' → D=' + (data?.length ?? 0) + ')');
+      }
+      // ── [DBG] END temporary tracing ──
 
       if (!error && data && data.length > 0) {
         // Deduplicate by batch_id and return unique batches
@@ -63,7 +103,7 @@ export const teacherService = {
               name: batch.name || 'General Batch',
               code: batch.batch_code || 'B-GEN',
               stream: bs?.subjects?.name || 'General Science',
-              studentsCount: batch.max_students || 0,
+              studentsCount: batch.max_seats || 0,
               nextClass: idx === 0 ? 'Today at 2:00 PM' : idx === 1 ? 'Tomorrow at 10:30 AM' : 'Wednesday at 4:15 PM',
               room: idx === 0 ? 'Virtual Studio 01' : idx === 1 ? 'Virtual Studio 03' : 'Virtual Studio 02',
               progress: 74,
