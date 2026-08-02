@@ -43,6 +43,7 @@
 import { supabase } from '@/config/supabase';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
+import { auditService } from '@/services/audit/auditService';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { BatchStatus } from '@/types/academic';
 
@@ -1010,8 +1011,9 @@ export const batchManagementService = {
    * Returns a friendly error message if the batch has dependencies.
    *
    * @param batchId - The UUID of the batch to delete.
+   * @param reason  - Optional reason captured for audit / delete_reason.
    */
-  async delete(batchId: string): Promise<ApiResponse<null>> {
+  async delete(batchId: string, reason?: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(batchId, 'batchId');
 
@@ -1051,15 +1053,32 @@ export const batchManagementService = {
         };
       }
 
-      // 3. Soft-delete
+      // 3. Soft-delete with full metadata (deleted_at / deleted_by / delete_reason)
+      const { data: { user } } = await supabase.auth.getUser();
+      const deletedBy = user?.id ?? null;
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('batches')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({
+          deleted_at: now,
+          deleted_by: deletedBy,
+          delete_reason: reason ?? null,
+        })
         .eq('batch_id', batchId);
 
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit (non-strict: never breaks the operation) ────────────────
+      await auditService.logSoftDelete({
+        resourceType: 'batches',
+        resourceId: batchId,
+        newValue: { deletedAt: now, deletedBy },
+        metadata: { batchId },
+        reason,
+      });
 
       return { success: true, data: null };
     } catch (err) {

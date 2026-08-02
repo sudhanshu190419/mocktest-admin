@@ -26,6 +26,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -135,7 +136,8 @@ export async function getTags(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('tags')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -201,6 +203,7 @@ export async function getTagById(tagId: string): Promise<ApiResponse<Tag>> {
       .from('tags')
       .select('*')
       .eq('tag_id', tagId)
+      .is('deleted_at', null)
       .single<DbTag>();
 
     if (error) {
@@ -340,41 +343,48 @@ export async function updateTag(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Permanently deletes a tag.
+ * Soft-deletes a tag (Phase 8B Enterprise Soft Delete).
  *
- * The `content_tag` junction rows use ON DELETE CASCADE, so all
- * associations to this tag are automatically removed. No manual cleanup
- * is required.
- *
- * If the tag is referenced by other tables (e.g. RLS policies reference
- * tag names), the database constraint will block deletion and return a
- * friendly FK error.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the tag. The row
+ * is never physically deleted — `content_tag` junction rows remain intact
+ * so the tag can be restored from the Recycle Bin (Phase 8C).
  *
  * @param tagId - The UUID of the tag to delete.
+ * @param reason - Optional reason captured for audit / delete_reason.
  */
-export async function deleteTag(tagId: string): Promise<ApiResponse<void>> {
+export async function deleteTag(tagId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(tagId, 'tagId');
 
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+
     const { error } = await supabase
       .from('tags')
-      .delete()
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
       .eq('tag_id', tagId);
 
     if (error) {
       if (error.code === 'PGRST116') {
         return { success: false, error: `Tag not found: ${tagId}` };
       }
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this tag because it is referenced by other content. ' +
-            'Remove all tag associations first.',
-        };
-      }
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'tags',
+      resourceId: tagId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { tagId },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

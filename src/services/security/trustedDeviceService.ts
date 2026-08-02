@@ -92,6 +92,14 @@ export interface DeviceChallengeInput {
   deviceName?: string;
   /** User-Agent string. */
   userAgent?: string;
+  /**
+   * Phase 7F: when true, request a NEW approval for this device (used by the
+   * revoked/expired screens' "request approval again" action). The edge
+   * function skips the fingerprint auto-match — the old row (revoked/expired)
+   * keeps its fingerprint_hash and would otherwise surface the old blocking
+   * status — and instead creates (or reuses) a fresh pending request.
+   */
+  forceNewRequest?: boolean;
 }
 
 /** Result of a device challenge. */
@@ -192,6 +200,7 @@ export const trustedDeviceService = {
             fingerprint: input.fingerprint?.trim() || undefined,
             deviceName: input.deviceName?.trim() || undefined,
             userAgent: input.userAgent?.trim() || undefined,
+            forceNewRequest: input.forceNewRequest ?? false,
           },
         },
       );

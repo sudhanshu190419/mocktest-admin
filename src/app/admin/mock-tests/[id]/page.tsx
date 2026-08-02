@@ -13,6 +13,7 @@ import {
   useDuplicateMockTest,
   useDeleteMockTest,
 } from '@/hooks/admin/useMockTestManagement';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { ReviewNavigation } from '@/components/admin/ReviewNavigation';
 import {
   useMockTestReleaseStatus,
@@ -212,6 +213,7 @@ function StatCard({
 export default function MockTestDetailPage() {
   const params = useParams();
   const mockTestId = params.id as string;
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: test, isLoading, isError, error, refetch } = useMockTestDetail(mockTestId);
   const { data: questions, isLoading: questionsLoading } = useMockTestQuestions(mockTestId);
@@ -364,7 +366,7 @@ export default function MockTestDetailPage() {
       case 'delete':
         return {
           title: 'Delete Mock Test',
-          message: `Are you sure you want to delete this mock test? This action cannot be undone.`,
+          message: `Are you sure you want to delete this mock test? This item will be moved to the Recycle Bin and can be restored later.`,
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -1180,8 +1182,8 @@ export default function MockTestDetailPage() {
                 </button>
               )}
 
-              {/* Delete — available for draft and pending_approval */}
-              {(test.status === 'draft' || test.status === 'pending_approval') && (
+              {/* Delete — available for draft and pending_approval (Super Admin only) */}
+              {(test.status === 'draft' || test.status === 'pending_approval') && canRestoreDeletedData && (
                 <button
                   type="button"
                   onClick={() => setConfirmAction({ type: 'delete' })}

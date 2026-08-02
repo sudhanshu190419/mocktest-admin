@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useQuestionApprovalDetail,
@@ -11,6 +11,8 @@ import {
   usePublishQuestion,
   useArchiveQuestion,
 } from '@/hooks/admin/useQuestionApproval';
+import { useDeleteQuestion } from '@/hooks/mockTest/useQuestions';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { useAuth } from '@/context/AuthContext';
 import { getSignedImageUrlMap } from '@/services/storage/questionImageService';
 import { ReviewNavigation } from '@/components/admin/ReviewNavigation';
@@ -274,9 +276,11 @@ function OptionCard({
 
 export default function QuestionReviewPage() {
   const params = useParams();
+  const router = useRouter();
   const questionId = params.id as string;
   const { user } = useAuth();
   const adminProfileId = user?.id;
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: question, isLoading, isError, error, refetch } = useQuestionApprovalDetail(questionId);
 
@@ -328,7 +332,7 @@ export default function QuestionReviewPage() {
 
   // ── Confirmation & Feedback State ────────────────────────────────────
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'approve' | 'reject' | 'publish' | 'archive';
+    type: 'approve' | 'reject' | 'publish' | 'archive' | 'delete';
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -346,14 +350,23 @@ export default function QuestionReviewPage() {
   const rejectMutation = useRejectQuestion();
   const publishMutation = usePublishQuestion();
   const archiveMutation = useArchiveQuestion();
+  const deleteMutation = useDeleteQuestion();
 
   // ── Action Executor ─────────────────────────────────────────────────
-  const executeAction = useCallback(async (action: 'approve' | 'reject' | 'publish' | 'archive') => {
+  const executeAction = useCallback(async (action: 'approve' | 'reject' | 'publish' | 'archive' | 'delete') => {
     setActionError(null);
     setActionSuccess(null);
     setActionLoading(true);
 
     try {
+      // Soft delete — handled separately (void mutation; item moves to Recycle Bin)
+      if (action === 'delete') {
+        await deleteMutation.mutateAsync(questionId);
+        setActionSuccess('Question moved to the Recycle Bin successfully');
+        router.push('/admin/questions');
+        return;
+      }
+
       let result;
       switch (action) {
         case 'approve':
@@ -388,7 +401,7 @@ export default function QuestionReviewPage() {
       setConfirmAction(null);
       clearFeedback();
     }
-  }, [question, questionId, adminProfileId, approveMutation, rejectMutation, publishMutation, archiveMutation, refetch, clearFeedback]);
+  }, [question, questionId, adminProfileId, approveMutation, rejectMutation, publishMutation, archiveMutation, deleteMutation, router, refetch, clearFeedback]);
 
   const handleConfirm = useCallback(() => {
     if (!confirmAction) return;
@@ -429,6 +442,13 @@ export default function QuestionReviewPage() {
           message: 'Are you sure you want to archive this question? It will be removed from active use.',
           confirmLabel: 'Archive Question',
           variant: 'warning' as const,
+        };
+      case 'delete':
+        return {
+          title: 'Delete Question',
+          message: 'Are you sure you want to delete this question? This item will be moved to the Recycle Bin and can be restored later.',
+          confirmLabel: 'Delete Question',
+          variant: 'danger' as const,
         };
     }
   })() : null;
@@ -642,6 +662,23 @@ export default function QuestionReviewPage() {
                 <CheckCircle size={14} weight="fill" />
               )}
               {actionLoading && confirmAction?.type === 'approve' ? 'Approving...' : 'Approve'}
+            </button>
+          )}
+
+          {/* Soft Delete (Super Admin only) */}
+          {canRestoreDeletedData && (
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'delete' })}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-40"
+            >
+              {actionLoading && confirmAction?.type === 'delete' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <XCircle size={14} weight="fill" />
+              )}
+              {actionLoading && confirmAction?.type === 'delete' ? 'Deleting...' : 'Delete'}
             </button>
           )}
         </div>

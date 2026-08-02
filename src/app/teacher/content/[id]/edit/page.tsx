@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useContent, useUpdateContent, useDeleteContent, usePublishContent, useArchiveContent, useRestoreContent } from '@/hooks/content/useContent';
 import { useSubjects } from '@/hooks/academic/useSubjects';
 import { useChapters } from '@/hooks/academic/useChapters';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -20,6 +21,7 @@ interface FormData {
 export default function EditContentPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id: contentId } = use(params);
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: content, isLoading, isError } = useContent(contentId);
   const updateContent = useUpdateContent();
@@ -95,9 +97,12 @@ export default function EditContentPage({ params }: { params: Promise<{ id: stri
       case 'restore':
         restoreContent.mutate(contentId);
         break;
+      case 'delete':
+        deleteContent.mutate(contentId, { onSuccess: () => router.push('/teacher/content/list') });
+        break;
     }
     setConfirmAction(null);
-  }, [confirmAction, contentId, publishContent, archiveContent, restoreContent]);
+  }, [confirmAction, contentId, publishContent, archiveContent, restoreContent, deleteContent, router]);
 
   if (isLoading) {
     return (
@@ -269,10 +274,10 @@ export default function EditContentPage({ params }: { params: Promise<{ id: stri
             className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
             Preview
           </Link>
-          {content.status === 'archived' && (
-            <button type="button" onClick={() => deleteContent.mutate(contentId, { onSuccess: () => router.push('/teacher/content/list') })}
+          {content.status === 'archived' && canRestoreDeletedData && (
+            <button type="button" onClick={() => setConfirmAction('delete')}
               className="ml-auto rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-red-600 ring-1 ring-inset ring-red-300 hover:bg-red-50">
-              Delete Permanently
+              Move to Recycle Bin
             </button>
           )}
         </div>
@@ -284,18 +289,21 @@ export default function EditContentPage({ params }: { params: Promise<{ id: stri
         onConfirm={handleConfirmAction}
         title={
           confirmAction === 'submit' ? 'Submit for Approval' :
-          confirmAction === 'archive' ? 'Archive Content' : 'Restore Content'
+          confirmAction === 'archive' ? 'Archive Content' :
+          confirmAction === 'delete' ? 'Delete Content' : 'Restore Content'
         }
         message={
           confirmAction === 'submit' ? 'Submit this content for admin approval. It will be reviewed before being made available to students.' :
           confirmAction === 'archive' ? 'Archived content is hidden from students. Data is preserved.' :
+          confirmAction === 'delete' ? 'This item will be moved to the Recycle Bin and can be restored later.' :
           'Restore this content to draft status for editing.'
         }
         confirmLabel={
           confirmAction === 'submit' ? 'Submit' :
-          confirmAction === 'archive' ? 'Archive' : 'Restore'
+          confirmAction === 'archive' ? 'Archive' :
+          confirmAction === 'delete' ? 'Move to Recycle Bin' : 'Restore'
         }
-        variant={confirmAction === 'archive' ? 'warning' : 'default'}
+        variant={confirmAction === 'archive' ? 'warning' : confirmAction === 'delete' ? 'danger' : 'default'}
       />
     </div>
   );

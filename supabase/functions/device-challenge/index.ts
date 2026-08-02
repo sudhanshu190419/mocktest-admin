@@ -28,6 +28,10 @@
 //         → { trusted: false, status: 'pending' }
 //     - token match on an approved legacy row with NULL fingerprint (Phase 7E)
 //         → auto-bind fingerprint_hash on this successful token lookup
+//   forceNewRequest (Phase 7F): skip the fingerprint fallback entirely and
+//     create (or reuse) a fresh pending request — used by the revoked /
+//     expired screens' "request approval again" action, so the old row's
+//     stored fingerprint_hash cannot surface the old blocking status.
 //
 // ## Security
 //
@@ -63,6 +67,14 @@ interface ChallengeBody {
   fingerprint?: string;
   deviceName?: string;
   userAgent?: string;
+  /**
+   * Phase 7F: when true, bypass the fingerprint auto-match and create (or
+   * reuse) a fresh pending request. Used by the revoked/expired screens'
+   * "request approval again" action — the machine's previous row (revoked /
+   * expired) keeps its fingerprint_hash and would otherwise surface the old
+   * blocking status (Step 7b) instead of minting a new request.
+   */
+  forceNewRequest?: boolean;
 }
 
 interface DeviceRow {
@@ -190,9 +202,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // APPROVED row. pending / rejected / revoked / expired / inactive rows keep
   // their exact current behavior — we surface that status instead of minting a
   // duplicate pending row for the same machine.
+  //
+  // Phase 7F: `forceNewRequest` skips this entire block so a revoked / expired
+  // device can request approval AGAIN. Its old row (same machine fingerprint)
+  // must NOT surface the old blocking status — the user explicitly chose to
+  // mint a new request, which Step 8 handles (reusing any existing pending).
   const fingerprintHash = body.fingerprint?.trim() || null;
   console.log('[STEP 7] Incoming fingerprint:', fingerprintHash);
-  if (!device && fingerprintHash) {
+  if (!device && fingerprintHash && !body.forceNewRequest) {
+    // ── DIAGNOSTIC LOGGING (temporary — fingerprint lookup tracing) ────────
+    // Logs the exact query + inputs + raw result + approved match so the
+    // same-laptop fingerprint matching can be verified. No logic changed.
+    console.log('[STEP 7] Query', {
+      table: 'trusted_devices',
+      select: 'device_id, profile_id, institute_id, device_token_hash, device_name, status, fingerprint_hash, expires_at',
+      filter: { profile_id: callerProfileId, fingerprint_hash: fingerprintHash },
+    });
+    console.log('[STEP 7] Lookup input', {
+      profileId: callerProfileId,
+      fingerprintHash,
+    });
+
     const { data: fingerprintDevices, error: fingerprintError } =
       await serviceClient
         .from('trusted_devices')
@@ -201,6 +231,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('fingerprint_hash', fingerprintHash);
         // NOTE: no ORDER BY — an approved match is found via .find() below,
         // which is order-independent and unambiguous (one approved row max).
+
+    console.log('[STEP 7] Raw query result', {
+      count: fingerprintDevices?.length ?? 0,
+      rows: (fingerprintDevices ?? []).map((d) => ({
+        deviceId: d.device_id,
+        profileId: d.profile_id,
+        status: d.status,
+        fingerprintHash: d.fingerprint_hash,
+        deviceName: d.device_name,
+      })),
+    });
 
     console.log('[STEP 7] Fingerprint rows:', fingerprintDevices);
 
@@ -215,7 +256,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const approvedMatch = fingerprintDevices.find(
         (d) => d.status === 'approved',
       );
-      console.log('[STEP 7] Approved match:', approvedMatch);
+      console.log('[STEP 7] Approved match', approvedMatch ?? null);
 
       if (approvedMatch) {
         // 7a. APPROVED machine → re-issue a fresh token onto the SAME row.

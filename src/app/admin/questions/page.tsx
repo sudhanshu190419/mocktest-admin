@@ -15,6 +15,8 @@ import {
 } from '@/hooks/admin/useQuestionApproval';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useDeleteQuestion } from '@/hooks/mockTest/useQuestions';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -138,6 +140,7 @@ export default function QuestionApprovalPage() {
   const router = useRouter();
   const { user } = useAuth();
   const adminProfileId = user?.id;
+  const { canRestoreDeletedData } = usePermissions();
 
 
   // ── Filter State ─────────────────────────────────────────────────────
@@ -171,7 +174,7 @@ export default function QuestionApprovalPage() {
   // ── Selection & Confirmation State ───────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'approve' | 'reject' | 'publish' | 'archive';
+    type: 'approve' | 'reject' | 'publish' | 'archive' | 'delete';
     question: QuestionApprovalListItem | null;
     bulk?: boolean;
   } | null>(null);
@@ -224,10 +227,11 @@ export default function QuestionApprovalPage() {
   const bulkRejectMutation = useBulkRejectQuestions();
   const bulkPublishMutation = useBulkPublishQuestions();
   const bulkArchiveMutation = useBulkArchiveQuestions();
+  const deleteMutation = useDeleteQuestion();
 
   // ── Action Executor ─────────────────────────────────────────────────
   const executeAction = useCallback(async (
-    action: 'approve' | 'reject' | 'publish' | 'archive',
+    action: 'approve' | 'reject' | 'publish' | 'archive' | 'delete',
     question?: QuestionApprovalListItem | null,
     bulk?: boolean,
   ) => {
@@ -236,6 +240,19 @@ export default function QuestionApprovalPage() {
     setActionLoading(true);
 
     try {
+      // Soft delete — handled separately (void mutation; item moves to Recycle Bin)
+      if (action === 'delete') {
+        const questionIds = bulk ? Array.from(selectedIds) : [question!.questionId];
+        for (const id of questionIds) {
+          await deleteMutation.mutateAsync(id);
+        }
+        setActionSuccess(`${questionIds.length} question${questionIds.length > 1 ? 's' : ''} moved to the Recycle Bin successfully`);
+        if (bulk) setSelectedIds(new Set());
+        refetchList();
+        refetchCounts();
+        return;
+      }
+
       if (bulk) {
         const questionIds = Array.from(selectedIds);
 
@@ -308,6 +325,9 @@ export default function QuestionApprovalPage() {
     bulkRejectMutation,
     bulkPublishMutation,
     bulkArchiveMutation,
+    deleteMutation,
+    refetchList,
+    refetchCounts,
     clearFeedback,
   ]);
 
@@ -339,29 +359,37 @@ export default function QuestionApprovalPage() {
     const totalFlags = [hasPending, hasPublished, hasDraft, hasArchived].filter(Boolean).length;
     if (totalFlags !== 1) return null;
 
+    const deleteOption = canRestoreDeletedData
+      ? [{ type: 'delete' as const, label: 'Delete Selected', variant: 'danger' as const }]
+      : [];
+
     if (hasPending) {
       return [
         { type: 'approve' as const, label: 'Approve Selected', variant: 'emerald' as const },
         { type: 'reject' as const, label: 'Reject Selected', variant: 'rose' as const },
+        ...deleteOption,
       ];
     }
     if (hasPublished) {
       return [
         { type: 'archive' as const, label: 'Archive Selected', variant: 'rose' as const },
+        ...deleteOption,
       ];
     }
     if (hasDraft) {
       return [
         { type: 'approve' as const, label: 'Approve Selected', variant: 'emerald' as const },
+        ...deleteOption,
       ];
     }
     if (hasArchived) {
       return [
         { type: 'publish' as const, label: 'Restore Selected', variant: 'emerald' as const },
+        ...deleteOption,
       ];
     }
     return null;
-  }, [selectedIds, questionList?.data]);
+  }, [selectedIds, questionList?.data, canRestoreDeletedData]);
 
   // ── Confirm Dialog Configuration ────────────────────────────────────
   const confirmDialogConfig = useMemo(() => {
@@ -401,6 +429,13 @@ export default function QuestionApprovalPage() {
           message: `Are you sure you want to archive ${label}? The question${count > 1 ? 's will' : ' will'} be removed from active use.`,
           confirmLabel: bulk ? `Archive ${count} Questions` : 'Archive Question',
           variant: 'warning' as const,
+        };
+      case 'delete':
+        return {
+          title: bulk ? `Delete ${count} Questions` : 'Delete Question',
+          message: `Are you sure you want to delete ${label}? This item will be moved to the Recycle Bin and can be restored later.`,
+          confirmLabel: bulk ? `Delete ${count} Questions` : 'Delete Question',
+          variant: 'danger' as const,
         };
       default:
         return null;
@@ -584,10 +619,25 @@ export default function QuestionApprovalPage() {
               Approve
             </button>
           )}
+
+          {/* Soft Delete (Super Admin only) */}
+          {canRestoreDeletedData && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', question: _item }); }}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
+            >
+              {actionLoading && confirmAction?.question?.questionId === _item.questionId && confirmAction?.type === 'delete' ? (
+                <CircleNotch size={10} className="animate-spin" />
+              ) : null}
+              Delete
+            </button>
+          )}
         </div>
       ),
     },
-  ], [actionLoading, confirmAction]);
+  ], [actionLoading, confirmAction, canRestoreDeletedData]);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Render
@@ -751,7 +801,9 @@ export default function QuestionApprovalPage() {
                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
                     : opt.variant === 'rose'
                       ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800/30 dark:text-gray-400'
+                      : opt.variant === 'danger'
+                        ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800/30 dark:text-gray-400'
                 }`}
               >
                 {opt.label}

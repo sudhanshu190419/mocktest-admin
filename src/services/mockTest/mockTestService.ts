@@ -39,6 +39,7 @@ import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
 import { resolveCurrentTeacherId } from '../content/teacherResolver';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -245,7 +246,8 @@ export async function getMockTests(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('mock_tests')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -332,6 +334,7 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
       .from('mock_tests')
       .select('*')
       .eq('test_id', testId)
+      .is('deleted_at', null)
       .single<DbMockTest>();
 
     if (error) {
@@ -614,44 +617,52 @@ export async function updateMockTest(
 }
 
 /**
- * Permanently delete a mock test.
+ * Soft-delete a mock test (Phase 8B Enterprise Soft Delete).
  *
- * The `mock_tests` table has no `deleted_at` column, so this performs a hard
- * delete. If the test is referenced by foreign keys (mock_test_questions,
- * mock_attempts), the `ON DELETE RESTRICT` / `ON DELETE CASCADE` constraint
- * will either prevent deletion or cascade. For a safe retirement path, use
- * `archiveMockTest()` instead.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the mock test. The
+ * row is never physically deleted — dependent rows (mock_test_questions,
+ * attempts) remain intact so the test can be restored from the Recycle Bin
+ * (Phase 8C).
  *
  * @param testId - The UUID of the mock test to delete.
+ * @param reason - Optional reason captured for audit / delete_reason.
  *
  * @example
  * const result = await deleteMockTest('uuid-here');
  * if (result.success) {
- *   // test permanently removed
+ *   // test moved to trash (recoverable)
  * }
  */
-export async function deleteMockTest(testId: string): Promise<ApiResponse<void>> {
+export async function deleteMockTest(testId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(testId, 'testId');
 
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+
     const { error } = await supabase
       .from('mock_tests')
-      .delete()
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
       .eq('test_id', testId);
 
     if (error) {
-      // Foreign-key violation (test has dependent rows)
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this mock test because it has questions or attempt history. ' +
-            'Use archiveMockTest() to retire it instead.',
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'mock_tests',
+      resourceId: testId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { testId },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

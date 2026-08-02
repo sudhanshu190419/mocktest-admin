@@ -47,9 +47,7 @@ import {
   createQuestionOption,
   getQuestionOptions,
 } from './questionOptionService';
-import {
-  deleteFile as storageDeleteFile,
-} from '../storage/storageService';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -221,7 +219,8 @@ export async function getQuestions(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('questions')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -321,6 +320,7 @@ export async function getQuestionById(questionId: string): Promise<ApiResponse<Q
       .from('questions')
       .select('*')
       .eq('question_id', questionId)
+      .is('deleted_at', null)
       .single<DbQuestion>();
 
     if (error) {
@@ -812,29 +812,38 @@ export async function updateQuestion(
 }
 
 /**
- * Permanently delete a question.
+ * Soft-delete a question (Phase 8B Enterprise Soft Delete).
  *
- * The `questions` table has no `deleted_at` column, so this performs a hard
- * delete. If the question is referenced by foreign keys (mock_test_questions,
- * mock_answers, pyq_question_mappings), the `ON DELETE RESTRICT` constraint
- * in the database will prevent deletion and return an error.
- *
- * For the standard retirement path, use `archiveQuestion()` instead.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the question and its
+ * child rows (options, option images, stem images, explanations). No row is
+ * physically deleted and storage files are preserved so the question can be
+ * restored from the Recycle Bin (Phase 8C).
  *
  * @param questionId - The UUID of the question to delete.
+ * @param reason     - Optional reason captured for audit / delete_reason.
  *
  * @example
  * const result = await deleteQuestion('uuid-here');
  * if (result.success) {
- *   // question permanently removed
+ *   // question moved to trash (recoverable)
  * }
  */
-export async function deleteQuestion(questionId: string): Promise<ApiResponse<void>> {
+export async function deleteQuestion(questionId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(questionId, 'questionId');
 
-    // ── Clean up option images before deleting the question ─────────────
-    // Fetch all options for this question to get their option IDs
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+    const softDeleteFields = {
+      deleted_at: now,
+      deleted_by: deletedBy,
+      delete_reason: reason ?? null,
+    };
+
+    // ── Soft-delete children first (they carry deleted_at since 080) ────
+    // Options must be resolved for question_option_images (keyed by option_id).
     const { data: options } = await supabase
       .from('question_options')
       .select('option_id')
@@ -843,62 +852,56 @@ export async function deleteQuestion(questionId: string): Promise<ApiResponse<vo
     const optionIds = (options ?? []).map((o) => o.option_id);
 
     if (optionIds.length > 0) {
-      // Fetch all option images for these options
-      const { data: optionImages } = await supabase
+      const { error: imgError } = await supabase
         .from('question_option_images')
-        .select('*')
+        .update(softDeleteFields)
         .in('option_id', optionIds);
 
-      // Delete storage files for all option images (best-effort)
-      for (const img of optionImages ?? []) {
-        try {
-          await storageDeleteFile(img.storage_bucket, img.storage_path);
-        } catch {
-          // Best-effort — continue cleaning up
-        }
+      if (imgError) {
+        return { success: false, error: `Failed to soft-delete option images: ${extractErrorMessage(imgError)}` };
       }
 
-      // Delete the option_images DB rows (they cascade on option delete,
-      // but we do it explicitly to avoid FK issues if cascade is not set)
-      const { error: imgDeleteError } = await supabase
-        .from('question_option_images')
-        .delete()
-        .in('option_id', optionIds);
-
-      if (imgDeleteError) {
-        return { success: false, error: `Failed to delete option images: ${extractErrorMessage(imgDeleteError)}` };
-      }
-
-      // Delete all options for this question
-      const { error: optDeleteError } = await supabase
+      const { error: optError } = await supabase
         .from('question_options')
-        .delete()
+        .update(softDeleteFields)
         .eq('question_id', questionId);
 
-      if (optDeleteError) {
-        return { success: false, error: `Failed to delete options: ${extractErrorMessage(optDeleteError)}` };
+      if (optError) {
+        return { success: false, error: `Failed to soft-delete options: ${extractErrorMessage(optError)}` };
       }
     }
 
-    // ── Delete the question itself ──────────────────────────────────────
+    // Stem images and explanations also ride along with the parent.
+    // Best-effort: these children may not exist for every question and the
+    // rows are only hidden — errors here must never fail the soft delete.
+    await supabase
+      .from('question_images')
+      .update(softDeleteFields)
+      .eq('question_id', questionId);
+
+    await supabase
+      .from('question_explanations')
+      .update(softDeleteFields)
+      .eq('question_id', questionId);
+
+    // ── Soft-delete the question itself ──────────────────────────────────
     const { error } = await supabase
       .from('questions')
-      .delete()
+      .update(softDeleteFields)
       .eq('question_id', questionId);
 
     if (error) {
-      // Foreign-key violation (question has dependent rows beyond options)
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this question because it is used in one or more tests or has ' +
-            'attempt history. Use archiveQuestion() to retire it instead.',
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'questions',
+      resourceId: questionId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { questionId },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

@@ -341,7 +341,8 @@ export const mockTestManagementService = {
           )
         `,
           { count: 'exact' },
-        );
+        )
+        .is('deleted_at', null);
 
       // ── Filters ─────────────────────────────────────────────────────
       if (filters?.instituteId) {
@@ -435,6 +436,7 @@ export const mockTestManagementService = {
           )
         `,
         )
+        .is('deleted_at', null)
         .eq('test_id', testId)
         .single();
 
@@ -699,35 +701,46 @@ export const mockTestManagementService = {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Permanently delete a mock test.
+   * Soft-delete a mock test (Phase 8B Enterprise Soft Delete).
    *
-   * The `mock_tests` table has no soft-delete column, so this performs a
-   * hard delete.  Dependent rows in `mock_test_questions`, `mock_attempts`,
-   * and `mock_results` will prevent deletion via FK constraints.
-   * For a safe retirement path, use `archive()` instead.
+   * Sets `deleted_at` / `deleted_by` / `delete_reason` on the mock test.
+   * The row is never physically deleted — dependent rows in
+   * `mock_test_questions`, `mock_attempts`, and `mock_results` remain
+   * intact so the test can be restored from the Recycle Bin (Phase 8C).
    *
    * @param testId - The UUID of the mock test to delete.
+   * @param reason - Optional reason captured for audit / delete_reason.
    */
-  async delete(testId: string): Promise<ApiResponse<null>> {
+  async delete(testId: string, reason?: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(testId, 'testId');
 
+      // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+      const { data: { user } } = await supabase.auth.getUser();
+      const deletedBy = user?.id ?? null;
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('mock_tests')
-        .delete()
+        .update({
+          deleted_at: now,
+          deleted_by: deletedBy,
+          delete_reason: reason ?? null,
+        })
         .eq('test_id', testId);
 
       if (error) {
-        if (error.code === '23503') {
-          return {
-            success: false,
-            error:
-              'Cannot delete this mock test because it has questions, attempts, or results. ' +
-              'Use archive() to retire it instead.',
-          };
-        }
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit (non-strict: never breaks the operation) ─────────────────
+      await auditService.logSoftDelete({
+        resourceType: 'mock_tests',
+        resourceId: testId,
+        newValue: { deletedAt: now, deletedBy },
+        metadata: { testId },
+        reason,
+      });
 
       return { success: true, data: null };
     } catch (err) {

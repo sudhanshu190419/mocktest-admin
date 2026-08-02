@@ -49,6 +49,7 @@
 import { supabase } from '@/config/supabase';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
+import { auditService } from '@/services/audit/auditService';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
 
@@ -987,8 +988,9 @@ export const courseManagementService = {
    * Returns a friendly error message if the course has dependencies.
    *
    * @param courseId - The UUID of the course to delete.
+   * @param reason   - Optional reason captured for audit / delete_reason.
    */
-  async delete(courseId: string): Promise<ApiResponse<null>> {
+  async delete(courseId: string, reason?: string): Promise<ApiResponse<null>> {
     try {
       validateUUID(courseId, 'courseId');
 
@@ -1027,12 +1029,18 @@ export const courseManagementService = {
         };
       }
 
-      // 3. Soft-delete: set deleted_at timestamp
+      // 3. Soft-delete: set deleted_at / deleted_by / delete_reason
       // Also clear published_at since the course is no longer published
+      const { data: { user } } = await supabase.auth.getUser();
+      const deletedBy = user?.id ?? null;
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('courses')
         .update({
-          deleted_at: new Date().toISOString(),
+          deleted_at: now,
+          deleted_by: deletedBy,
+          delete_reason: reason ?? null,
           published_at: null,
           status: 'archived',
         })
@@ -1041,6 +1049,15 @@ export const courseManagementService = {
       if (error) {
         return { success: false, error: extractErrorMessage(error) };
       }
+
+      // ── Audit (non-strict: never breaks the operation) ────────────────
+      await auditService.logSoftDelete({
+        resourceType: 'courses',
+        resourceId: courseId,
+        newValue: { deletedAt: now, deletedBy },
+        metadata: { courseId },
+        reason,
+      });
 
       return { success: true, data: null };
     } catch (err) {

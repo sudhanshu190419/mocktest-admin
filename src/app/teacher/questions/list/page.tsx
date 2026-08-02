@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useQuestions, usePublishQuestion, useArchiveQuestion, useRestoreQuestion, useDeleteQuestion } from '@/hooks/mockTest/useQuestions';
 import { useSubjects } from '@/hooks/academic/useSubjects';
 import { useChapters } from '@/hooks/academic/useChapters';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -31,6 +32,7 @@ const DIFFICULTY_LABELS: Record<DifficultyLevel, string> = {
 
 export default function QuestionListPage() {
   const router = useRouter();
+  const { canRestoreDeletedData } = usePermissions();
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
@@ -316,7 +318,9 @@ export default function QuestionListPage() {
           <button type="button" onClick={() => handleBulkAction('publish')} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">Publish All</button>
           <button type="button" onClick={() => handleBulkAction('archive')} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700">Archive All</button>
           <button type="button" onClick={() => handleBulkAction('restore')} className="rounded-lg bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700">Restore All</button>
-          <button type="button" onClick={() => handleBulkAction('delete')} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-700">Delete All</button>
+          {canRestoreDeletedData && (
+            <button type="button" onClick={() => handleBulkAction('delete')} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-700">Delete All</button>
+          )}
           <button type="button" onClick={clearSelection} className="ml-auto text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400">Clear Selection</button>
         </div>
       )}
@@ -361,9 +365,9 @@ export default function QuestionListPage() {
         }}
         title={confirmAction?.type === 'bulk-delete' ? 'Delete Questions' : 'Confirm Archive'}
         message={confirmAction?.type === 'bulk-delete'
-          ? `Are you sure you want to permanently delete ${selectedIds.size} question(s)? This cannot be undone.`
+          ? `Are you sure you want to delete ${selectedIds.size} question(s)? These items will be moved to the Recycle Bin and can be restored later.`
           : 'Are you sure you want to archive this question?'}
-        confirmLabel={confirmAction?.type === 'bulk-delete' ? 'Delete Permanently' : 'Archive'}
+        confirmLabel={confirmAction?.type === 'bulk-delete' ? 'Move to Recycle Bin' : 'Archive'}
         variant={confirmAction?.type === 'bulk-delete' ? 'danger' : 'warning'}
       />
     </div>

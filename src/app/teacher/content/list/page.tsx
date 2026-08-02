@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useContentList, useDeleteContent, usePublishContent, useArchiveContent, useRestoreContent } from '@/hooks/content/useContent';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -45,6 +46,7 @@ function formatFileSize(bytes: number | null): string {
 export default function TeacherContentListPage() {
   const router = useRouter();
   const { instituteId } = useAuth();
+  const { canRestoreDeletedData } = usePermissions();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -70,7 +72,7 @@ export default function TeacherContentListPage() {
   const { mutate: archiveContent } = useArchiveContent();
   const { mutate: restoreContent } = useRestoreContent();
 
-  const [confirmAction, setConfirmAction] = useState<{ type: string; id: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; title?: string } | null>(null);
 
   const columns: Column<Content>[] = [
     {
@@ -139,9 +141,9 @@ export default function TeacherContentListPage() {
             <button type="button" onClick={() => restoreContent(c.contentId)}
               className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50">Restore</button>
           )}
-          {(c.status === 'draft' || c.status === 'rejected') && (
+          {(c.status === 'draft' || c.status === 'rejected') && canRestoreDeletedData && (
             <button type="button" onClick={() => {
-              if (confirm('Delete this content permanently?')) deleteContent(c.contentId);
+              setConfirmAction({ type: 'delete', id: c.contentId, title: c.title });
             }}
               className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
           )}
@@ -152,7 +154,9 @@ export default function TeacherContentListPage() {
 
   const confirmConfig = confirmAction?.type === 'publish'
     ? { title: 'Submit for Review', message: 'Submit this content for admin approval? It will be reviewed by an admin before being made available.', confirmLabel: 'Submit', variant: 'default' as const }
-    : { title: 'Archive Content', message: 'Archived content is hidden from students. You can restore it later.', confirmLabel: 'Archive', variant: 'warning' as const };
+    : confirmAction?.type === 'delete'
+      ? { title: 'Delete Content', message: `Delete "${confirmAction.title}"? This item will be moved to the Recycle Bin and can be restored later.`, confirmLabel: 'Move to Recycle Bin', variant: 'danger' as const }
+      : { title: 'Archive Content', message: 'Archived content is hidden from students. You can restore it later.', confirmLabel: 'Archive', variant: 'warning' as const };
 
   return (
     <div>
@@ -216,6 +220,7 @@ export default function TeacherContentListPage() {
         onConfirm={() => {
           if (confirmAction?.type === 'publish') publishContent(confirmAction.id);
           else if (confirmAction?.type === 'archive') archiveContent(confirmAction.id);
+          else if (confirmAction?.type === 'delete') deleteContent(confirmAction.id);
           setConfirmAction(null);
         }}
         title={confirmConfig.title}

@@ -26,6 +26,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -137,7 +138,8 @@ export async function getSubjects(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('subjects')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.streamId) {
@@ -200,6 +202,7 @@ export async function getSubjectById(subjectId: string): Promise<ApiResponse<Sub
       .from('subjects')
       .select('*')
       .eq('subject_id', subjectId)
+      .is('deleted_at', null)
       .single<DbSubject>();
 
     if (error) {
@@ -357,43 +360,51 @@ export async function updateSubject(
 }
 
 /**
- * Permanently delete a subject.
+ * Soft-delete a subject (Phase 8B Enterprise Soft Delete).
  *
- * The `subjects` table has no `deleted_at` column, so this performs a hard
- * delete. If the subject is referenced by foreign keys (chapters),
- * the `ON DELETE RESTRICT` constraint in the database will prevent deletion
- * and return an error.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the subject. The
+ * row is never physically deleted and its child rows (chapters) remain
+ * intact so the subject can be restored from the Recycle Bin (Phase 8C).
  *
  * @param subjectId - The UUID of the subject to delete.
+ * @param reason    - Optional reason captured for audit / delete_reason.
  *
  * @example
  * const result = await deleteSubject('uuid-here');
  * if (result.success) {
- *   // subject permanently removed
+ *   // subject moved to trash (recoverable)
  * }
  */
-export async function deleteSubject(subjectId: string): Promise<ApiResponse<void>> {
+export async function deleteSubject(subjectId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(subjectId, 'subjectId');
 
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+
     const { error } = await supabase
       .from('subjects')
-      .delete()
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
       .eq('subject_id', subjectId);
 
     if (error) {
-      // Foreign-key violation (subject has dependent rows)
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this subject because it has associated chapters. ' +
-            'Remove or reassign them first.',
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'subjects',
+      resourceId: subjectId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { subjectId },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

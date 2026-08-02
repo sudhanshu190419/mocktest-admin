@@ -3,7 +3,8 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useContentList, useApproveContent, useRejectContent, useArchiveContent, useRestoreContent } from '@/hooks/content/useContent';
+import { useContentList, useApproveContent, useRejectContent, useArchiveContent, useRestoreContent, useDeleteContent } from '@/hooks/content/useContent';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -36,6 +37,7 @@ function formatFileSize(bytes: number | null): string {
 
 export default function AdminContentReviewPage() {
   const { instituteId } = useAuth();
+  const { canRestoreDeletedData } = usePermissions();
   const [activeTab, setActiveTab] = useState<LifecycleStatus | 'all'>('pending_review');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -72,6 +74,7 @@ export default function AdminContentReviewPage() {
   const { mutate: rejectContent } = useRejectContent();
   const { mutate: archiveContent } = useArchiveContent();
   const { mutate: restoreContent } = useRestoreContent();
+  const { mutate: deleteContent } = useDeleteContent();
 
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; title: string } | null>(null);
 
@@ -179,6 +182,18 @@ export default function AdminContentReviewPage() {
               Restore
             </button>
           )}
+
+          {/* Soft Delete (Super Admin only) */}
+          {canRestoreDeletedData && (
+            <button type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmAction({ type: 'delete', id: c.contentId, title: c.title });
+              }}
+              className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">
+              Delete
+            </button>
+          )}
         </div>
       ),
     },
@@ -253,21 +268,27 @@ export default function AdminContentReviewPage() {
         onConfirm={() => {
           if (confirmAction?.type === 'reject') rejectContent(confirmAction.id);
           else if (confirmAction?.type === 'archive') archiveContent(confirmAction.id);
+          else if (confirmAction?.type === 'delete') deleteContent(confirmAction.id);
           setConfirmAction(null);
         }}
         title={
           confirmAction?.type === 'reject' ? 'Reject Content' :
-          confirmAction?.type === 'archive' ? 'Archive Content' : ''
+          confirmAction?.type === 'archive' ? 'Archive Content' :
+          confirmAction?.type === 'delete' ? 'Delete Content' : ''
         }
         message={
           confirmAction?.type === 'reject'
             ? `Reject "${confirmAction?.title}"? The teacher can revise and resubmit it.`
-            : `Archive "${confirmAction?.title}"? It will be hidden from students but data is preserved.`
+            : confirmAction?.type === 'archive'
+              ? `Archive "${confirmAction?.title}"? It will be hidden from students but data is preserved.`
+              : `Delete "${confirmAction?.title}"? This item will be moved to the Recycle Bin and can be restored later.`
         }
         confirmLabel={
-          confirmAction?.type === 'reject' ? 'Reject' : 'Archive'
+          confirmAction?.type === 'reject' ? 'Reject' :
+          confirmAction?.type === 'archive' ? 'Archive' :
+          confirmAction?.type === 'delete' ? 'Delete' : ''
         }
-        variant={confirmAction?.type === 'reject' ? 'danger' : 'warning'}
+        variant={confirmAction?.type === 'reject' || confirmAction?.type === 'delete' ? 'danger' : 'warning'}
       />
     </div>
   );

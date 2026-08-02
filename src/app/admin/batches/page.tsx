@@ -12,6 +12,7 @@ import {
   useRestoreBatch,
   useDeleteBatch,
 } from '@/hooks/admin/useBatchManagement';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { CreateBatchDialog } from '@/components/admin/batches/CreateBatchDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -162,6 +163,7 @@ function SummaryCardsSkeleton() {
 
 export default function BatchManagementPage() {
   const router = useRouter();
+  const { canRestoreDeletedData } = usePermissions();
 
   // ── Filter State ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -339,7 +341,7 @@ export default function BatchManagementPage() {
       case 'delete':
         return {
           title: 'Delete Batch',
-          message: `Are you sure you want to delete "${label}"? This action cannot be undone.`,
+          message: `Are you sure you want to delete "${label}"? This item will be moved to the Recycle Bin and can be restored later.`,
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -531,23 +533,25 @@ export default function BatchManagementPage() {
                 ) : null}
                 Restore
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', batch: _item }); }}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
-              >
-                {actionLoading && confirmAction?.batch?.batchId === _item.batchId && confirmAction?.type === 'delete' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Delete
-              </button>
+              {canRestoreDeletedData && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', batch: _item }); }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
+                >
+                  {actionLoading && confirmAction?.batch?.batchId === _item.batchId && confirmAction?.type === 'delete' ? (
+                    <CircleNotch size={10} className="animate-spin" />
+                  ) : null}
+                  Delete
+                </button>
+              )}
             </>
           )}
         </div>
       ),
     },
-  ], []);
+  ], [canRestoreDeletedData]);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Render

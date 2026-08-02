@@ -10,6 +10,7 @@ import {
   useRestoreCourse,
   useDeleteCourse,
 } from '@/hooks/admin/useCourseManagement';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { CourseCreateModal } from '@/components/ui/CourseCreateModal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -145,6 +146,7 @@ function SummaryCardsSkeleton() {
 
 export default function CourseManagementPage() {
   const router = useRouter();
+  const { canRestoreDeletedData } = usePermissions();
 
   // ── Create Modal State ───────────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -313,7 +315,7 @@ export default function CourseManagementPage() {
       case 'delete':
         return {
           title: 'Delete Course',
-          message: `Are you sure you want to delete "${label}"? This action cannot be undone. Only courses without active enrollments can be deleted.`,
+          message: `Are you sure you want to delete "${label}"? Only courses without active enrollments can be deleted. This item will be moved to the Recycle Bin and can be restored later.`,
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -511,23 +513,25 @@ export default function CourseManagementPage() {
                 ) : null}
                 Restore
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', course: _item }); }}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
-              >
-                {actionLoading && confirmAction?.course?.courseId === _item.courseId && confirmAction?.type === 'delete' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Delete
-              </button>
+              {canRestoreDeletedData && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', course: _item }); }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
+                >
+                  {actionLoading && confirmAction?.course?.courseId === _item.courseId && confirmAction?.type === 'delete' ? (
+                    <CircleNotch size={10} className="animate-spin" />
+                  ) : null}
+                  Delete
+                </button>
+              )}
             </>
           )}
         </div>
       ),
     },
-  ], []);
+  ], [canRestoreDeletedData]);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Render

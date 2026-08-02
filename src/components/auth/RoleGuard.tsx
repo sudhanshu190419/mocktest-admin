@@ -89,7 +89,22 @@ export default function RoleGuard({
     // TEMP DEBUG: redirect-decision logging (remove after diagnosis)
     console.log('[TD-roleGuard] effect run', { loading, pathname, deviceStatus, redirected });
     if (redirected) {
-      console.log('[TD-roleGuard] effect BAILED — redirected latch is TRUE and never reset', { pathname, deviceStatus });
+      // The redirect latch is set. Clear it once we've actually arrived on
+      // the device status screen the redirect targeted (so children can
+      // render), or once the device is no longer blocking (approved/bypass —
+      // so the pending → dashboard transition works). Without this reset the
+      // latch would permanently keep the loading overlay on screen.
+      if (teacherProfile?.role === 'admin') {
+        const deviceRoute = getDeviceStatusRoute(deviceStatus);
+        const arrivedOnDeviceScreen = deviceRoute !== null && pathname === deviceRoute;
+        const deviceNoLongerBlocked = deviceRoute === null && deviceStatus !== 'checking';
+        if (arrivedOnDeviceScreen || deviceNoLongerBlocked) {
+          console.log('[TD-roleGuard] redirected latch CLEARED — rendering children', { pathname, deviceStatus });
+          setRedirected(false);
+        } else {
+          console.log('[TD-roleGuard] effect BAILED — redirected latch still holds', { pathname, deviceStatus });
+        }
+      }
       return;
     }
 
@@ -175,8 +190,14 @@ export default function RoleGuard({
   // ── Loading / device-checking state ───────────────────────────────────
   // A 'checking' device status means the trusted-device challenge is still
   // resolving — hold the spinner instead of flashing protected content.
+  // Trusted-device screens: once the URL is already one of the device status
+  // pages, never block rendering with the redirect/loading overlay — render
+  // children so the device page (pending / rejected / revoked / expired) can
+  // display.
   const deviceChecking = teacherProfile?.role === 'admin' && deviceStatus === 'checking';
-  if (loading || redirected || deviceChecking) {
+  const deviceRoute = getDeviceStatusRoute(deviceStatus);
+  const onDeviceScreen = deviceRoute !== null && pathname === deviceRoute;
+  if ((loading || redirected || deviceChecking) && !onDeviceScreen) {
     console.log('[SPINNER]', {
       component: 'RoleGuard',
       pathname,

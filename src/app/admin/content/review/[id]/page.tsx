@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useContent,
   useApproveContent,
   useRejectContent,
+  useDeleteContent,
 } from '@/hooks/content/useContent';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { useContentList } from '@/hooks/content/useContent';
 import { useApprovalHistory } from '@/hooks/content/useApproval';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -152,7 +154,9 @@ function DetailPageSkeleton() {
 
 export default function AdminContentReviewDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const contentId = params.id as string;
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: content, isLoading, isError, error, refetch } = useContent(contentId);
 
@@ -171,7 +175,7 @@ export default function AdminContentReviewDetailPage() {
   const { data: approvalHistory } = useApprovalHistory(contentId, 'content');
 
   // ── Confirmation & Feedback State ────────────────────────────────────
-  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' | 'delete' } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -186,14 +190,23 @@ export default function AdminContentReviewDetailPage() {
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const approveMutation = useApproveContent();
   const rejectMutation = useRejectContent();
+  const deleteMutation = useDeleteContent();
 
   // ── Action Executor ─────────────────────────────────────────────────
-  const executeAction = useCallback(async (action: 'approve' | 'reject') => {
+  const executeAction = useCallback(async (action: 'approve' | 'reject' | 'delete') => {
     setActionError(null);
     setActionSuccess(null);
     setActionLoading(true);
 
     try {
+      // Soft delete — handled separately (void mutation; item moves to Recycle Bin)
+      if (action === 'delete') {
+        await deleteMutation.mutateAsync(contentId);
+        setActionSuccess('Content moved to the Recycle Bin successfully');
+        router.push('/admin/content/review');
+        return;
+      }
+
       if (action === 'approve') {
         await approveMutation.mutateAsync(contentId);
         setActionSuccess('Content approved successfully');
@@ -209,7 +222,7 @@ export default function AdminContentReviewDetailPage() {
       setConfirmAction(null);
       clearFeedback();
     }
-  }, [contentId, approveMutation, rejectMutation, refetch, clearFeedback]);
+  }, [contentId, approveMutation, rejectMutation, deleteMutation, router, refetch, clearFeedback]);
 
   const handleConfirm = useCallback(() => {
     if (!confirmAction) return;
@@ -224,12 +237,19 @@ export default function AdminContentReviewDetailPage() {
           confirmLabel: 'Approve Content',
           variant: 'default' as const,
         }
-      : {
-          title: 'Reject Content',
-          message: 'Are you sure you want to reject this content? The teacher can revise and resubmit it.',
-          confirmLabel: 'Reject Content',
-          variant: 'danger' as const,
-        }
+      : confirmAction.type === 'reject'
+        ? {
+            title: 'Reject Content',
+            message: 'Are you sure you want to reject this content? The teacher can revise and resubmit it.',
+            confirmLabel: 'Reject Content',
+            variant: 'danger' as const,
+          }
+        : {
+            title: 'Delete Content',
+            message: 'Are you sure you want to delete this content? This item will be moved to the Recycle Bin and can be restored later.',
+            confirmLabel: 'Delete Content',
+            variant: 'danger' as const,
+          }
     : null;
 
   // ═════════════════════════════════════════════════════════════════════
@@ -380,6 +400,22 @@ export default function AdminContentReviewDetailPage() {
                 {actionLoading && confirmAction?.type === 'reject' ? 'Rejecting...' : 'Reject'}
               </button>
             </>
+          )}
+          {/* Soft Delete (Super Admin only) */}
+          {canRestoreDeletedData && (
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'delete' })}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-40"
+            >
+              {actionLoading && confirmAction?.type === 'delete' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <XCircle size={14} weight="fill" />
+              )}
+              {actionLoading && confirmAction?.type === 'delete' ? 'Deleting...' : 'Delete'}
+            </button>
           )}
           <Link
             href={`/teacher/content/${contentId}/preview`}

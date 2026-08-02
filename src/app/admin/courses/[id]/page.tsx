@@ -10,6 +10,7 @@ import {
   useRestoreCourse,
   useDeleteCourse,
 } from '@/hooks/admin/useCourseManagement';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import {
   useAssignedTeachers,
   useAvailableTeachers,
@@ -57,6 +58,8 @@ import {
   Image,
   Question,
   GraduationCap,
+  CircleNotch,
+  PlusCircle,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,6 +238,7 @@ function StatCard({
 export default function CourseDetailPage() {
   const params = useParams();
   const courseId = params.id as string;
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: course, isLoading, isError, error, refetch } = useCourseDetail(courseId);
 
@@ -720,7 +724,7 @@ export default function CourseDetailPage() {
       case 'delete':
         return {
           title: 'Delete Course',
-          message: `Are you sure you want to delete this course? Only courses without active enrollments can be deleted. This action cannot be undone.`,
+          message: `Are you sure you want to delete this course? Only courses without active enrollments can be deleted. This item will be moved to the Recycle Bin and can be restored later.`,
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -1861,8 +1865,8 @@ export default function CourseDetailPage() {
                 </button>
               )}
 
-              {/* Archived → Delete */}
-              {course.status === 'archived' && (
+              {/* Archived → Delete (Super Admin only) */}
+              {course.status === 'archived' && canRestoreDeletedData && (
                 <button
                   type="button"
                   onClick={() => setConfirmAction({ type: 'delete' })}

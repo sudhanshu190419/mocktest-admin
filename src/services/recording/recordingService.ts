@@ -657,9 +657,11 @@ export const recordingService = {
    * recording-delete Edge Function directly.
    *
    * @param recordingId - The recording UUID.
+   * @param reason      - Optional reason captured for audit / delete_reason.
    */
   async deleteRecording(
     recordingId: string,
+    reason?: string,
   ): Promise<ApiResponse<void>> {
     try {
       validateUUID(recordingId, 'recordingId');
@@ -671,10 +673,20 @@ export const recordingService = {
 
       const now = new Date().toISOString();
 
+      // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+      const { data: { user } } = await supabase.auth.getUser();
+      const deletedBy = user?.id ?? null;
+
       // ── STEP 1: Soft-delete the DB row ─────────────────────────────
       const { error: dbError } = await supabase
         .from('recordings')
-        .update({ is_deleted: true, deleted_at: now, updated_at: now })
+        .update({
+          is_deleted: true,
+          deleted_at: now,
+          deleted_by: deletedBy,
+          delete_reason: reason ?? null,
+          updated_at: now,
+        })
         .eq('recording_id', recordingId);
 
       if (dbError) {
@@ -685,8 +697,9 @@ export const recordingService = {
       await auditService.logSoftDelete({
         resourceType: 'recordings',
         resourceId: recordingId,
-        newValue: { isDeleted: true, deletedAt: now },
+        newValue: { isDeleted: true, deletedAt: now, deletedBy },
         metadata: { recordingId, title: getResult.success ? getResult.data?.title ?? null : null },
+        reason,
       });
 
       // ── STEP 2: Delete from R2 (best-effort, non-blocking) ────────

@@ -315,6 +315,7 @@ export const questionApprovalService = {
         let q = supabase
           .from('questions')
           .select('question_id', { count: 'exact', head: true })
+          .is('deleted_at', null)
           .eq('status', status);
         if (instituteId) {
           q = q.eq('institute_id', instituteId);
@@ -365,7 +366,8 @@ export const questionApprovalService = {
         .select(
           `\n          question_id,\n          question_text,\n          question_type,\n          difficulty,\n          status,\n          subject_id,\n          chapter_id,\n          created_by,\n          marks,\n          negative_marks,\n          version,\n          created_at,\n          updated_at,\n          approved_at,\n          subjects!left ( name ),\n          chapters!left ( name )\n        `,
           { count: 'exact' },
-        );
+        )
+        .is('deleted_at', null);
 
       // ── Filters ─────────────────────────────────────────────────────
       if (filters?.instituteId) {
@@ -482,6 +484,7 @@ export const questionApprovalService = {
         .select(
           `\n          *,\n          subjects!left ( name ),\n          chapters!left ( name )\n        `,
         )
+        .is('deleted_at', null)
         .eq('question_id', questionId)
         .single();
 
@@ -871,7 +874,8 @@ export const questionApprovalService = {
         .select(
           `\n          subject_id,\n          subjects!inner ( name )\n        `,
           { count: 'exact' },
-        );
+        )
+        .is('deleted_at', null);
 
       if (instituteId) {
         subjectQuery = subjectQuery.eq('institute_id', instituteId);
@@ -902,6 +906,7 @@ export const questionApprovalService = {
           `\n          subject_id,\n          subjects!inner ( name )\n        `,
           { count: 'exact' },
         )
+        .is('deleted_at', null)
         .eq('status', 'pending_approval');
 
       if (instituteId) {
@@ -929,6 +934,7 @@ export const questionApprovalService = {
         .select(
           `\n          question_id,\n          question_text,\n          question_type,\n          difficulty,\n          status,\n          subject_id,\n          chapter_id,\n          created_by,\n          created_at,\n          updated_at,\n          approved_at,\n          subjects!left ( name ),\n          chapters!left ( name )\n        `,
         )
+        .is('deleted_at', null)
         .eq('status', 'pending_approval')
         .order('created_at', { ascending: false })
         .limit(10);
@@ -944,6 +950,7 @@ export const questionApprovalService = {
         .select(
           `\n          question_id,\n          question_text,\n          question_type,\n          difficulty,\n          status,\n          subject_id,\n          chapter_id,\n          created_by,\n          created_at,\n          updated_at,\n          approved_at,\n          subjects!left ( name ),\n          chapters!left ( name )\n        `,
         )
+        .is('deleted_at', null)
         .eq('status', 'published')
         .not('approved_at', 'is', null)
         .order('approved_at', { ascending: false })

@@ -29,6 +29,7 @@ import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
 import { resolveCurrentTeacherId } from './teacherResolver';
+import { auditService } from '../audit/auditService';
 import {
   uploadFile as storageUploadFile,
   deleteFile as storageDeleteFile,
@@ -292,7 +293,8 @@ export async function getContents(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('content')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -420,6 +422,7 @@ export async function getContentById(contentId: string): Promise<ApiResponse<Con
       .from('content')
       .select('*')
       .eq('content_id', contentId)
+      .is('deleted_at', null)
       .single<DbContent>();
 
     if (error) {
@@ -754,26 +757,21 @@ export async function updateContent(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Deletes a content record and its associated storage files.
+ * Soft-delete a content record (Phase 8B Enterprise Soft Delete).
  *
- * Workflow:
- *   1. Delete the storage file via storageService
- *   2. Delete the thumbnail via storageService
- *   3. Delete the database row
- *
- * Since the content table does not support soft delete via `deleted_at`,
- * this performs a hard delete. Foreign key constraints (RESTRICT) will
- * block deletion if tags or approval requests reference this content.
- *
- * For the standard retirement path, use `archiveContent()` instead.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the content row.
+ * The row is never physically deleted and the storage files (content file
+ * and thumbnail) are PRESERVED so the content can be restored from the
+ * Recycle Bin (Phase 8C). Storage deletion only happens on permanent purge.
  *
  * @param contentId - The UUID of the content to delete.
+ * @param reason    - Optional reason captured for audit / delete_reason.
  */
-export async function deleteContent(contentId: string): Promise<ApiResponse<void>> {
+export async function deleteContent(contentId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(contentId, 'contentId');
 
-    // ── Fetch existing content for storage paths ────────────────────────
+    // ── Fetch existing content (existence check + audit metadata) ───────
     const existing = await getContentById(contentId);
     if (!existing.success || !existing.data) {
       return { success: false, error: `Content not found: ${contentId}` };
@@ -781,30 +779,33 @@ export async function deleteContent(contentId: string): Promise<ApiResponse<void
 
     const current = existing.data;
 
-    // ── Delete storage files (best-effort) ──────────────────────────────
-    await storageDeleteFile(current.storageBucket, current.storagePath);
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
 
-    if (current.thumbnailBucket && current.thumbnailPath) {
-      await storageDeleteFile(current.thumbnailBucket, current.thumbnailPath);
-    }
-
-    // ── Delete DB row ──────────────────────────────────────────────────
+    // ── Soft-delete the DB row (storage files preserved for Phase 8C) ───
     const { error } = await supabase
       .from('content')
-      .delete()
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
       .eq('content_id', contentId);
 
     if (error) {
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this content because it has associated tags or approval requests. ' +
-            'Remove or archive them first, or use archiveContent() instead.',
-        };
-      }
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'content',
+      resourceId: contentId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { contentId, title: current.title },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

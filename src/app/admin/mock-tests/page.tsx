@@ -11,6 +11,7 @@ import {
   useDuplicateMockTest,
   useDeleteMockTest,
 } from '@/hooks/admin/useMockTestManagement';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -127,6 +128,7 @@ function SummaryCardsSkeleton() {
 
 export default function MockTestManagementPage() {
   const router = useRouter();
+  const { canRestoreDeletedData } = usePermissions();
 
   // ── Filter State ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -302,7 +304,7 @@ export default function MockTestManagementPage() {
       case 'delete':
         return {
           title: 'Delete Mock Test',
-          message: `Are you sure you want to delete "${label}"? This action cannot be undone.`,
+          message: `Are you sure you want to delete "${label}"? This item will be moved to the Recycle Bin and can be restored later.`,
           confirmLabel: 'Delete',
           variant: 'danger' as const,
         };
@@ -431,17 +433,19 @@ export default function MockTestManagementPage() {
                 ) : null}
                 Duplicate
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', test: _item }); }}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
-              >
-                {actionLoading && confirmAction?.test?.testId === _item.testId && confirmAction?.type === 'delete' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Delete
-              </button>
+              {canRestoreDeletedData && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', test: _item }); }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
+                >
+                  {actionLoading && confirmAction?.test?.testId === _item.testId && confirmAction?.type === 'delete' ? (
+                    <CircleNotch size={10} className="animate-spin" />
+                  ) : null}
+                  Delete
+                </button>
+              )}
             </>
           )}
 
@@ -459,17 +463,19 @@ export default function MockTestManagementPage() {
                 ) : null}
                 Publish
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', test: _item }); }}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
-              >
-                {actionLoading && confirmAction?.test?.testId === _item.testId && confirmAction?.type === 'delete' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Delete
-              </button>
+              {canRestoreDeletedData && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'delete', test: _item }); }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
+                >
+                  {actionLoading && confirmAction?.test?.testId === _item.testId && confirmAction?.type === 'delete' ? (
+                    <CircleNotch size={10} className="animate-spin" />
+                  ) : null}
+                  Delete
+                </button>
+              )}
             </>
           )}
 
@@ -531,7 +537,7 @@ export default function MockTestManagementPage() {
         </div>
       ),
     },
-  ], []);
+  ], [canRestoreDeletedData]);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Render

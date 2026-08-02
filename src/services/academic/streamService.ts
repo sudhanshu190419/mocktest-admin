@@ -26,6 +26,7 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -141,7 +142,8 @@ export async function getStreams(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('streams')
-      .select('*', { count: 'exact' });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -208,6 +210,7 @@ export async function getStreamById(streamId: string): Promise<ApiResponse<Strea
       .from('streams')
       .select('*')
       .eq('stream_id', streamId)
+      .is('deleted_at', null)
       .single<DbStream>();
 
     if (error) {
@@ -375,43 +378,51 @@ export async function updateStream(
 }
 
 /**
- * Permanently delete a stream.
+ * Soft-delete a stream (Phase 8B Enterprise Soft Delete).
  *
- * The `streams` table has no `deleted_at` column, so this performs a hard
- * delete. If the stream is referenced by foreign keys (subjects, batches),
- * the `ON DELETE RESTRICT` constraint in the database will prevent deletion
- * and return an error.
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the stream. The row
+ * is never physically deleted so the stream can be restored from the
+ * Recycle Bin (Phase 8C).
  *
  * @param streamId - The UUID of the stream to delete.
+ * @param reason   - Optional reason captured for audit / delete_reason.
  *
  * @example
  * const result = await deleteStream('uuid-here');
  * if (result.success) {
- *   // stream permanently removed
+ *   // stream moved to trash (recoverable)
  * }
  */
-export async function deleteStream(streamId: string): Promise<ApiResponse<void>> {
+export async function deleteStream(streamId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(streamId, 'streamId');
 
+    // ── Resolve the acting profile (profiles.profile_id = auth.users.id) ─
+    const { data: { user } } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+
     const { error } = await supabase
       .from('streams')
-      .delete()
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
       .eq('stream_id', streamId);
 
     if (error) {
-      // Foreign-key violation (stream has dependent rows)
-      if (error.code === '23503') {
-        return {
-          success: false,
-          error:
-            'Cannot delete this stream because it has associated subjects or batches. ' +
-            'Remove or reassign them first.',
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    // ── Audit (non-strict: never breaks the operation) ──────────────────
+    await auditService.logSoftDelete({
+      resourceType: 'streams',
+      resourceId: streamId,
+      newValue: { deletedAt: now, deletedBy },
+      metadata: { streamId },
+      reason,
+    });
 
     return { success: true };
   } catch (err) {

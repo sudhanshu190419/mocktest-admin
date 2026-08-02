@@ -20,6 +20,7 @@ import {
   useDeleteRecording,
   useRetryRecording,
 } from '@/hooks/recording/useRecordings';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 
@@ -74,6 +75,7 @@ function formatDate(dateStr: string): string {
 
 export default function RecordingsListPage() {
   const router = useRouter();
+  const { canRestoreDeletedData } = usePermissions();
 
   // ── UI State ─────────────────────────────────────────────────────────────
   const [page, setPage] = useState(1);
@@ -355,26 +357,28 @@ export default function RecordingsListPage() {
                 Retry
               </button>
             )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteConfirm({
-                  recordingId: r.recordingId,
-                  title: r.title,
-                });
-              }}
-              disabled={isDeleting}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
-            >
-              <Trash size={12} />
-              Delete
-            </button>
+            {canRestoreDeletedData && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirm({
+                    recordingId: r.recordingId,
+                    title: r.title,
+                  });
+                }}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
+              >
+                <Trash size={12} />
+                Delete
+              </button>
+            )}
           </div>
         ),
       },
     ],
-    [handlePlay, handleShare, handleRetry, isDeleting, isRetrying],
+    [handlePlay, handleShare, handleRetry, isDeleting, isRetrying, canRestoreDeletedData],
   );
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
@@ -517,7 +521,7 @@ export default function RecordingsListPage() {
         onClose={() => setDeleteConfirm(null)}
         onConfirm={handleDelete}
         title="Delete Recording"
-        message={`Are you sure you want to delete "${deleteConfirm?.title ?? 'this recording'}"? Students will no longer be able to access this recording. This action can be undone by contacting an administrator.`}
+        message={`Are you sure you want to delete "${deleteConfirm?.title ?? 'this recording'}"? This item will be moved to the Recycle Bin and can be restored later.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"

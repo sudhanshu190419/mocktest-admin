@@ -192,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const evaluateDeviceTrust = async (
     role: string | undefined,
     adminRoles: AdminRoleAssignment[] | undefined,
+    options?: { forceNewRequest?: boolean },
   ): Promise<void> => {
     // TEMP DEBUG: entry point
     console.log('[TD-eval] ENTER evaluateDeviceTrust', {
@@ -254,6 +255,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fingerprint: fingerprint ?? undefined,
           deviceName: deriveDeviceName(),
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+          // Phase 7F: revoked/expired screens' "request approval again" mints a
+          // fresh request — skip the fingerprint auto-match so the old row's
+          // status is not surfaced again.
+          forceNewRequest: options?.forceNewRequest ?? false,
         });
 
         if (!result.success || !result.data) {
@@ -386,13 +391,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Clear the stored device token and re-challenge — used by the expired
-   * screen's "Request new approval" action. A fresh token mints a NEW
-   * pending request for the super admin to approve.
+   * Clear the stored device token and re-challenge in "new request" mode —
+   * used by the expired screen's "Request new approval" and the revoked
+   * screen's "Request Approval Again" actions. A fresh token mints a NEW
+   * pending request for the super admin to approve (or reuses an existing
+   * pending request for this profile — never a duplicate).
    */
   const requestNewDeviceApproval = async (): Promise<void> => {
     await clearStoredDeviceToken();
-    await evaluateDeviceTrust(teacherProfile?.role, teacherProfile?.adminRoles);
+    await evaluateDeviceTrust(teacherProfile?.role, teacherProfile?.adminRoles, {
+      forceNewRequest: true,
+    });
   };
 
   /**

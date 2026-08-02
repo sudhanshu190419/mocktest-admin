@@ -22,6 +22,7 @@ import {
   useDeleteRecording,
   useRetryRecording,
 } from '@/hooks/recording/useRecordings';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { RecordingStatusBadge } from '@/components/recording/RecordingStatusBadge';
@@ -195,6 +196,7 @@ export default function RecordingDetailPage() {
   const params = useParams();
   const router = useRouter();
   const recordingId = params?.id as string;
+  const { canRestoreDeletedData } = usePermissions();
 
   // ── State ────────────────────────────────────────────────────────────────
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -578,14 +580,16 @@ export default function RecordingDetailPage() {
                 />
               )}
 
-              {/* Delete */}
-              <ActionButton
-                icon={<Trash size={16} />}
-                label="Delete Recording"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={isDeleting}
-                variant="danger"
-              />
+              {/* Delete (Super Admin only) */}
+              {canRestoreDeletedData && (
+                <ActionButton
+                  icon={<Trash size={16} />}
+                  label="Delete Recording"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isDeleting}
+                  variant="danger"
+                />
+              )}
             </div>
           </div>
 
@@ -675,7 +679,7 @@ export default function RecordingDetailPage() {
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
         title="Delete Recording"
-        message={`Are you sure you want to delete "${recording.title}"? This recording will be hidden from students. You can restore it later by contacting an administrator.`}
+        message={`Are you sure you want to delete "${recording.title}"? This item will be moved to the Recycle Bin and can be restored later.`}
         confirmLabel="Delete Recording"
         cancelLabel="Cancel"
         variant="danger"

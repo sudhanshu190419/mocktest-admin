@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useMockTest, useUpdateMockTest, useDeleteMockTest, usePublishMockTest, useArchiveMockTest, useRestoreMockTest } from '@/hooks/mockTest/useMockTests';
 import { useSubjects } from '@/hooks/academic/useSubjects';
 import { useChapters } from '@/hooks/academic/useChapters';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -54,6 +55,7 @@ function toLocalDatetime(iso: string | null | undefined): string {
 export default function EditMockTestPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id: testId } = use(params);
+  const { canRestoreDeletedData } = usePermissions();
 
   const { data: test, isLoading, isError } = useMockTest(testId);
   const updateMockTest = useUpdateMockTest();
@@ -167,9 +169,12 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
       case 'restore':
         restoreTest.mutate(testId);
         break;
+      case 'delete':
+        deleteMockTest.mutate(testId, { onSuccess: () => router.push('/teacher/mock-tests') });
+        break;
     }
     setConfirmAction(null);
-  }, [confirmAction, testId, updateMockTest, publishTest, archiveTest, restoreTest]);
+  }, [confirmAction, testId, updateMockTest, publishTest, archiveTest, restoreTest, deleteMockTest, router]);
 
   if (isLoading) {
     return (
@@ -373,10 +378,10 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
             className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
             {test.status === 'draft' ? 'Manage Questions' : 'Preview'}
           </Link>
-          {test.status === 'archived' && (
-            <button type="button" onClick={() => deleteMockTest.mutate(testId, { onSuccess: () => router.push('/teacher/mock-tests') })}
+          {test.status === 'archived' && canRestoreDeletedData && (
+            <button type="button" onClick={() => setConfirmAction('delete')}
               className="ml-auto rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-red-600 ring-1 ring-inset ring-red-300 hover:bg-red-50">
-              Delete Permanently
+              Move to Recycle Bin
             </button>
           )}
         </div>
@@ -389,18 +394,21 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
         title={
           confirmAction === 'submit' ? 'Submit for Approval' :
           confirmAction === 'publish' ? 'Publish Test' :
-          confirmAction === 'archive' ? 'Archive Test' : 'Restore Test'
+          confirmAction === 'archive' ? 'Archive Test' :
+          confirmAction === 'delete' ? 'Delete Test' : 'Restore Test'
         }
         message={
           confirmAction === 'submit' ? 'Submit this test for admin approval. Students will not see it until approved and published.' :
           confirmAction === 'publish' ? 'Publishing makes this test available to students. Questions will be frozen.' :
           confirmAction === 'archive' ? 'Archived tests are hidden from students. Data is preserved.' :
+          confirmAction === 'delete' ? 'This item will be moved to the Recycle Bin and can be restored later.' :
           'Restore this test to draft status for editing.'
         }
         confirmLabel={
           confirmAction === 'submit' ? 'Submit' :
           confirmAction === 'publish' ? 'Publish' :
-          confirmAction === 'archive' ? 'Archive' : 'Restore'
+          confirmAction === 'archive' ? 'Archive' :
+          confirmAction === 'delete' ? 'Move to Recycle Bin' : 'Restore'
         }
         variant={confirmAction === 'archive' ? 'warning' : confirmAction === 'delete' ? 'danger' : 'default'}
       />
