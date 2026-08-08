@@ -31,6 +31,7 @@
 // ============================================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { isServiceRoleCall } from '../_shared/serviceRoleAuth.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -494,6 +495,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   } catch (err) {
     return errorResponse('Invalid request body. Expected valid JSON.', 400);
+  }
+
+  // Step 1b: INTERNAL-ONLY gate
+  // ─────────────────────────────────────────────────────────────
+  // Reject every non-internal call. Only razorpay-webhook (which has
+  // already verified the Razorpay signature and captured the payment) may
+  // complete a PYQ package purchase. This closes the 'grant yourself a
+  // free PYQ package' vector that a direct-call path would open.
+  if (!isInternal) {
+    structuredLog('DIRECT_CALL_REJECTED', {
+      message: 'complete-pyq-purchase is internal-only. Direct calls are rejected.',
+      packageId: body.packageId,
+    });
+    return errorResponse(
+      'This operation is only available through the secure payment flow.',
+      403,
+      'INTERNAL_ONLY',
+    );
+  }
+
+  // Step 1c: service-role credential check (audit C2)
+  // The internal flag is client-settable, so the caller must additionally
+  // prove it holds the project's SERVICE_ROLE_KEY (a service-role JWT).
+  // The razorpay-webhook is the only caller that does; verify_jwt = true
+  // is required at the platform so the JWT signature is always validated.
+  if (isInternal) {
+    const srCheck = isServiceRoleCall(req.headers.get('Authorization'));
+    if (!srCheck.ok) {
+      structuredLog('INTERNAL_AUTH_REJECTED', {
+        packageId: body.packageId,
+        ...srCheck,
+      });
+      return errorResponse(
+        'This operation is only available through the secure payment flow.',
+        403,
+        'SERVICE_ROLE_REQUIRED',
+      );
+    }
   }
 
   // ═════════════════════════════════════════════════════════════════════

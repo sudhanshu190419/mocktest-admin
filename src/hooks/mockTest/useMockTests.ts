@@ -28,10 +28,13 @@ import {
   createMockTest,
   updateMockTest,
   deleteMockTest,
-  publishMockTest,
   archiveMockTest,
   restoreMockTest,
 } from '../../services/mockTest/mockTestService';
+import {
+  publishMockTestWorkflow,
+} from '../../services/mockTest/mockTestPublishService';
+import type { PublishSummary } from '../../services/mockTest/mockTestPublishService';
 import type {
   MockTest,
   CreateMockTestInput,
@@ -169,16 +172,20 @@ export function useDeleteMockTest() {
 }
 
 /**
- * Publish a mock test (status transition: pending_approval → published).
+ * Publish a mock test via the SINGLE authoritative publish workflow
+ * (validate → generate question snapshots → verify → status flip).
+ *
+ * This is the only publish entry point for the teacher panels — a bare
+ * status flip can no longer be triggered from the UI.
  *
  * On success, invalidates the affected detail and all list queries.
  */
 export function usePublishMockTest() {
   const queryClient = useQueryClient();
 
-  return useMutation<MockTest, Error, string>({
+  return useMutation<PublishSummary, Error, string>({
     mutationFn: async (id) => {
-      const result = await publishMockTest(id);
+      const result = await publishMockTestWorkflow(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to publish mock test.');
       }

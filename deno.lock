@@ -1,0 +1,40 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@supabase/supabase-js@2": "2.112.2"
+  },
+  "jsr": {
+    "@supabase/supabase-js@2.112.2": {
+      "integrity": "6462b34553f02db1534f534318b0abf46a4d20994e93725233dab75ebbf78b7f"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@livekit/components-react@^2.9.23",
+        "npm:@phosphor-icons/react@^2.1.10",
+        "npm:@reduxjs/toolkit@^2.12.0",
+        "npm:@supabase/supabase-js@^2.108.2",
+        "npm:@tailwindcss/postcss@4",
+        "npm:@tanstack/react-query@^5.101.2",
+        "npm:@types/node@20",
+        "npm:@types/react-dom@19",
+        "npm:@types/react@19",
+        "npm:babel-plugin-react-compiler@1.0.0",
+        "npm:clsx@^2.1.1",
+        "npm:eslint-config-next@16.2.9",
+        "npm:eslint@9",
+        "npm:framer-motion@^12.42.2",
+        "npm:livekit-client@^2.20.1",
+        "npm:next@16.2.9",
+        "npm:pdfjs-dist@^6.1.200",
+        "npm:react-dom@19.2.4",
+        "npm:react-redux@^9.3.0",
+        "npm:react@19.2.4",
+        "npm:tailwind-merge@^3.6.0",
+        "npm:tailwindcss@4",
+        "npm:typescript@5"
+      ]
+    }
+  }
+}

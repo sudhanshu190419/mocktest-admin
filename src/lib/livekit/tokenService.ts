@@ -15,12 +15,10 @@ import { getTokenExpirySummary } from '@/utils/supabase';
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface TokenRequest {
-  /** Name of the LiveKit room to join. */
-  roomName: string;
+  /** live_classes.class_id — the server derives the room and authorization. */
+  classId: string;
   /** Display name for the participant. */
   participantName: string;
-  /** Role determines publish/subscribe permissions. */
-  role: 'teacher' | 'student' | 'admin';
 }
 
 export interface TokenResponse {
@@ -35,7 +33,7 @@ export interface TokenResponse {
 /**
  * Requests a LiveKit join token from the Supabase Edge Function.
  *
- * @param request - Room name, participant name, and role.
+ * @param request - Class ID and participant name (Phase 11J.2 contract).
  * @returns Token and LiveKit server URL.
  * @throws If the Edge Function call fails or returns an invalid response.
  */
@@ -44,9 +42,8 @@ export async function getLiveKitToken(
 ): Promise<TokenResponse> {
   console.log('[LiveKit Debug] ===== getLiveKitToken CALLED =====');
   console.log('[LiveKit Debug] Request params:', {
-    roomName: request.roomName,
+    classId: request.classId,
     participantName: request.participantName,
-    role: request.role,
   });
 
   // ── [LiveKit Debug] Check current auth session before Edge Function call ──
@@ -124,7 +121,7 @@ export async function getLiveKitToken(
   console.log('[LiveKit Debug] PRE-INVOKE SUMMARY:', {
     sessionChecked,
     wasRefreshed,
-    request: { roomName: request.roomName, participantName: request.participantName, role: request.role },
+    request: { classId: request.classId, participantName: request.participantName },
   });
 
   // ── [LiveKit Debug] Detailed session diagnostics just before invoke ──

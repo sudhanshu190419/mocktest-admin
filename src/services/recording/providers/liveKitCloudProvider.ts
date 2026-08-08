@@ -145,18 +145,18 @@ export const liveKitCloudProvider: IRecordingProvider = {
   /**
    * Generate a signed playback URL from Cloudflare R2.
    *
-   * Calls the `recording-playback-url` Edge Function which:
-   * 1. Authenticates the caller
-   * 2. Generates a pre-signed URL for the R2 object
-   * 3. Returns the URL (valid for 5 minutes)
+   * Phase 11J.3: passes the recordingId (NOT a storage path) so the
+   * `recording-playback-url` Edge Function can:
+   * 1. Authenticate the caller
+   * 2. Re-derive the storage path + authorize (course-scoped) server-side
+   * 3. Return the signed URL (valid for 5 minutes)
    */
-  async getPlaybackUrl(storagePath: string): Promise<string> {
+  async getPlaybackUrl(recordingId: string): Promise<string> {
     const { data, error } = await supabase.functions.invoke(
       'recording-playback-url',
       {
         body: {
-          storagePath,
-          bucket: R2_BUCKET_NAME,
+          recordingId,
           expirySeconds: 300, // 5 minutes
         },
       },
@@ -165,7 +165,7 @@ export const liveKitCloudProvider: IRecordingProvider = {
     if (error || !data?.url) {
       throw new Error(
         `Failed to generate playback URL: ${error?.message ?? 'No URL returned'}. ` +
-        `Path: ${storagePath}`,
+        `Recording ID: ${recordingId}`,
       );
     }
 

@@ -13,6 +13,8 @@ import {
   Clock,
   BookOpen,
   Package,
+  CreditCard,
+  Tag,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -170,6 +172,38 @@ export default function CommercePage() {
           </p>
           <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-cyan-600 group-hover:gap-1.5 transition-all">
             View PYQ Purchases →
+          </span>
+        </Link>
+
+        <Link
+          href="/admin/commerce/subscription-plans"
+          className="group rounded-xl border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+            <Tag size={24} weight="duotone" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Subscription Plans</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Create, edit, duplicate, and deactivate course-scoped subscription plans.
+          </p>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-600 group-hover:gap-1.5 transition-all">
+            Manage Plans →
+          </span>
+        </Link>
+
+        <Link
+          href="/admin/commerce/subscriptions"
+          className="group rounded-xl border border-gray-200 bg-white p-6 transition-all hover:border-amber-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+            <CreditCard size={24} weight="duotone" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Subscriptions</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Audit subscriptions, renewals, conversions, permanent owners, and duplicate-payment flags.
+          </p>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-600 group-hover:gap-1.5 transition-all">
+            View Subscriptions →
           </span>
         </Link>
       </div>

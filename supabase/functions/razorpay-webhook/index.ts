@@ -3,15 +3,15 @@
 //
 // PostgreSQL 16 | Supabase Edge Runtime | Production Ready
 //
-// Production-grade Razorpay webhook handler for course and PYQ package
-// purchases. This is the ONLY trusted source that marks a payment as
-// successful and grants product access. The mobile app must never grant
-// access directly.
+// Production-grade Razorpay webhook handler for course, PYQ package, and
+// subscription plan purchases. This is the ONLY trusted source that marks
+// a payment as successful and grants product access. The mobile app must
+// never grant access directly.
 //
 // Architecture:
 //   Student
 //     ↓
-//   Buy Product (Course / PYQ Package)
+//   Buy Product (Course / PYQ Package / Subscription Plan)
 //     ↓
 //   create-payment-order        ← Creates order + payment record
 //     ↓
@@ -27,9 +27,9 @@
 //     ↓
 //   Read order_items.item_type  ← Determines routing
 //     ↓
-//   ┌── course ──→ complete-course-purchase  (existing)
-//   │
-//   └── pyq_package ──→ complete-pyq-purchase  (to be implemented)
+//   ├── course ────────────→ complete-course-purchase  (existing)
+//   ├── pyq_package ───────→ complete-pyq-purchase    (existing)
+//   └── subscription_plan ─→ complete-subscription-purchase (new)
 //
 // Security:
 //   • No Supabase authentication required — verified via Razorpay webhook secret
@@ -38,14 +38,16 @@
 //   • Only trusts: Razorpay signature, existing local order, existing DB records
 //   • SQL errors, secrets, and stack traces are NEVER exposed to the caller
 //
-// Idempotency:
-//   • Checks for existing captured payment before any mutation
-//   • Duplicate webhooks return HTTP 200 immediately
+// Idempotency (grant-aware, H1):
+//   • A captured payment does NOT prove onboarding succeeded.
+//   • Duplicate webhooks return HTTP 200 ONLY when the product grant exists;
+//     otherwise the order is healed and onboarding is re-run (idempotent).
+//   • Onboarding failure returns HTTP 500 so Razorpay retries the delivery.
 //
 // @module edge-functions/razorpay-webhook
 // ============================================================================
 
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -107,6 +109,8 @@ type FunctionResponse = SuccessResponse | ErrorResponse;
 interface OnboardingResult {
   success: boolean;
   message: string;
+  /** Product item_type when known (populated on failure for diagnostics). */
+  itemType?: string;
 }
 
 /** A single order_item row loaded for routing. */
@@ -115,6 +119,24 @@ interface OrderItemRow {
   item_type: string;
   course_id: string | null;
   package_id: string | null;
+  plan_id: string | null;
+}
+
+/** Raw row from orders — fields needed for routing and grant checks. */
+interface OrderRow {
+  order_id: string;
+  profile_id: string | null;
+  student_id: string | null;
+  institute_id: string | null;
+  status: string | null;
+  notes: string | null;
+}
+
+/** Result of loadOrderAndItems — the order + items, or the failing stage. */
+interface LoadedOrder {
+  order: OrderRow | null;
+  orderItems: OrderItemRow[] | null;
+  loadError: { stage: 'order' | 'items'; message: string } | null;
 }
 
 /** Parsed guardian and academic fields from order.notes. */
@@ -329,6 +351,25 @@ function parseGuardianInfo(notes: unknown): GuardianInfo {
   };
 }
 
+/**
+ * Phase 11K.5 — read the Full Course conversion marker from order.notes.
+ * create-payment-order writes notes.conversion = 'true' for conversion
+ * orders. The marker is server-derived from the ORDER (immutable billing
+ * data) and passed through to complete-course-purchase so it can cancel the
+ * subscription and grant permanent ownership after payment.
+ */
+function parseConversionFlag(notes: unknown): boolean {
+  let parsed: Record<string, unknown> = {};
+  if (notes) {
+    try {
+      parsed = typeof notes === 'string' ? JSON.parse(notes) : notes as Record<string, unknown>;
+    } catch {
+      // Unparseable notes — treat as a normal (non-conversion) order.
+    }
+  }
+  return parsed.conversion === 'true' || parsed.conversion === true;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Onboarding Router — dispatches to product-specific completion functions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -348,6 +389,8 @@ async function routeToCoursePurchase(
   razorpayPaymentId: string,
   razorpayOrderId: string,
   meta?: Record<string, unknown>,
+  /** Phase 11K.5 — Full Course conversion marker from order.notes. */
+  conversion = false,
 ): Promise<OnboardingResult> {
   const courseId = orderItem.course_id;
   if (!courseId) {
@@ -403,6 +446,7 @@ async function routeToCoursePurchase(
         guardianEmail: guardian.guardianEmail,
         targetYear: guardian.targetYear,
         dob: guardian.dateOfBirth,
+        conversion,     // Phase 11K.5: Full Course conversion marker
         internal: true,  // Skip JWT auth; use provided profileId
       }),
     });
@@ -658,7 +702,386 @@ async function routeToPyqPurchase(
   }
 }
 
+/**
+ * Route a subscription plan purchase to the complete-subscription-purchase
+ * Edge Function.
+ *
+ * Mirrors the course/pyq routing: calls complete-subscription-purchase with
+ * internal=true flag, all guardian fields extracted from order.notes, and
+ * the Razorpay payment id as the payment reference for audit history.
+ */
+async function routeToSubscriptionPurchase(
+  orderId: string,
+  orderItem: OrderItemRow,
+  profileId: string,
+  guardian: GuardianInfo,
+  razorpayPaymentId: string,
+  razorpayOrderId: string,
+  meta?: Record<string, unknown>,
+): Promise<OnboardingResult> {
+  const planId = orderItem.plan_id;
+  if (!planId) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'missing_plan_id',
+      message: 'Subscription item missing plan_id',
+      orderId,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Subscription item missing plan_id.' };
+  }
+
+  structuredLog('ROUTING_TO_SUBSCRIPTION', {
+    orderId,
+    planId,
+    profileId,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  // ── Invoke complete-subscription-purchase ─────────────────────────
+  structuredLog('CALLING_COMPLETE_SUBSCRIPTION_PURCHASE', {
+    orderId,
+    planId,
+    profileId,
+    hasGuardianName: !!guardian.guardianName,
+    hasGuardianMobile: !!guardian.guardianMobile,
+    hasGuardianEmail: !!guardian.guardianEmail,
+    hasTargetYear: !!guardian.targetYear,
+    hasDob: !!guardian.dateOfBirth,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
+  });
+
+  try {
+    const functionUrl = `${SUPABASE_URL}/functions/v1/complete-subscription-purchase`;
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        planId,
+        orderId,
+        profileId,
+        paymentReference: razorpayPaymentId,
+        guardianName: guardian.guardianName,
+        guardianMobile: guardian.guardianMobile,
+        guardianEmail: guardian.guardianEmail,
+        targetYear: guardian.targetYear,
+        dob: guardian.dateOfBirth,
+        internal: true,  // Skip JWT auth; use provided profileId
+      }),
+    });
+
+    // Log the HTTP status first
+    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE_STATUS', {
+      statusCode: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    // IMPORTANT: Read the raw response body as text BEFORE any JSON parsing.
+    // This ensures we capture the full response even if it's not JSON
+    // (e.g., a 500 HTML error page from Supabase infrastructure).
+    const responseText = await response.text();
+
+    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE_BODY', {
+      bodyLength: responseText.length,
+      bodyPreview: responseText.slice(0, 2000),
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    // Parse the response text as JSON
+    let result: Record<string, unknown>;
+    try {
+      result = JSON.parse(responseText) as Record<string, unknown>;
+    } catch (parseErr) {
+      // Response was not valid JSON — log the raw text and return
+      structuredError('WEBHOOK_ERROR', {
+        ...meta,
+        eventType: 'onboarding_response_parse',
+        message: 'complete-subscription-purchase returned non-JSON response',
+        responseBody: responseText.slice(0, 1000),
+        statusCode: response.status,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId,
+        httpStatus: 200,
+      });
+      return {
+        success: false,
+        message: `Onboarding returned non-JSON response (HTTP ${response.status}).`,
+      };
+    }
+
+    if (response.ok && result.success) {
+      structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE', {
+        success: true,
+        studentId: result.studentId as string,
+        subscriptionId: result.subscriptionId as string,
+        planId: result.planId as string,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId,
+      });
+      return { success: true, message: 'Subscription onboarding completed successfully.' };
+    }
+
+    // Log the error details but don't fail the webhook
+    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE', {
+      success: false,
+      statusCode: response.status,
+      error: result.error as string ?? 'Unknown onboarding error',
+      details: result.details as string ?? null,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+    });
+
+    return {
+      success: false,
+      message: `Subscription onboarding returned: ${result.error as string ?? 'unknown error'}`,
+    };
+  } catch (err) {
+    structuredError('WEBHOOK_ERROR', {
+      ...meta,
+      eventType: 'onboarding_invocation',
+      message: err instanceof Error ? err.message : 'Network/HTTP error calling complete-subscription-purchase',
+      stack: err instanceof Error ? err.stack : undefined,
+      gatewayOrderId: razorpayOrderId,
+      gatewayPaymentId: razorpayPaymentId,
+      orderId,
+      httpStatus: 200,
+    });
+    return { success: false, message: 'Failed to invoke complete-subscription-purchase.' };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// loadOrderAndItems — shared authoritative order + items loader
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Load an order and its order_items in one authoritative call.
+ *
+ * Shared by invokeOnboarding (routing) and Step 12 (grant-aware idempotency)
+ * so both paths reason about the SAME order/profile/item data. Preserves the
+ * original query and row shape (plus `status`, which the heal step needs).
+ *
+ * @returns A discriminated result: on failure `loadError` is set with the
+ *          failing stage ('order' | 'items'); on success both rows are set.
+ */
+async function loadOrderAndItems(
+  serviceClient: SupabaseClient,
+  orderId: string,
+): Promise<LoadedOrder> {
+  const { data: order, error: orderLoadError } = await serviceClient
+    .from('orders')
+    .select('order_id, profile_id, student_id, institute_id, status, notes')
+    .eq('order_id', orderId)
+    .single();
+
+  if (orderLoadError || !order) {
+    return {
+      order: null,
+      orderItems: null,
+      loadError: {
+        stage: 'order',
+        message: orderLoadError?.message ?? 'Order not found',
+      },
+    };
+  }
+
+  // order_items carry item_type and the product ID (course_id / package_id /
+  // plan_id) that determine routing and grant checking.
+  const { data: orderItems, error: itemsLoadError } = await serviceClient
+    .from('order_items')
+    .select('item_id, item_type, course_id, package_id, plan_id')
+    .eq('order_id', orderId);
+
+  if (itemsLoadError || !orderItems || orderItems.length === 0) {
+    return {
+      order,
+      orderItems: null,
+      loadError: {
+        stage: 'items',
+        message: itemsLoadError?.message ?? 'No items found for order',
+      },
+    };
+  }
+
+  return { order, orderItems, loadError: null };
+}
+
+/**
+ * H1 grant check — does THIS order's product grant already exist?
+ *
+ * A captured payment does not prove onboarding succeeded. Each product has an
+ * order-tied grant row:
+ *   • subscription_plan → student_subscriptions.order_id = order.order_id.
+ *     Renewals REPLACE order_id with the new order id, so a match proves THIS
+ *     order completed. Existence is the proof — no status filter.
+ *   • course → course_enrollments (course_id from the item, student_id from
+ *     orders.student_id set by THIS order's onboarding).
+ *   • pyq_package → student_pyq_purchases.order_item_id = item.item_id
+ *     (fallback: package_id + orders.student_id).
+ *
+ * Never a generic "some grant exists" check. Fails safe (returns false) when
+ * required identifying information is missing or a query errors, so the caller
+ * re-runs onboarding instead of claiming an unverified success.
+ */
+async function grantExistsForOrder(
+  serviceClient: SupabaseClient,
+  order: OrderRow,
+  orderItems: OrderItemRow[],
+): Promise<boolean> {
+  const orderItem = orderItems[0];
+  if (!orderItem) {
+    structuredError('GRANT_CHECK_INVALID', {
+      message: 'No order item to evaluate grant for',
+      orderId: order.order_id,
+    });
+    return false;
+  }
+
+  // ── Subscription plan: the order-linked subscription row ─────────────
+  if (orderItem.item_type === 'subscription_plan') {
+    // Primary (overwrite-immune): orders.student_id is set by THIS order's
+    // onboarding as its final step and is never replaced by a later renewal
+    // (renewals overwrite student_subscriptions.order_id with newer orders,
+    // so the order_id lookup alone would misclassify a late retry of an
+    // earlier renewal order as "grant missing" and re-extend the period).
+    if (order.student_id) return true;
+
+    // Spec check: the order-linked subscription row proves onboarding.
+    const { data, error } = await serviceClient
+      .from('student_subscriptions')
+      .select('subscription_id')
+      .eq('order_id', order.order_id)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      structuredError('GRANT_CHECK_ERROR', {
+        message: error.message,
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+    return !!data;
+  }
+
+  // ── Course: enrollment for the student linked to THIS order ─────────
+  if (orderItem.item_type === 'course') {
+    if (!order.student_id || !orderItem.course_id) {
+      structuredError('GRANT_CHECK_INVALID', {
+        message: 'Course grant check missing order.student_id or course_id',
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+
+    const { data, error } = await serviceClient
+      .from('course_enrollments')
+      .select('enrollment_id')
+      .eq('course_id', orderItem.course_id)
+      .eq('student_id', order.student_id)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      structuredError('GRANT_CHECK_ERROR', {
+        message: error.message,
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+    return !!data;
+  }
+
+  // ── PYQ package: order-item tie, then student+package fallback ───────
+  if (orderItem.item_type === 'pyq_package') {
+    if (!orderItem.package_id) {
+      structuredError('GRANT_CHECK_INVALID', {
+        message: 'PYQ grant check missing package_id',
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+
+    // Primary: exact order-item tie (complete-pyq-purchase sets order_item_id).
+    if (orderItem.item_id) {
+      const { data, error } = await serviceClient
+        .from('student_pyq_purchases')
+        .select('purchase_id')
+        .eq('order_item_id', orderItem.item_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        structuredError('GRANT_CHECK_ERROR', {
+          message: error.message,
+          orderId: order.order_id,
+          itemType: orderItem.item_type,
+        });
+        return false;
+      }
+      if (data) return true;
+    }
+
+    // Fallback: student + package (requires the order to be student-linked).
+    if (!order.student_id) {
+      structuredError('GRANT_CHECK_INVALID', {
+        message: 'PYQ grant check missing order.student_id for fallback',
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+
+    const { data: fallback, error: fallbackError } = await serviceClient
+      .from('student_pyq_purchases')
+      .select('purchase_id')
+      .eq('package_id', orderItem.package_id)
+      .eq('student_id', order.student_id)
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackError) {
+      structuredError('GRANT_CHECK_ERROR', {
+        message: fallbackError.message,
+        orderId: order.order_id,
+        itemType: orderItem.item_type,
+      });
+      return false;
+    }
+    return !!fallback;
+  }
+
+  // Unsupported item type — fail safe, never claim onboarded.
+  structuredError('GRANT_CHECK_INVALID', {
+    message: `Unsupported item_type for grant check: ${orderItem.item_type}`,
+    orderId: order.order_id,
+    itemType: orderItem.item_type,
+  });
+  return false;
+}
+
 // invokeOnboarding — load order_items and route to the right completion fn
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -675,28 +1098,27 @@ async function routeToPyqPurchase(
  *          and returned as non-critical messages (never thrown).
  */
 async function invokeOnboarding(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: SupabaseClient,
   orderId: string,
   razorpayPaymentId: string,
   razorpayOrderId: string,
   meta?: Record<string, unknown>,
 ): Promise<OnboardingResult> {
-  // ── Load the order ──────────────────────────────────────────────────
-  const { data: order, error: orderLoadError } = await serviceClient
-    .from('orders')
-    .select('order_id, profile_id, student_id, institute_id, notes')
-    .eq('order_id', orderId)
-    .single();
+  // ── Load the order and its items via the shared loader ──────────────
+  const { order, orderItems, loadError } = await loadOrderAndItems(
+    serviceClient,
+    orderId,
+  );
 
-  if (orderLoadError || !order) {
+  if (loadError?.stage === 'order' || !order) {
     structuredError('WEBHOOK_ERROR', {
       ...meta,
       eventType: 'order_load',
-      message: orderLoadError?.message ?? 'Order not found',
+      message: loadError?.message ?? 'Order not found',
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       orderId,
-      httpStatus: 200,
+      httpStatus: 500,
     });
     return { success: false, message: 'Order not found for onboarding.' };
   }
@@ -720,28 +1142,20 @@ async function invokeOnboarding(
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       orderId,
-      httpStatus: 200,
+      httpStatus: 500,
     });
     return { success: false, message: 'Profile ID not found on order.' };
   }
 
-  // ── Load order_items to get item_type and product ID ────────────────
-  // Removed the .eq('item_type', 'course') filter — the webhook now
-  // reads item_type from the result and routes accordingly.
-  const { data: orderItems, error: itemsLoadError } = await serviceClient
-    .from('order_items')
-    .select('item_id, item_type, course_id, package_id')
-    .eq('order_id', orderId);
-
-  if (itemsLoadError || !orderItems || orderItems.length === 0) {
+  if (loadError?.stage === 'items' || !orderItems || orderItems.length === 0) {
     structuredError('WEBHOOK_ERROR', {
       ...meta,
       eventType: 'order_items_load',
-      message: itemsLoadError?.message ?? 'No items found for order',
+      message: loadError?.message ?? 'No items found for order',
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       orderId,
-      httpStatus: 200,
+      httpStatus: 500,
     });
     return { success: false, message: 'Order item not found for onboarding.' };
   }
@@ -754,6 +1168,7 @@ async function invokeOnboarding(
     itemType,
     courseId: orderItem.course_id ?? null,
     packageId: orderItem.package_id ?? null,
+    planId: orderItem.plan_id ?? null,
     itemCount: orderItems.length,
     gatewayOrderId: razorpayOrderId,
     gatewayPaymentId: razorpayPaymentId,
@@ -768,12 +1183,14 @@ async function invokeOnboarding(
 
   // ── Parse guardian info from order.notes ────────────────────────────
   const guardian = parseGuardianInfo(order.notes);
+  // Phase 11K.5: conversion marker — server-derived from the ORDER.
+  const conversion = parseConversionFlag(order.notes);
 
   // ── Route based on item_type ────────────────────────────────────────
   // Each product type has its own completion function that handles
   // product-specific onboarding (student creation, enrollment, purchase).
   if (itemType === 'course') {
-    return await routeToCoursePurchase(
+    const result = await routeToCoursePurchase(
       orderId,
       orderItem,
       profileId,
@@ -781,11 +1198,14 @@ async function invokeOnboarding(
       razorpayPaymentId,
       razorpayOrderId,
       meta,
+      conversion,
     );
+    if (!result.success) result.itemType = itemType;
+    return result;
   }
 
   if (itemType === 'pyq_package') {
-    return await routeToPyqPurchase(
+    const result = await routeToPyqPurchase(
       orderId,
       orderItem,
       profileId,
@@ -794,6 +1214,22 @@ async function invokeOnboarding(
       razorpayOrderId,
       meta,
     );
+    if (!result.success) result.itemType = itemType;
+    return result;
+  }
+
+  if (itemType === 'subscription_plan') {
+    const result = await routeToSubscriptionPurchase(
+      orderId,
+      orderItem,
+      profileId,
+      guardian,
+      razorpayPaymentId,
+      razorpayOrderId,
+      meta,
+    );
+    if (!result.success) result.itemType = itemType;
+    return result;
   }
 
   // ── Unknown item_type — log and fail safe ───────────────────────────
@@ -808,11 +1244,12 @@ async function invokeOnboarding(
     orderId,
     gatewayOrderId: razorpayOrderId,
     gatewayPaymentId: razorpayPaymentId,
-    httpStatus: 200,
+    httpStatus: 500,
   });
 
   return {
     success: false,
+    itemType,
     message: `Unsupported item type "${itemType}". Onboarding not available for this product.`,
   };
 }
@@ -1097,34 +1534,115 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 12: Idempotency check
+  // Step 12: Idempotency + recovery check (grant-aware, H1)
   // ═════════════════════════════════════════════════════════════════════
-  if (localPayment.status === 'captured') {
-    structuredLog('WEBHOOK_SUCCESS', {
-      eventType: 'duplicate_webhook',
-      message: 'Payment already processed. Duplicate webhook ignored.',
+  // A captured payment (or a matching gateway_payment_id) does NOT prove
+  // onboarding succeeded. Verify the product grant before treating the
+  // webhook as a duplicate:
+  //   • grant exists   → idempotent HTTP 200 (no re-onboarding)
+  //   • grant missing  → heal a pending order, then fall through to the
+  //                      capture-confirm-onboard path below (Steps 14-16
+  //                      are idempotent; completion functions are too).
+  if (
+    localPayment.status === 'captured' ||
+    localPayment.gateway_payment_id === razorpayPaymentId
+  ) {
+    structuredLog('PAYMENT_ALREADY_CAPTURED_GRANT_CHECK', {
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       localPaymentId: localPayment.payment_id,
+      localOrderId: localPayment.order_id,
     });
-    return jsonResponse({
-      success: true,
-      message: 'Payment already processed. Duplicate webhook ignored.',
-    });
-  }
 
-  if (localPayment.gateway_payment_id === razorpayPaymentId) {
-    structuredLog('WEBHOOK_SUCCESS', {
-      eventType: 'duplicate_webhook',
-      message: 'Payment already processed (gateway_payment_id match). Duplicate webhook ignored.',
+    const { order, orderItems, loadError } = await loadOrderAndItems(
+      serviceClient,
+      localPayment.order_id,
+    );
+
+    if (loadError || !order || !orderItems) {
+      structuredError('WEBHOOK_ERROR', {
+        ...meta,
+        eventType: loadError?.stage === 'items' ? 'order_items_load' : 'order_load',
+        message: loadError?.message ?? 'Order not found',
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId: localPayment.order_id,
+        httpStatus: 500,
+      });
+      // Cannot verify the grant state — fail closed so Razorpay retries.
+      return jsonResponse({
+        success: false,
+        error: 'Unable to verify order state for captured payment.',
+      }, 500);
+    }
+
+    // Heal a pending order (partial failure: payment captured, order not
+    // yet confirmed). Idempotent — only touches status='pending'.
+    if (order.status === 'pending') {
+      const { error: healError } = await serviceClient
+        .from('orders')
+        .update({
+          status: 'confirmed',
+          confirmed_at: new Date().toISOString(),
+        })
+        .eq('order_id', order.order_id)
+        .eq('status', 'pending');
+
+      if (healError) {
+        structuredError('ORDER_HEAL_FAILED', {
+          ...meta,
+          orderId: order.order_id,
+          gatewayOrderId: razorpayOrderId,
+          gatewayPaymentId: razorpayPaymentId,
+          message: healError.message,
+          httpStatus: 500,
+        });
+        return jsonResponse({
+          success: false,
+          error: 'Unable to confirm the order for a captured payment.',
+        }, 500);
+      }
+      structuredLog('ORDER_HEALED_ON_RETRY', {
+        orderId: order.order_id,
+        status: 'confirmed',
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+      });
+    } else if (order.status !== 'confirmed') {
+      structuredLog('ORDER_HEAL_SKIPPED', {
+        orderId: order.order_id,
+        orderStatus: order.status ?? null,
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+      });
+    }
+
+    const grantExists = await grantExistsForOrder(serviceClient, order, orderItems);
+
+    if (grantExists) {
+      structuredLog('GRANT_EXISTS_IDEMPOTENT_SUCCESS', {
+        gatewayOrderId: razorpayOrderId,
+        gatewayPaymentId: razorpayPaymentId,
+        localPaymentId: localPayment.payment_id,
+        localOrderId: order.order_id,
+      });
+      return jsonResponse({
+        success: true,
+        message: 'Payment already processed and product access granted. Duplicate webhook ignored.',
+      });
+    }
+
+    structuredLog('GRANT_MISSING_REPROCESSING', {
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       localPaymentId: localPayment.payment_id,
+      localOrderId: order.order_id,
+      itemType: orderItems[0]?.item_type ?? 'unknown',
     });
-    return jsonResponse({
-      success: true,
-      message: 'Payment already processed (gateway_payment_id match). Duplicate webhook ignored.',
-    });
+
+    // Fall through: re-run the standard capture-confirm-onboard path below.
+    // Steps 14/15 are idempotent re-updates; Step 16 re-invokes onboarding.
+    // This is the critical H1 recovery path.
   }
 
   // ═════════════════════════════════════════════════════════════════════
@@ -1189,22 +1707,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq('payment_id', localPayment.payment_id);
 
   if (paymentUpdateError) {
-    structuredError('WEBHOOK_ERROR', {
+    structuredError('PAYMENT_UPDATE_FAILED', {
       ...meta,
       eventType: 'payment_update',
       message: paymentUpdateError.message,
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
       localPaymentId: localPayment.payment_id,
-      httpStatus: 200,
+      httpStatus: 500,
     });
-  } else {
-    structuredLog('PAYMENT_UPDATED', {
-      localPaymentId: localPayment.payment_id,
-      gatewayPaymentId: razorpayPaymentId,
-      status: 'captured',
-    });
+    // H1: fail closed so Razorpay retries and the payment can become
+    // consistent. Do NOT proceed to order confirmation or onboarding.
+    return jsonResponse({
+      success: false,
+      error: 'Unable to mark the payment as captured.',
+    }, 500);
   }
+  structuredLog('PAYMENT_UPDATED', {
+    localPaymentId: localPayment.payment_id,
+    gatewayPaymentId: razorpayPaymentId,
+    status: 'captured',
+  });
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 15: Update the order record
@@ -1218,24 +1741,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
       status: 'confirmed',
       confirmed_at: confirmedAt,
     })
-    .eq('order_id', orderId);
+    .eq('order_id', orderId)
+    .eq('status', 'pending'); // confirm only pending orders (idempotent heal)
 
   if (orderUpdateError) {
-    structuredError('WEBHOOK_ERROR', {
+    structuredError('ORDER_UPDATE_FAILED', {
       ...meta,
       eventType: 'order_update',
       message: orderUpdateError.message,
       gatewayOrderId: razorpayOrderId,
       localPaymentId: localPayment.payment_id,
       orderId,
-      httpStatus: 200,
+      httpStatus: 500,
     });
-  } else {
-    structuredLog('ORDER_UPDATED', {
-      orderId,
-      status: 'confirmed',
-    });
+    // H1: fail closed so Razorpay retries and the order can be healed.
+    // Do NOT proceed to onboarding.
+    return jsonResponse({
+      success: false,
+      error: 'Unable to confirm the order.',
+    }, 500);
   }
+  structuredLog('ORDER_UPDATED', {
+    orderId,
+    status: 'confirmed',
+  });
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 16: Invoke product-specific onboarding based on item_type
@@ -1251,29 +1780,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
     meta,
   );
 
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 17: Return based on onboarding outcome (H1)
+  // ═════════════════════════════════════════════════════════════════════
+  // Onboarding failure MUST return HTTP 500 so Razorpay retries the
+  // delivery; the grant-aware Step 12 then recovers the grant on retry.
+  // Never expose internal errors or secrets to Razorpay.
   if (onboardingResult.success) {
     structuredLog('ONBOARDING_COMPLETED', {
       orderId,
       gatewayOrderId: razorpayOrderId,
       gatewayPaymentId: razorpayPaymentId,
     });
+
+    structuredLog('WEBHOOK_SUCCESS', {
+      razorpayPaymentId,
+      razorpayOrderId,
+      localPaymentId: localPayment.payment_id,
+      localOrderId: orderId,
+    });
+
+    return jsonResponse({
+      success: true,
+      message: 'Payment captured successfully.',
+    });
   }
 
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 17: Return success
-  // ═════════════════════════════════════════════════════════════════════
-  // Always return 200 — the payment was captured. Any onboarding issues
-  // are logged and can be handled via the admin panel. Never expose
-  // internal errors to Razorpay.
-  structuredLog('WEBHOOK_SUCCESS', {
-    razorpayPaymentId,
-    razorpayOrderId,
+  structuredError('ONBOARDING_FAILED', {
+    ...meta,
+    eventType: 'onboarding_failed',
+    message: onboardingResult.message,
+    itemType: onboardingResult.itemType ?? null,
+    orderId,
+    gatewayOrderId: razorpayOrderId,
+    gatewayPaymentId: razorpayPaymentId,
     localPaymentId: localPayment.payment_id,
-    localOrderId: orderId,
+    httpStatus: 500,
   });
 
   return jsonResponse({
-    success: true,
-    message: 'Payment captured successfully.',
-  });
+    success: false,
+    error: 'Payment captured but product onboarding failed. Will retry.',
+  }, 500);
 });

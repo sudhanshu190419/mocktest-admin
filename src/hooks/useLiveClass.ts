@@ -18,7 +18,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/config/supabase';
 import { teacherService } from '@/services/teacherService';
-import { teacherLiveClassService } from '@/services/teacherLiveClassService';
+import { teacherLiveClassService, buildRoomName } from '@/services/teacherLiveClassService';
 import { getLiveKitToken } from '@/lib/livekit/tokenService';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -51,22 +51,6 @@ export interface LiveClassState {
   batchIds: string[];
   /** Institute ID (for notification dispatch). */
   instituteId: string;
-}
-
-// ─── Room Name Helpers ─────────────────────────────────────────────────────
-
-/**
- * Generates a deterministic LiveKit room name from a class ID.
- *
- * Pattern:  `class-{classIdPrefix}`
- *
- * Kept deliberately simple for Phase 1.  The SDD's longer pattern
- * (`{institute_slug}-{teacher_id_short}-{class_id_short}`) can be
- * adopted in a later phase.
- */
-function buildRoomName(classId: string): string {
-  const short = classId.replace(/-/g, '').slice(0, 8);
-  return `class-${short}`;
 }
 
 // ─── Default State ─────────────────────────────────────────────────────────
@@ -132,7 +116,10 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       );
       classIdRef.current = classId;
 
-      // 2. Build room name (deterministic from classId)
+      // Build the deterministic LiveKit room name for this class. The Edge
+      // Function derives the identical value server-side for the teacher
+      // instant-go-live edge (before room_name is persisted to live_classes),
+      // so the token's room grant always matches the room persisted here.
       const roomName = buildRoomName(classId);
 
       // 3. Get teacher's profile_id for session_participants
@@ -159,9 +146,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
 
       // 4. Generate LiveKit token
       const { token, url } = await getLiveKitToken({
-        roomName,
+        classId,
         participantName: teacherName,
-        role: 'teacher',
       });
 
       // 5. Update DB to 'live' status (status, room_name, live_sessions, session_participants)
@@ -236,9 +222,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       console.log('[LIVEKIT] room_name:', result.roomName);
       console.log('[TOKEN] Generating LiveKit token for teacher...');
       const { token, url } = await getLiveKitToken({
-        roomName: result.roomName,
+        classId: result.classId,
         participantName: teacherName,
-        role: 'teacher',
       });
       console.log('[TOKEN] ✅ Token generated successfully');
 
@@ -367,8 +352,6 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       const classDetail = await teacherLiveClassService.getTeacherClassById(classId);
       const title = classDetail?.title || 'Live Class';
 
-      // 2. Build room name from existing classId (deterministic)
-      const roomName = buildRoomName(classId);
 
       // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Rejoin) ──
       try {
@@ -391,9 +374,8 @@ export function useLiveClass(teacherId: string, teacherName: string) {
 
       // 3. Generate a new LiveKit token for the existing room
       const { token, url } = await getLiveKitToken({
-        roomName,
+        classId,
         participantName: teacherName,
-        role: 'teacher',
       });
 
       classIdRef.current = classId;
@@ -432,7 +414,7 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         status: 'live',
         classId,
         title,
-        roomName,
+        roomName: classDetail?.roomName ?? buildRoomName(classId),
         token,
         serverUrl: url,
         teacherName,

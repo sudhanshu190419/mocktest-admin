@@ -696,6 +696,64 @@ export const adminKeys = {
     /** Key for a specific order detail. */
     orderDetailItem: (orderId: string) =>
       [...adminKeys.commerce.orderDetail(), orderId] as const,
+
+    // ── Subscription Management (Phase 11K.8) ─────────────────────────
+
+    // ── Subscription Plan Management (Phase 11K.9) ───────────────────
+
+    /** Key for every subscription plan list query. */
+    subscriptionPlans: () => [...adminKeys.commerce.all(), 'subscriptionPlans'] as const,
+
+    /** Key for a specific paginated subscription plan list. */
+    subscriptionPlansList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.subscriptionPlans(), filters, pagination] as const,
+
+    /** Key for every subscription metrics query. */
+    subscriptionMetrics: () => [...adminKeys.commerce.all(), 'subscriptionMetrics'] as const,
+
+    /** Key for a specific subscription metrics query (keyed by instituteId). */
+    subscriptionMetricsList: (instituteId?: string | null) =>
+      [...adminKeys.commerce.subscriptionMetrics(), instituteId] as const,
+
+    /** Key for every subscriptions list query. */
+    subscriptions: () => [...adminKeys.commerce.all(), 'subscriptions'] as const,
+
+    /** Key for a specific paginated subscriptions list. */
+    subscriptionsList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.subscriptions(), filters, pagination] as const,
+
+    /** Key for every permanent owners list query. */
+    permanentOwners: () => [...adminKeys.commerce.all(), 'permanentOwners'] as const,
+
+    /** Key for a specific paginated permanent owners list. */
+    permanentOwnersList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.permanentOwners(), filters, pagination] as const,
+
+    /** Key for every flagged orders list query. */
+    flaggedOrders: () => [...adminKeys.commerce.all(), 'flaggedOrders'] as const,
+
+    /** Key for a specific paginated flagged orders list. */
+    flaggedOrdersList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.flaggedOrders(), filters, pagination] as const,
+
+    /** Key for a single subscription detail. */
+    subscriptionDetail: () => [...adminKeys.commerce.all(), 'subscriptionDetail'] as const,
+
+    /** Key for a specific subscription detail. */
+    subscriptionDetailItem: (subscriptionId: string) =>
+      [...adminKeys.commerce.subscriptionDetail(), subscriptionId] as const,
+
+    /** Key for a subscription's payment history. */
+    subscriptionPayments: (subscriptionId: string) =>
+      [...adminKeys.commerce.all(), 'subscriptionPayments', subscriptionId] as const,
+
+    /** Key for a subscription's audit history. */
+    subscriptionHistory: (subscriptionId: string) =>
+      [...adminKeys.commerce.all(), 'subscriptionHistory', subscriptionId] as const,
+
+    /** Key for the courses filter dropdown. */
+    subscriptionCourses: (instituteId?: string | null) =>
+      [...adminKeys.commerce.all(), 'subscriptionCourses', instituteId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════

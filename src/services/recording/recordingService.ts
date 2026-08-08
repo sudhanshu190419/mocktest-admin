@@ -843,7 +843,10 @@ export const recordingService = {
 
       try {
         const provider = getRecordingProvider();
-        const playbackUrl = await provider.getPlaybackUrl(recording.storagePath);
+        // Phase 11J.3: pass the recordingId (not the storage path) so the
+        // recording-playback-url Edge Function re-derives the path and
+        // authorizes the caller server-side.
+        const playbackUrl = await provider.getPlaybackUrl(request.recordingId);
 
         // Optionally cache the URL in the DB (for subsequent requests)
         await supabase

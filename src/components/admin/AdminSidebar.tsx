@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -12,6 +13,8 @@ interface AdminNavItem {
   /** Permission required to see this item. Omitted = visible to every admin. */
   permission?: AdminPermission;
   icon: React.ReactNode;
+  /** Optional child items rendered as an expandable sub-section (children carry no icons). */
+  children?: Omit<AdminNavItem, 'icon'>[];
 }
 
 const navItems: AdminNavItem[] = [
@@ -193,6 +196,15 @@ const navItems: AdminNavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
       </svg>
     ),
+    children: [
+      { label: 'Overview', href: '/admin/commerce', permission: 'accessFinance' },
+      { label: 'Subscription Plans', href: '/admin/commerce/subscription-plans', permission: 'accessFinance' },
+      { label: 'Orders', href: '/admin/commerce/orders', permission: 'accessFinance' },
+      { label: 'Payments', href: '/admin/commerce/payments', permission: 'accessFinance' },
+      { label: 'Course Purchases', href: '/admin/commerce/courses', permission: 'accessFinance' },
+      { label: 'PYQ Purchases', href: '/admin/commerce/pyq', permission: 'accessFinance' },
+      { label: 'Subscriptions', href: '/admin/commerce/subscriptions', permission: 'accessFinance' },
+    ],
   },
   {
     label: 'Notifications',
@@ -229,6 +241,24 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const { can } = usePermissions();
 
+  // Tracks which grouped sections are manually expanded. A section is also
+  // auto-expanded whenever the current route lives inside it.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    () => new Set(pathname.startsWith('/admin/commerce') ? ['/admin/commerce'] : []),
+  );
+
+  const toggleSection = (href: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(href)) {
+        next.delete(href);
+      } else {
+        next.add(href);
+      }
+      return next;
+    });
+  };
+
   // Permission-driven navigation: hide items the current admin cannot access.
   // Items without a permission value are visible to every admin.
   const visibleItems = navItems.filter(
@@ -253,6 +283,72 @@ export function AdminSidebar() {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + '/');
 
+          const childItems = (item.children ?? []).filter(
+            (child) => !child.permission || can(child.permission),
+          );
+
+          // ── Expandable grouped section ──────────────────────────────
+          if (childItems.length > 0) {
+            const groupActive = childItems.some(
+              (child) => pathname === child.href || pathname.startsWith(child.href + '/'),
+            );
+            const expanded = expandedSections.has(item.href) || groupActive;
+
+            return (
+              <div key={item.href}>
+                <button
+                  type="button"
+                  onClick={() => toggleSection(item.href)}
+                  aria-expanded={expanded}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    groupActive
+                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200',
+                  )}
+                >
+                  {item.icon}
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <svg
+                    className={cn('h-4 w-4 transition-transform', expanded ? 'rotate-180' : '')}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+
+                {expanded && (
+                  <div className="mt-0.5 space-y-0.5 pl-4">
+                    {childItems.map((child) => {
+                      const childActive =
+                        pathname === child.href || pathname.startsWith(child.href + '/');
+
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            'flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
+                            childActive
+                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200',
+                          )}
+                        >
+                          <span className="h-1 w-1 rounded-full bg-current opacity-40" />
+                          <span>{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // ── Plain link item ─────────────────────────────────────────
           return (
             <Link
               key={item.href}

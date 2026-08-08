@@ -410,6 +410,12 @@ export interface IRecordingProvider {
   /** Get the current status of an egress from the provider. */
   getRecordingStatus(egressId: string): Promise<ProviderStatusResult>;
 
-  /** Generate a signed playback URL from the storage path. */
-  getPlaybackUrl(storagePath: string): Promise<string>;
+  /**
+   * Generate a signed playback URL for a recording.
+   *
+   * Phase 11J.3: takes the recordingId (NOT a storage path) so the
+   * recording-playback-url Edge Function can re-derive the storage path and
+   * authorize the caller server-side. Never trust a client-supplied path.
+   */
+  getPlaybackUrl(recordingId: string): Promise<string>;
 }

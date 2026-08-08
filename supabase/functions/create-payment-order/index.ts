@@ -3,16 +3,23 @@
 //
 // PostgreSQL 16 | Supabase Edge Runtime | Production Ready
 //
-// Creates a Razorpay payment order for a Course or PYQ Package purchase and
-// stores the order details locally in the existing commerce schema.
+// Creates a Razorpay payment order for a Course, PYQ Package, or
+// Subscription Plan purchase and stores the order details locally in the
+// existing commerce schema.
 //
-// Supports two product types:
-//   1. Course      (item_type = 'course',       course_id populated)
-//   2. PYQ Package (item_type = 'pyq_package',  package_id populated)
+// Supports three product types:
+//   1. Course             (item_type = 'course',            course_id populated)
+//   2. PYQ Package        (item_type = 'pyq_package',       package_id populated)
+//   3. Subscription Plan  (item_type = 'subscription_plan', plan_id populated)
 //
-// The client sends exactly one of:
-//   - courseId  → Course purchase (existing flow, unchanged)
-//   - packageId → PYQ Package purchase (new)
+// The client sends one of the following valid combinations (Phase 11H.1):
+//   1. courseId only      → Course purchase (existing flow, unchanged)
+//   2. packageId only     → PYQ Package purchase (existing flow, unchanged)
+//   3. planId + courseId  → Subscription Plan purchase (planId wins the
+//                           product-type resolution; courseId is the
+//                           companion used to validate plan.course_id)
+//
+// Every other combination of courseId / packageId / planId is rejected.
 //
 // All pricing is determined server-side from the database. The client must
 // NOT send amount, currency, or pricing data.
@@ -22,7 +29,7 @@
 //       ↓
 //   Response with razorpayOrderId → Client opens Razorpay Checkout
 //       ↓
-//   razorpay-webhook → {complete-course-purchase | complete-pyq-purchase}
+//   razorpay-webhook → {complete-course-purchase | complete-pyq-purchase | complete-subscription-purchase}
 //
 // ## Pre-onboarding data flow
 //
@@ -82,13 +89,36 @@ const CORS_HEADERS = {
  * Controls which FK is populated in order_items and which completion
  * function the webhook routes to.
  */
-type ProductType = 'course' | 'pyq_package';
+type ProductType = 'course' | 'pyq_package' | 'subscription_plan';
 
 interface RequestBody {
-  /** Course ID — mutually exclusive with packageId. */
+  /**
+   * Course UUID.
+   * - Course purchase (courseId only): the course being bought (existing
+   *   behaviour).
+   * - Subscription plan purchase (planId + courseId, Phase 11G/11H): the
+   *   course the student is buying the plan FROM — the backend validates it
+   *   matches plan.course_id and rejects mismatches (PLAN_COURSE_MISMATCH).
+   * Valid alone (course purchase) or as the required companion of planId.
+   */
   courseId?: string;
-  /** PYQ Package ID — mutually exclusive with courseId. */
+  /** PYQ Package ID — valid only by itself (packageId only). */
   packageId?: string;
+  /**
+   * Subscription Plan ID — valid only together with courseId
+   * (planId + courseId). Rejected on its own (PLAN_REQUIRES_COURSE).
+   */
+  planId?: string;
+  /**
+   * Phase 11K.5 — Full Course Conversion. Valid ONLY together with
+   * courseId (conversion is a discounted one-time course purchase).
+   * When true, the payable amount is the REMAINING balance:
+   *   max(0, (discounted_price ?? original_price) −
+   *          total_subscription_payments(student_id, course_id))
+   * and complete-course-purchase cancels the student's subscription after
+   * granting permanent ownership. Rejected with packageId / planId.
+   */
+  conversion?: boolean;
   // Pre-onboarding student info (optional) — stored in order.notes for
   // the razorpay-webhook to use during student onboarding. All fields
   // are nullable and may be omitted entirely.
@@ -101,6 +131,8 @@ interface RequestBody {
 
 interface SuccessResponse {
   success: true;
+  /** Phase 11K.6 — true when an existing pending order was reused. */
+  reused?: boolean;
   orderId: string;
   razorpayOrderId: string;
   amount: number;
@@ -152,6 +184,20 @@ interface PyqPackageRow {
   currency: string;
   is_active: boolean;
   published_at: string | null;
+}
+
+/**
+ * Raw row type from the subscription_plans table.
+ */
+interface SubscriptionPlanRow {
+  plan_id: string;
+  institute_id: string;
+  name: string;
+  price: number;
+  currency_code: string;
+  billing_cycle: string;
+  duration_days: number;
+  is_active: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -279,18 +325,31 @@ function buildOrderNotes(
   razorpayOrderId: string,
   profileId: string,
   guardianFields: Pick<RequestBody, 'guardianName' | 'guardianMobile' | 'guardianEmail' | 'targetYear' | 'dob'>,
+  /** Phase 11K.5 — Full Course conversion marker (persisted in order.notes). */
+  conversion?: boolean,
 ): string {
   const notes: Record<string, string> = {
     razorpayOrderId,
     profileId,
   };
 
+  // Phase 11K.5: conversion marker — consumed by razorpay-webhook so it can
+  // pass `conversion: true` to complete-course-purchase (which cancels the
+  // subscription and grants permanent ownership). Server-derived on the
+  // completion side; the amount itself is fixed at order creation.
+  if (conversion) {
+    notes.conversion = 'true';
+  }
+
   if (productType === 'course') {
     notes.courseId = productId;
     notes.courseName = productName;
-  } else {
+  } else if (productType === 'pyq_package') {
     notes.packageId = productId;
     notes.packageName = productName;
+  } else {
+    notes.planId = productId;
+    notes.planName = productName;
   }
 
   // Pre-onboarding fields — consumed by razorpay-webhook
@@ -319,8 +378,10 @@ function buildRazorpayNotes(
 
   if (productType === 'course') {
     notes.course_id = productId;
-  } else {
+  } else if (productType === 'pyq_package') {
     notes.package_id = productId;
+  } else {
+    notes.plan_id = productId;
   }
 
   return notes;
@@ -329,6 +390,93 @@ function buildRazorpayNotes(
 // ═══════════════════════════════════════════════════════════════════════════
 // Main Handler
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Phase 11K.6 — pending-order reuse guard.
+ *
+ * If the student already has a PENDING order for the SAME purchase
+ * (same profile, same product signature in order.notes, same conversion
+ * flag) created within the last 24h, return it instead of creating a
+ * second payable order. This kills the "open two tabs / click Pay twice"
+ * double-payment vector at the front door — the client reopens checkout
+ * against the SAME Razorpay order, and the webhook/completion idempotency
+ * layers handle the rest.
+ *
+ * Notes are JSON text; we parse and compare the product signature exactly
+ * (never a substring LIKE on the raw notes).
+ */
+async function findPendingReusableOrder(
+  serviceClient: any,
+  profileId: string,
+  productType: ProductType,
+  productId: string,
+  conversion: boolean,
+): Promise<{
+  order_id: string;
+  razorpayOrderId: string;
+  total_amount: number;
+  currency: string;
+} | null> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: orders, error } = await serviceClient
+    .from('orders')
+    .select('order_id, notes, total_amount, currency, created_at')
+    .eq('profile_id', profileId)
+    .eq('status', 'pending')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    structuredLog('pending_order_lookup_failed', {
+      error: error.message,
+      productType,
+      productId,
+    });
+    return null;
+  }
+
+  for (const order of orders ?? []) {
+    let notes: Record<string, unknown> = {};
+    try {
+      notes = JSON.parse(order.notes ?? '{}') as Record<string, unknown>;
+    } catch {
+      continue; // Unparseable notes — skip; never guess.
+    }
+
+    const notesConversion = notes.conversion === 'true';
+    if (notesConversion !== conversion) continue;
+
+    let signatureMatches = false;
+    if (productType === 'course' && notes.courseId === productId) signatureMatches = true;
+    else if (productType === 'pyq_package' && notes.packageId === productId) signatureMatches = true;
+    else if (productType === 'subscription_plan' && notes.planId === productId) signatureMatches = true;
+
+    if (!signatureMatches) continue;
+
+    const razorpayOrderId = typeof notes.razorpayOrderId === 'string'
+      ? notes.razorpayOrderId
+      : '';
+    if (!razorpayOrderId) continue; // Defensive: an order without a gateway reference cannot be reused.
+
+    structuredLog('pending_order_reuse_found', {
+      existingOrderId: order.order_id,
+      productType,
+      productId,
+      conversion,
+    });
+
+    return {
+      order_id: order.order_id,
+      razorpayOrderId,
+      total_amount: Number(order.total_amount ?? 0),
+      currency: order.currency ?? 'INR',
+    };
+  }
+
+  return null;
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // ── CORS preflight ──────────────────────────────────────────────────
@@ -388,11 +536,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ═════════════════════════════════════════════════════════════════════
   // Step 2: Parse and validate the request body
   // ═════════════════════════════════════════════════════════════════════
-  // The client must send exactly one of:
-  //   - courseId  → Course purchase
-  //   - packageId → PYQ Package purchase
+  // Valid combinations (Phase 11H.1):
+  //   1. courseId only      → Course purchase
+  //   2. packageId only     → PYQ Package purchase
+  //   3. planId + courseId  → Subscription Plan purchase
+  //                            (planId wins resolution; courseId is the
+  //                            companion used for the PLAN_COURSE_MISMATCH
+  //                            guard against plan.course_id)
   //
-  // Never both. Guardian/academic fields are optional.
+  // Every other combination is rejected with a clear error.
+  // Guardian/academic fields are optional.
   let body: RequestBody;
   let productType: ProductType;
   let productId: string;
@@ -402,31 +555,79 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const courseId = typeof raw.courseId === 'string' ? raw.courseId : undefined;
     const packageId = typeof raw.packageId === 'string' ? raw.packageId : undefined;
+    const planId = typeof raw.planId === 'string' ? raw.planId : undefined;
+    // Phase 11K.5: Full Course conversion — a discounted one-time course
+    // purchase. Only meaningful together with courseId.
+    const conversion = raw.conversion === true;
 
-    // Validate exactly one of courseId or packageId
-    if (!courseId && !packageId) {
+    const hasCourse = !!courseId;
+    const hasPackage = !!packageId;
+    const hasPlan = !!planId;
+
+    // Phase 11H.1 contract — only these combinations are valid:
+    //   courseId only      → course purchase
+    //   packageId only     → PYQ package purchase
+    //   planId + courseId  → subscription plan purchase
+    if (!hasCourse && !hasPackage && !hasPlan) {
       return errorResponse(
-        'Provide either courseId or packageId. Exactly one is required.',
+        'Provide courseId (course purchase), packageId (PYQ purchase), ' +
+          'or planId with courseId (subscription purchase).',
         400,
         'MISSING_PRODUCT_ID',
       );
     }
 
-    if (courseId && packageId) {
+    if (conversion && (hasPackage || hasPlan)) {
+      // Conversion is only a course-purchase variant (courseId only).
       return errorResponse(
-        'Provide exactly one of courseId or packageId, not both.',
+        'Full Course conversion is only valid with courseId (no packageId/planId).',
         400,
-        'CONFLICTING_PRODUCT_IDS',
+        'CONVERSION_INVALID_COMBO',
       );
     }
 
-    // Resolve the product type and ID
-    productType = courseId ? 'course' : 'pyq_package';
-    productId = (courseId ?? packageId)!;
+    if (hasPlan) {
+      // Subscription plan purchase — planId must be accompanied by courseId.
+      if (hasPackage) {
+        return errorResponse(
+          'Invalid combination: planId cannot be combined with packageId.',
+          400,
+          'CONFLICTING_PRODUCT_IDS',
+        );
+      }
+      if (!hasCourse) {
+        return errorResponse(
+          'planId requires courseId: subscription plans are course-scoped. ' +
+            'Provide both planId and the courseId it belongs to.',
+          400,
+          'PLAN_REQUIRES_COURSE',
+        );
+      }
+      // planId wins the resolution over the companion courseId.
+      productType = 'subscription_plan';
+      productId = planId;
+    } else if (hasPackage) {
+      // PYQ package purchase — packageId only.
+      if (hasCourse) {
+        return errorResponse(
+          'Invalid combination: packageId cannot be combined with courseId.',
+          400,
+          'CONFLICTING_PRODUCT_IDS',
+        );
+      }
+      productType = 'pyq_package';
+      productId = packageId;
+    } else {
+      // Course purchase — courseId only.
+      productType = 'course';
+      productId = courseId as string;
+    }
 
     body = {
       courseId,
       packageId,
+      planId,
+      conversion,
       ...parseGuardianFields(raw),
     };
 
@@ -476,6 +677,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let productName: string;
   let currency: string;
   let effectivePrice: number;
+  /** Course id of the subscription plan (subscription_plan purchases only). */
+  let planCourseIdForItem: string | null = null;
 
   if (productType === 'course') {
     // ── Course validation (existing logic, unchanged) ─────────────────
@@ -515,7 +718,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     productName = course.title;
     currency = course.currency || 'INR';
     effectivePrice = getCourseEffectivePrice(course);
-  } else {
+  } else if (productType === 'pyq_package') {
     // ── PYQ Package validation ──────────────────────────────────────
     structuredLog('loading_pyq_package', { packageId: productId });
 
@@ -553,14 +756,78 @@ Deno.serve(async (req: Request): Promise<Response> => {
     productName = pkg.name;
     currency = pkg.currency || 'INR';
     effectivePrice = Number(pkg.price);
+  } else {
+    // ── Subscription Plan validation ────────────────────────────────
+    structuredLog('loading_subscription_plan', { planId: productId });
+
+    const { data: plan, error: planError } = await serviceClient
+      .from('subscription_plans')
+      .select('plan_id, institute_id, course_id, name, price, currency_code, billing_cycle, duration_days, is_active')
+      .eq('plan_id', productId)
+      .single();
+
+    if (planError || !plan) {
+      return errorResponse('Subscription plan not found.', 404, 'PLAN_NOT_FOUND', planError?.message);
+    }
+
+    // Validate the plan is purchasable
+    if (!plan.is_active) {
+      return errorResponse('This subscription plan is no longer available for purchase.', 410, 'PLAN_INACTIVE');
+    }
+
+    if (Number(plan.price) <= 0) {
+      return errorResponse('This subscription plan has no valid price configured.', 400, 'PLAN_NO_PRICE');
+    }
+
+    // Phase 11G/11H: plans are course-scoped. The plan's course_id is the
+    // single source of truth. If the client supplied a courseId, it must
+    // match the plan's course — otherwise reject (prevents buying Course B's
+    // plan from inside Course A's purchase flow).
+    const planCourseId = plan.course_id;
+    if (!planCourseId) {
+      return errorResponse('This subscription plan is not assigned to a course.', 500, 'PLAN_NO_COURSE');
+    }
+    if (body.courseId && body.courseId !== planCourseId) {
+      structuredLog('plan_course_mismatch', {
+        planId: plan.plan_id,
+        planCourseId,
+        bodyCourseId: body.courseId,
+      });
+      return errorResponse(
+        'This subscription plan does not belong to the selected course.',
+        400,
+        'PLAN_COURSE_MISMATCH',
+      );
+    }
+
+    structuredLog('subscription_plan_validated', {
+      planId: plan.plan_id,
+      name: plan.name,
+      instituteId: plan.institute_id,
+      courseId: planCourseId,
+      billingCycle: plan.billing_cycle,
+      durationDays: plan.duration_days,
+      isActive: plan.is_active,
+    });
+
+    instituteId = plan.institute_id;
+    productName = plan.name;
+    currency = plan.currency_code || 'INR';
+    effectivePrice = Number(plan.price);
+
+    // Expose the plan's course so the order_items insert below can populate
+    // course_id (required by ck_order_items_item_type_consistency, migration
+    // 089) and the duplicate check can be course-scoped.
+    planCourseIdForItem = planCourseId;
   }
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 5: Check for existing access (prevent duplicate purchase)
   // ═════════════════════════════════════════════════════════════════════
   // Each product type has its own access table:
-  //   course      → course_enrollments (via student_details)
-  //   pyq_package → student_pyq_purchases
+  //   course            → course_enrollments (via student_details)
+  //   pyq_package       → student_pyq_purchases
+  //   subscription_plan → student_subscriptions (active/grace = no re-purchase)
   structuredLog('checking_existing_access', { productType, productId, profileId });
 
   if (productType === 'course') {
@@ -572,29 +839,158 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .maybeSingle();
 
     if (existingStudent) {
-      const { data: existingEnrollment } = await serviceClient
-        .from('course_enrollments')
-        .select('enrollment_id')
-        .eq('course_id', productId)
-        .eq('student_id', existingStudent.student_id)
-        .eq('is_active', true)
-        .maybeSingle();
+      if (body.conversion) {
+        // ── Phase 11K.5: Full Course Conversion ──────────────────────
+        // A conversion is a discounted one-time course purchase. It is only
+        // valid when the student has a current (renewable) subscription for
+        // the course and does NOT already permanently own it. The payable
+        // amount is the REMAINING balance (course price minus everything the
+        // student already paid in subscription plans for this course, clamped
+        // at 0) — computed via the migration-096 SQL helper.
+        //
+        // 1. Permanent-ownership guard — a subscription-type enrollment is
+        //    fine (it will be upgraded by complete-course-purchase); a
+        //    purchase-type active enrollment means the student already owns
+        //    the course permanently.
+        const { data: ownedEnrollment } = await serviceClient
+          .from('course_enrollments')
+          .select('enrollment_id')
+          .eq('course_id', productId)
+          .eq('student_id', existingStudent.student_id)
+          .eq('enrollment_type', 'purchase')
+          .eq('is_active', true)
+          .maybeSingle();
 
-      if (existingEnrollment) {
-        structuredLog('already_enrolled', {
-          enrollmentId: existingEnrollment.enrollment_id,
+        if (ownedEnrollment) {
+          structuredLog('already_permanently_owned', {
+            courseId: productId,
+            studentId: existingStudent.student_id,
+          });
+          return errorResponse(
+            'You already permanently own this course.',
+            409,
+            'ALREADY_OWNED',
+          );
+        }
+
+        // 2. Current subscription required (renewable statuses only —
+        //    matches the renewal/renewal-options model).
+        const { data: currentSubscription } = await serviceClient
+          .from('student_subscriptions')
+          .select('subscription_id, status')
+          .eq('course_id', productId)
+          .eq('student_id', existingStudent.student_id)
+          .in('status', ['active', 'grace', 'expired'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!currentSubscription) {
+          structuredLog('conversion_no_subscription', {
+            courseId: productId,
+            studentId: existingStudent.student_id,
+          });
+          return errorResponse(
+            'You need an active subscription for this course before you can ' +
+              'convert to full course.',
+            409,
+            'CONVERSION_NOT_ELIGIBLE',
+          );
+        }
+
+        // 3. Remaining amount = course effective price − total subscription
+        //    payments, clamped at 0 (Phase 11K.1 decision D1: identical
+        //    pricing basis as a one-time buyer).
+        const { data: totalPaidRaw, error: totalPaidError } = await serviceClient.rpc(
+          'total_subscription_payments',
+          {
+            p_student_id: existingStudent.student_id,
+            p_course_id: productId,
+          },
+        );
+
+        if (totalPaidError) {
+          structuredLog('conversion_pricing_unavailable', {
+            courseId: productId,
+            studentId: existingStudent.student_id,
+            error: totalPaidError.message,
+            sqlState: (totalPaidError as { code?: string })?.code ?? 'unknown',
+          });
+          return errorResponse(
+            'Unable to compute the conversion amount. Please try again.',
+            500,
+            'CONVERSION_PRICING_UNAVAILABLE',
+          );
+        }
+
+        const totalPaid = Number(totalPaidRaw ?? 0);
+        // `course` is block-scoped to Step 4; `effectivePrice` is its already-
+        // computed effective price (getCourseEffectivePrice(course)) — reuse it.
+        const courseBasePrice = effectivePrice;
+        const remainingAmount = Math.max(
+          0,
+          Math.round((courseBasePrice - totalPaid) * 100) / 100,
+        );
+
+        if (remainingAmount <= 0) {
+          // The student has already paid at least the full course price via
+          // subscription plans — a ₹0 Razorpay order is not viable. Reject
+          // with a clear message; ownership can be granted by support.
+          structuredLog('conversion_fully_paid', {
+            courseId: productId,
+            studentId: existingStudent.student_id,
+            courseBasePrice,
+            totalPaid,
+          });
+          return errorResponse(
+            'You have already paid the full course price through your ' +
+              'subscription payments. Please contact support to complete ' +
+              'your ownership.',
+            409,
+            'CONVERSION_FULLY_PAID',
+          );
+        }
+
+        structuredLog('conversion_amount_computed', {
+          courseId: productId,
+          studentId: existingStudent.student_id,
+          subscriptionId: currentSubscription.subscription_id,
+          status: currentSubscription.status,
+          courseBasePrice,
+          totalPaid,
+          remainingAmount,
         });
 
-        return errorResponse(
-          'You are already enrolled in this course.',
-          409,
-          'ALREADY_ENROLLED',
-        );
+        // Override the payable amount with the remaining balance BEFORE
+        // Step 6 (price calc) so the Razorpay order + order_items reflect it.
+        effectivePrice = remainingAmount;
+      } else {
+        // Normal one-time course purchase — reject if already enrolled
+        // (existing behaviour, unchanged).
+        const { data: existingEnrollment } = await serviceClient
+          .from('course_enrollments')
+          .select('enrollment_id')
+          .eq('course_id', productId)
+          .eq('student_id', existingStudent.student_id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (existingEnrollment) {
+          structuredLog('already_enrolled', {
+            enrollmentId: existingEnrollment.enrollment_id,
+          });
+
+          return errorResponse(
+            'You are already enrolled in this course.',
+            409,
+            'ALREADY_ENROLLED',
+          );
+        }
       }
     }
 
     structuredLog('no_existing_enrollment', {});
-  } else {
+  } else if (productType === 'pyq_package') {
     // Resolve student_id from student_details (may not exist yet)
     const { data: existingStudent } = await serviceClient
       .from('student_details')
@@ -625,6 +1021,186 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     structuredLog('no_existing_pyq_purchase', {});
+  } else {
+    // Resolve student_id from student_details (may not exist yet)
+    const { data: existingStudent } = await serviceClient
+      .from('student_details')
+      .select('student_id')
+      .eq('profile_id', profileId)
+      .maybeSingle();
+
+    if (existingStudent) {
+      // planCourseIdForItem is guaranteed non-null here: the subscription
+      // branch validated it (PLAN_NO_COURSE) before reaching this point.
+      if (!planCourseIdForItem) {
+        return errorResponse(
+          'This subscription plan is not assigned to a course.',
+          500,
+          'PLAN_NO_COURSE',
+        );
+      }
+
+      // ── Phase 11K.4: permanent-ownership guard ─────────────────────
+      // A student who permanently owns the course (one-time purchase or
+      // Full Course conversion → enrollment_type='purchase', is_active)
+      // can never buy a subscription for it again (11K.1 decision D2).
+      const { data: ownedEnrollment } = await serviceClient
+        .from('course_enrollments')
+        .select('enrollment_id')
+        .eq('course_id', planCourseIdForItem)
+        .eq('student_id', existingStudent.student_id)
+        .eq('enrollment_type', 'purchase')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (ownedEnrollment) {
+        structuredLog('already_permanently_owned', {
+          courseId: planCourseIdForItem,
+          studentId: existingStudent.student_id,
+        });
+
+        return errorResponse(
+          'You already permanently own this course.',
+          409,
+          'ALREADY_OWNED',
+        );
+      }
+
+      // ── Phase 11K.4: server-derived renewal classification ─────────
+      // The CURRENT subscription row (newest by created_at) is the renewal
+      // anchor (Phase 11K.1 decision D3 — never a historical row). The
+      // client does NOT declare intent; the plan requested against the
+      // existing row decides:
+      //   • no current row           → initial purchase (any plan allowed)
+      //   • same plan                → RENEWAL allowed (billing cycle is
+      //                                permanently locked to this plan)
+      //   • different plan           → 409 PLAN_LOCKED — switching
+      //                                Monthly↔Quarterly↔Half-Yearly↔Yearly
+      //                                is NEVER allowed after first purchase
+      //   • cancelled/refunded       → 409 SUBSCRIPTION_NOT_RENEWABLE
+      const { data: currentSubscription } = await serviceClient
+        .from('student_subscriptions')
+        .select('subscription_id, plan_id, status')
+        .eq('course_id', planCourseIdForItem)
+        .eq('student_id', existingStudent.student_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (currentSubscription) {
+        if (currentSubscription.plan_id !== productId) {
+          structuredLog('billing_cycle_locked', {
+            subscriptionId: currentSubscription.subscription_id,
+            currentPlanId: currentSubscription.plan_id,
+            requestedPlanId: productId,
+            courseId: planCourseIdForItem,
+          });
+
+          return errorResponse(
+            'Your subscription billing cycle is locked to your current plan. ' +
+              'Renew the same plan or convert to full course.',
+            409,
+            'PLAN_LOCKED',
+          );
+        }
+
+        // Renewable statuses only (matches trg_student_subscriptions_validate_status).
+        if (
+          currentSubscription.status !== 'active' &&
+          currentSubscription.status !== 'grace' &&
+          currentSubscription.status !== 'expired'
+        ) {
+          structuredLog('subscription_not_renewable', {
+            subscriptionId: currentSubscription.subscription_id,
+            status: currentSubscription.status,
+          });
+
+          return errorResponse(
+            'Your current subscription cannot be renewed. Please contact support.',
+            409,
+            'SUBSCRIPTION_NOT_RENEWABLE',
+          );
+        }
+
+        // Same plan → renewal is allowed (the existing row will be UPDATED
+        // by complete-subscription-purchase — never a new row).
+        structuredLog('renewal_allowed', {
+          subscriptionId: currentSubscription.subscription_id,
+          planId: productId,
+          status: currentSubscription.status,
+        });
+      } else {
+        structuredLog('no_existing_subscription', {});
+      }
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 5.5: Pending-order reuse guard (Phase 11K.6)
+  // ═════════════════════════════════════════════════════════════════════
+  // Only reached when Step 5's access checks passed (not already enrolled /
+  // owned / subscribed). A recent PENDING order for the identical purchase
+  // is reused — never a second Razorpay order for the same product.
+  const reusablePending = await findPendingReusableOrder(
+    serviceClient,
+    profileId,
+    productType,
+    productId,
+    body.conversion === true,
+  );
+
+  if (reusablePending) {
+    // Phase 11K.6 review: a conversion's remaining amount is computed at
+    // ORDER-CREATION time (effectivePrice was set to remainingAmount in
+    // Step 5). If total_subscription_payments increased since (e.g. a
+    // concurrent renewal completed), the stored total_amount is STALE and
+    // higher than the fresh remaining balance — reusing it would overcharge.
+    // For conversions, only reuse when the stored amount still matches the
+    // freshly computed amount; otherwise cancel the stale order and create
+    // a new one (the student was quoted a different price).
+    if (
+      body.conversion === true &&
+      Math.round(effectivePrice * 100) !== Math.round(reusablePending.total_amount * 100)
+    ) {
+      structuredLog('pending_order_reuse_stale_amount', {
+        existingOrderId: reusablePending.order_id,
+        storedAmountInPaise: Math.round(reusablePending.total_amount * 100),
+        freshAmountInPaise: Math.round(effectivePrice * 100),
+        productType,
+        productId,
+      });
+
+      // Cancel the stale pending order so it can never be paid later.
+      // Non-fatal — if the cancel fails, the stale order stays pending and
+      // will simply never match the (different) signature again after 24h.
+      await serviceClient
+        .from('orders')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('order_id', reusablePending.order_id)
+        .eq('status', 'pending');
+    } else {
+      structuredLog('pending_order_reused', {
+        existingOrderId: reusablePending.order_id,
+        razorpayOrderId: reusablePending.razorpayOrderId,
+        productType,
+        productId,
+        conversion: body.conversion === true,
+        amountInPaise: Math.round(reusablePending.total_amount * 100),
+      });
+
+      return jsonResponse({
+        success: true,
+        reused: true,
+        orderId: reusablePending.order_id,
+        razorpayOrderId: reusablePending.razorpayOrderId,
+        amount: Math.round(reusablePending.total_amount * 100),
+        currency: reusablePending.currency,
+        itemName: productName,
+        courseName: productName,  // Backward compat — same value
+        description: `Purchase of ${productName}`,
+        razorpayKey: RAZORPAY_KEY_ID,
+      });
+    }
   }
 
   // ═════════════════════════════════════════════════════════════════════
@@ -724,7 +1300,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       discount_amount: 0,
       tax_amount: 0,
       total_amount: displayAmount,
-      notes: buildOrderNotes(productType, productId, productName, razorpayOrder.id, profileId, guardianFields),
+      notes: buildOrderNotes(productType, productId, productName, razorpayOrder.id, profileId, guardianFields, body.conversion === true),
     })
     .select('order_id')
     .single();
@@ -751,29 +1327,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── 8b: Insert the order_item ───────────────────────────────────────
   // The item_type and FK vary by product type. The CHECK constraint
   // ck_order_items_item_type_consistency enforces the correct FK is set.
-  const orderItemInsert = productType === 'course'
-    ? {
-        order_id: order.order_id,
-        institute_id: instituteId,
-        item_type: 'course' as const,
-        course_id: productId,
-        item_name: productName,
-        unit_price: displayAmount,
-        quantity: 1,
-        discount_amount: 0,
-        line_total: displayAmount,
-      }
-    : {
-        order_id: order.order_id,
-        institute_id: instituteId,
-        item_type: 'pyq_package' as const,
-        package_id: productId,
-        item_name: productName,
-        unit_price: displayAmount,
-        quantity: 1,
-        discount_amount: 0,
-        line_total: displayAmount,
-      };
+  let orderItemInsert: Record<string, unknown>;
+
+  if (productType === 'course') {
+    orderItemInsert = {
+      order_id: order.order_id,
+      institute_id: instituteId,
+      item_type: 'course' as const,
+      course_id: productId,
+      item_name: productName,
+      unit_price: displayAmount,
+      quantity: 1,
+      discount_amount: 0,
+      line_total: displayAmount,
+    };
+  } else if (productType === 'pyq_package') {
+    orderItemInsert = {
+      order_id: order.order_id,
+      institute_id: instituteId,
+      item_type: 'pyq_package' as const,
+      package_id: productId,
+      item_name: productName,
+      unit_price: displayAmount,
+      quantity: 1,
+      discount_amount: 0,
+      line_total: displayAmount,
+    };
+  } else {
+    orderItemInsert = {
+      order_id: order.order_id,
+      institute_id: instituteId,
+      item_type: 'subscription_plan' as const,
+      plan_id: productId,
+      course_id: planCourseIdForItem,
+      item_name: productName,
+      unit_price: displayAmount,
+      quantity: 1,
+      discount_amount: 0,
+      line_total: displayAmount,
+    };
+  }
 
   const { error: itemError } = await serviceClient
     .from('order_items')

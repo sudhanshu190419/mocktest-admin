@@ -1,0 +1,12 @@
+1. Demo class for new users on home screen at the top it will be recorded and it will be class which stream student select.
+2. Take admin card of studentsfor checking their result
+3. give feedback after every class
+4. parents mail integraition and mailing a students report to their parents 
+5. in teachers dashboard see teachers calendar for time table admin wil upload time table year wise or month wise it depend on super admin or academic admin
+6. when adding a question in mock test or pyq then it shoudl show where that particular question is used previously in which which papaers
+7. Payment option currently - one time
+needed- monthly, quarterly , half yearly ,full
+8. if not paid till the last date then grace period for live class would be 7 days after 7 days student shuld not able to attend live class and pdf,notes recorded videos will be available for 1 month (till he has taken live classes)
+9. In the leave request should we keep a minimum time before the teacher from his side can request a leave like 24hr before a class a teacher can request for either leave or reschedule and then the academic admin will see what to do. admin can either reshedule the class or can give a mock test to attend or can show a recorded live class into the class. And if it's an emergency the teacher will have to contact the admin directly
+10. their woudl be a doubt page where he can search questions related to a topic answerd prevoiusly and he can put up a new doubts and student can view reocrd of his own questions 
+11. app shoudl be open to only one device if he try to login to other device and previous device is logged out then its good if not thenprevious device got automatically signed out

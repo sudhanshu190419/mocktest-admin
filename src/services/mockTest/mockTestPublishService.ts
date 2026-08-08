@@ -118,7 +118,7 @@ export interface PublishSummary {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const VALID_PRE_PUBLISH_STATUSES: MockTestStatus[] = ['draft', 'pending_approval'];
+const VALID_PRE_PUBLISH_STATUSES: MockTestStatus[] = ['draft', 'pending_approval', 'archived'];
 
 /** The current schema version for question snapshots. Bump when the shape changes. */
 const SNAPSHOT_VERSION = 1;
@@ -194,11 +194,11 @@ export async function validateMockTestReady(
     details.testExists = true;
     details.status = mockTest.status;
 
-    // ── 2. Status is draft or pending_approval ─────────────────────────
+    // ── 2. Status is draft, pending_approval, or archived (restore) ────
     if (!VALID_PRE_PUBLISH_STATUSES.includes(mockTest.status)) {
       errors.push(
         `Cannot publish a test with status "${mockTest.status}". ` +
-        `Only "draft" or "pending_approval" tests can be published.`,
+        `Only "draft", "pending_approval", or "archived" (restore) tests can be published.`,
       );
     }
 
@@ -642,8 +642,39 @@ export async function publishMockTestWorkflow(
       };
     }
 
-    // ── Step 3: Publish via mockTestService ────────────────────────────
-    const publishResult = await publishMockTest(testId);
+    // ── Step 2b: Verify snapshots (fail closed) ────────────────────────
+    // Belt-and-suspenders: even if snapshot generation reported success,
+    // we re-check the database so NO test can reach 'published' with any
+    // NULL question_snapshot row.
+    const { count: missingSnapshots, error: verifyErr } = await supabase
+      .from('mock_test_questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('test_id', testId)
+      .is('question_snapshot', null);
+
+    if (verifyErr) {
+      return {
+        success: false,
+        error: `Snapshot verification failed: ${extractErrorMessage(verifyErr)}`,
+      };
+    }
+
+    if (missingSnapshots !== null && missingSnapshots > 0) {
+      return {
+        success: false,
+        error: `Cannot publish mock test ${testId}: ${missingSnapshots} question(s) ` +
+          'still have no frozen question_snapshot after snapshot generation. ' +
+          'Publish aborted — no status change was made.',
+      };
+    }
+
+    // ── Step 3: Publish via mockTestService (guarded flip) ─────────────
+    // Restore (archived → published) preserves the original published_at so
+    // the audit trail of the first publication survives.
+    const publishResult =
+      previousStatus === 'archived'
+        ? await publishMockTest(testId, { preservePublishedAt: true })
+        : await publishMockTest(testId);
 
     if (!publishResult.success || !publishResult.data) {
       return {

@@ -4,22 +4,45 @@
 // Generates a time-limited signed (pre-signed) URL for streaming a
 // recording from Cloudflare R2.
 //
-// ── Security Model ─────────────────────────────────────────────────────────
-// 1. Accepts recording_id (NOT storage_path) from the client
-// 2. Queries the recordings table for the authoritative storage_path/bucket
-// 3. Verifies the recording exists, is completed, and not soft-deleted
-// 4. Verifies the caller has access:
-//    - Teacher: owns the recording
-//    - Student: enrolled in the recording's batch
-//    - Admin: any recording
-// 5. Generates a short-lived signed URL using DB values
-//    Never trusts client-provided storage paths.
+// ── Security Model (Phase 11J.3 — Course-Scoped Authorization) ─────────────
+// The client NEVER supplies course, batch, subject, or entitlement
+// information. The server derives everything itself:
+//
+//     JWT
+//       ↓
+//     authenticated user (user.id)
+//       ↓
+//     profiles                → authoritative role (never from the request body)
+//       ↓
+//     recordings (recordingId) → status, storage_bucket/path, class_id
+//       ↓
+//     batch_subject_recordings → batch_subject_ids
+//       ↓
+//     batch_subjects          → batch_ids (is_active = true)
+//       ↓
+//     course_batches          → course_id(s)
+//       ↓
+//     authorization
+//
+//   • Student:  allowed ONLY when BOTH hold:
+//                 (a) an ACTIVE batch_students row in one of the
+//                     recording's batches, AND
+//                 (b) can_student_access_content(course_id) is TRUE for at
+//                     least one course linked to the recording's batches
+//                     (ANY-course semantics — same rule the RLS helpers use).
+//   • Teacher:  allowed ONLY for recordings they own (recordings.teacher_id)
+//               or whose source class they teach (live_classes.teacher_id).
+//   • Admin:    full bypass.
 //
 // ── Request Body ───────────────────────────────────────────────────────────
 // {
 //   "recordingId": "uuid",         // Recording UUID (NOT storage path)
 //   "expirySeconds": 300            // Optional: URL expiry in seconds
 // }
+//
+// Any client-supplied courseId / batchId / subjectId is IGNORED. The signed
+// URL is always derived from recordings.storage_bucket + storage_path loaded
+// from the database.
 //
 // ── Response (Success) ─────────────────────────────────────────────────────
 // {
@@ -29,6 +52,7 @@
 //
 // ── Environment Variables ──────────────────────────────────────────────────
 // SUPABASE_URL              — Auto-injected by Supabase
+// SUPABASE_ANON_KEY         — Auto-injected by Supabase
 // SUPABASE_SERVICE_ROLE_KEY — Service role key for DB access
 // R2_ENDPOINT               — Cloudflare R2 S3 endpoint
 // R2_ACCESS_KEY             — Cloudflare R2 access key ID
@@ -60,6 +84,16 @@ interface PlaybackUrlRequest {
   expirySeconds?: number;
 }
 
+interface RecordingRow {
+  recording_id: string;
+  class_id: string | null;
+  status: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  is_deleted: boolean | null;
+  teacher_id: string | null;
+}
+
 interface PlaybackUrlSuccessResponse {
   /** Pre-signed URL for streaming. */
   url: string;
@@ -86,6 +120,10 @@ const CORS_HEADERS = {
 const MIN_EXPIRY = 60;      // 1 minute minimum
 const MAX_EXPIRY = 3600;    // 1 hour maximum
 const DEFAULT_EXPIRY = 300; // 5 minutes
+
+/** Standardized user-facing denial message (matches Phase 11C MESSAGES). */
+const CONTENT_BLOCKED_MESSAGE =
+  'Your content access period has ended. Renew your subscription to continue.';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Structured Logging
@@ -117,6 +155,10 @@ function jsonResponse(body: FunctionResponse, status = 200): Response {
 function errorResponse(error: string, status = 400): Response {
   structuredLog('PLAYBACK_URL_ERROR', { error, statusCode: status });
   return jsonResponse({ error }, status);
+}
+
+function isValidUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 /**
@@ -179,75 +221,118 @@ async function generatePresignedUrl(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Verify the caller has access to the recording.
+ * Recording-scoped student authorization (Phase 11J.3).
  *
- * Security model:
- * - Teacher: can access only recordings they own (teacher_id match)
- * - Student: can access completed recordings in batches they are enrolled in
- * - Admin: can access every recording
+ * Both conditions must hold:
+ *   1. The student holds an ACTIVE batch_students row in one of the
+ *      recording's batches (batch_subject_recordings → batch_subjects,
+ *      is_active = true).
+ *   2. can_student_access_content(course_id) is TRUE for at least one
+ *      course linked to those batches (ANY-course semantics).
  *
- * @returns The user's role if authorized, or an error string.
+ * All lookups use the service-role client (never trusts the client). The
+ * entitlement check reuses the existing RLS helper can_student_access_content
+ * — which depends on auth.uid() — so it is invoked through the ANON client
+ * that forwards the caller's JWT. Any RPC error fails CLOSED (denied).
  */
-async function verifyAccess(
-  supabase: ReturnType<typeof createClient>,
+async function authorizeStudent(
+  anonClient: ReturnType<typeof createClient>,
+  serviceClient: ReturnType<typeof createClient>,
   userId: string,
-  recording: Record<string, unknown>,
-): Promise<{ authorized: true; role: string } | { authorized: false; error: string }> {
-  // Check the caller's role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
+  recording: RecordingRow,
+): Promise<{ allowed: boolean; message?: string }> {
+  // ── 1. Resolve the student's student_id ───────────────────────────────
+  const { data: student } = await serviceClient
+    .from('student_details')
+    .select('student_id')
     .eq('profile_id', userId)
-    .single();
+    .maybeSingle();
 
-  const role = (profile?.role as string) ?? '';
-  const teacherId = recording.teacher_id as string;
-  const batchId = recording.batch_id as string | null;
-
-  // Admin: full access
-  if (role === 'admin') {
-    return { authorized: true, role };
+  if (!student?.student_id) {
+    return { allowed: false, message: 'Student profile not found.' };
   }
 
-  // Teacher: can access only recordings they own
-  if (role === 'teacher') {
-    // Look up teacher_id by profile_id
-    const { data: teacher } = await supabase
-      .from('teacher_details')
-      .select('teacher_id')
-      .eq('profile_id', userId)
-      .single();
+  // ── 2. Resolve the recording's batch_subject_ids ──────────────────────
+  const { data: bsrRows } = await serviceClient
+    .from('batch_subject_recordings')
+    .select('batch_subject_id')
+    .eq('recording_id', recording.recording_id);
 
-    if (teacher && teacher.teacher_id === teacherId) {
-      return { authorized: true, role };
-    }
-    return { authorized: false, error: 'You do not own this recording.' };
+  const batchSubjectIds = (bsrRows ?? []).map((r: any) => r.batch_subject_id);
+  if (batchSubjectIds.length === 0) {
+    return { allowed: false, message: 'This recording is not assigned to any batch.' };
   }
 
-  // Student: must be enrolled in the recording's batch
-  if (batchId) {
-    const { data: student } = await supabase
-      .from('student_details')
-      .select('student_id')
-      .eq('profile_id', userId)
-      .single();
+  // ── 3. Resolve batch_ids (active batch-subjects only) ─────────────────
+  const { data: bsList } = await serviceClient
+    .from('batch_subjects')
+    .select('batch_id')
+    .in('batch_subject_id', batchSubjectIds)
+    .eq('is_active', true);
 
-    if (student) {
-      const { data: membership } = await supabase
-        .from('batch_students')
-        .select('batch_id')
-        .eq('batch_id', batchId)
-        .eq('student_id', student.student_id)
-        .limit(1)
-        .maybeSingle();
+  const batchIds = [...new Set((bsList ?? []).map((r: any) => r.batch_id))] as string[];
+  if (batchIds.length === 0) {
+    return { allowed: false, message: 'This recording is not assigned to any active batch.' };
+  }
 
-      if (membership) {
-        return { authorized: true, role };
+  // ── 4. Batch membership — student must be ACTIVE in one of THESE batches ─
+  const { data: membership } = await serviceClient
+    .from('batch_students')
+    .select('batch_id')
+    .in('batch_id', batchIds)
+    .eq('student_id', student.student_id)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (!membership) {
+    return { allowed: false, message: 'You are not assigned to this recording.' };
+  }
+
+  // ── 5. Derive the linked course_ids ───────────────────────────────────
+  const { data: cbRows } = await serviceClient
+    .from('course_batches')
+    .select('course_id')
+    .in('batch_id', batchIds);
+
+  const courseIds = [...new Set((cbRows ?? []).map((r: any) => r.course_id))] as string[];
+  if (courseIds.length === 0) {
+    return { allowed: false, message: CONTENT_BLOCKED_MESSAGE };
+  }
+
+  // ── 6. Entitlement — can_student_access_content per course (ANY) ──────
+  //      Invoked through the anon client with the caller's JWT so the
+  //      helper's auth.uid()/get_my_student_id() resolve to THIS student.
+  for (const courseId of courseIds) {
+    try {
+      const { data: allowed, error } = await anonClient.rpc(
+        'can_student_access_content',
+        { p_course_id: courseId },
+      );
+
+      if (error) {
+        structuredLog('ENTITLEMENT_RPC_ERROR', {
+          courseId,
+          error: error.message,
+        });
+        continue; // fail closed for this course
       }
+
+      if (allowed === true) {
+        structuredLog('ENTITLEMENT_GRANTED', { courseId });
+        return { allowed: true };
+      }
+
+      structuredLog('ENTITLEMENT_DENIED_COURSE', { courseId });
+    } catch (rpcErr) {
+      structuredLog('ENTITLEMENT_RPC_EXCEPTION', {
+        courseId,
+        error: rpcErr instanceof Error ? rpcErr.message : 'Unknown RPC error',
+      });
     }
   }
 
-  return { authorized: false, error: 'You do not have access to this recording.' };
+  return { allowed: false, message: CONTENT_BLOCKED_MESSAGE };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -268,14 +353,77 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   try {
     // ══════════════════════════════════════════════════════════════════
-    // Step 1: Parse request body
+    // Step 1: Authenticate the caller via Supabase Auth
     // ══════════════════════════════════════════════════════════════════
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return errorResponse('Authentication required. Provide a valid Bearer token.', 401);
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return errorResponse(
+        'Server configuration error: missing Supabase credentials.',
+        500,
+      );
+    }
+
+    // Anon client forwarding the caller's JWT — used for getUser() and for
+    // the can_student_access_content RPC (which needs auth.uid()).
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    let userId: string;
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData?.user) {
+        structuredLog('AUTH_FAILED', {
+          error: userError?.message ?? 'No user returned from getUser()',
+        });
+        return errorResponse('Invalid or expired authentication token.', 401);
+      }
+
+      userId = userData.user.id;
+
+      structuredLog('AUTH_SUCCESS', {
+        userId,
+        email: userData.user.email ?? 'unknown',
+      });
+    } catch (err) {
+      structuredLog('AUTH_EXCEPTION', {
+        error: err instanceof Error ? err.message : 'Unknown error during authentication',
+      });
+      return errorResponse('Authentication verification failed.', 401);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Step 2: Parse and validate the request body
+    // ══════════════════════════════════════════════════════════════════
+    // Only recordingId + optional expirySeconds are accepted. Any
+    // client-supplied courseId / batchId / subjectId is ignored — the
+    // server derives everything itself.
     let body: PlaybackUrlRequest;
     try {
       const raw = await req.json() as Record<string, unknown>;
 
-      if (!raw.recordingId || typeof raw.recordingId !== 'string') {
-        return errorResponse('Missing or invalid field: recordingId (UUID string required).');
+      if (typeof raw.recordingId !== 'string' || !isValidUuid(raw.recordingId)) {
+        return errorResponse(
+          'Missing or invalid field: recordingId (UUID string required).',
+          400,
+        );
       }
 
       const expirySecondsRaw = raw.expirySeconds as number | undefined;
@@ -294,85 +442,143 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // Step 2: Authenticate
+    // Step 3: Server-authoritative resolution (service role)
     // ══════════════════════════════════════════════════════════════════
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return errorResponse('Server configuration error: missing Supabase credentials.', 500);
-    }
+    // 3a. Authoritative role from profiles — never from the request body.
+    const { data: profile } = await serviceClient
+      .from('profiles')
+      .select('role')
+      .eq('profile_id', userId)
+      .maybeSingle();
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const role = (profile?.role as string | undefined) ?? '';
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return errorResponse('Authentication required.', 401);
-    }
+    structuredLog('ROLE_RESOLVED', { role });
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return errorResponse('Invalid or expired authentication token.', 401);
-    }
-
-    structuredLog('AUTH_SUCCESS', { userId: user.id, recordingId: body.recordingId });
-
-    // ══════════════════════════════════════════════════════════════════
-    // Step 3: Look up recording from DB (authoritative source)
-    // ══════════════════════════════════════════════════════════════════
-    const { data: recording, error: recordingError } = await supabase
+    // 3b. Look up the recording from the DB (authoritative source).
+    // NOTE: uses select('*') — deliberately schema-agnostic. The repository
+    // contains two divergent recordings definitions (005 without
+    // teacher_id/batch_id/is_deleted, 065 with them); an explicit column
+    // list could 400 against the deployed shape and break playback for
+    // everyone. Fields are read defensively below (undefined → falsy).
+    const { data: recording, error: recordingError } = await serviceClient
       .from('recordings')
       .select('*')
       .eq('recording_id', body.recordingId)
-      .single();
+      .maybeSingle();
 
     if (recordingError || !recording) {
+      structuredLog('RECORDING_NOT_FOUND', { recordingId: body.recordingId });
       return errorResponse('Recording not found.', 404);
     }
 
+    const rec = {
+      recording_id: recording.recording_id as string,
+      class_id: (recording as Record<string, unknown>).class_id as string | null ?? null,
+      status: recording.status as string,
+      storage_bucket: (recording as Record<string, unknown>).storage_bucket as string | null ?? null,
+      storage_path: (recording as Record<string, unknown>).storage_path as string | null ?? null,
+      is_deleted: (recording as Record<string, unknown>).is_deleted as boolean | null ?? null,
+      teacher_id: (recording as Record<string, unknown>).teacher_id as string | null ?? null,
+    } satisfies RecordingRow;
+
     // ── Verify recording is completed ──────────────────────────────────
-    if (recording.status !== 'completed') {
+    if (rec.status !== 'completed') {
       return errorResponse(
-        `Recording is not ready for playback. Current status: ${recording.status}`,
+        `Recording is not ready for playback. Current status: ${rec.status}`,
         403,
       );
     }
 
     // ── Verify recording is not soft-deleted ───────────────────────────
-    if (recording.is_deleted) {
+    if (rec.is_deleted) {
       return errorResponse('Recording has been deleted.', 410);
     }
 
     // ── Verify recording has a storage path ───────────────────────────
-    if (!recording.storage_path) {
+    if (!rec.storage_path) {
       return errorResponse('Recording has no storage path.', 500);
     }
 
     structuredLog('RECORDING_FOUND', {
-      recordingId: body.recordingId,
-      status: recording.status,
-      hasStoragePath: !!recording.storage_path,
-      storageBucket: recording.storage_bucket ?? 'default',
+      recordingId: rec.recording_id,
+      status: rec.status,
+      hasStoragePath: !!rec.storage_path,
+      storageBucket: rec.storage_bucket ?? 'default',
+      hasClass: rec.class_id !== null,
     });
 
     // ══════════════════════════════════════════════════════════════════
-    // Step 4: Verify caller has access to this recording
+    // Step 4: Role-based authorization
     // ══════════════════════════════════════════════════════════════════
-    const accessResult = await verifyAccess(supabase, user.id, recording);
+    if (role === 'admin') {
+      // Admin: full bypass.
+      structuredLog('ADMIN_BYPASS', { recordingId: rec.recording_id });
+    } else if (role === 'teacher') {
+      // Teacher: may only access recordings they own.
+      const { data: teacher } = await serviceClient
+        .from('teacher_details')
+        .select('teacher_id')
+        .eq('profile_id', userId)
+        .maybeSingle();
 
-    if (!accessResult.authorized) {
-      structuredLog('ACCESS_DENIED', {
-        userId: user.id,
-        recordingId: body.recordingId,
-        reason: accessResult.error,
+      let ownsRecording = false;
+
+      // Ownership via the denormalized recordings.teacher_id (current schema).
+      if (teacher && rec.teacher_id && rec.teacher_id === teacher.teacher_id) {
+        ownsRecording = true;
+      }
+
+      // Ownership via the source class (recordings.class_id →
+      // live_classes.teacher_id) — authoritative when the recording belongs
+      // to a live class the teacher taught.
+      if (!ownsRecording && teacher && rec.class_id) {
+        const { data: liveClass } = await serviceClient
+          .from('live_classes')
+          .select('teacher_id')
+          .eq('class_id', rec.class_id)
+          .maybeSingle();
+
+        if (liveClass && liveClass.teacher_id === teacher.teacher_id) {
+          ownsRecording = true;
+        }
+      }
+
+      if (!ownsRecording) {
+        structuredLog('TEACHER_OWNERSHIP_DENIED', {
+          recordingId: rec.recording_id,
+          recordingTeacherId: rec.teacher_id,
+          classId: rec.class_id,
+        });
+        return errorResponse('You do not own this recording.', 403);
+      }
+
+      structuredLog('TEACHER_OWNERSHIP_GRANTED', { recordingId: rec.recording_id });
+    } else if (role === 'student') {
+      // Student: batch membership AND course-scoped content entitlement.
+      const decision = await authorizeStudent(supabase, serviceClient, userId, rec);
+
+      if (!decision.allowed) {
+        structuredLog('STUDENT_AUTHORIZATION_DENIED', {
+          recordingId: rec.recording_id,
+          reason: decision.message,
+        });
+        return errorResponse(decision.message ?? CONTENT_BLOCKED_MESSAGE, 403);
+      }
+
+      structuredLog('STUDENT_AUTHORIZATION_GRANTED', {
+        recordingId: rec.recording_id,
       });
-      return errorResponse(accessResult.error, 403);
+    } else {
+      return errorResponse('Unauthorized role. Access denied.', 403);
     }
 
     structuredLog('ACCESS_GRANTED', {
-      userId: user.id,
-      recordingId: body.recordingId,
-      role: accessResult.role,
+      userId,
+      recordingId: rec.recording_id,
+      role,
     });
 
     // ══════════════════════════════════════════════════════════════════
@@ -395,8 +601,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // ══════════════════════════════════════════════════════════════════
     // Step 6: Use DB values (never trust client) to generate signed URL
     // ══════════════════════════════════════════════════════════════════
-    const storagePath = recording.storage_path as string;
-    const storageBucket = (recording.storage_bucket as string) ?? r2RecordingsBucket;
+    const storagePath = rec.storage_path as string;
+    const storageBucket = rec.storage_bucket ?? r2RecordingsBucket;
 
     try {
       const cleanEndpoint = r2Endpoint.replace(/\/+$/, '');
@@ -411,7 +617,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
 
       structuredLog('URL_GENERATED', {
-        recordingId: body.recordingId,
+        recordingId: rec.recording_id,
         bucket: storageBucket,
         expiresAt,
         urlPrefix: url.slice(0, 80) + '...',
@@ -421,7 +627,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     } catch (signingErr) {
       structuredLog('URL_GENERATION_FAILED', {
         error: signingErr instanceof Error ? signingErr.message : 'Unknown signing error',
-        recordingId: body.recordingId,
+        recordingId: rec.recording_id,
       });
       return errorResponse(
         `Failed to generate playback URL: ${signingErr instanceof Error ? signingErr.message : 'Signing error'}`,

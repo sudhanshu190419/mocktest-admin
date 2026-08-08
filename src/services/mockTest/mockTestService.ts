@@ -108,7 +108,11 @@ const VALID_TRANSITIONS: Record<MockTestStatus, MockTestStatus[]> = {
   draft: ['pending_approval', 'archived'],
   pending_approval: ['published', 'draft'],
   published: ['archived'],
-  archived: ['draft'],
+  // 'published' = restore (re-publish an archived test). Routing restore
+  // through the publish workflow requires this transition here; it matches
+  // the admin service transition map (archived → published) and is guarded
+  // by the publish snapshot gate + DB trigger.
+  archived: ['draft', 'published'],
 };
 
 // ─── Database Row Shape ────────────────────────────────────────────────────
@@ -672,20 +676,34 @@ export async function deleteMockTest(testId: string, reason?: string): Promise<A
 /**
  * Publish a mock test, making it available for student attempts.
  *
- * Status transition: `pending_approval` → `published`
+ * **LOW-LEVEL, GUARDED FLIP — NOT the public entry point.**
  *
- * Sets the `published_at` timestamp to the current time.
+ * The only sanctioned way to reach status `published` is
+ * `publishMockTestWorkflow()` in mockTestPublishService (validate → generate
+ * question snapshots → verify → flip). This function is the final guarded
+ * step of that workflow and is exported only so the workflow can reuse the
+ * state-machine + `published_at` logic.
  *
- * @param testId - The UUID of the mock test to publish.
+ * It fails CLOSED: it refuses to flip to `published` when any assigned
+ * question still has a NULL `question_snapshot`, returning a clear error
+ * instead of silently publishing a broken test.
+ *
+ * @param testId     - The UUID of the mock test to publish.
+ * @param options    - `preservePublishedAt` keeps the original publish
+ *                     timestamp when re-publishing an archived test (restore).
  *
  * @example
+ * // Do NOT call directly — use publishMockTestWorkflow(testId).
  * const result = await publishMockTest('uuid-here');
  * if (result.success) {
  *   // test is now available to students
  * }
  */
-export async function publishMockTest(testId: string): Promise<ApiResponse<MockTest>> {
-  return transitionStatus(testId, 'published');
+export async function publishMockTest(
+  testId: string,
+  options?: { preservePublishedAt?: boolean },
+): Promise<ApiResponse<MockTest>> {
+  return transitionStatus(testId, 'published', options);
 }
 
 /**
@@ -747,6 +765,7 @@ export async function restoreMockTest(testId: string): Promise<ApiResponse<MockT
 async function transitionStatus(
   testId: string,
   newStatus: MockTestStatus,
+  options?: { preservePublishedAt?: boolean },
 ): Promise<ApiResponse<MockTest>> {
   try {
     validateUUID(testId, 'testId');
@@ -761,11 +780,53 @@ async function transitionStatus(
       return { success: false, error: transitionError };
     }
 
+    // ── Publish gate (fail closed) ─────────────────────────────────────
+    // Status may only become 'published' when EVERY assigned question has a
+    // frozen question_snapshot. Any direct caller that skipped snapshot
+    // generation gets a clear error instead of a silent broken publish.
+    if (newStatus === 'published') {
+      const { count: totalCount, error: totalErr } = await supabase
+        .from('mock_test_questions')
+        .select('*', { count: 'exact', head: true })
+        .eq('test_id', testId);
+      if (totalErr) {
+        return { success: false, error: extractErrorMessage(totalErr) };
+      }
+
+      const { count: missingCount, error: missingErr } = await supabase
+        .from('mock_test_questions')
+        .select('*', { count: 'exact', head: true })
+        .eq('test_id', testId)
+        .is('question_snapshot', null);
+      if (missingErr) {
+        return { success: false, error: extractErrorMessage(missingErr) };
+      }
+
+      if (totalCount === null || totalCount === 0) {
+        return {
+          success: false,
+          error: `Cannot publish mock test ${testId}: it has no assigned questions. ` +
+            'Add questions and run the publish workflow first.',
+        };
+      }
+
+      if (missingCount !== null && missingCount > 0) {
+        return {
+          success: false,
+          error: `Cannot publish mock test ${testId}: ${missingCount} assigned question(s) ` +
+            'have no frozen question_snapshot. Run the publish workflow ' +
+            '(publishMockTestWorkflow) or the snapshot backfill first.',
+        };
+      }
+    }
+
     // Build update payload
     const dbUpdate: Record<string, unknown> = { status: newStatus };
 
-    // Set published_at when publishing (pending_approval → published)
-    if (newStatus === 'published') {
+    // Set published_at when publishing (pending_approval → published).
+    // Preserved when re-publishing an archived test (restore) so the
+    // original publish timestamp / audit trail survives.
+    if (newStatus === 'published' && !options?.preservePublishedAt) {
       dbUpdate.published_at = new Date().toISOString();
     }
 

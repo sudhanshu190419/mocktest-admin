@@ -46,6 +46,7 @@
  */
 
 import { supabase } from '@/config/supabase';
+import { publishMockTestWorkflow } from '@/services/mockTest/mockTestPublishService';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
@@ -547,6 +548,28 @@ export const mockTestManagementService = {
         return { success: false, error: transitionError };
       }
 
+      // 2b. Publish gate (fail closed): status may only become 'published'
+      // when EVERY assigned question has a frozen question_snapshot.
+      if (newStatus === 'published') {
+        const { count: missingSnapshots, error: snapErr } = await supabase
+          .from('mock_test_questions')
+          .select('*', { count: 'exact', head: true })
+          .eq('test_id', testId)
+          .is('question_snapshot', null);
+
+        if (snapErr) {
+          return { success: false, error: extractErrorMessage(snapErr) };
+        }
+        if (missingSnapshots !== null && missingSnapshots > 0) {
+          return {
+            success: false,
+            error: `Cannot publish mock test ${testId}: ${missingSnapshots} question(s) ` +
+              'have no frozen question_snapshot. Run the publish workflow or the ' +
+              'snapshot backfill first.',
+          };
+        }
+      }
+
       // 3. Build update payload
       const dbUpdate: Record<string, unknown> = { status: newStatus };
 
@@ -588,9 +611,38 @@ export const mockTestManagementService = {
     }
   },
 
-  /** Publish (pending_approval → published). */
+  /**
+   * Publish (draft / pending_approval → published).
+   *
+   * Routes through the SINGLE authoritative publish workflow so question
+   * snapshots are ALWAYS generated and verified before the status flip.
+   * Authorization and the audit trail are preserved.
+   */
   async publish(testId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(testId, 'published');
+    // ── Authorization: only super/academic admins may publish ──────────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
+    validateUUID(testId, 'testId');
+
+    const result = await publishMockTestWorkflow(testId);
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error ?? 'Failed to publish mock test.' };
+    }
+
+    // ── Audit: preserve the previous approve audit entry ───────────────
+    const previousStatus = result.data.previousStatus;
+    await auditService.log({
+      action: mapMockTestTransitionAction(previousStatus, 'published'),
+      resourceType: 'mock_tests',
+      resourceId: testId,
+      oldValue: { status: previousStatus },
+      newValue: { status: 'published' },
+      metadata: { testId, previousStatus, newStatus: 'published' },
+    });
+
+    return { success: true, data: null };
   },
 
   /** Unpublish (published → draft). */
@@ -603,9 +655,38 @@ export const mockTestManagementService = {
     return this.updateStatus(testId, 'archived');
   },
 
-  /** Restore (archived → published). Preserves approval/publish metadata. */
+  /**
+   * Restore (archived → published).
+   *
+   * A restore is a re-publish, so it routes through the SINGLE
+   * authoritative publish workflow too: snapshots are re-verified (the
+   * original frozen snapshots survive because they are non-null) and the
+   * original published_at is preserved. Authorization + audit are kept.
+   */
   async restore(testId: string): Promise<ApiResponse<null>> {
-    return this.updateStatus(testId, 'published');
+    // ── Authorization: only super/academic admins may restore ──────────
+    if (!(await canApproveAcademicResources())) {
+      return approvalPermissionDenied();
+    }
+
+    validateUUID(testId, 'testId');
+
+    const result = await publishMockTestWorkflow(testId);
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error ?? 'Failed to restore mock test.' };
+    }
+
+    // ── Audit: restore action (archived → published) ───────────────────
+    await auditService.log({
+      action: mapMockTestTransitionAction('archived', 'published'),
+      resourceType: 'mock_tests',
+      resourceId: testId,
+      oldValue: { status: 'archived' },
+      newValue: { status: 'published' },
+      metadata: { testId, previousStatus: 'archived', newStatus: 'published' },
+    });
+
+    return { success: true, data: null };
   },
 
   // ─────────────────────────────────────────────────────────────────────────

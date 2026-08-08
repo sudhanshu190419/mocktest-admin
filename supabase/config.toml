@@ -15,3 +15,29 @@ verify_jwt = false
 # using the service role (never trusting client-supplied role values).
 [functions.admin-identity-create]
 verify_jwt = true
+
+# Subscription Lifecycle — scheduled by pg_cron (Migration 097, Phase 11K.9).
+# verify_jwt = false is REQUIRED for the scheduled invocation: the internal
+# cron job POSTs to this function over HTTP (net.http_post) without an
+# Authorization header. Safe by design: every state transition is date-gated
+# (WHERE end_date < today / grace_end_date < today) and executed via atomic
+# conditional UPDATEs, and every notification is reference-idempotent — so an
+# unauthenticated manual run cannot force early transitions or duplicate
+# effects. GET is also allowed for health checks / manual runs.
+[functions.subscription-lifecycle]
+verify_jwt = false
+# Commerce completion functions (complete-course-purchase,
+# complete-subscription-purchase, complete-pyq-purchase): verify_jwt = true
+# is REQUIRED for the audit-C2 service-role check. These functions decode
+# the JWT payload to confirm the caller holds the service-role key, which
+# is only safe because the platform validates the JWT signature first.
+# Explicit entries make the (already default) setting auditable so an
+# accidental verify_jwt = false cannot silently weaken the check.
+[functions.complete-course-purchase]
+verify_jwt = true
+
+[functions.complete-subscription-purchase]
+verify_jwt = true
+
+[functions.complete-pyq-purchase]
+verify_jwt = true

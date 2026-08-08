@@ -1,0 +1,134 @@
+-- ============================================================================
+-- Migration: 087 — Fix Subscription Auto-History Trigger Enum Blocker
+--
+-- PostgreSQL 16 | Supabase Compatible | Production Ready
+--
+-- Purpose: Unblock automatic subscription lifecycle auditing.
+--
+-- Problem:
+--   The auto-history trigger `trgfn_subscription_auto_history` (migration 012)
+--   fires AFTER UPDATE on public.student_subscriptions whenever the status
+--   column changes, and inserts a public.subscription_history row with
+--   change_reason = 'system_action'.
+--
+--   However, the `subscription_change_reason_type` enum (also migration 012)
+--   does NOT contain 'system_action'. Its values are:
+--
+--     new_purchase, renewal, upgrade, downgrade, manual_activation,
+--     payment_failure, payment_recovery, admin_action, expiry,
+--     cancellation, refund
+--
+--   As a result, EVERY status UPDATE on student_subscriptions raises:
+--
+--     ERROR: invalid input value for enum subscription_change_reason_type:
+--            "system_action"
+--
+--   No automatic lifecycle transition (Phase 11B.1 grace/content/expiry
+--   jobs) can succeed until this is fixed.
+--
+-- Solution: Append the missing 'system_action' value to the enum using the
+--           proven idempotent pattern from migrations 047 / 076
+--           (ALTER TYPE ... ADD VALUE IF NOT EXISTS, PostgreSQL 16).
+--           Enum values append at the END of the sort order, so existing
+--           rows and any code ordering by enumsortorder are unaffected.
+--
+-- Trigger review (conducted — no trigger change required):
+--   trgfn_subscription_auto_history (012:800-835) inserts:
+--     subscription_id, student_id, institute_id, status_before,
+--     status_after, change_reason, changed_by, changed_by_role,
+--     metadata, occurred_at
+--   — every column verified to exist on public.subscription_history
+--     (012:358-372) with compatible types. changed_by / changed_by_role /
+--     metadata are intentionally NULL/'{}' (documented at 012:823-825);
+--     the backend is expected to enrich them afterwards. Once the enum
+--     value exists, the trigger functions correctly with NO changes.
+--
+-- Scope: This migration ONLY extends the enum. It does NOT touch the
+--        trigger, RLS, data, or any application code.
+-- ============================================================================
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECTION 1 — Add 'system_action' to the enum (idempotent)
+-- ════════════════════════════════════════════════════════════════════════════
+-- ALTER TYPE ... ADD VALUE IF NOT EXISTS is supported from PostgreSQL 16
+-- (this repo's target, per supabase/config.toml and the 045/076 headers)
+-- and is safe to run multiple times. The value is appended at the end of
+-- the enum's sort order, preserving compatibility with existing rows.
+--
+-- NOTE: PostgreSQL does not allow the newly added value to be USED within
+--       the same transaction that adds it. This migration only defines the
+--       value; the trigger will start using it on the next status UPDATE
+--       after this migration commits — exactly what we want.
+alter type public.subscription_change_reason_type
+  add value if not exists 'system_action';
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- VALIDATION (run manually after applying — do NOT include in migration)
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- 1. Enum now contains 'system_action' (expect exactly 1 row):
+--    select e.enumlabel, e.enumsortorder
+--    from pg_enum e
+--    join pg_type t on t.oid = e.enumtypid
+--    where t.typname = 'subscription_change_reason_type'
+--      and e.enumlabel = 'system_action';
+--
+-- 2. Auto-history trigger still exists (expect 1 row):
+--    select tgname, tgenabled
+--    from pg_trigger
+--    where tgname = 'trg_student_subscriptions_auto_history';
+--
+-- 3. A status UPDATE now writes history successfully (run AFTER commit;
+--    use a real subscription_id, wrap in a transaction, and ROLLBACK —
+--    do NOT commit this probe):
+--    begin;
+--      update public.student_subscriptions
+--         set status = 'grace'   -- only if the row is currently 'active'
+--       where subscription_id = '<a real subscription_id>'
+--       returning subscription_id, status;
+--
+--    NOTE: this probe also passes through the BEFORE UPDATE
+--    trg_student_subscriptions_validate_status trigger, which only permits
+--    a fixed transition set. active → grace IS a legal transition (see
+--    012:528), so the probe works — but if you pick any other target
+--    status, make sure it is one of the legal transitions (012:782-787),
+--    otherwise the UPDATE fails for an unrelated reason (invalid
+--    transition), not because of this migration.
+--
+--      select history_id, status_before, status_after, change_reason,
+--             changed_by, changed_by_role
+--      from public.subscription_history
+--      where subscription_id = '<a real subscription_id>'
+--      order by occurred_at desc
+--      limit 3;
+--    rollback;
+--
+--    Expect: exactly one new history row with
+--            status_before = 'active', status_after = 'grace',
+--            change_reason = 'system_action', changed_by IS NULL,
+--            changed_by_role IS NULL.
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- ROLLBACK
+-- ════════════════════════════════════════════════════════════════════════════
+-- PostgreSQL does NOT support dropping a single enum value
+-- (no ALTER TYPE ... DROP VALUE until PostgreSQL 17, and even then it is
+-- risky). Adding an enum value is append-only and non-breaking, so the
+-- recommended rollback is to LEAVE the value in place:
+--
+--   • 'system_action' is only written by the auto-history trigger, which
+--     previously FAILED on every status change — so no production row can
+--     already contain it, and leaving it costs nothing.
+--   • Every future Phase 11B.1+ lifecycle job depends on this value, so
+--     removing it would merely re-introduce the blocker.
+--
+-- If removal is ABSOLUTELY required (not recommended), the enum must be
+-- rebuilt: create a new type without the value, cast the column, drop the
+-- old type, and rename — which locks subscription_history and requires
+-- coordinated deploys of any code referencing the type. Given the append-
+-- only, non-breaking nature of this change, that effort is unjustified.
+--
+-- The migration itself is idempotent: re-running it is a no-op.
+-- ============================================================================
+-- END OF MIGRATION — 087
+-- ============================================================================
