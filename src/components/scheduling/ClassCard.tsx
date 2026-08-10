@@ -2,6 +2,7 @@
 
 import React from 'react';
 import {
+  BookOpen,
   Clock,
   Users,
   PlayCircle,
@@ -100,13 +101,34 @@ function getStatusConfig(status: LiveClassListItem['status']) {
   }
 }
 
+/**
+ * Start-window state mirroring the server rule in
+ * `start_scheduled_live_class()` (UX only — the RPC remains authoritative):
+ *   not-open  → before scheduled_at - 10 min
+ *   open      → scheduled_at - 10 min … scheduled_at + duration + 15 min
+ *   expired   → after the late limit
+ */
+function getStartWindowState(scheduledAt: string, durationMin: number): 'open' | 'not-open' | 'expired' {
+  const start = new Date(scheduledAt).getTime();
+  if (Number.isNaN(start)) return 'open';
+  const EARLY_WINDOW_MS = 10 * 60 * 1000; // 10 min before scheduled_at
+  const LATE_GRACE_MS = 15 * 60 * 1000;   // 15 min after duration
+  const now = Date.now();
+  if (now < start - EARLY_WINDOW_MS) return 'not-open';
+  if (now > start + durationMin * 60_000 + LATE_GRACE_MS) return 'expired';
+  return 'open';
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function ClassCard({ item, onAction }: ClassCardProps) {
   const cfg = getStatusConfig(item.status);
   const { date, time } = formatDateTime(item.scheduledAt);
-  const isPast = new Date(item.scheduledAt) < new Date();
-  const canStart = item.status === 'scheduled' && !isPast;
+  // Mirrors the server start window (UX only — the RPC stays authoritative).
+  const startWindow = getStartWindowState(item.scheduledAt, item.durationMin);
+  const canStart = item.status === 'scheduled' && startWindow === 'open';
+  const startNotOpen = item.status === 'scheduled' && startWindow === 'not-open';
+  const startExpired = item.status === 'scheduled' && startWindow === 'expired';
   const canEdit = EDITABLE_STATUSES.includes(item.status);
   const canCancel = CANCELLABLE_STATUSES.includes(item.status);
 
@@ -154,12 +176,25 @@ export function ClassCard({ item, onAction }: ClassCardProps) {
       </div>
 
       {/* Date/time */}
-      <div className="mb-4 flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+      <div className="mb-3 flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
         <CalendarBlank size={16} className="text-gray-400 shrink-0" />
         <span className="font-medium">{date}</span>
         <span className="text-gray-300">·</span>
         <span className="font-mono font-medium">{time}</span>
       </div>
+
+      {/* Planned lesson (chapter/topic from the admin lesson plan) */}
+      {item.chapterName && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-300">
+          <BookOpen size={14} className="text-indigo-400 shrink-0 mt-0.5" />
+          <span className="min-w-0">
+            <span className="font-semibold">{item.chapterName}</span>
+            {item.topicName && (
+              <span className="font-medium text-indigo-500 dark:text-indigo-400"> — {item.topicName}</span>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Action buttons (appear on hover) */}
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -171,6 +206,18 @@ export function ClassCard({ item, onAction }: ClassCardProps) {
             <PlayCircle size={16} weight="fill" />
             Go Live
           </button>
+        )}
+        {startNotOpen && (
+          <span className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            <Clock size={14} />
+            Starts at {time}
+          </span>
+        )}
+        {startExpired && (
+          <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">
+            <Clock size={14} />
+            Start window expired
+          </span>
         )}
         {item.status === 'live' && (
           <button

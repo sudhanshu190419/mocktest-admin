@@ -61,6 +61,8 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
   { prefix: '/admin/batches', permission: 'approveAcademicResources' },
   { prefix: '/admin/courses', permission: 'approveAcademicResources' },
   { prefix: '/admin/content', permission: 'approveAcademicResources' },
+  { prefix: '/admin/demo-classes', permission: 'approveAcademicResources' },
+  { prefix: '/admin/timetable', permission: 'approveAcademicResources' },
   { prefix: '/admin/academic', permission: 'approveAcademicResources' },
   { prefix: '/admin/questions', permission: 'approveAcademicResources' },
   { prefix: '/admin/mock-tests', permission: 'approveAcademicResources' },

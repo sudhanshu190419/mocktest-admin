@@ -26,6 +26,30 @@ verify_jwt = true
 # effects. GET is also allowed for health checks / manual runs.
 [functions.subscription-lifecycle]
 verify_jwt = false
+
+# Timetable Materialization — scheduled by pg_cron (Migration 110).
+# verify_jwt = false is REQUIRED for the scheduled invocation: the internal
+# cron job POSTs to this function over HTTP (net.http_post) without an
+# Authorization header. Safe by design: materialization is idempotent
+# (uq_live_classes_timetable_occurrence + ON CONFLICT DO NOTHING), date-gated
+# to a rolling current_date → +60 day window, and only creates 'scheduled'
+# future classes within slot validity (holidays/leaves skipped) — an
+# unauthenticated manual run cannot corrupt data or create duplicates. GET is
+# also allowed for health checks / manual runs.
+[functions.timetable-materialization]
+verify_jwt = false
+
+# Live Class Watchdog — scheduled by pg_cron (Migration 112).
+# verify_jwt = false is REQUIRED for the scheduled invocation: the internal
+# cron job POSTs to this function over HTTP (net.http_post) without an
+# Authorization header. Safe by design: recovery is service-role-gated inside
+# the SECURITY DEFINER RPC (recover_stale_live_classes), date/status-gated to
+# stale live or expired-scheduled classes only, and idempotent — an
+# unauthenticated manual run cannot end healthy classes or create duplicates.
+# GET is also allowed for health checks / manual runs.
+[functions.live-class-watchdog]
+verify_jwt = false
+
 # Commerce completion functions (complete-course-purchase,
 # complete-subscription-purchase, complete-pyq-purchase): verify_jwt = true
 # is REQUIRED for the audit-C2 service-role check. These functions decode

@@ -338,9 +338,10 @@ async function resolveAudience(
       if (role === 'teacher') {
         // ── Map profile_id → teacher_id ────────────────────────────────
         // callerProfileId is profiles.profile_id (auth.uid()), but
-        // batch_teachers.teacher_id FK references teacher_details.teacher_id,
-        // NOT profiles.profile_id.  Query teacher_details to get the correct
-        // teacher_id before validating batch assignment.
+        // batch_subject_teachers.teacher_id FK references
+        // teacher_details.teacher_id, NOT profiles.profile_id.  Query
+        // teacher_details to get the correct teacher_id before validating
+        // batch assignment.
         const { data: teacherRow, error: teacherError } = await supabase
           .from('teacher_details')
           .select('teacher_id')
@@ -352,15 +353,20 @@ async function resolveAudience(
 
         const teacherId = teacherRow.teacher_id;
 
+        // ── Authoritative assignment check ──────────────────────────────
+        // The teacher must hold at least one batch_subject_teachers row
+        // whose batch_subject belongs to the target batch. Mirrors
+        // teacherService.validateBatchForTeacher. The `batch_teachers`
+        // legacy table is NOT used — it is no longer populated.
         const { data: assignment, error: assignError } = await supabase
-          .from('batch_teachers')
-          .select('batch_id')
+          .from('batch_subject_teachers')
+          .select('batch_subject_id, batch_subjects!inner(batch_id)')
           .eq('teacher_id', teacherId)
-          .eq('batch_id', batchId)
-          .maybeSingle();
+          .eq('batch_subjects.batch_id', batchId)
+          .limit(1);
 
         if (assignError) return { error: assignError.message };
-        if (!assignment) return { error: 'You are not assigned to this batch.' };
+        if (!assignment || assignment.length === 0) return { error: 'You are not assigned to this batch.' };
       }
 
       // Get students enrolled in this batch via student_details join
@@ -393,8 +399,9 @@ async function resolveAudience(
       // Teacher: validate students belong to their batches
       if (role === 'teacher') {
         // ── Map profile_id → teacher_id ────────────────────────────────
-        // Same reason as the 'batch' case above: batch_teachers.teacher_id
-        // references teacher_details.teacher_id, not profiles.profile_id.
+        // Same reason as the 'batch' case above: batch_subject_teachers.
+        // teacher_id references teacher_details.teacher_id, not
+        // profiles.profile_id.
         const { data: teacherRow, error: teacherError } = await supabase
           .from('teacher_details')
           .select('teacher_id')
@@ -406,16 +413,26 @@ async function resolveAudience(
 
         const teacherId = teacherRow.teacher_id;
 
+        // ── Authoritative assignment lookup ─────────────────────────────
+        // Resolve the teacher's batches via batch_subject_teachers →
+        // batch_subjects (the legacy batch_teachers table is not used).
         const { data: teacherBatches, error: tbError } = await supabase
-          .from('batch_teachers')
-          .select('batch_id')
+          .from('batch_subject_teachers')
+          .select('batch_subjects!inner(batch_id)')
           .eq('teacher_id', teacherId);
 
         if (tbError) return { error: tbError.message };
 
-        const assignedBatchIds = (teacherBatches ?? []).map(
-          (b: Record<string, unknown>) => b.batch_id as string,
-        );
+        const assignedBatchIds = [
+          ...new Set(
+            (teacherBatches ?? [])
+              .map((b: Record<string, unknown>) => {
+                const bs = b.batch_subjects as Record<string, unknown> | undefined;
+                return bs?.batch_id as string | undefined;
+              })
+              .filter(Boolean) as string[],
+          ),
+        ];
 
         if (assignedBatchIds.length === 0) {
           return { error: 'You have no assigned batches.' };

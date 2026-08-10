@@ -74,6 +74,15 @@ interface SuccessResponse {
   purchaseId: string;
   packageId: string;
   message: string;
+  /**
+   * M4 Fix B — set to true when this payment was detected as a duplicate
+   * (a prior confirmed PYQ order already exists for this student + package).
+   * Access is NOT granted twice; the current order is flagged for
+   * refund/admin review.
+   */
+  duplicate?: boolean;
+  /** M4 Fix B — the order_id of the earlier confirmed PYQ order. */
+  duplicateOfOrderId?: string;
 }
 
 interface ErrorResponse {
@@ -434,6 +443,98 @@ function structuredLog(event: string, data: Record<string, unknown>): void {
       ...data,
     }),
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// M4 Fix B — duplicate confirmed order helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Append a duplicate-payment marker to an order's notes (JSON text).
+ * Used to flag a second confirmed PYQ order for refund/admin review.
+ * Idempotent: re-marking the same order only overwrites the marker.
+ * Never DESTROYS existing notes — unparseable notes are left untouched.
+ */
+async function markOrderAsDuplicate(
+  serviceClient: any,
+  orderId: string | undefined,
+  duplicateOfOrderId: string,
+  duplicateKind: 'conversion' | 'renewal' | 'course_purchase' | 'pyq_purchase' | 'subscription_purchase',
+): Promise<void> {
+  if (!orderId) return;
+
+  const { data: order } = await serviceClient
+    .from('orders')
+    .select('order_id, notes')
+    .eq('order_id', orderId)
+    .maybeSingle();
+
+  if (!order) return;
+
+  let notes: Record<string, unknown> = {};
+  if (order.notes) {
+    try {
+      notes = JSON.parse(order.notes) as Record<string, unknown>;
+    } catch {
+      structuredLog('DUPLICATE_MARK_SKIPPED_UNPARSEABLE_NOTES', { orderId });
+      return;
+    }
+  }
+
+  notes.duplicate_of_order_id = duplicateOfOrderId;
+  notes.duplicate_kind = duplicateKind;
+  notes.duplicate_detected_at = new Date().toISOString();
+  notes.flagged_for_refund = true;
+
+  await serviceClient
+    .from('orders')
+    .update({ notes: JSON.stringify(notes) })
+    .eq('order_id', orderId);
+}
+
+/**
+ * Find a CONFIRMED PYQ order for the same student + package that is NOT the
+ * current order. Used to detect a duplicate PYQ payment (M4 Fix B): only ONE
+ * PYQ purchase may ever succeed per student/package.
+ *
+ * Order.notes is JSON text; we parse and compare exactly.
+ */
+async function findPriorConfirmedPyqOrder(
+  serviceClient: any,
+  profileId: string,
+  packageId: string,
+  excludeOrderId: string | undefined,
+): Promise<{ order_id: string } | null> {
+  const { data: orders, error } = await serviceClient
+    .from('orders')
+    .select('order_id, notes')
+    .eq('profile_id', profileId)
+    .eq('status', 'confirmed')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    structuredLog('PRIOR_CONFIRMED_PYQ_ORDER_LOOKUP_FAILED', {
+      profileId,
+      packageId,
+      error: error.message,
+    });
+    return null;
+  }
+
+  for (const order of orders ?? []) {
+    if (order.order_id === excludeOrderId) continue;
+    let notes: Record<string, unknown> = {};
+    try {
+      notes = order.notes ? JSON.parse(order.notes) as Record<string, unknown> : {};
+    } catch {
+      continue;
+    }
+    if (notes.packageId === packageId) {
+      return { order_id: order.order_id };
+    }
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -894,6 +995,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
       studentId,
     });
 
+    // ── M4 Fix B: duplicate confirmed PYQ order ────────────────────────
+    // A prior CONFIRMED PYQ order for the same profile + package (a DIFFERENT
+    // order) means this payment is a duplicate: the student was already
+    // charged once and granted access. Flag it for refund/admin review and
+    // return a deterministic duplicate response. A webhook RETRY of this
+    // same order is excluded by orderId and returns the idempotent success
+    // below.
+    const priorPyqOrder = await findPriorConfirmedPyqOrder(
+      serviceClient,
+      profileId,
+      body.packageId,
+      body.orderId,
+    );
+
+    if (priorPyqOrder) {
+      structuredLog('PYQ_DUPLICATE_DETECTED', {
+        packageId: body.packageId,
+        studentId,
+        currentOrderId: body.orderId ?? null,
+        priorOrderId: priorPyqOrder.order_id,
+      });
+
+      await markOrderAsDuplicate(
+        serviceClient,
+        body.orderId,
+        priorPyqOrder.order_id,
+        'pyq_purchase',
+      );
+
+      return jsonResponse({
+        success: true,
+        duplicate: true,
+        duplicateOfOrderId: priorPyqOrder.order_id,
+        studentId,
+        purchaseId: existingPurchase.purchase_id,
+        packageId: body.packageId,
+        message: 'This PYQ package was already purchased by an earlier payment. ' +
+          'The duplicate payment has been flagged for refund.',
+      });
+    }
+
     // ── Ensure notifications exist (idempotent) ────────────────────────
     // If a previous webhook delivery succeeded for purchase but failed
     // before creating notifications, this call creates them now.
@@ -1034,6 +1176,43 @@ Deno.serve(async (req: Request): Promise<Response> => {
           studentId,
           note: 'Recovered from concurrent insert race condition',
         });
+
+        // ── M4 Fix B: a concurrent insert race implies a rival delivery ──
+        // If that rival was a DIFFERENT confirmed order for the same package,
+        // this payment is a duplicate — flag it instead of silently granting.
+        const priorPyqOrder = await findPriorConfirmedPyqOrder(
+          serviceClient,
+          profileId,
+          body.packageId,
+          body.orderId,
+        );
+
+        if (priorPyqOrder) {
+          structuredLog('PYQ_DUPLICATE_DETECTED_RACE', {
+            packageId: body.packageId,
+            studentId,
+            currentOrderId: body.orderId ?? null,
+            priorOrderId: priorPyqOrder.order_id,
+          });
+
+          await markOrderAsDuplicate(
+            serviceClient,
+            body.orderId,
+            priorPyqOrder.order_id,
+            'pyq_purchase',
+          );
+
+          return jsonResponse({
+            success: true,
+            duplicate: true,
+            duplicateOfOrderId: priorPyqOrder.order_id,
+            studentId,
+            purchaseId: recoveredPurchase.purchase_id,
+            packageId: body.packageId,
+            message: 'This PYQ package was already purchased by an earlier payment. ' +
+              'The duplicate payment has been flagged for refund.',
+          });
+        }
 
         // Continue to order linking with recovered purchase ID
         const purchaseId = recoveredPurchase.purchase_id;

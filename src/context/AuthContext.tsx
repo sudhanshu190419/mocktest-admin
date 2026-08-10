@@ -971,6 +971,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const { data } = await supabase.auth.getSession();
+      console.log('ACCESS TOKEN:', data.session?.access_token);
       if (data.session) {
         setSession(data.session);
         setUser(data.session.user);

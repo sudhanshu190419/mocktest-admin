@@ -19,6 +19,8 @@ interface ControlBarProps {
   onEndClass: () => void;
   /** Called when the teacher clicks the close/disconnect button — only disconnects from LiveKit. */
   onCloseStudio: () => void;
+  /** True while the end RPC is in flight — disables End (prevents double End). */
+  isEnding?: boolean;
 }
 
 /**
@@ -26,7 +28,7 @@ interface ControlBarProps {
  * Renders camera/mic toggle buttons, an "End Session" button,
  * and a close studio link (disconnect-only).
  */
-export function ControlBar({ onEndClass, onCloseStudio }: ControlBarProps): React.JSX.Element {
+export function ControlBar({ onEndClass, onCloseStudio, isEnding = false }: ControlBarProps): React.JSX.Element {
   const {
     isCameraEnabled,
     isMicrophoneEnabled,
@@ -79,10 +81,11 @@ export function ControlBar({ onEndClass, onCloseStudio }: ControlBarProps): Reac
       {/* End Session Button — PERMANENTLY ends the session in DB */}
       <button
         onClick={onEndClass}
-        className="w-full sm:w-auto px-8 py-4 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm tracking-wide shadow-2xl transition-all"
+        disabled={isEnding}
+        className="w-full sm:w-auto px-8 py-4 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm tracking-wide shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label="End class for all students — this cannot be undone"
       >
-        END SESSION & SAVE
+        {isEnding ? 'ENDING…' : 'END SESSION & SAVE'}
       </button>
     </div>
   );

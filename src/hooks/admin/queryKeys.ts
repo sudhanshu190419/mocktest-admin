@@ -18,6 +18,72 @@ export const adminKeys = {
   all: ['admin'] as const,
 
   // ═════════════════════════════════════════════════════════════════════════
+  //  Timetable (admin Timetable module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  timetable: {
+    /** Root key for all timetable queries. */
+    all: () => [...adminKeys.all, 'timetable'] as const,
+
+    /** Key for every timetable list query (broad invalidation). */
+    lists: () => [...adminKeys.timetable.all(), 'list'] as const,
+
+    /** Key for a specific paginated timetable slot list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.timetable.lists(), filters, pagination] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Lesson Plans (admin Lesson Planner module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  lessonPlans: {
+    /** Root key for all lesson-plan queries. */
+    all: () => [...adminKeys.all, 'lessonPlans'] as const,
+
+    /** Key for every lesson-plan range query (broad invalidation). */
+    lists: () => [...adminKeys.lessonPlans.all(), 'list'] as const,
+
+    /** Key for a specific slot × date-range lesson-plan query. */
+    list: (timetableSlotId?: string, from?: string, to?: string) =>
+      [...adminKeys.lessonPlans.lists(), timetableSlotId, from, to] as const,
+
+    /** Class-status projection for a slot × date range. */
+    classStatuses: {
+      /** Root key for all class-status queries. */
+      all: () => [...adminKeys.lessonPlans.all(), 'classStatuses'] as const,
+
+      /** Key for a specific slot × date-range class-status query. */
+      list: (timetableSlotId?: string, from?: string, to?: string) =>
+        [...adminKeys.lessonPlans.classStatuses.all(), timetableSlotId, from, to] as const,
+    },
+
+    /** Subject resolution for a batch_subject (chapter/topic scoping). */
+    subject: (batchSubjectId?: string) =>
+      [...adminKeys.lessonPlans.all(), 'subject', batchSubjectId] as const,
+
+    /** Holiday/teacher-leave skip dates for a slot's teacher × date range. */
+    skips: {
+      /** Root key for all skip queries. */
+      all: () => [...adminKeys.lessonPlans.all(), 'skips'] as const,
+
+      /** Key for a specific institute × teacher × date-range skip query. */
+      list: (instituteId?: string, teacherId?: string, from?: string, to?: string) =>
+        [...adminKeys.lessonPlans.skips.all(), instituteId, teacherId, from, to] as const,
+    },
+
+    /** Earliest future lesson plan per slot (admin Timetable next-lesson badge). */
+    next: {
+      /** Root key for all next-lesson queries. */
+      all: () => [...adminKeys.lessonPlans.all(), 'next'] as const,
+
+      /** Key for a specific set of slots × from date. */
+      list: (slotIds: string[], from?: string) =>
+        [...adminKeys.lessonPlans.next.all(), slotIds, from] as const,
+    },
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   //  Dashboard
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -31,6 +97,29 @@ export const adminKeys = {
     /** Key for a specific dashboard data query (keyed by instituteId). */
     list: (instituteId?: string | null) =>
       [...adminKeys.dashboard.lists(), instituteId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Demo Classes (admin Demo Classes module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  demoClasses: {
+    /** Root key for all demo class queries. */
+    all: () => [...adminKeys.all, 'demoClasses'] as const,
+
+    /** Key for every demo class list query (broad invalidation). */
+    lists: () => [...adminKeys.demoClasses.all(), 'list'] as const,
+
+    /** Key for a specific paginated demo class list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.demoClasses.lists(), filters, pagination] as const,
+
+    /** Key for every demo class detail query. */
+    details: () => [...adminKeys.demoClasses.all(), 'detail'] as const,
+
+    /** Key for a single demo class detail by demoClassId. */
+    detail: (demoClassId: string) =>
+      [...adminKeys.demoClasses.details(), demoClassId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════

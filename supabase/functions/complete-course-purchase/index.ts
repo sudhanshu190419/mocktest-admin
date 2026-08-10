@@ -542,7 +542,7 @@ async function markOrderAsDuplicate(
   serviceClient: any,
   orderId: string | undefined,
   duplicateOfOrderId: string,
-  duplicateKind: 'conversion' | 'renewal',
+  duplicateKind: 'conversion' | 'renewal' | 'course_purchase' | 'pyq_purchase' | 'subscription_purchase',
 ): Promise<void> {
   if (!orderId) return;
 
@@ -580,18 +580,24 @@ async function markOrderAsDuplicate(
 }
 
 /**
- * Find a CONFIRMED conversion order for the same student + course that is
- * NOT the current order. Used to detect a duplicate Full Course conversion
- * payment (Phase 11K.6): only ONE conversion payment may ever succeed per
- * student/course.
+ * Find a CONFIRMED course order for the same student + course that is NOT
+ * the current order.
+ *
+ * M4 Fix B: used to detect a duplicate confirmed course payment. With
+ * conversionOnly = true (the original Phase 11K.6 behaviour) only
+ * conversion-flagged orders match — only ONE Full Course conversion payment
+ * may ever succeed per student/course. With conversionOnly = false any
+ * confirmed course order matches — a normal course purchase that lands after
+ * a prior confirmed purchase is a duplicate that must be flagged for refund.
  *
  * Order.notes is JSON text; we parse and compare exactly.
  */
-async function findPriorConfirmedConversionOrder(
+async function findPriorConfirmedCourseOrder(
   serviceClient: any,
   profileId: string,
   courseId: string,
   excludeOrderId: string | undefined,
+  conversionOnly = false,
 ): Promise<{ order_id: string } | null> {
   const { data: orders, error } = await serviceClient
     .from('orders')
@@ -602,9 +608,10 @@ async function findPriorConfirmedConversionOrder(
     .limit(50);
 
   if (error) {
-    structuredLog('PRIOR_CONVERSION_LOOKUP_FAILED', {
+    structuredLog('PRIOR_CONFIRMED_ORDER_LOOKUP_FAILED', {
       profileId,
       courseId,
+      conversionOnly,
       error: error.message,
     });
     return null;
@@ -618,7 +625,9 @@ async function findPriorConfirmedConversionOrder(
     } catch {
       continue;
     }
-    if (notes.conversion === 'true' && notes.courseId === courseId) {
+    // Phase 11K.6: conversion detection only matches conversion-flagged orders.
+    if (conversionOnly && notes.conversion !== 'true') continue;
+    if (notes.courseId === courseId) {
       return { order_id: order.order_id };
     }
   }
@@ -1273,11 +1282,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // admin review and return a deterministic status WITHOUT touching
   // enrollment or subscription again. Ownership is already granted.
   if (body.conversion === true) {
-    const priorConversion = await findPriorConfirmedConversionOrder(
+    const priorConversion = await findPriorConfirmedCourseOrder(
       serviceClient,
       profileId,
       body.courseId,
       body.orderId,
+      true,
     );
 
     if (priorConversion) {
@@ -1322,6 +1332,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
       enrollmentType: existingEnrollment.enrollment_type,
       conversion: body.conversion === true,
     });
+
+    // ── M4 Fix B: duplicate confirmed NORMAL course order ──────────────
+    // A prior CONFIRMED course order for the same profile + course (a
+    // DIFFERENT order) means this payment is a duplicate: the student was
+    // already charged once and granted the course. Flag it for refund/admin
+    // review and return a deterministic duplicate response — never a second
+    // grant and never a silent "already enrolled" success. (Conversion
+    // duplicates are handled by the conversion-only check above.) A webhook
+    // RETRY of this same order is excluded by orderId and falls through to
+    // the normal idempotent success below.
+    if (body.conversion !== true) {
+      const priorCourseOrder = await findPriorConfirmedCourseOrder(
+        serviceClient,
+        profileId,
+        body.courseId,
+        body.orderId,
+      );
+
+      if (priorCourseOrder) {
+        structuredLog('COURSE_DUPLICATE_DETECTED', {
+          courseId: body.courseId,
+          studentId,
+          currentOrderId: body.orderId ?? null,
+          priorOrderId: priorCourseOrder.order_id,
+        });
+
+        await markOrderAsDuplicate(
+          serviceClient,
+          body.orderId,
+          priorCourseOrder.order_id,
+          'course_purchase',
+        );
+
+        return jsonResponse({
+          success: true,
+          duplicate: true,
+          duplicateOfOrderId: priorCourseOrder.order_id,
+          studentId,
+          enrollmentId: existingEnrollment.enrollment_id,
+          enrollmentNumber: enrollmentNo ?? '',
+          courseId: body.courseId,
+          message: 'This course was already purchased by an earlier payment. ' +
+            'The duplicate payment has been flagged for refund.',
+        });
+      }
+    }
 
     // ── Phase 11K.5: Full Course conversion on an existing enrollment ──
     // A subscription purchase created a 'subscription'-type enrollment
@@ -1456,6 +1512,88 @@ Deno.serve(async (req: Request): Promise<Response> => {
       error: enrollmentError?.message ?? 'Insert returned no data',
       sqlState: (enrollmentError as { code?: string })?.code ?? 'unknown',
     });
+
+    // ── M4 Fix B: concurrent webhook race on the enrollment insert ─────
+    // uq_course_enrollments_course_student allows only one enrollment per
+    // (course, student). A concurrent delivery (or a racing double payment)
+    // may have inserted it between our SELECT and INSERT. Recover
+    // deterministically: a prior CONFIRMED order for a DIFFERENT order id
+    // means this payment is a duplicate (flag it); otherwise it is an
+    // idempotent retry of this same order (return the already-enrolled
+    // success, mirroring complete-pyq-purchase / complete-subscription-
+    // purchase 23505 recovery).
+    if (
+      (enrollmentError as { code?: string })?.code === '23505' ||
+      /duplicate key/i.test(enrollmentError?.message ?? '')
+    ) {
+      const { data: recoveredEnrollment } = await serviceClient
+        .from('course_enrollments')
+        .select('enrollment_id, enrollment_type')
+        .eq('course_id', body.courseId)
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+      if (recoveredEnrollment) {
+        structuredLog('COURSE_ENROLLMENT_RACE_RECOVERED', {
+          enrollmentId: recoveredEnrollment.enrollment_id,
+          courseId: body.courseId,
+          studentId,
+        });
+
+        // Conversion semantics: do NOT short-circuit a conversion here. A
+        // conversion must run the full conversion path (enrollment upgrade +
+        // subscription cancellation) — returning success without it would
+        // leave the student with permanent ownership AND an active
+        // subscription. Fall through to the 500 below so Razorpay retries
+        // and the normal conversion branch executes (exact pre-M4 behavior).
+        if (body.conversion !== true) {
+          const priorCourseOrder = await findPriorConfirmedCourseOrder(
+            serviceClient,
+            profileId,
+            body.courseId,
+            body.orderId,
+          );
+
+          if (priorCourseOrder) {
+            structuredLog('COURSE_DUPLICATE_DETECTED_RACE', {
+              courseId: body.courseId,
+              studentId,
+              currentOrderId: body.orderId ?? null,
+              priorOrderId: priorCourseOrder.order_id,
+            });
+
+            await markOrderAsDuplicate(
+              serviceClient,
+              body.orderId,
+              priorCourseOrder.order_id,
+              'course_purchase',
+            );
+
+            return jsonResponse({
+              success: true,
+              duplicate: true,
+              duplicateOfOrderId: priorCourseOrder.order_id,
+              studentId,
+              enrollmentId: recoveredEnrollment.enrollment_id,
+              enrollmentNumber: enrollmentNo ?? '',
+              courseId: body.courseId,
+              message: 'This course was already purchased by an earlier payment. ' +
+                'The duplicate payment has been flagged for refund.',
+            });
+          }
+
+          return jsonResponse({
+            success: true,
+            studentId,
+            enrollmentId: recoveredEnrollment.enrollment_id,
+            enrollmentNumber: enrollmentNo ?? '',
+            courseId: body.courseId,
+            message: 'Student is already enrolled in this course.',
+          });
+        }
+      }
+    }
+
     const safeMessage = sanitizeErrorMessage(
       enrollmentError?.message ?? 'Insert returned no data.',
       'course_enrollments insert',

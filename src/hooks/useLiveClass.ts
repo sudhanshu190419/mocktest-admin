@@ -15,7 +15,7 @@
  * @module hooks/useLiveClass
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/config/supabase';
 import { teacherService } from '@/services/teacherService';
 import { teacherLiveClassService, buildRoomName } from '@/services/teacherLiveClassService';
@@ -51,6 +51,8 @@ export interface LiveClassState {
   batchIds: string[];
   /** Institute ID (for notification dispatch). */
   instituteId: string;
+  /** True while the end RPC is in flight — prevents a double End click. */
+  isEnding: boolean;
 }
 
 // ─── Default State ─────────────────────────────────────────────────────────
@@ -67,6 +69,7 @@ function createInitialState(teacherName: string): LiveClassState {
     error: null,
     batchIds: [],
     instituteId: '',
+    isEnding: false,
   };
 }
 
@@ -83,16 +86,85 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     () => createInitialState(teacherName),
   );
   const classIdRef = useRef<string | null>(null);
+  /**
+   * True while the teacher is actively in a LIVE session and we should keep
+   * sending heartbeats. Set false on: manual End, ALREADY_ENDED response,
+   * session reset, leaving LiveStudio, or any non-live state. Prevents the
+   * 60s interval from firing after the class is no longer live.
+   */
+  const heartbeatActiveRef = useRef(false);
+
+  // ── Teacher Heartbeat (Phase 2 — abandoned-class recovery) ───────────
+
+  /**
+   * Sends a single heartbeat to heartbeat_live_class(), which updates
+   * live_sessions.last_teacher_activity_at. Runs every 60s while live and on
+   * visibility/refocus (protects against browser timer throttling).
+   *
+   * Failures are log-only: a temporary network error must NEVER end the
+   * class. The server watchdog (15-minute staleness) remains authoritative.
+   */
+  const sendHeartbeat = useCallback(async (): Promise<void> => {
+    const classId = classIdRef.current;
+    if (!classId || !heartbeatActiveRef.current) return;
+
+    try {
+      const result = await teacherService.heartbeatLiveClass(classId);
+      if (result?.code === 'ALREADY_ENDED') {
+        // The class is no longer live in the DB (watchdog or another tab
+        // ended it). Stop heartbeating — the server is authoritative.
+        heartbeatActiveRef.current = false;
+      }
+    } catch (err) {
+      console.warn('[LiveClass] Heartbeat failed (non-fatal):', err);
+    }
+  }, []);
+
+  // Heartbeat lifecycle effect: runs a 60s interval + immediate beat only
+  // while the teacher is live; stops on unmount / non-live state.
+  useEffect(() => {
+    if (state.status !== 'live') {
+      heartbeatActiveRef.current = false;
+      return;
+    }
+
+    heartbeatActiveRef.current = true;
+    void sendHeartbeat(); // immediate beat on entering live
+
+    const intervalId = window.setInterval(() => {
+      void sendHeartbeat();
+    }, 60_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void sendHeartbeat();
+      }
+    };
+    const onFocus = () => {
+      void sendHeartbeat();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      heartbeatActiveRef.current = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [state.status, sendHeartbeat]);
 
   // ── Start Class (Mode A: Instant Go Live) ────────────────────────────
 
   /**
    * Begins the live class flow for an INSTANT (non-scheduled) class.
-   * 1. Creates/loads a live_classes row
-   * 2. Generates a LiveKit token for the teacher
-   * 3. Updates DB status to 'live'
+   * 1. Creates/loads a live_classes row (status='scheduled')
+   * 2. Runs the authoritative start RPC (start_scheduled_live_class) →
+   *    status='live' + room persisted + single live_sessions row
+   * 3. Generates a LiveKit token (teacher tokens now require status='live')
    *
-   * On success the caller renders `<LiveKitRoom>` which auto-connects.
+   * Phase 1: the token is NEVER requested before the start transition.
    */
   const startClass = useCallback(async (
     selections: {
@@ -107,7 +179,7 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       //    subjectId and chapterId are not passed — the service auto-selects
       //    the first authorized subject (subject selection was removed from
       //    the dialog because there is no admin UI to assign subjects).
-      const { classId, title, institute_id } = await teacherService.getOrCreateActiveLiveClass(
+      const { classId, title } = await teacherService.getOrCreateActiveLiveClass(
         teacherId,
         '',          // subjectId — service will auto-pick
         selections.batchId,
@@ -116,43 +188,17 @@ export function useLiveClass(teacherId: string, teacherName: string) {
       );
       classIdRef.current = classId;
 
-      // Build the deterministic LiveKit room name for this class. The Edge
-      // Function derives the identical value server-side for the teacher
-      // instant-go-live edge (before room_name is persisted to live_classes),
-      // so the token's room grant always matches the room persisted here.
-      const roomName = buildRoomName(classId);
+      // 2. Authoritative atomic start (Phase 1). The RPC transitions
+      //    scheduled → live and persists room_name BEFORE any token is
+      //    requested. ALREADY_LIVE is treated like a rejoin and continues.
+      const startResult = await teacherLiveClassService.startScheduledClass(classId);
+      const roomName = startResult.roomName;
 
-      // 3. Get teacher's profile_id for session_participants
-      const profileId = await teacherService.getTeacherProfileId(teacherId);
-
-      // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Instant Go Live) ──
-      try {
-        const { data: diagSession } = await supabase.auth.getSession();
-        const diagTs = new Date().toISOString();
-        console.log(`[${diagTs}] [LK-DIAG-WEB] [useLiveClass.startClass] Pre-token session check:`);
-        if (diagSession?.session) {
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = true`);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   user.id               =`, diagSession.session.user.id);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   email                 =`, diagSession.session.user.email);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token length   =`, diagSession.session.access_token?.length ?? 0);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token (1st 20) =`, diagSession.session.access_token?.substring(0, 20) ?? 'N/A');
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   expires_at            =`, diagSession.session.expires_at ?? 'N/A');
-        } else {
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = false`);
-        }
-      } catch (diagErr) {
-        console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] [useLiveClass.startClass] Session check error:`, diagErr);
-      }
-
-      // 4. Generate LiveKit token
+      // 3. Generate LiveKit token (only after the class is live)
       const { token, url } = await getLiveKitToken({
         classId,
         participantName: teacherName,
       });
-
-      // 5. Update DB to 'live' status (status, room_name, live_sessions, session_participants)
-      //    institute_id is passed through from live_classes (single source of truth).
-      await teacherService.startLiveClass(classId, profileId, roomName, institute_id);
 
       setState({
         status: 'live',
@@ -164,24 +210,27 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         teacherName,
         error: null,
         batchIds: [selections.batchId],
-        instituteId: institute_id,
+        instituteId: startResult.instituteId,
+        isEnding: false,
       });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to start live class.';
       console.error('[LiveClass] Start failed:', message);
-      setState((prev) => ({ ...prev, status: 'idle', error: message }));
+      setState((prev) => ({ ...prev, status: 'idle', error: message, isEnding: false }));
     }
   }, [teacherId, teacherName]);
 
   // ── Start Scheduled Class (Mode B: Scheduled → Live) ─────────────────
 
   /**
-   * Starts a PRE-SCHEDULED live class.
-   * 1. Validates the teacher owns the class and status is 'scheduled'
-   * 2. Generates room_name from existing classId
-   * 3. Updates DB: status='live', room_name, creates live_sessions
-   * 4. Generates LiveKit token for the existing room
+   * Starts a PRE-SCHEDULED live class through the authoritative start RPC
+   * (start_scheduled_live_class).
+   *
+   *   STARTED        → continue to the LiveKit token flow
+   *   ALREADY_LIVE   → treated as a rejoin; continue to the token flow
+   *   TOO_EARLY / WINDOW_EXPIRED / NOT_AUTHORIZED / CLASS_COMPLETED /
+   *   CLASS_CANCELLED → clean error message; the class is never started.
    *
    * Does NOT create a new live_classes record.
    */
@@ -189,66 +238,33 @@ export function useLiveClass(teacherId: string, teacherName: string) {
     setState((prev) => ({ ...prev, status: 'loading', error: null }));
 
     try {
-      console.log('[GO LIVE] Selected class_id:', classId);
-
-      // 1. Call the scheduling service which validates, builds roomName,
-      //    and calls startLiveClass (sets status='live', creates session)
-      console.log('[START SCHEDULED] Calling teacherLiveClassService.startScheduledClass()...');
-      const result = await teacherLiveClassService.startScheduledClass(classId, teacherId);
-      console.log('[START SCHEDULED] ✅ Result:', JSON.stringify(result, null, 2));
-
+      // 1. Authoritative start (Phase 1) — enforces window, ownership,
+      //    status and assignment server-side, atomically. No auto-retry:
+      //    the backend is idempotent, so a manual retry is always safe.
+      const result = await teacherLiveClassService.startScheduledClass(classId);
       classIdRef.current = result.classId;
 
-      // ── [LK-DIAG-WEB] Session diagnostics before getLiveKitToken (Scheduled Go Live) ──
-      try {
-        const { data: diagSession } = await supabase.auth.getSession();
-        const diagTs = new Date().toISOString();
-        console.log(`[${diagTs}] [LK-DIAG-WEB] [useLiveClass.startScheduledClass] Pre-token session check:`);
-        if (diagSession?.session) {
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = true`);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   user.id               =`, diagSession.session.user.id);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   email                 =`, diagSession.session.user.email);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token length   =`, diagSession.session.access_token?.length ?? 0);
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   access token (1st 20) =`, diagSession.session.access_token?.substring(0, 20) ?? 'N/A');
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   expires_at            =`, diagSession.session.expires_at ?? 'N/A');
-        } else {
-          console.log(`[${diagTs}] [LK-DIAG-WEB]   session exists        = false`);
-        }
-      } catch (diagErr) {
-        console.error(`[${new Date().toISOString()}] [LK-DIAG-WEB] [useLiveClass.startScheduledClass] Session check error:`, diagErr);
-      }
-
-      // 2. Generate LiveKit token for the existing room
-      console.log('[LIVEKIT] room_name:', result.roomName);
-      console.log('[TOKEN] Generating LiveKit token for teacher...');
+      // 2. Generate LiveKit token (only after the start RPC succeeded)
       const { token, url } = await getLiveKitToken({
         classId: result.classId,
         participantName: teacherName,
       });
-      console.log('[TOKEN] ✅ Token generated successfully');
 
-      // ── Resolve batch IDs for this class (for notification audience targeting) ─
+      // 3. Resolve batch IDs for this class (for notification audience targeting)
       let batchIds: string[] = [];
       try {
-        // First try batch_subject_live_classes
         const { data: classBS } = await supabase
           .from('batch_subject_live_classes')
-          .select(`
-            batch_subject_id,
-            batch_subjects!inner (batch_id)
-          `)
+          .select('batch_subject_id, batch_subjects!inner (batch_id)')
           .eq('class_id', result.classId);
         if (classBS && classBS.length > 0) {
           batchIds = [...new Set((classBS as any[]).map((item: any) => item.batch_subjects?.batch_id))].filter(Boolean);
-        } else {
-          // Fallback removed — all live classes use batch_subject_live_classes
         }
       } catch {
-        // Non-critical — batch IDs are only used for notification audience.
-        // If resolution fails, no batch-scoped notification will be sent.
+        // Non-critical — batch IDs are only used for the notification audience.
       }
 
-      // 3. Set state to 'live' — LiveKitRoom will auto-connect
+      // 4. Set state to 'live' — LiveKitRoom will auto-connect
       setState({
         status: 'live',
         classId: result.classId,
@@ -260,58 +276,49 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         error: null,
         batchIds,
         instituteId: result.instituteId,
+        isEnding: false,
       });
-
-      console.log('[JOIN] ✅ Connected to existing scheduled class:', result.classId);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to start scheduled class.';
-      console.error('[SCHEDULED CLASS] ❌ Start failed:', message);
-      setState((prev) => ({ ...prev, status: 'idle', error: message }));
+      console.error('[SCHEDULED CLASS] Start failed:', message);
+      setState((prev) => ({ ...prev, status: 'idle', error: message, isEnding: false }));
     }
-  }, [teacherId, teacherName]);
+  }, [teacherName]);
 
   // ── End Class (explicit teacher action only) ──────────────────────────
 
   /**
-   * Ends the live class PERMANENTLY.
+   * Ends the live class via the idempotent end RPC.
    *
-   * CRITICAL: The DB update (endLiveClass) MUST complete BEFORE the local
-   * state changes from 'live'. This order prevents a race condition where
-   * LiveKitRoom unmounts (triggering the room_finished webhook) before
-   * live_sessions is updated in the database.
+   * CRITICAL ORDER PRESERVED (Phase 1): the DB transition must complete
+   * BEFORE the local state leaves 'live'. status stays 'live' while
+   * isEnding=true (LiveKitRoom stays mounted), so the room_finished webhook
+   * can never race the DB update.
    *
-   *   ✅ FIXED ORDER:
-   *     1. teacherService.endLiveClass(classId)  ← DB updated first
-   *     2. setState({ status: 'ended' })         ← then LiveKitRoom unmounts
+   *   1. teacherService.endLiveClass(classId)  ← idempotent RPC
+   *      (ALREADY_ENDED is a no-op success for double-click / two tabs /
+   *       retries / webhook racing the teacher's End)
+   *   2. setState({ status: 'ended' })         ← then LiveKitRoom unmounts
    *
-   *   ❌ OLD ORDER (broken):
-   *     1. setState({ status: 'ending' })        ← LiveKitRoom unmounts
-   *     2. teacherService.endLiveClass(classId)  ← webhook fires before DB update
-   *
-   * This is the ONLY function that marks a session as ended in the database.
-   * Page refresh, navigation, component unmount, or LiveKit disconnect
-   * must NEVER call this function.
-   *
-   * LiveKitRoom will disconnect when it unmounts (status changes to 'ended').
+   * Attendance finalization runs inside endLiveClass ONLY when the RPC
+   * reports a real live → completed transition (never on ALREADY_ENDED).
    */
   const endClass = useCallback(async (): Promise<void> => {
     const classId = classIdRef.current;
     if (!classId) return;
 
-    // ── Step 1: Update database FIRST (live_sessions gets ended_at BEFORE LiveKit disconnects) ─
+    // Disable the End button while the RPC is in flight (prevents double End).
+    setState((prev) => ({ ...prev, isEnding: true }));
+
     try {
       await teacherService.endLiveClass(classId);
     } catch (err) {
       console.error('[LiveClass] End class DB update failed:', err);
-      // Continue to set status to 'ended' even if DB fails — the UI must close.
-      // The error has already been logged with full details by endLiveClass.
+      // The UI must still close; the error is logged with details by endLiveClass.
     }
 
-    // ── Step 2: Now it is safe to change status. LiveKitRoom will unmount,
-    //    LiveKit will send room_finished, and the webhook will find
-    //    live_sessions already updated with status='ended' and ended_at set. ─
-    setState((prev) => ({ ...prev, status: 'ended' }));
+    setState((prev) => ({ ...prev, status: 'ended', isEnding: false }));
   }, []);
 
   // ── Disconnect Only (no DB change) ─────────────────────────────────────
@@ -399,7 +406,7 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         const { data: cls } = await supabase
           .from('live_classes')
           .select('institute_id')
-          .eq('id', classId)
+          .eq('class_id', classId)
           .single();
         if (cls) {
           instituteId = cls.institute_id;
@@ -421,6 +428,7 @@ export function useLiveClass(teacherId: string, teacherName: string) {
         error: null,
         batchIds,
         instituteId,
+        isEnding: false,
       });
     } catch (err) {
       const message =

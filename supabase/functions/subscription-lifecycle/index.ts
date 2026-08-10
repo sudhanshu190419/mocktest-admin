@@ -11,9 +11,14 @@
 //             end_date < current_date
 //             grace_end_date IS NOT NULL
 //     Then:   status → 'grace'
-//             INSERT subscription_grace_periods row (unresolved)
+//             INSERT (or safely reuse) an unresolved subscription_grace_periods
+//             row — atomically, via the SECURITY DEFINER RPC
+//             public.transition_subscription_to_grace (migration 103, H2 fix).
+//             The status claim + grace-row write commit together, so a
+//             grace-row failure can never leave the subscription in 'grace'
+//             without a grace record.
 //             subscription_history row written automatically by the
-//             trg_student_subscriptions_auto_history trigger
+//             trg_student_subscriptions_auto_history trigger (same transaction)
 //
 //   Transition 2 — GRACE → EXPIRED
 //     When:   status = 'grace'
@@ -728,23 +733,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     for (const row of activeRows) {
       try {
-        // Atomic claim: only transition if the row is STILL 'active' with
-        // the same eligibility — concurrent runs cannot double-process.
-        const { data: claimed, error: claimError } = await supabase
-          .from('student_subscriptions')
-          .update({ status: 'grace' })
-          .eq('subscription_id', row.subscription_id)
-          .eq('status', 'active')
-          .lt('end_date', today)
-          .not('grace_end_date', 'is', null)
-          .select('subscription_id');
+        // H2 fix (migration 103): atomically transition ACTIVE → GRACE via the
+        // SECURITY DEFINER RPC. The status claim + grace-row insert (or reuse
+        // of a stale unresolved row) now happen in ONE database transaction,
+        // so a grace-row failure can no longer leave the subscription in
+        // 'grace' without a grace record.
+        //
+        // The RPC applies the exact same eligibility predicates as the old
+        // claim UPDATE (status='active', end_date < today, grace_end_date NOT
+        // NULL) and preserves the grace_start_date clamp + trigger_reason
+        // semantics. Returns:
+        //   true  → this run transitioned the row (grace row created/reused)
+        //   false → row no longer eligible (already grace/expired, or claimed
+        //           by a concurrent run) — treat as skipped, not failed.
+        const { data: transitioned, error: rpcError } = await supabase.rpc(
+          'transition_subscription_to_grace',
+          { p_subscription_id: row.subscription_id },
+        );
 
-        if (claimError) {
-          throw new Error(claimError.message);
+        if (rpcError) {
+          throw new Error(rpcError.message);
         }
 
         // Row already transitioned by another run (or no longer eligible).
-        if (!claimed || claimed.length === 0) {
+        if (transitioned === false) {
           result.skipped++;
           structuredLog('TRANSITION_SKIPPED', {
             subscriptionId: row.subscription_id,
@@ -753,48 +765,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
           continue;
         }
 
-        // Open the grace window record.
-        // grace_start_date = end_date + 1 (first day of grace); clamped to
-        // keep the grace_end_date > grace_start_date CHECK satisfied in the
-        // degenerate case where grace_end_date == end_date.
-        const rawStart = addDays(row.end_date, 1);
-        const graceStartDate = rawStart < row.grace_end_date!
-          ? rawStart
-          : addDays(row.grace_end_date!, -1);
-
-        // Auto-renewal is off in V1 (manual renewal), so an ended
-        // subscription defaults to 'manual_expiry'; keep the schema's
-        // 'auto_renewal_failed' path for future auto-renew enabled plans.
-        const triggerReason = row.is_auto_renew
-          ? 'auto_renewal_failed'
-          : 'manual_expiry';
-
-        const { error: insertError } = await supabase
-          .from('subscription_grace_periods')
-          .insert({
-            subscription_id: row.subscription_id,
-            student_id: row.student_id,
-            institute_id: row.institute_id,
-            grace_start_date: graceStartDate,
-            grace_end_date: row.grace_end_date,
-            trigger_reason: triggerReason,
-          });
-
-        if (insertError) {
-          // Partial-failure window: the claim UPDATE above already committed
-          // (status is now 'grace'), so a failure here leaves the subscription
-          // in 'grace' without a grace record. It is logged, and a later
-          // GRACE→EXPIRED run still transitions the subscription correctly
-          // (the resolution UPDATE simply affects 0 rows). A future RPC-based
-          // transaction would close this window.
-          throw new Error(insertError.message);
-        }
-
         result.active_to_grace++;
         structuredLog('TRANSITION_ACTIVE_TO_GRACE', {
           subscriptionId: row.subscription_id,
           endDate: row.end_date,
-          graceStartDate: graceStartDate,
           graceEndDate: row.grace_end_date,
         });
       } catch (err) {
@@ -851,17 +825,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Resolve the open grace window (idempotent: only unresolved rows).
-        const { error: resolveError } = await supabase
+        // .select() lets us detect a 0-row resolution for the H2 diagnostic
+        // below — a claimed GRACE→EXPIRED transition must always have an
+        // unresolved grace row to resolve.
+        const { data: resolvedRows, error: resolveError } = await supabase
           .from('subscription_grace_periods')
           .update({
             resolution: 'expired_no_payment',
             resolved_at: new Date().toISOString(),
           })
           .eq('subscription_id', row.subscription_id)
-          .is('resolution', null);
+          .is('resolution', null)
+          .select('grace_id');
 
         if (resolveError) {
           throw new Error(resolveError.message);
+        }
+
+        // H2 diagnostic: a successfully claimed GRACE→EXPIRED transition with
+        // no resolvable grace row means this subscription has no grace-period
+        // record (e.g. corrupted data from the pre-fix partial-failure window,
+        // or a manually deleted row). Flag it for ops — do NOT fabricate a row
+        // here; the ops-only reconciliation script repairs these.
+        if (!resolvedRows || resolvedRows.length === 0) {
+          structuredLog('GRACE_ROW_MISSING', {
+            subscriptionId: row.subscription_id,
+            graceEndDate: row.grace_end_date,
+          });
         }
 
         result.grace_to_expired++;

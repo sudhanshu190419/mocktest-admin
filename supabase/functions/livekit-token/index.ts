@@ -38,18 +38,21 @@
 //                     at least one course linked to the class's batches
 //                     (ANY-course semantics — same rule the RLS helpers use).
 //               The class must have started (status = 'live').
-//   • Teacher:  allowed ONLY for classes they own (live_classes.teacher_id).
+//   • Teacher:  allowed ONLY for classes they own AND that have been started
+//               through start_scheduled_live_class() (status = 'live' AND
+//               room_name persisted). Phase 1 — no more derived-room bypass.
 //   • Admin:    full bypass.
 //
 // ── Room Handling ──────────────────────────────────────────────────────────
 // The token's room grant is ALWAYS live_classes.room_name loaded from the
 // database. Any client-supplied room name is ignored. If room_name is NULL
-// (class not started) an error is returned — EXCEPT for the teacher/admin
-// "instant go-live" edge, where the teacher requests a token BEFORE
-// live_classes.room_name is persisted; in that case the room is derived
-// deterministically from class_id (the identical pattern the client uses:
-// `class-` + first 8 hex chars of class_id). Students never get a derived
-// room — for them NULL room_name always means "not started".
+// (class not started) an error is returned — EXCEPT for the admin tooling
+// edge, where an admin may derive the deterministic room from class_id
+// (`class-` + first 8 hex chars of class_id). Teachers no longer receive a
+// derived room: they must have started the class through
+// start_scheduled_live_class() first (which persists status='live' and
+// room_name). Students never get a derived room — for them NULL room_name
+// always means "not started".
 //
 // ── Request Body (Phase 11J.2 contract) ────────────────────────────────────
 // {
@@ -480,6 +483,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return errorResponse('You do not own this live class.', 403);
       }
 
+      // Phase 1: a teacher may only obtain a token for a class that has
+      // actually been started through start_scheduled_live_class() — i.e.
+      // status='live' AND room_name persisted. This closes the previous
+      // bypass where a teacher could mint a publish token for a
+      // scheduled/future/completed/cancelled class via the derived-room edge.
+      if (liveClass.status !== 'live' || !liveClass.room_name) {
+        structuredLog('TEACHER_CLASS_NOT_STARTED', {
+          classId: liveClass.class_id,
+          status: liveClass.status,
+          roomName: liveClass.room_name,
+        });
+        return errorResponse('This class has not started yet.', 409);
+      }
+
       canPublish = true;
       structuredLog('TEACHER_OWNERSHIP_GRANTED', { classId: liveClass.class_id });
     } else if (role === 'student') {
@@ -515,9 +532,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let room = liveClass.room_name;
 
     if (!room) {
-      // Teacher/admin "instant go-live" edge: token is requested before
-      // room_name is persisted — derive the deterministic room from class_id.
-      if (role === 'admin' || role === 'teacher') {
+      // Admin tooling edge only: an admin may derive the deterministic room
+      // before live_classes.room_name is persisted. Teachers can never reach
+      // this branch — their branch above requires status='live' and a
+      // persisted room_name (set by start_scheduled_live_class). Students
+      // never receive a derived room.
+      if (role === 'admin') {
         room = buildRoomName(body.classId);
         structuredLog('ROOM_DERIVED_FROM_CLASS_ID', {
           classId: body.classId,

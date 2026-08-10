@@ -8,14 +8,15 @@
  * ## Architecture
  *
  * - **New methods** live here (scheduleLiveClass, getTeacherScheduledClasses, etc.)
- * - **Existing methods** in `teacherService.ts` (startLiveClass, endLiveClass) are
- *   reused — NOT duplicated.
+ * - **Lifecycle transitions** (start/end) route through the authoritative
+ *   SECURITY DEFINER RPCs `start_scheduled_live_class()` /
+ *   `end_live_class()` — never raw client-side writes.
  * - Validation helpers are extracted into reusable functions within this file.
  *
  * ## Lifecycle Compatibility
  *
  * The existing Instant Go Live flow (LiveStudioView → StartLiveDialog →
- * useLiveClass → getOrCreateActiveLiveClass → startLiveClass → endLiveClass)
+ * useLiveClass → getOrCreateActiveLiveClass → start_scheduled_live_class → end_live_class)
  * remains UNCHANGED. This service adds a parallel scheduling path.
  *
  * @module services/teacherLiveClassService
@@ -45,6 +46,8 @@ export interface LiveClassListItem {
   assignedBatchSubjects: LiveClassBatchSubject[];
   chapterId: string | null;
   chapterName: string | null;
+  topicId: string | null;
+  topicName: string | null;
   teacherName: string;
   /** Student count for the first batch. 0 means uncomputed at list level — use getTeacherClassById for accurate count. */
   enrolledStudentCount: number;
@@ -147,6 +150,65 @@ export class LiveClassPermissionError extends Error {
     super(message);
     this.name = 'LiveClassPermissionError';
   }
+}
+
+/**
+ * Structured codes returned by `start_scheduled_live_class()` (Phase 1).
+ * The RPC is the authoritative start transition; these codes let the UI react
+ * without parsing human-readable strings.
+ */
+export type StartClassResultCode =
+  | 'STARTED'
+  | 'ALREADY_LIVE'
+  | 'TOO_EARLY'
+  | 'WINDOW_EXPIRED'
+  | 'NOT_AUTHORIZED'
+  | 'NOT_FOUND'
+  | 'CLASS_COMPLETED'
+  | 'CLASS_CANCELLED'
+  | 'UNKNOWN';
+
+/** Thrown when the start RPC returns an expected denial with a structured code. */
+export class LiveClassStartError extends Error {
+  readonly code: StartClassResultCode;
+
+  constructor(code: StartClassResultCode, message: string) {
+    super(message);
+    this.name = 'LiveClassStartError';
+    this.code = code;
+  }
+}
+
+/** Maps a structured start RPC code to a friendly teacher-facing message. */
+export function startClassErrorMessage(code: StartClassResultCode): string {
+  switch (code) {
+    case 'TOO_EARLY':
+      return 'This class can be started up to 10 minutes before its scheduled time.';
+    case 'WINDOW_EXPIRED':
+      return 'The start window for this class has expired.';
+    case 'ALREADY_LIVE':
+      return 'This class is already live — reconnecting…';
+    case 'NOT_AUTHORIZED':
+      return 'You are not authorized to start this class.';
+    case 'CLASS_COMPLETED':
+      return 'This class has already been completed.';
+    case 'CLASS_CANCELLED':
+      return 'This class has been cancelled.';
+    case 'NOT_FOUND':
+      return 'Live class not found. It may have been removed.';
+    default:
+      return 'The class could not be started. Please try again.';
+  }
+}
+
+/** Result of a successful (or already-live) start RPC call. */
+export interface StartScheduledClassResult {
+  classId: string;
+  title: string;
+  roomName: string;
+  instituteId: string;
+  /** 'STARTED' on first claim, 'ALREADY_LIVE' when the class was already live. */
+  code: 'STARTED' | 'ALREADY_LIVE';
 }
 
 export class LiveClassNotFoundError extends Error {
@@ -316,6 +378,27 @@ async function resolveChapterName(chapterId: string | null): Promise<string | nu
 }
 
 /**
+ * Resolves a topic ID to its name. Returns null if not found.
+ *
+ * Lesson-plan topics are copied onto live_classes.topic_id by migration 113
+ * (materialization + upsert propagation), so the teacher's class rows carry
+ * the planned topic the same way they carry the planned chapter.
+ */
+async function resolveTopicName(topicId: string | null): Promise<string | null> {
+  if (!topicId) return null;
+  try {
+    const { data } = await supabase
+      .from('topics')
+      .select('name')
+      .eq('topic_id', topicId)
+      .single();
+    return data?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolves batch names for a list of batch IDs.
  */
 async function resolveBatchNames(
@@ -340,9 +423,10 @@ async function resolveBatchNames(
 async function enrichClassWithNames(
   liveClass: any,
 ): Promise<LiveClassListItem> {
-  const [batchSubjects, chapterName] = await Promise.all([
+  const [batchSubjects, chapterName, topicName] = await Promise.all([
     resolveClassBatchSubjects(liveClass.class_id),
     liveClass.chapter_id ? resolveChapterName(liveClass.chapter_id) : Promise.resolve(null),
+    liveClass.topic_id ? resolveTopicName(liveClass.topic_id) : Promise.resolve(null),
   ]);
 
   const firstBS = batchSubjects[0] ?? { batchSubjectId: '', batchId: '', batchName: 'Unassigned', subjectName: '' };
@@ -359,6 +443,8 @@ async function enrichClassWithNames(
     assignedBatchSubjects: batchSubjects,
     chapterId: liveClass.chapter_id,
     chapterName,
+    topicId: liveClass.topic_id,
+    topicName,
     teacherName,
     enrolledStudentCount: 0, // Computed per-class in getTeacherClassById; 0 at list level
     isRecorded: liveClass.is_recorded ?? false,
@@ -813,10 +899,11 @@ export const teacherLiveClassService = {
     }
 
     // ── Fetch related data in parallel ────────────────────────────────
-    const [batchSubjects, chapterName, sessionData] =
+    const [batchSubjects, chapterName, topicName, sessionData] =
       await Promise.all([
         resolveClassBatchSubjects(classId),
         resolveChapterName(liveClass.chapter_id),
+        resolveTopicName(liveClass.topic_id),
         supabase
           .from('live_sessions')
           .select('*')
@@ -869,6 +956,8 @@ export const teacherLiveClassService = {
       assignedBatchSubjects: batchSubjects,
       chapterId: liveClass.chapter_id,
       chapterName,
+      topicId: liveClass.topic_id,
+      topicName,
       teacherName: '', // Would need a profiles join for full name
       enrolledStudentCount,
       isRecorded: liveClass.is_recorded ?? false,
@@ -1053,51 +1142,81 @@ export const teacherLiveClassService = {
   /**
    * Start a pre-scheduled live class.
    *
-   * Validates that the class belongs to the teacher and has status
-   * 'scheduled', then reuses `teacherService.startLiveClass()` to
-   * update the status to 'live' and create the LiveKit session.
+   * Phase 1: this now routes through the authoritative SECURITY DEFINER RPC
+   * `start_scheduled_live_class()`. The RPC enforces teacher ownership,
+   * status='scheduled', the start window (scheduled_at - 10 min …
+   * + duration + 15 min), and batch assignment — and atomically transitions
+   * scheduled → live with exactly one live_sessions row.
    *
-   * This preserves the existing Go Live → LiveKit broadcast flow.
+   * Identity is derived server-side from the authenticated session — a
+   * caller-supplied teacher_id is never trusted.
    *
    * @param classId - The UUID of the scheduled live class.
-   * @param teacherId - The teacher's ID (for ownership validation).
    *
-   * @throws LiveClassValidationError if class cannot be started.
-   * @throws LiveClassPermissionError if teacher does not own the class.
+   * @throws LiveClassStartError with a structured code on expected denials.
    */
   async startScheduledClass(
     classId: string,
-    teacherId: string,
-  ): Promise<{
-    classId: string;
-    title: string;
-    roomName: string;
-    instituteId: string;
-  }> {
-    // ── Validate ownership and status ──────────────────────────────────
-    const liveClass = await validateTeacherOwnsClass(classId, teacherId);
-    assertClassStatus(liveClass, ['scheduled'], 'start');
-
-    // ── Build room name ────────────────────────────────────────────────
+  ): Promise<StartScheduledClassResult> {
     const roomName = buildRoomName(classId);
 
-    // ── Get teacher profile ID for participant logging ─────────────────
-    const profileId = await teacherService.getTeacherProfileId(teacherId);
+    const { data, error } = await supabase.rpc('start_scheduled_live_class', {
+      p_class_id: classId,
+      p_room_name: roomName,
+    });
 
-    // ── Reuse existing startLiveClass (sets status='live', creates session, logs participant) ─
-    await teacherService.startLiveClass(
-      classId,
-      profileId,
-      roomName,
-      liveClass.institute_id,
-    );
+    if (error) {
+      // Unexpected transport/RPC error — not an expected denial.
+      throw new Error(`Failed to start live class: ${error.message}`);
+    }
 
-    // ── Return class info for LiveKit token generation and UI ──────────
+    const result = data as {
+      success: boolean;
+      code: string;
+      message?: string;
+      class_id?: string;
+      session_id?: string;
+      institute_id?: string;
+      title?: string;
+      room_name?: string | null;
+    } | null;
+
+    if (!result) {
+      throw new LiveClassStartError(
+        'UNKNOWN',
+        'The class could not be started. Please try again.',
+      );
+    }
+
+    if (!result.success) {
+      const code = (result.code ?? 'UNKNOWN') as StartClassResultCode;
+
+      // ALREADY_LIVE is NOT an error — the class is already live and the
+      // teacher should proceed to the LiveKit token flow (rejoin). The RPC
+      // returns class_id, room_name, session_id, institute_id even on this
+      // code path, so we return a successful result.
+      if (code === 'ALREADY_LIVE') {
+        return {
+          classId: result.class_id ?? classId,
+          title: result.title ?? '',
+          roomName: result.room_name ?? roomName,
+          instituteId: result.institute_id ?? '',
+          code: 'ALREADY_LIVE',
+        };
+      }
+
+      throw new LiveClassStartError(
+        code,
+        result.message ?? startClassErrorMessage(code),
+      );
+    }
+
     return {
-      classId,
-      title: liveClass.title,
-      roomName,
-      instituteId: liveClass.institute_id,
+      classId: result.class_id ?? classId,
+      title: result.title ?? '',
+      roomName: result.room_name ?? roomName,
+      instituteId: result.institute_id ?? '',
+      code: 'STARTED',
     };
   },
 };

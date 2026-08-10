@@ -1,9 +1,9 @@
 # Subscription Lifecycle Scheduler — Deployment Guide
 
-**Phase:** 11K.9 (deployment/infrastructure only)
+**Phase:** 11K.9 (deployment/infrastructure only) · **H4 fix:** environment-aware cron
 **Edge Function:** `subscription-lifecycle`
 **Schedule:** daily at 00:00 UTC (`0 0 * * *`)
-**Mechanism:** `pg_cron` → `net.http_post` → Edge Function (repository-managed, no dashboard setup)
+**Mechanism:** `pg_cron` → `net.http_post` → Edge Function, with the function URL resolved at runtime from **Supabase Vault**
 
 ---
 
@@ -32,49 +32,73 @@ evaluate status **+ date boundaries in real time**. The scheduler is what keeps 
 pg_cron (cron.job)
    │  '0 0 * * *'  (00:00 UTC)
    ▼
-net.http_post(url := <function-url>, body := '{}')        [pg_net extension]
+DO block (fail-safe guard)
+   │  resolves URL at runtime:
+   │    vault.decrypted_secrets → name = 'subscription_lifecycle_url'
+   │  if missing/NULL/empty → raise exception, NO HTTP request
+   ▼
+net.http_post(url := <resolved URL>, body := '{}')        [pg_net extension]
    │  POST, no Authorization header (verify_jwt = false)
    ▼
-https://<project-ref>.supabase.co/functions/v1/subscription-lifecycle
+<ENVIRONMENT_SUPABASE_URL>/functions/v1/subscription-lifecycle
    │  service-role client (SUPABASE_SERVICE_ROLE_KEY, auto-injected)
    ▼
 student_subscriptions / subscription_grace_periods / notifications
 ```
 
+**H4 change:** migration **097** originally hardcoded a single production Edge Function
+URL inside the cron command. Migration **104** replaces that command with one that reads
+the URL from Supabase Vault **at execution time**, so each environment calls its own
+function. Migration **097 must NOT be edited** — 104 is the migration that replaces the
+old cron job.
+
 ### Files in this phase
 
 | File | Change |
 |---|---|
-| `supabase/migrations/097_schedule_subscription_lifecycle.sql` | **NEW** — enables `pg_cron` + `pg_net`, creates/replaces the `subscription-lifecycle-daily` job (idempotent), validation queries, rollback |
-| `supabase/config.toml` | **EDITED** — `[functions.subscription-lifecycle] verify_jwt = false` (required: the cron POSTs without a JWT) |
+| `supabase/migrations/097_schedule_subscription_lifecycle.sql` | **UNCHANGED (do not edit)** — original scheduler; its hardcoded URL is superseded by 104 |
+| `supabase/migrations/104_make_subscription_lifecycle_cron_environment_aware.sql` | **NEW** — replaces the cron job with runtime Vault URL resolution; enables `pg_cron` + `pg_net` + `vault`; fail-safe when the secret is missing |
+| `supabase/config.toml` | **UNCHANGED** — `[functions.subscription-lifecycle] verify_jwt = false` (required: the cron POSTs without a JWT) |
 | `supabase/functions/subscription-lifecycle/index.ts` | **UNCHANGED** — business logic is untouched by design |
 
 ---
 
-## 3. Per-environment setup
+## 3. Per-environment configuration (Supabase Vault)
 
-The migration is **environment-agnostic**. The only environment-specific value is the
-function URL, resolved from the Postgres configuration parameter
-`app.settings.subscription_lifecycle_url`:
+The migration is **environment-agnostic**. The **only** environment-specific value is the
+function URL, stored as a Vault secret named **`subscription_lifecycle_url`**:
 
-| Environment | URL value | Configuration needed? |
+| Environment | Secret value to configure | How |
 |---|---|---|
-| **Local** (`supabase start`) | `http://127.0.0.1:54321/functions/v1/subscription-lifecycle` | **None** — migration falls back to this automatically |
-| **Staging** | `https://<staging-ref>.supabase.co/functions/v1/subscription-lifecycle` | One `ALTER DATABASE` command |
-| **Production** | `https://ocolfottogbybitfpdqy.supabase.co/functions/v1/subscription-lifecycle` (current linked project) | One `ALTER DATABASE` command |
+| **Local** (`supabase start`) | `http://127.0.0.1:54321/functions/v1/subscription-lifecycle` | `vault.create_secret(...)` in the local DB (optional; without it the job fails safely) |
+| **Staging** | `<STAGING_SUPABASE_URL>/functions/v1/subscription-lifecycle` | Dashboard → Vault, or `vault.create_secret(...)` |
+| **Production** | `<PRODUCTION_SUPABASE_URL>/functions/v1/subscription-lifecycle` | Dashboard → Vault, or `vault.create_secret(...)` |
 
-Set the parameter **once per hosted database** (via the Supabase SQL editor or `psql`):
+**Every environment configures its own URL. Never copy production's secret into
+staging or local — and never copy a staging/local value into production.**
+
+Create the secret **once per environment** (Dashboard → Vault → Add new secret, or SQL):
 
 ```sql
-alter database postgres
-  set app.settings.subscription_lifecycle_url =
-    'https://<project-ref>.supabase.co/functions/v1/subscription-lifecycle';
+select vault.create_secret(
+  '<ENVIRONMENT_SUPABASE_URL>/functions/v1/subscription-lifecycle',
+  'subscription_lifecycle_url',
+  'Subscription lifecycle Edge Function URL for this environment'
+);
 ```
 
-> The migration emits a `WARNING` at deploy time if the parameter is unset, so a
-> forgotten hosted configuration is visible immediately. Until set, the job posts to
-> the local fallback and fails harmlessly (no transitions / notifications) — access
-> control is unaffected.
+> **Missing secret = safe failure.** If `subscription_lifecycle_url` does not exist,
+> is NULL, or is empty when the cron job fires, the job raises a visible
+> `SUBSCRIPTION_LIFECYCLE_URL_MISSING` exception **and makes no HTTP request**. There is
+> **no fallback to any environment's URL** — in particular, no production fallback.
+> Access control is unaffected (RLS is real-time). The migration itself emits a
+> `WARNING` at deploy time if the secret is not yet configured, so a forgotten
+> configuration is visible immediately.
+
+**Vault access (least privilege):** no grant is required. The cron job executes as the
+role that scheduled it (`postgres`, since migrations run as `postgres`), and
+`vault.decrypted_secrets` is restricted to administrative roles by default — `anon` and
+`authenticated` have no access. Nothing is broadened.
 
 ---
 
@@ -91,13 +115,19 @@ alter database postgres
    ```
    Alternatively confirm in the dashboard (Edge Functions → subscription-lifecycle)
    that **"Enforce JWT" is OFF**.
-3. **Apply the migration** (enables extensions + creates the cron job):
+3. **Apply the migrations** (097 is already applied in existing environments; 104
+   replaces the old cron job):
    ```bash
    supabase db push
    # or, for a single migration: supabase migration up --linked
    ```
-4. **Set the function URL** in the target hosted database (see §3).
+4. **Configure the Vault secret** in the target database (see §3). Do this in **each**
+   environment with that environment's own URL.
 5. **Verify** (§5).
+
+> Ordering note: if 104 is applied before the secret exists, the job is still
+> registered and fails safely until the secret is created — no cleanup or re-run
+> needed afterwards.
 
 ---
 
@@ -105,23 +135,26 @@ alter database postgres
 
 ### a) Job is registered and active
 ```sql
-select jobid, jobname, schedule, active, database, command
+select jobid, jobname, schedule, active, database, username, command
 from cron.job
 where jobname = 'subscription-lifecycle-daily';
 ```
-Expect exactly **one** row, `active = t`, `schedule = '0 0 * * *'`.
+Expect exactly **one** row, `active = t`, `schedule = '0 0 * * *'`, and a `command`
+that contains **no URL literal** (it resolves the secret at runtime).
 
 ### b) Extensions are enabled
 ```sql
 select extname, extversion from pg_extension
-where extname in ('pg_cron', 'pg_net') order by extname;
+where extname in ('pg_cron', 'pg_net', 'vault') order by extname;
 ```
 
-### c) Resolved URL is correct (hosted environments)
+### c) Secret exists for this environment (NAME only — no decrypted value shown)
 ```sql
-select current_setting('app.settings.subscription_lifecycle_url', true) as lifecycle_url;
+select name, created_at
+from vault.decrypted_secrets
+where name = 'subscription_lifecycle_url';
 ```
-Must **not** be the `127.0.0.1` fallback in staging/production.
+Must return exactly one row in **every** environment, with that environment's own value.
 
 ### d) Manual run (does not wait for midnight)
 ```bash
@@ -156,6 +189,13 @@ where jobname = 'subscription-lifecycle-daily' group by jobname;
 ```
 Expect `count = 1` — the migration always unschedules before scheduling.
 
+### g) Fail-safe proof (optional, while the secret is missing in a scratch DB)
+```sql
+select cron.run_job((select jobid from cron.job
+                      where jobname = 'subscription-lifecycle-daily'));
+```
+Expect a `SUBSCRIPTION_LIFECYCLE_URL_MISSING` exception and **no** HTTP call.
+
 ---
 
 ## 6. Safety & idempotency guarantees (re-confirmed)
@@ -163,8 +203,11 @@ Expect `count = 1` — the migration always unschedules before scheduling.
 | Scenario | Behaviour |
 |---|---|
 | Cron fires twice / overlapping runs | Safe — conditional `UPDATE … WHERE status='active'/'grace'` atomically claims each row; the second run finds nothing to do |
-| Migration re-run | Safe — job is unscheduled (if present) then recreated; exactly one `cron.job` row |
+| Migration 104 re-run | Safe — job is unscheduled (if present) then recreated; exactly one `cron.job` row |
+| 097 already applied | 104 unschedules the hardcoded job and replaces it with the environment-aware one |
+| 097 never applied | 104 still works — it enables the extensions and creates the job itself |
 | Missed execution (outage) | Self-heals — logic is date-relative; the next run catches up (batch-limited) |
+| **Vault secret missing/NULL/empty** | **Job raises `SUBSCRIPTION_LIFECYCLE_URL_MISSING`; no HTTP request; no fallback; no cross-environment call** |
 | Manual unauthenticated POST | Safe — cannot force early transitions (date-gated) and cannot duplicate notifications (reference-idempotent). Residual risk is bounded spurious runs / notification dispatch (public DoS surface). Future hardening (outside this phase): add a shared-secret header check inside the function if the endpoint must not be publicly triggerable |
 | Notification double-send | Impossible — reference-based idempotency guards every lifecycle notification |
 | Duplicate grace records | Impossible — the grace-row insert happens only after the atomic status claim succeeds |
@@ -180,15 +223,22 @@ Stop the scheduled job (keeps the function, extensions, and all business logic):
 select cron.unschedule('subscription-lifecycle-daily');
 ```
 
-Optional cleanup:
+Optional cleanup of the per-environment secret (Dashboard → Vault, or `vault.delete_secret`):
+
 ```sql
-alter database postgres reset app.settings.subscription_lifecycle_url;
+select vault.delete_secret(id)
+from vault.decrypted_secrets
+where name = 'subscription_lifecycle_url';
 ```
 
-`pg_cron` / `pg_net` extensions are intentionally **not** dropped (shared platform
-infrastructure). After rollback the system returns to the previous state: status stays
-static until a manual run, notifications stop, and real-time access control continues to
-enforce expiry via the date-driven RLS helpers.
+`pg_cron` / `pg_net` / `vault` extensions are intentionally **not** dropped (shared
+platform infrastructure). After rollback the system returns to the previous state: status
+stays static until a manual run, notifications stop, and real-time access control
+continues to enforce expiry via the date-driven RLS helpers.
+
+> Rollback of the H4 fix alone: if you need the **old hardcoded** behaviour back, you
+> would re-apply migration 097's scheduling logic — but that reintroduces the H4 issue.
+> Prefer keeping 104 and simply updating the Vault secret instead.
 
 ---
 
@@ -196,11 +246,12 @@ enforce expiry via the date-driven RLS helpers.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `cron.job` row missing after deploy | Migration not applied | `supabase db push`; re-run migration |
-| Job present but never runs | Hosted plan/DB restrictions on `pg_cron` | Enable the extension via Dashboard → Database → Extensions, then re-apply migration |
+| `cron.job` row missing after deploy | Migration not applied | `supabase db push`; re-run migration 104 |
+| Job present but never runs | Hosted plan/DB restrictions on `pg_cron` | Enable the extension via Dashboard → Database → Extensions, then re-apply migration 104 |
 | `status_code = 401` in `net._http_response` | `verify_jwt` still on | Deploy with `--no-verify-jwt` / turn off "Enforce JWT" |
-| `status_code = 404` | Wrong URL (e.g., local fallback on hosted) | Set `app.settings.subscription_lifecycle_url` (§3) |
-| WARNING at migration time | GUC not set for hosted env | Run the `ALTER DATABASE … SET` command |
+| `SUBSCRIPTION_LIFECYCLE_URL_MISSING` in `cron.job_run_details` | Vault secret missing for this environment | Create `subscription_lifecycle_url` with that environment's URL (§3) |
+| WARNING at migration time | Secret not configured yet | Create the secret (§3); no need to re-run the migration |
+| Job calls the wrong environment's function | Wrong URL in this environment's secret | Update the secret in Dashboard → Vault to this environment's URL |
 | Slow catch-up after long outage | `BATCH_LIMIT = 500` per run | Safe to switch to twice-daily (`0 0,12 * * *`) — still idempotent |
 
 ---
@@ -208,7 +259,12 @@ enforce expiry via the date-driven RLS helpers.
 ## 9. Notes / out of scope
 
 - `recording-timeout` remains dashboard-managed (historical precedent). The same
-  pg_cron + pg_net pattern can be applied to it later if repository-managed scheduling
-  for that job is desired.
-- No Edge Function, helper, RLS, payment, renewal, conversion, LiveKit, or recording
-  code was modified in this phase.
+  pg_cron + pg_net + Vault pattern can be applied to it later if repository-managed
+  scheduling for that job is desired.
+- No Edge Function, helper, RLS, payment, renewal, conversion, LiveKit, recording,
+  H2, or notification business-logic code was modified for H4. Migration 103
+  (`transition_subscription_to_grace()`) and the lifecycle Edge Function remain
+  untouched — the only change is **how pg_cron reaches the function**.
+- The `subscription_lifecycle_url` secret contains the **URL only**. Never store
+  service-role keys, JWT secrets, Razorpay secrets, or Authorization tokens in it —
+  and never in any migration.

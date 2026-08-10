@@ -317,7 +317,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
 
   const classTitle = state.title;
   const isLoading = state.status === 'loading';
-  const isLive = state.status === 'live';
+  const isLive = state.status === 'live' || state.isEnding;
   const isEnding = state.status === 'ending' || state.status === 'ended';
   const showPreview = state.status === 'idle' || state.status === 'ended';
 
@@ -494,7 +494,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
         </div>
 
         {/* ── Control Bar (inside LiveKitRoom for useLocalParticipant) ── */}
-        <ControlBar onEndClass={endClass} onCloseStudio={handleClose} />
+        <ControlBar onEndClass={endClass} onCloseStudio={handleClose} isEnding={state.isEnding} />
       </LiveKitRoom>
     );
   }

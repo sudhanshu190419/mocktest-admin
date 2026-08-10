@@ -204,7 +204,7 @@ async function markOrderAsDuplicate(
   serviceClient: any,
   orderId: string | undefined,
   duplicateOfOrderId: string,
-  duplicateKind: 'conversion' | 'renewal',
+  duplicateKind: 'conversion' | 'renewal' | 'course_purchase' | 'pyq_purchase' | 'subscription_purchase',
 ): Promise<void> {
   if (!orderId) return;
 
@@ -1425,12 +1425,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // No same-order row exists — the active/grace subscription belongs to
       // a different order. The webhook (the only caller, enforced by the
       // internal gate) always sends orderId, so this is the genuine-duplicate
-      // path. Reject with the standard 409.
-      structuredLog('duplicate_subscription_rejected_unique_index', {
-        studentId,
-        planId: body.planId,
-        orderId: body.orderId ?? null,
-      });
+      // path. M4 Fix B: flag THIS order for refund/admin review (mirroring
+      // the renewal conflict handling) before rejecting with the standard 409.
+      const { data: winnerSubscription } = await serviceClient
+        .from('student_subscriptions')
+        .select('order_id')
+        .eq('student_id', studentId)
+        .eq('plan_id', body.planId)
+        .in('status', ['active', 'grace'])
+        .maybeSingle();
+
+      if (
+        body.orderId &&
+        winnerSubscription?.order_id &&
+        winnerSubscription.order_id !== body.orderId
+      ) {
+        structuredLog('DUPLICATE_SUBSCRIPTION_DETECTED', {
+          studentId,
+          planId: body.planId,
+          currentOrderId: body.orderId,
+          priorOrderId: winnerSubscription.order_id,
+        });
+
+        await markOrderAsDuplicate(
+          serviceClient,
+          body.orderId,
+          winnerSubscription.order_id,
+          'subscription_purchase',
+        );
+      } else {
+        structuredLog('duplicate_subscription_rejected_unique_index', {
+          studentId,
+          planId: body.planId,
+          orderId: body.orderId ?? null,
+        });
+      }
       return errorResponse(
         'You already have an active subscription for this plan. Renew it after it expires.',
         409,

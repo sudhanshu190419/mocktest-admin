@@ -478,6 +478,111 @@ async function findPendingReusableOrder(
   return null;
 }
 
+/**
+ * M4 Fix C — cancel STALE pending orders for the same purchase.
+ *
+ * The partial unique pending-order indexes (migration 105) cannot encode the
+ * 24-hour reuse window (index predicates must be immutable and cannot depend
+ * on now()). Without cleanup, a stale pending (>24h) for the same product
+ * would block a fresh order forever. Cancelling it restores the exact legacy
+ * behaviour: <=24h → reuse, >24h → a new order may be created.
+ *
+ * Only orders matching the SAME product signature (profile, product type,
+ * product id, conversion flag) are touched — different products are never
+ * affected. The update is idempotent (status filter) and non-fatal.
+ */
+async function cancelStalePendingOrders(
+  serviceClient: any,
+  profileId: string,
+  productType: ProductType,
+  productId: string,
+  conversion: boolean,
+): Promise<void> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: orders, error } = await serviceClient
+    .from('orders')
+    .select('order_id, notes, created_at')
+    .eq('profile_id', profileId)
+    .eq('status', 'pending')
+    .lt('created_at', cutoff)
+    .limit(25);
+
+  if (error || !orders) return;
+
+  for (const order of orders ?? []) {
+    let notes: Record<string, unknown> = {};
+    try {
+      notes = JSON.parse(order.notes ?? '{}') as Record<string, unknown>;
+    } catch {
+      continue; // Unparseable notes — never touch.
+    }
+
+    const notesConversion = notes.conversion === 'true';
+    if (notesConversion !== conversion) continue;
+
+    let signatureMatches = false;
+    if (productType === 'course' && notes.courseId === productId) signatureMatches = true;
+    else if (productType === 'pyq_package' && notes.packageId === productId) signatureMatches = true;
+    else if (productType === 'subscription_plan' && notes.planId === productId) signatureMatches = true;
+    if (!signatureMatches) continue;
+
+    await serviceClient
+      .from('orders')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('order_id', order.order_id)
+      .eq('status', 'pending');
+
+    structuredLog('pending_order_stale_cancelled', {
+      orderId: order.order_id,
+      productType,
+      productId,
+      conversion,
+      createdBefore: order.created_at,
+    });
+  }
+}
+
+/**
+ * M4 — true when a PostgREST error is a unique-constraint violation
+ * (SQLSTATE 23505). Mirrors the established pattern used by
+ * complete-subscription-purchase and the shared enrollment helper.
+ */
+function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
+  return (
+    error?.code === '23505' ||
+    /duplicate key/i.test(error?.message ?? '')
+  );
+}
+
+/**
+ * M4 — build the success response for a REUSED pending order.
+ * Shared by the Step 5.5 reuse guard and the 23505 recovery path so both
+ * return the identical shape (reused:true).
+ */
+function reuseSuccessResponse(
+  pending: {
+    order_id: string;
+    razorpayOrderId: string;
+    total_amount: number;
+    currency: string;
+  },
+  productName: string,
+): Response {
+  return jsonResponse({
+    success: true,
+    reused: true,
+    orderId: pending.order_id,
+    razorpayOrderId: pending.razorpayOrderId,
+    amount: Math.round(pending.total_amount * 100),
+    currency: pending.currency,
+    itemName: productName,
+    courseName: productName,  // Backward compat — same value
+    description: `Purchase of ${productName}`,
+    razorpayKey: RAZORPAY_KEY_ID,
+  });
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // ── CORS preflight ──────────────────────────────────────────────────
   if (req.method === 'OPTIONS') {
@@ -1188,20 +1293,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
         amountInPaise: Math.round(reusablePending.total_amount * 100),
       });
 
-      return jsonResponse({
-        success: true,
-        reused: true,
-        orderId: reusablePending.order_id,
-        razorpayOrderId: reusablePending.razorpayOrderId,
-        amount: Math.round(reusablePending.total_amount * 100),
-        currency: reusablePending.currency,
-        itemName: productName,
-        courseName: productName,  // Backward compat — same value
-        description: `Purchase of ${productName}`,
-        razorpayKey: RAZORPAY_KEY_ID,
-      });
+      return reuseSuccessResponse(reusablePending, productName);
     }
   }
+
+  // ── M4 Fix C: cancel stale (>24h) pendings for the same purchase ──────
+  // The unique pending-order indexes (migration 105) cannot encode the 24h
+  // window; without this step a stale pending would block a fresh order.
+  await cancelStalePendingOrders(
+    serviceClient,
+    profileId,
+    productType,
+    productId,
+    body.conversion === true,
+  );
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 6: Calculate the payment amount
@@ -1306,6 +1411,76 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .single();
 
   if (orderError || !order) {
+    // ── M4 Fix D: concurrent pending-order race (SQLSTATE 23505) ─────────
+    // The partial unique pending-order indexes (migration 105) allow only ONE
+    // pending order per (profile, product, conversion). If a concurrent
+    // request inserted its order first, recover by re-running the reuse
+    // lookup and returning the WINNER's order — never a generic 500 and never
+    // a second payable order. The orphaned Razorpay order created in Step 7
+    // is never paid and needs no cleanup (Razorpay orders expire on their
+    // own; no auto-charge can occur).
+    if (isUniqueViolation(orderError)) {
+      const winner = await findPendingReusableOrder(
+        serviceClient,
+        profileId,
+        productType,
+        productId,
+        body.conversion === true,
+      );
+
+      if (winner) {
+        // Conversion guard: only reuse when the stored amount still matches
+        // the freshly computed amount (identical rule to the Step 5.5 reuse
+        // path — a concurrent renewal may have advanced the balance). A
+        // stale winner is cancelled so the client's retry computes fresh.
+        if (
+          body.conversion === true &&
+          Math.round(effectivePrice * 100) !== Math.round(winner.total_amount * 100)
+        ) {
+          await serviceClient
+            .from('orders')
+            .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+            .eq('order_id', winner.order_id)
+            .eq('status', 'pending');
+
+          structuredLog('pending_order_conflict_stale_amount_cancelled', {
+            orderId: winner.order_id,
+            productType,
+            productId,
+          });
+
+          return errorResponse(
+            'Another payment attempt was in progress with a different amount. ' +
+              'Please try again.',
+            409,
+            'PENDING_ORDER_CONFLICT',
+          );
+        }
+
+        structuredLog('pending_order_conflict_recovered', {
+          winnerOrderId: winner.order_id,
+          razorpayOrderId: winner.razorpayOrderId,
+          productType,
+          productId,
+          conversion: body.conversion === true,
+        });
+
+        return reuseSuccessResponse(winner, productName);
+      }
+
+      structuredLog('pending_order_conflict_unresolved', {
+        productType,
+        productId,
+        error: orderError.message,
+      });
+
+      return errorResponse(
+        'Another payment attempt is in progress. Please try again.',
+        409,
+        'PENDING_ORDER_CONFLICT',
+      );
+    }
+
     // If local DB insert fails, the Razorpay order is already created.
     // In production, this should trigger a compensation workflow (refund or
     // void the Razorpay order). For now, log the error.

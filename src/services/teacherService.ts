@@ -458,190 +458,80 @@ export const teacherService = {
   },
 
   /**
-   * Start a live class session (updates status to 'live') (Domain 04: live_classes).
-   */
-  async startLiveClass(classId: string, profileId: string, roomName: string, instituteId: string): Promise<void> {
-    // 1. Update live_classes status to 'live' and persist room_name
-    const { error: updateErr } = await supabase
-      .from('live_classes')
-      .update({
-        status: 'live',
-        room_name: roomName,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('class_id', classId);
-
-    if (updateErr) {
-      throw new Error(`Failed to start live class: ${updateErr.message}`);
-    }
-
-    // 2. Create live_sessions row with institute_id (reused from live_classes, not re-fetched from profiles)
-    const { data: sessionData, error: sessionErr } = await supabase
-      .from('live_sessions')
-      .insert([{
-        class_id: classId,
-        institute_id: instituteId,
-        provider: 'livekit',
-        status: 'live',
-        started_at: new Date().toISOString(),
-        room_url: window.location.href,
-      }])
-      .select()
-      .single();
-
-    if (sessionErr || !sessionData) {
-      throw new Error(`Failed to create live session: ${sessionErr?.message || 'Unknown error'}`);
-    }
-
-    // 3. Log teacher as participant in session_participants
-    // ── DEBUG: Log the insert attempt ────────────────────────────────
-    const sessionParticipantPayload = {
-      session_id: sessionData.session_id,
-      class_id: classId,
-      profile_id: profileId,
-      joined_at: new Date().toISOString(),
-      device_type: 'desktop-browser',
-    };
-
-    console.log('[DEBUG session_participants] ════════════════════════════════════════');
-    console.log('[DEBUG session_participants] 📝 Attempting insert for TEACHER');
-    console.log('[DEBUG session_participants]   schema column (expected): student_id (FK → student_details.student_id)');
-    console.log('[DEBUG session_participants]   code uses (actual):      profile_id =', profileId);
-    console.log('[DEBUG session_participants]   missing NOT NULL cols:   student_id, institute_id');
-    console.log('[DEBUG session_participants]   full payload:', JSON.stringify(sessionParticipantPayload, null, 2));
-
-    // ── Query the DB to see what columns actually exist ─────────────
-    const { data: sampleRow } = await supabase
-      .from('session_participants')
-      .select('*')
-      .limit(1);
-    console.log('[DEBUG session_participants]   columns (from sample):', Object.keys(sampleRow?.[0] ?? {}).length > 0
-      ? Object.keys(sampleRow[0])
-      : 'table is empty — columns unknown until first insert. Expected from schema: participant_id, session_id, class_id, student_id, institute_id, joined_at, left_at, camera_enabled, mic_enabled, screen_shared, network_quality, device_type, ip_address, created_at');
-
-    const { error: participantErr } = await supabase
-      .from('session_participants')
-      .insert([sessionParticipantPayload]);
-
-    if (participantErr) {
-      console.log('[DEBUG session_participants] ❌ INSERT FAILED:');
-      console.log('[DEBUG session_participants]   error code:', participantErr.code);
-      console.log('[DEBUG session_participants]   error message:', participantErr.message);
-      console.log('[DEBUG session_participants]   error details:', participantErr.details);
-      console.log('[DEBUG session_participants]   error hint:', participantErr.hint);
-      console.error('[LiveClass] Failed to log teacher participant:', participantErr.message);
-      // Non-critical — session already created, log and continue
-    } else {
-      console.log('[DEBUG session_participants] ✅ Insert succeeded for TEACHER');
-      
-      // ── Verify: query back the row we just inserted ──────────────
-      const { data: verifyRow } = await supabase
-        .from('session_participants')
-        .select('*')
-        .eq('session_id', sessionData.session_id)
-        .limit(1);
-      console.log('[DEBUG session_participants]   verify inserted row:', verifyRow);
-    }
-    console.log('[DEBUG session_participants] ════════════════════════════════════════');
-  },
-
-  /**
-   * End a live class session.
+   * End a live class session — Phase 1 authoritative + idempotent path.
    *
-   * 1. Fetches the live_sessions row by class_id (to get session_id and current status)
-   * 2. Updates live_sessions by session_id: status='ended', ended_at=NOW(), updated_at=NOW()
-   * 3. Updates live_classes status to 'completed'
-   * 4. Finalizes attendance (best-effort, non-blocking)
+   * Calls public.end_live_class(...) which atomically transitions
+   * live_sessions live → ended (host_ended) and live_classes live →
+   * completed. Repeated / concurrent / retried End requests return
+   * ALREADY_ENDED (success) and never re-run attendance finalization.
    *
-   * CRITICAL: This function is called BEFORE the React state changes from 'live'
-   * to 'ended'. This ensures `live_sessions` is updated in the database before
-   * LiveKitRoom unmounts and triggers the `room_finished` webhook. Otherwise the
-   * webhook reads stale data (status='live', ended_at=NULL) and calculates
-   * attendance with an incorrect session duration.
+   * Attendance finalization is triggered here ONLY when the RPC reports a
+   * real live → completed transition (code ENDED + transitioned=true).
+   * The LiveKit room_finished webhook continues to run
+   * calculate_class_attendance independently (existing behaviour).
    *
    * @param classId - The UUID of the live_classes row.
-   * @throws Error if the session fetch or update fails.
    */
   async endLiveClass(classId: string): Promise<void> {
-    const now = new Date().toISOString();
-
-    // ── 1. Fetch current live_sessions row ──────────────────────────────
-    const { data: session, error: fetchErr } = await supabase
-      .from('live_sessions')
-      .select('session_id, status, started_at')
-      .eq('class_id', classId)
-      .single();
-
-    if (fetchErr || !session) {
-      console.error('[LiveClass] ❌ Failed to fetch live_sessions for class:', {
-        classId,
-        error: fetchErr?.message ?? 'Session not found',
-      });
-      throw new Error(
-        `Failed to fetch live session for class ${classId}: ${fetchErr?.message || 'Session not found'}`,
-      );
-    }
-
-    const previousStatus = session.status;
-
-    // ── TEMPORARY LOG: session details before update ─────────────────────
-    console.log('[LiveClass] ════════════════════════════════════════');
-    console.log('[LiveClass] 🔴 END SESSION');
-    console.log('[LiveClass]   class_id:', classId);
-    console.log('[LiveClass]   session_id:', session.session_id);
-    console.log('[LiveClass]   previous status:', previousStatus);
-    console.log('[LiveClass]   new status: ended');
-    console.log('[LiveClass]   ended_at:', now);
-    console.log('[LiveClass] ════════════════════════════════════════');
-
-    // ── 2. Update live_sessions by session_id (precise, avoids ambiguity) ─
-    const { error: sessionErr } = await supabase
-      .from('live_sessions')
-      .update({
-        status: 'ended',
-        ended_at: now,
-        updated_at: now,
-        ended_reason: 'host_ended',
-      })
-      .eq('session_id', session.session_id);
-
-    if (sessionErr) {
-      console.error('[LiveClass] ❌ Failed to update live_sessions:', {
-        session_id: session.session_id,
-        class_id: classId,
-        error: sessionErr.message,
-      });
-      throw new Error(`Failed to end live session: ${sessionErr.message}`);
-    }
-
-    console.log('[LiveClass] ✅ live_sessions updated:', {
-      session_id: session.session_id,
-      class_id: classId,
-      status: 'ended',
-      ended_at: now,
+    const { data, error } = await supabase.rpc('end_live_class', {
+      p_class_id: classId,
     });
 
-    // ── 3. Update live_classes status to 'completed' ────────────────────
-    const { error: updateErr } = await supabase
-      .from('live_classes')
-      .update({ status: 'completed', updated_at: now })
-      .eq('class_id', classId);
-
-    if (updateErr) {
-      throw new Error(`Failed to end live class: ${updateErr.message}`);
+    if (error) {
+      throw new Error(`Failed to end live class: ${error.message}`);
     }
 
-    // ── 4. Finalize attendance (best-effort, non-blocking) ───────────────
-    liveClassAttendanceService.finalizeClassAttendance(classId).then((result) => {
-      if (result) {
-        console.log('[Attendance] Class', classId, 'attendance finalized:', result);
-      }
-    }).catch((err) => {
-      console.error('[Attendance] Failed to finalize class attendance:', err);
-    });
+    const result = data as {
+      success: boolean;
+      code: string;
+      transitioned?: boolean;
+      message?: string;
+    } | null;
+
+    if (!result || !result.success) {
+      throw new Error(result?.message ?? 'Failed to end live class.');
+    }
+
+    // ALREADY_ENDED → idempotent no-op; do NOT re-run finalization.
+    if (result.code === 'ENDED' && result.transitioned === true) {
+      liveClassAttendanceService.finalizeClassAttendance(classId).then((finalized) => {
+        if (finalized) {
+          console.log(`[Attendance] Class ${classId} attendance finalized: ${JSON.stringify(finalized)}`);
+        }
+      }).catch((err) => {
+        console.error('[Attendance] Failed to finalize class attendance:', err);
+      });
+    }
   },
 
   /**
+   * Send a teacher heartbeat for a live class (Phase 2 — abandoned-class
+   * recovery). Updates live_sessions.last_teacher_activity_at via the
+   * SECURITY DEFINER RPC heartbeat_live_class(). Returns the RPC result
+   * code (LIVE | ALREADY_ENDED | NOT_AUTHORIZED | NOT_FOUND) or null.
+   *
+   * Failures are log-only by design: a temporary network error must never
+   * end the class. The server watchdog (15-minute staleness) is the
+   * authoritative recovery mechanism.
+   */
+  async heartbeatLiveClass(classId: string): Promise<{ code: string } | null> {
+    try {
+      const { data, error } = await supabase.rpc('heartbeat_live_class', {
+        p_class_id: classId,
+      });
+      if (error) {
+        console.warn('[LiveClass] Heartbeat RPC failed:', error.message);
+        return null;
+      }
+      return (data ?? null) as { code: string } | null;
+    } catch (err) {
+      console.warn('[LiveClass] Heartbeat error (non-fatal):', err);
+      return null;
+    }
+  },
+
+  /**
+   * Fetch all real-time overview analytics and dashboard widget data for a teacher (Domains 01, 02, 04, 05, 08).  /**
    * Fetch all real-time overview analytics and dashboard widget data for a teacher (Domains 01, 02, 04, 05, 08).
    */
   async getTeacherOverviewData(teacherId: string): Promise<any> {
