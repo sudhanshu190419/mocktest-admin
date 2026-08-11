@@ -141,6 +141,20 @@ export function notificationIcon(type: NotificationType): string {
       return '🚫';
     case 'batch_assigned':
       return '👥';
+    case 'doubt_submitted':
+      return '❓';
+    case 'doubt_assigned':
+      return '📥';
+    case 'doubt_answered':
+      return '✅';
+    case 'doubt_follow_up':
+      return '💬';
+    case 'doubt_resolved':
+      return '🎉';
+    case 'doubt_reopened':
+      return '🔄';
+    case 'doubt_unassigned':
+      return '⚠️';
     case 'custom':
       return '🔔';
     default:
@@ -193,6 +207,20 @@ export function notificationTypeLabel(type: NotificationType): string {
       return 'Subscription Expired';
     case 'batch_assigned':
       return 'Batch Assigned';
+    case 'doubt_submitted':
+      return 'New Doubt';
+    case 'doubt_assigned':
+      return 'Doubt Assigned';
+    case 'doubt_answered':
+      return 'Doubt Answered';
+    case 'doubt_follow_up':
+      return 'Doubt Follow-up';
+    case 'doubt_resolved':
+      return 'Doubt Resolved';
+    case 'doubt_reopened':
+      return 'Doubt Reopened';
+    case 'doubt_unassigned':
+      return 'Doubt Needs Assignment';
     case 'custom':
       return 'Custom';
     default:
@@ -244,13 +272,23 @@ export function unreadCount(notifications: { isRead: boolean }[]): number {
 /**
  * Builds an action URL from a reference type and reference ID.
  *
+ * Doubt notifications (migration 117/118) deep-link to the doubt detail
+ * page. The audience decides between the teacher page (default — teacher
+ * and admin can both pass the teacher RoleGuard) and the admin page (so an
+ * admin receiving a doubt_unassigned fallback notification lands where
+ * assign/reassign is available). All other reference types are audience-
+ * independent.
+ *
  * @param referenceType - Entity type (e.g. 'mock_test', 'content').
  * @param referenceId   - Entity UUID.
+ * @param audience      - 'teacher' (default) | 'admin' — only affects
+ *                        'student_doubt' reference type.
  * @returns A relative URL path or null if either parameter is missing.
  */
 export function buildActionUrl(
   referenceType: string | null,
   referenceId: string | null,
+  audience: 'teacher' | 'admin' = 'teacher',
 ): string | null {
   if (!referenceType || !referenceId) return null;
 
@@ -267,6 +305,13 @@ export function buildActionUrl(
       return `/attempts/${referenceId}`;
     case 'order':
       return `/orders/${referenceId}`;
+    case 'student_doubt':
+      // Students consume doubts on the mobile app (own deep links); the web
+      // audience is teacher or admin. Admin deep-links to /admin/doubts so
+      // assignment actions are immediately available.
+      return audience === 'admin'
+        ? `/admin/doubts/${referenceId}`
+        : `/teacher/doubts/${referenceId}`;
     default:
       return `/${referenceType}/${referenceId}`;
   }

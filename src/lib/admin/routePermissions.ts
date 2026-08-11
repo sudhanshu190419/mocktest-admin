@@ -65,9 +65,11 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
   { prefix: '/admin/timetable', permission: 'approveAcademicResources' },
   { prefix: '/admin/academic', permission: 'approveAcademicResources' },
   { prefix: '/admin/questions', permission: 'approveAcademicResources' },
+  { prefix: '/admin/doubts', permission: 'approveAcademicResources' },
   { prefix: '/admin/mock-tests', permission: 'approveAcademicResources' },
   { prefix: '/admin/approval-workspace', permission: 'approveAcademicResources' },
   { prefix: '/admin/approvals', permission: 'approveAcademicResources' },
+  { prefix: '/admin/leave-requests', permission: 'approveAcademicResources' },
 
   // ── Commerce (super + finance) ────────────────────────────────────────
   { prefix: '/admin/commerce', permission: 'accessFinance' },

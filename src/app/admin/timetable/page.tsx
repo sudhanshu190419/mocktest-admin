@@ -9,7 +9,7 @@ import {
   useSetTimetableSlotStatus,
 } from '@/hooks/admin/useTimetableAdmin';
 import { useNextLessonPlans } from '@/hooks/admin/useLessonPlans';
-import { toOccurrenceDate } from '@/utils/lessonOccurrences';
+import { toOccurrenceDate, generateOccurrenceDates } from '@/utils/lessonOccurrences';
 import { useBSTAvailableTeachers } from '@/hooks/admin/useBatchSubjectTeacherAssignment';
 import { useBatches } from '@/hooks/academic/useBatches';
 import { TimetableFormModal } from '@/components/admin/timetable/TimetableFormModal';
@@ -31,6 +31,7 @@ import {
   CaretRight,
   CalendarDots,
   NotePencil,
+  UploadSimple,
 } from '@phosphor-icons/react';
 import type { TimetableSlot, TimetableSlotStatus } from '@/types/timetable';
 
@@ -84,6 +85,18 @@ function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+/**
+ * YYYY-MM-DD from LOCAL date components. Never `toISOString().slice(0, 10)` —
+ * that derives the date from UTC and can shift a day for UTC+ timezones.
+ * DB `date` values are plain calendar dates, so local components match them.
+ */
+function toLocalISODate(date: Date): string {
+  const y = date.getFullYear();
+  const m = `${date.getMonth() + 1}`.padStart(2, '0');
+  const d = `${date.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -226,10 +239,29 @@ export default function AdminTimetablePage() {
     [weekAnchor],
   );
 
-  // Slots grouped by day_of_week for the calendar (all slots, filtered).
+  // Slots grouped by day_of_week for the calendar. A slot is shown only in
+  // weeks where its recurring weekday actually occurs inside its validity
+  // window (valid_from..valid_until) — expired slots must never appear in
+  // later weeks (e.g. an August-2026 slot must not render in February 2027),
+  // and a slot ending mid-week must not render for the rest of that week.
+  const weekStartISO = toLocalISODate(weekDates[0]);
+  const weekEndISO = toLocalISODate(weekDates[6]);
   const slotsByDay = useMemo(() => {
     const map = new Map<number, TimetableSlot[]>();
     for (const s of slots) {
+      // Same rule as the backend materializer and the lesson planner
+      // (generateOccurrenceDates clamps to day_of_week + validity): keep the
+      // slot only when at least one of its occurrences falls inside the
+      // selected week AND inside its validity window. The dayOfWeek grouping
+      // below then places it on the correct weekday column.
+      const occursInWeek = generateOccurrenceDates(
+        s.dayOfWeek,
+        s.validFrom,
+        s.validUntil,
+        weekStartISO,
+        weekEndISO,
+      );
+      if (occursInWeek.length === 0) continue;
       const list = map.get(s.dayOfWeek) ?? [];
       list.push(s);
       map.set(s.dayOfWeek, list);
@@ -238,7 +270,7 @@ export default function AdminTimetablePage() {
       list.sort((a, b) => a.startTime.localeCompare(b.startTime));
     }
     return map;
-  }, [slots]);
+  }, [slots, weekStartISO, weekEndISO]);
 
   // ── Table columns ───────────────────────────────────────────────────
   const columns = useMemo<Column<TimetableSlot>[]>(
@@ -394,14 +426,24 @@ export default function AdminTimetablePage() {
         title="Timetable"
         description="Manage recurring teaching schedules for teachers and batches."
         actions={
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            <Plus size={16} />
-            Create Timetable
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => router.push('/admin/timetable/import')}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <UploadSimple size={16} />
+              Bulk Import
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+              <Plus size={16} />
+              Create Timetable
+            </button>
+          </>
         }
       />
 

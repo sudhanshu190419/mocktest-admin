@@ -328,20 +328,42 @@ export const teacherService = {
 
   /**
    * Resolve a student's doubt ticket (Domain 14: student_doubts).
+   *
+   * Phase 7A: uses the canonical Doubt System RPCs (migration 117) instead of
+   * the old direct-table update. The previous implementation wrote to
+   * non-existent columns (`answer`, `resolved_at`) and silently fell back to
+   * local state on every call. The canonical path is:
+   *   1. reply_to_doubt(p_doubt_id, answerText) — teacher posts the answer
+   *      (creates the reply, stamps first_response_at, notifies the student)
+   *   2. resolve_doubt(p_doubt_id) — marks the doubt resolved
+   * Both RPCs are SECURITY DEFINER: identity, institute scope and teacher
+   * authorization are derived from auth.uid() on the backend.
    */
   async resolveStudentDoubt(doubtId: string, answerText: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('student_doubts')
-        .update({ status: 'resolved', answer: answerText, resolved_at: new Date().toISOString() })
-        .eq('doubt_id', doubtId);
-
-      if (error) {
-        console.warn('Could not update backend doubt ticket, updating local state:', error.message);
+      // 1. Post the teacher's answer (canonical RPC).
+      const { error: replyErr } = await supabase.rpc('reply_to_doubt', {
+        p_doubt_id: doubtId,
+        p_reply_text: answerText,
+      });
+      if (replyErr) {
+        console.warn('Could not post doubt reply (canonical RPC):', replyErr.message);
+        return false;
       }
+
+      // 2. Resolve the doubt (canonical RPC).
+      const { error: resolveErr } = await supabase.rpc('resolve_doubt', {
+        p_doubt_id: doubtId,
+      });
+      if (resolveErr) {
+        console.warn('Could not resolve doubt (canonical RPC):', resolveErr.message);
+        return false;
+      }
+
       return true;
     } catch (err) {
-      return true;
+      console.error('Error resolving student doubt:', err);
+      return false;
     }
   },
 

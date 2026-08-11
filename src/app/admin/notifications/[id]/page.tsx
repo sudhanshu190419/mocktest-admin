@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   notificationIcon,
   notificationTypeLabel,
+  buildActionUrl,
   formatNotificationTime,
   priorityColor,
   priorityLabel,
@@ -199,7 +200,12 @@ export default function AdminNotificationDetailPage() {
               <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-900/30 dark:bg-blue-900/10">
                 <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Related Resource</p>
                 <Link
-                  href={notification.actionUrl}
+                  href={
+                    notification.referenceType === 'student_doubt'
+                      ? buildActionUrl(notification.referenceType, notification.referenceId, 'admin') ??
+                        notification.actionUrl
+                      : notification.actionUrl
+                  }
                   className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   View {notification.referenceType === 'mock_test' ? 'Mock Test' : notification.referenceType === 'result' ? 'Result' : notification.referenceType === 'content' ? 'Content' : 'Resource'} →

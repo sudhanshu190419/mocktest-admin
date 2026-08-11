@@ -1,8 +1,9 @@
 // ============================================================================
 // Edge Function: timetable-materialization (Scheduled / Cron)
 //
-// Daily backend job that turns recurring `timetable_slots` rules into actual
-// `live_classes` occurrences for every institute, using a ROLLING window:
+// Daily backend job that keeps recurring `timetable_slots` rules and their
+// `live_classes` occurrences consistent for every institute, using a ROLLING
+// window:
 //
 //   current_date → current_date + 60 days
 //
@@ -11,10 +12,18 @@
 // function is deployed with `verify_jwt = false` (config.toml), mirroring the
 // subscription-lifecycle scheduler (migrations 097/104).
 //
-// The function itself is a thin orchestrator: it NEVER decides what to
-// create. It only resolves the institutes that have active slots and calls
-// the EXISTING SECURITY DEFINER RPC `materialize_institute_timetable`
-// (migration 108) with a service-role client. That RPC owns:
+// Since migration 116 the job performs FULL RECONCILIATION (not just
+// insert-only materialization): it calls the SECURITY DEFINER RPC
+// `reconcile_institute_timetable` (migration 116) which, per slot:
+//
+//   - RESTORES matching future classes (revives timetable-system cancellations)
+//   - CANCELS stale future scheduled classes (validity / weekday / time no
+//     longer match the slot rule, or the slot is paused/cancelled) — guarded
+//     by the migration-115 RESOLVED-resolution protection
+//   - re-points batch_subject_live_classes junctions
+//   - FILLS genuinely missing valid occurrences (materialization)
+//
+// The RPC owns:
 //
 //   - authorization (super/academic admin OR service_role)
 //   - institute scoping (per-institute, multi-tenant safe)
@@ -26,12 +35,18 @@
 // Multi-institute safety: institutes are discovered from the DATA
 // (timetable_slots where status = 'active') — an institute_id is NEVER read
 // from the HTTP request body, so a caller cannot target another institute.
-// Each institute is materialized independently, so a failure in one does not
+// Each institute is reconciled independently, so a failure in one does not
 // affect the others.
 //
+// Note: an institute whose slots are ALL paused/cancelled is not swept by the
+// cron (no active slot to discover it) — that is fine because pausing or
+// cancelling its last slot fires the migration-116 AFTER UPDATE trigger, which
+// reconciles that slot transactionally at the moment of the change.
+//
 // Idempotency: re-runs, overlapping cron deliveries, and manual invocations
-// are all SAFE — repeated materialization cannot create duplicate
-// live_classes (partial unique index on (timetable_slot_id, scheduled_at)).
+// are all SAFE — repeated reconciliation cannot create duplicate live_classes
+// (partial unique index on (timetable_slot_id, scheduled_at)) and cannot
+// resurrect cancelled classes (status/reason guards).
 //
 // @module edge-functions/timetable-materialization
 // ============================================================================
@@ -40,7 +55,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-/** Rolling materialization window (days). Keeps DB growth bounded. */
+/** Rolling reconciliation window (days). Keeps DB growth bounded. */
 const MATERIALIZATION_WINDOW_DAYS = 60;
 
 const CORS_HEADERS = {
@@ -51,12 +66,12 @@ const CORS_HEADERS = {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface MaterializationResult {
+interface ReconciliationResult {
   success: boolean;
   /** Number of institutes processed. */
   institutes: number;
-  /** Total live_classes created across all institutes. */
-  totalCreated: number;
+  /** Total live_classes rows affected (restored + cancelled + created). */
+  totalAffected: number;
   /** Per-institute failure messages (never thrown, so the job continues). */
   errors: string[];
   /** Total wall-clock duration of the invocation in milliseconds. */
@@ -79,7 +94,7 @@ function structuredLog(event: string, data: Record<string, unknown>): void {
 
 // ─── Response helpers ───────────────────────────────────────────────────────
 
-function jsonResponse(body: MaterializationResult, status = 200): Response {
+function jsonResponse(body: ReconciliationResult, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -90,7 +105,7 @@ function errorResponse(error: string, status = 500): Response {
   return jsonResponse({
     success: false,
     institutes: 0,
-    totalCreated: 0,
+    totalAffected: 0,
     errors: [error],
     executionTimeMs: 0,
   }, status);
@@ -164,43 +179,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const fromDate = toDateOnly(new Date());
     const toDate = toDateOnly(new Date(Date.now() + MATERIALIZATION_WINDOW_DAYS * 24 * 60 * 60 * 1000));
 
-    let totalCreated = 0;
+    let totalAffected = 0;
     const errors: string[] = [];
 
     for (const instituteId of instituteIds) {
-      const { data, error } = await adminClient.rpc('materialize_institute_timetable', {
+      // Migration-116 RPC: restore + cancel stale + re-point junctions +
+      // fill missing valid occurrences, all guarded by the resolution guard.
+      const { data, error } = await adminClient.rpc('reconcile_institute_timetable', {
         p_institute_id: instituteId,
-        p_from_date: fromDate,
-        p_to_date: toDate,
       });
 
       if (error) {
         errors.push(`${instituteId}: ${error.message}`);
-        structuredLog('INSTITUTE_MATERIALIZATION_FAILED', {
+        structuredLog('INSTITUTE_RECONCILIATION_FAILED', {
           instituteId,
           error: error.message,
         });
         continue; // Other institutes are unaffected.
       }
 
-      const created = Number(data ?? 0);
-      totalCreated += created;
-      structuredLog('INSTITUTE_MATERIALIZED', { instituteId, created });
+      const affected = Number(data ?? 0);
+      totalAffected += affected;
+      structuredLog('INSTITUTE_RECONCILED', { instituteId, affected });
     }
 
     const executionTimeMs = Date.now() - startedAt;
 
     structuredLog('JOB_COMPLETED', {
       institutes: instituteIds.length,
-      totalCreated,
+      totalAffected,
       errors: errors.length,
       executionTimeMs,
+      windowFrom: fromDate,
+      windowTo: toDate,
     });
 
     return jsonResponse({
       success: true,
       institutes: instituteIds.length,
-      totalCreated,
+      totalAffected,
       errors,
       executionTimeMs,
     });

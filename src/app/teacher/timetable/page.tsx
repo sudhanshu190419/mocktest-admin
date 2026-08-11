@@ -19,10 +19,12 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarBlank,
   CalendarDots,
+  CalendarX,
   CaretLeft,
   CaretRight,
   CircleNotch,
@@ -108,6 +110,14 @@ function formatDateOnly(isoDate: string): string {
   });
 }
 
+/** YYYY-MM-DD from LOCAL date components (no UTC shift). */
+function toLocalISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /**
  * Start-window state mirroring the server rule in
  * `start_scheduled_live_class()` (UX only — the RPC remains authoritative).
@@ -160,6 +170,7 @@ function classStatusConfig(status: LiveClassListItem['status']) {
 export default function TeacherTimetablePage() {
   const { teacherProfile } = useAuth();
   const teacherId = teacherProfile?.id;
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   // ── Week navigation ─────────────────────────────────────────────────
@@ -267,27 +278,42 @@ export default function TeacherTimetablePage() {
           </p>
         </div>
 
-        {/* View toggle */}
-        <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+        {/* View toggle + leave action */}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+            <button
+              onClick={() => setView('week')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
+                view === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+              )}
+            >
+              <SquaresFour size={15} weight={view === 'week' ? 'fill' : 'regular'} />
+              Week
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
+                view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+              )}
+            >
+              <List size={15} weight={view === 'list' ? 'fill' : 'regular'} />
+              List
+            </button>
+          </div>
+
+          {/* Request leave for the visible week (prefill → /teacher/leave) */}
           <button
-            onClick={() => setView('week')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              view === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
-            )}
+            onClick={() =>
+              router.push(
+                `/teacher/leave?from=${toLocalISODate(weekDays[0])}&to=${toLocalISODate(weekDays[6])}&open=1`,
+              )
+            }
+            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md transition-all hover:from-blue-700 hover:to-indigo-700"
           >
-            <SquaresFour size={15} weight={view === 'week' ? 'fill' : 'regular'} />
-            Week
-          </button>
-          <button
-            onClick={() => setView('list')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
-            )}
-          >
-            <List size={15} weight={view === 'list' ? 'fill' : 'regular'} />
-            List
+            <CalendarX size={14} weight="bold" />
+            Request Leave
           </button>
         </div>
       </div>

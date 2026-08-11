@@ -61,6 +61,22 @@ const statusStyles: Record<string, { bg: string; text: string; dot: string }> = 
     text: 'text-blue-700 dark:text-blue-400',
     dot: 'bg-blue-500',
   },
+  // ── Doubt statuses (doubt_status_type — migration 015/117) ──────────
+  open: {
+    bg: 'bg-amber-50 dark:bg-amber-900/20',
+    text: 'text-amber-700 dark:text-amber-400',
+    dot: 'bg-amber-500',
+  },
+  in_progress: {
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    text: 'text-blue-700 dark:text-blue-400',
+    dot: 'bg-blue-500',
+  },
+  resolved: {
+    bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    dot: 'bg-emerald-500',
+  },
   live: {
     bg: 'bg-emerald-50 dark:bg-emerald-900/20',
     text: 'text-emerald-700 dark:text-emerald-400',

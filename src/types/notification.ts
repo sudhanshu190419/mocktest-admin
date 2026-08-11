@@ -56,6 +56,14 @@ export type NotificationType =
   | 'subscription_expiring'
   | 'subscription_expired'
   | 'batch_assigned'
+  // ── Doubt System (migration 117 + 118 events) ───────────────────────
+  | 'doubt_submitted'
+  | 'doubt_assigned'
+  | 'doubt_answered'
+  | 'doubt_follow_up'
+  | 'doubt_resolved'
+  | 'doubt_reopened'
+  | 'doubt_unassigned'
   | 'custom';
 
 /**

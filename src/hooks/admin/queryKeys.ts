@@ -657,6 +657,29 @@ export const adminKeys = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
+  //  Teacher Leave (admin Teacher Leave Requests + Class Resolution module)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  leaveRequests: {
+    /** Root key for all teacher-leave queries. */
+    all: () => [...adminKeys.all, 'leaveRequests'] as const,
+
+    /** Key for every leave-request list query (broad invalidation). */
+    lists: () => [...adminKeys.leaveRequests.all(), 'list'] as const,
+
+    /** Key for a specific paginated + filtered leave-request list. */
+    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.leaveRequests.lists(), filters, pagination] as const,
+
+    /** Key for every leave-request detail query (broad invalidation). */
+    details: () => [...adminKeys.leaveRequests.all(), 'detail'] as const,
+
+    /** Key for a single leave-request detail by leaveId. */
+    detail: (leaveId: string) =>
+      [...adminKeys.leaveRequests.details(), leaveId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   //  Admin Management (admin Admin Management module — super admin only)
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -870,5 +893,18 @@ export const adminKeys = {
     /** Key for a single deleted item detail (keyed by resource type + id). */
     detail: (resourceType: string, resourceId: string) =>
       [...adminKeys.trash.details(), resourceType, resourceId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Bulk Timetable Import (admin one-file timetable + lesson-plan import)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  bulkImport: {
+    /** Root key for all bulk-import queries. */
+    all: () => [...adminKeys.all, 'bulkImport'] as const,
+
+    /** Key for the institute-scoped reference-data fetch. */
+    reference: (instituteId?: string | null) =>
+      [...adminKeys.bulkImport.all(), 'reference', instituteId] as const,
   },
 };

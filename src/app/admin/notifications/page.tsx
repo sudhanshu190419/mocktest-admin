@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -17,6 +16,7 @@ import {
   formatNotificationTime,
   priorityColor,
   priorityLabel,
+  buildActionUrl,
 } from '@/utils/notification';
 import type { Notification } from '@/types/notification';
 
@@ -42,9 +42,15 @@ function StatCard({ label, value, subtext, color, bg, border }: {
 // ─── Notification Row ───────────────────────────────────────────────────────
 
 function NotificationRow({ notification }: { notification: Notification }) {
-  const actionUrl = notification.actionUrl && notification.actionUrl.startsWith('/')
-    ? notification.actionUrl
-    : null;
+  // Admin audience: doubt notifications deep-link to /admin/doubts/[id] so
+  // assignment actions are immediately available (other types are unchanged).
+  const actionUrl = (() => {
+    const url = buildActionUrl(notification.referenceType, notification.referenceId, 'admin');
+    if (url) return url;
+    return notification.actionUrl && notification.actionUrl.startsWith('/')
+      ? notification.actionUrl
+      : null;
+  })();
 
   const content = (
     <div className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors hover:border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-gray-800/30 ${!notification.isRead ? 'border-blue-100 bg-blue-50/50 dark:border-blue-900/30 dark:bg-blue-900/10' : 'border-gray-100 bg-white dark:bg-gray-900'}`}>
