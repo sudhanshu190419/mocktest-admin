@@ -242,6 +242,215 @@ async function markOrderAsDuplicate(
 }
 
 /**
+ * Create a commerce purchase notification (notification + recipient rows).
+ *
+ * Mirrors the helper in complete-course-purchase so subscription purchases
+ * produce the same in-app 'course_purchased' notification. Idempotent: skips
+ * when a notification_recipients row already exists for (profile_id,
+ * event_type, reference_id). Errors are logged via structuredLog but NEVER
+ * thrown — notification creation must not fail a successful payment.
+ */
+async function createCommerceNotification(
+  client: any,
+  params: {
+    eventType: string;
+    title: string;
+    body: string;
+    profileId: string;
+    instituteId: string;
+    referenceType: string;
+    referenceId: string;
+  },
+): Promise<{ created: boolean; skipped: boolean }> {
+  const { eventType, title, body, profileId, instituteId, referenceType, referenceId } =
+    params;
+
+  structuredLog('NOTIFICATION_CREATE_START', {
+    eventType,
+    profileId,
+    title,
+    referenceType,
+    referenceId,
+  });
+
+  try {
+    // ── Idempotency check ─────────────────────────────────────────────
+    structuredLog('IDEMPOTENCY_CHECK_START', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+    });
+
+    // Check if a notification_recipients row already exists for this
+    // profile + event_type + reference_id combination. This prevents
+    // duplicate notifications on webhook retry.
+    //
+    // Start from notifications with an inner join to
+    // notification_recipients so that PostgREST correctly applies ALL
+    // filters — event_type, reference_id AND profile_id.
+    const { data: existing } = await client
+      .from('notifications')
+      .select(`
+        notification_id,
+        event_type,
+        reference_type,
+        reference_id,
+        notification_recipients!inner(recipient_id, profile_id)
+      `)
+      .eq('event_type', eventType)
+      .eq('reference_type', referenceType)
+      .eq('reference_id', referenceId)
+      .eq('notification_recipients.profile_id', profileId)
+      .maybeSingle();
+
+    // Log the complete returned row for troubleshooting idempotency
+    if (existing) {
+      const existingObj = existing as any;
+      structuredLog('IDEMPOTENCY_QUERY_RESULT', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        notification_id: existingObj.notification_id ?? null,
+        event_type: existingObj.event_type ?? null,
+        reference_id: existingObj.reference_id ?? null,
+        recipient_id: existingObj.notification_recipients?.recipient_id ?? null,
+        matched_profile_id: existingObj.notification_recipients?.profile_id ?? null,
+      });
+    } else {
+      structuredLog('IDEMPOTENCY_QUERY_RESULT_EMPTY', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+    }
+
+    if (existing) {
+      structuredLog('NOTIFICATION_ALREADY_EXISTS', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+      });
+      return { created: false, skipped: true };
+    }
+
+    // ── Insert notification row ───────────────────────────────────────
+    const insertPayload = {
+      institute_id: instituteId,
+      title,
+      body,
+      channel: 'in_app',
+      event_type: eventType,
+      reference_type: referenceType,
+      reference_id: referenceId,
+      total_recipients: 1,
+    };
+
+    structuredLog('NOTIFICATION_DB_INSERT_START', {
+      eventType,
+      profileId,
+      payload: insertPayload,
+    });
+
+    const { data: notification, error: notifError } = await client
+      .from('notifications')
+      .insert(insertPayload)
+      .select('notification_id')
+      .single();
+
+    if (notifError || !notification) {
+      structuredLog('NOTIFICATION_DB_INSERT_FAILED', {
+        eventType,
+        profileId,
+        referenceType,
+        referenceId,
+        error: {
+          message: notifError?.message ?? 'Insert returned no data',
+          details: (notifError as any)?.details ?? null,
+          hint: (notifError as any)?.hint ?? null,
+          code: (notifError as any)?.code ?? null,
+          status: (notifError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('NOTIFICATION_DB_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    // ── Insert recipient row ──────────────────────────────────────────
+    const recipientPayload = {
+      notification_id: notification.notification_id,
+      profile_id: profileId,
+      institute_id: instituteId,
+    };
+
+    structuredLog('RECIPIENT_INSERT_START', {
+      eventType,
+      profileId,
+      payload: recipientPayload,
+    });
+
+    const { error: recipientError } = await client
+      .from('notification_recipients')
+      .insert(recipientPayload);
+
+    if (recipientError) {
+      // Recipient insert failure should not leave an orphan notification.
+      // Non-critical: the subscription purchase has already succeeded.
+      structuredLog('RECIPIENT_INSERT_FAILED', {
+        eventType,
+        profileId,
+        notification_id: notification.notification_id,
+        error: {
+          message: recipientError.message,
+          details: (recipientError as any)?.details ?? null,
+          hint: (recipientError as any)?.hint ?? null,
+          code: (recipientError as any)?.code ?? null,
+          status: (recipientError as any)?.status ?? null,
+        },
+      });
+      return { created: false, skipped: false };
+    }
+
+    structuredLog('RECIPIENT_INSERT_SUCCESS', {
+      eventType,
+      profileId,
+      notification_id: notification.notification_id,
+    });
+
+    structuredLog('NOTIFICATION_FLOW_COMPLETE', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      notificationId: notification.notification_id,
+      recipientCreated: true,
+    });
+
+    return { created: true, skipped: false };
+  } catch (err) {
+    // Catch-all: never let notification creation throw.
+    structuredLog('NOTIFICATION_UNEXPECTED_EXCEPTION', {
+      eventType,
+      profileId,
+      referenceType,
+      referenceId,
+      message: err instanceof Error ? err.message : 'Unknown error',
+      stack: err instanceof Error ? err.stack : undefined,
+      cause: err instanceof Error && (err as any).cause ? (err as any).cause : undefined,
+    });
+    return { created: false, skipped: false };
+  }
+}
+
+/**
  * Create a JSON response with standard CORS headers.
  */
 function jsonResponse(
@@ -1585,6 +1794,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
     studentId,
     courseId,
     instituteId,
+  });
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 14b: Create the in-app purchase notification
+  // ═════════════════════════════════════════════════════════════════════
+  // Mirror complete-course-purchase: after the subscription + enrollment are
+  // confirmed, create an in-app 'course_purchased' notification for the
+  // purchaser. Awaited, but errors are caught inside createCommerceNotification
+  // and NEVER propagate — notification failure must not fail a successful
+  // payment. Idempotent: the helper's idempotency check prevents duplicates
+  // on webhook retries.
+  structuredLog('NOTIFICATION_FLOW_START', {
+    profileId,
+    studentId,
+    courseId,
+    orderId: body.orderId ?? null,
+    eventTypes: ['course_purchased'],
+    context: 'subscription_purchase',
+  });
+
+  await createCommerceNotification(serviceClient, {
+    eventType: 'course_purchased',
+    title: 'Course Purchased Successfully',
+    body: 'Your payment was successful. You now own this course.',
+    profileId,
+    instituteId,
+    referenceType: 'course',
+    referenceId: courseId,
   });
 
   // ═════════════════════════════════════════════════════════════════════
