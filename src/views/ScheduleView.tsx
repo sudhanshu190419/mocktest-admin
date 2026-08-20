@@ -39,29 +39,11 @@ interface ScheduleViewProps {
 }
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({ onLaunchLive }) => {
-  const { teacherProfile, isDemoMode } = useAuth();
-  const [batches, setBatches] = useState<AcademicBatch[]>(() => {
-    if (!teacherProfile) return MOCK_BATCHES;
-    return isDemoMode ? MOCK_BATCHES : [];
-  });
-  const [selectedBatchId, setSelectedBatchId] = useState<string>(() => {
-    if (!teacherProfile) return MOCK_BATCHES[0]?.id || '';
-    return isDemoMode ? (MOCK_BATCHES[0]?.id || '') : '';
-  });
-  const [slots, setSlots] = useState<TeacherAvailabilitySlot[]>(() => {
-    if (!teacherProfile) return MOCK_AVAILABILITY;
-    return isDemoMode ? MOCK_AVAILABILITY : [];
-  });
-  const [upcomingClass, setUpcomingClass] = useState<any>(() => {
-    if (!teacherProfile || isDemoMode) {
-      return {
-        title: MOCK_LIVE_CLASSES[0]?.title || 'Live Session',
-        startTime: MOCK_LIVE_CLASSES[0]?.startTime || '14:00',
-        batchName: MOCK_LIVE_CLASSES[0]?.batchName || 'JEE Target Alpha'
-      };
-    }
-    return null;
-  });
+  const { teacherProfile } = useAuth();
+  const [batches, setBatches] = useState<AcademicBatch[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>('');
+  const [slots, setSlots] = useState<TeacherAvailabilitySlot[]>([]);
+  const [upcomingClass, setUpcomingClass] = useState<any>(null);
   
   // Roster & Syllabus Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -78,21 +60,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ onLaunchLive }) => {
   useEffect(() => {
     if (teacherProfile) {
       teacherService.getAssignedBatches(teacherProfile.id).then((res) => {
-        if (!isDemoMode) {
-          setBatches(res);
-          if (res && res.length > 0) {
-            setSelectedBatchId(res[0].id);
-          } else {
-            setSelectedBatchId('');
-          }
-        } else if (res && res.length > 0) {
-          setBatches(res);
+        setBatches(res);
+        if (res && res.length > 0) {
           setSelectedBatchId(res[0].id);
+        } else {
+          setSelectedBatchId('');
         }
       });
 
-      if (!isDemoMode) {
-        supabase
+      supabase
           .from('live_classes')
           .select('*, batches(name)')
           .eq('teacher_id', teacherProfile.id)
@@ -112,9 +88,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ onLaunchLive }) => {
               setUpcomingClass(null);
             }
           });
-      }
     }
-  }, [teacherProfile, isDemoMode]);
+  }, [teacherProfile]);
 
   const toggleAvailability = (id: string) => {
     setSlots(slots.map(s => s.id === id ? { ...s, isAvailable: !s.isAvailable } : s));

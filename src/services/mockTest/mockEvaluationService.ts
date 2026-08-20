@@ -142,6 +142,43 @@ function isNumericalAnswerCorrect(
   return Math.abs(studentAnswer - correctAnswer) <= tolerance;
 }
 
+/**
+ * Normalize text for short-answer comparison:
+ * - trim leading/trailing whitespace
+ * - convert to lowercase
+ * - collapse multiple internal whitespaces to a single space
+ * - strip trailing punctuation (. , ! ?)
+ */
+function normalizeTextAnswer(str: string): string {
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.,!?]+$/, '');
+}
+
+/**
+ * Check if a student's text answer matches any of the accepted alternate answers.
+ * Multiple accepted answers can be authored separated by '|' or ';'.
+ */
+function isTextAnswerCorrect(
+  studentAnswer: string | null | undefined,
+  correctTextKey: string | null | undefined,
+): boolean {
+  if (!studentAnswer || !correctTextKey) return false;
+
+  const normalizedStudent = normalizeTextAnswer(studentAnswer);
+  if (!normalizedStudent) return false;
+
+  // Split alternate acceptable answers by '|' or ';'
+  const acceptableOptions = correctTextKey
+    .split(/[|;]/)
+    .map(normalizeTextAnswer)
+    .filter(Boolean);
+
+  return acceptableOptions.includes(normalizedStudent);
+}
+
 // ─── Evaluation Engine ─────────────────────────────────────────────────────
 
 /**
@@ -305,6 +342,12 @@ export async function evaluateAttempt(
         } else {
           isCorrect = false;
         }
+      } else if (snapshot.questionType === 'text_based') {
+        // Text-based / Short-answer
+        isCorrect = isTextAnswerCorrect(
+          answer.textAnswer,
+          snapshot.correctTextAnswer,
+        );
       } else {
         // MCQ, MSQ, True/False — compare selected options
         const selectedOptions = answerOptionsMap.get(answer.answerId) ?? [];

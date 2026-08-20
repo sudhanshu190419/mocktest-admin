@@ -465,7 +465,8 @@ export const attendanceAnalyticsService = {
 
       if (!studentDetail) return null;
 
-      const studentName = studentDetail.profiles?.name ?? 'Unknown';
+      const profile = Array.isArray(studentDetail.profiles) ? studentDetail.profiles[0] : studentDetail.profiles;
+      const studentName = profile?.name ?? 'Unknown';
 
       // Get teacher's completed classes
       const { data: liveClasses } = await supabase
@@ -918,7 +919,22 @@ export const attendanceAnalyticsService = {
 
       const batchNameMap = new Map((batches ?? []).map((b: any) => [b.batch_id, b.name]));
 
-      // Get completed classes for these batches (via batch_subject_live_classes)
+      // 1. Fetch enrolled student counts from batch_students
+      const { data: batchStudents } = await supabase
+        .from('batch_students')
+        .select('student_id, batch_id')
+        .in('batch_id', batchIds);
+
+      const batchEnrolledCountMap = new Map<string, number>();
+      for (const bid of batchIds) {
+        batchEnrolledCountMap.set(bid, 0);
+      }
+      for (const bs of batchStudents ?? []) {
+        const currentCount = batchEnrolledCountMap.get(bs.batch_id) ?? 0;
+        batchEnrolledCountMap.set(bs.batch_id, currentCount + 1);
+      }
+
+      // 2. Get completed classes for these batches (via batch_subject_live_classes)
       const { data: classBSLinks } = await supabase
         .from('batch_subject_live_classes')
         .select(`
@@ -927,62 +943,72 @@ export const attendanceAnalyticsService = {
         `)
         .in('batch_subjects.batch_id', batchIds);
 
-      // Filter by teacher if specified
+      // Filter by teacher and date range if specified
       let classIds = [...new Set((classBSLinks ?? []).map((l: any) => l.class_id))];
 
-      if (filters.teacherId) {
-        const { data: teacherClasses } = await supabase
-          .from('live_classes')
-          .select('class_id')
-          .eq('teacher_id', filters.teacherId)
-          .eq('status', 'completed')
-          .in('class_id', classIds);
-        const teacherClassIds = new Set((teacherClasses ?? []).map((c: any) => c.class_id));
-        classIds = classIds.filter((cid) => teacherClassIds.has(cid));
-      } else {
-        const { data: completedClasses } = await supabase
-          .from('live_classes')
-          .select('class_id')
-          .eq('institute_id', instituteId)
-          .eq('status', 'completed')
-          .in('class_id', classIds);
-        const completedClassIds = new Set((completedClasses ?? []).map((c: any) => c.class_id));
-        classIds = classIds.filter((cid) => completedClassIds.has(cid));
+      if (classIds.length > 0) {
+        if (filters.teacherId) {
+          let teacherClassQuery = supabase
+            .from('live_classes')
+            .select('class_id')
+            .eq('teacher_id', filters.teacherId)
+            .eq('status', 'completed')
+            .in('class_id', classIds);
+
+          if (filters.dateFrom) teacherClassQuery = teacherClassQuery.gte('scheduled_at', filters.dateFrom);
+          if (filters.dateTo) teacherClassQuery = teacherClassQuery.lte('scheduled_at', filters.dateTo);
+
+          const { data: teacherClasses } = await teacherClassQuery;
+          const teacherClassIds = new Set((teacherClasses ?? []).map((c: any) => c.class_id));
+          classIds = classIds.filter((cid) => teacherClassIds.has(cid));
+        } else {
+          let completedClassQuery = supabase
+            .from('live_classes')
+            .select('class_id')
+            .eq('institute_id', instituteId)
+            .eq('status', 'completed')
+            .in('class_id', classIds);
+
+          if (filters.dateFrom) completedClassQuery = completedClassQuery.gte('scheduled_at', filters.dateFrom);
+          if (filters.dateTo) completedClassQuery = completedClassQuery.lte('scheduled_at', filters.dateTo);
+
+          const { data: completedClasses } = await completedClassQuery;
+          const completedClassIds = new Set((completedClasses ?? []).map((c: any) => c.class_id));
+          classIds = classIds.filter((cid) => completedClassIds.has(cid));
+        }
       }
 
-      if (classIds.length === 0) return [];
-
-      // Get attendance records
-      const { data: attendanceRecords } = await supabase
-        .from('attendance')
-        .select('student_id, class_id, attendance_status')
-        .in('class_id', classIds);
-
-      // Map class_id to batch_id (deduplicated — one class may belong to multiple subjects in the same batch)
-      const classBatchMap = new Map();
+      // 3. Map class_id to batch_id (safely handle PostgREST object or array)
+      const classBatchMap = new Map<string, string>();
       for (const link of classBSLinks ?? []) {
-        const batchSubjects = (link.batch_subjects ?? []) as Array<{ batch_id: string }>;
-        const bid = batchSubjects[0]?.batch_id;
+        const bs = (link as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
         if (bid && !classBatchMap.has(link.class_id)) {
           classBatchMap.set(link.class_id, bid);
         }
       }
 
-      // Compute per-batch stats
-      const batchStats = new Map<string, { present: number; partial: number; absent: number; students: Set<string> }>();
+      // 4. Compute per-batch stats
+      const batchStats = new Map<string, { present: number; partial: number; absent: number }>();
       for (const bid of batchIds) {
-        batchStats.set(bid, { present: 0, partial: 0, absent: 0, students: new Set() });
+        batchStats.set(bid, { present: 0, partial: 0, absent: 0 });
       }
 
-      for (const rec of attendanceRecords ?? []) {
-        const bid = classBatchMap.get(rec.class_id);
-        if (!bid) continue;
-        const stats = batchStats.get(bid);
-        if (!stats) continue;
-        stats.students.add(rec.student_id);
-        if (rec.attendance_status === 'present') stats.present++;
-        else if (rec.attendance_status === 'partial') stats.partial++;
-        else stats.absent++;
+      if (classIds.length > 0) {
+        const { data: attendanceRecords } = await supabase
+          .from('attendance')
+          .select('student_id, class_id, attendance_status')
+          .in('class_id', classIds);
+
+        for (const rec of attendanceRecords ?? []) {
+          const bid = classBatchMap.get(rec.class_id);
+          if (!bid) continue;
+          const stats = batchStats.get(bid);
+          if (!stats) continue;
+          if (rec.attendance_status === 'present') stats.present++;
+          else if (rec.attendance_status === 'partial') stats.partial++;
+          else stats.absent++;
+        }
       }
 
       return batchIds.map((bid) => {
@@ -995,7 +1021,7 @@ export const attendanceAnalyticsService = {
         return {
           batchId: bid,
           batchName: batchNameMap.get(bid) ?? 'Unknown',
-          studentCount: stats.students.size,
+          studentCount: batchEnrolledCountMap.get(bid) ?? 0,
           averageAttendancePercent: avgPct,
           presentCount: stats.present,
           partialCount: stats.partial,
@@ -1327,9 +1353,9 @@ export const attendanceAnalyticsService = {
       const batchNameMap = new Map((batches ?? []).map((b: any) => [b.batch_id, b.name]));
       const classBatchMap = new Map<string, string>();
       for (const link of links ?? []) {
-        const batchSubjects = (link.batch_subjects ?? []) as Array<{ batch_id: string; batches?: Array<{ name: string }> }>;
-        const bid = batchSubjects[0]?.batch_id;
-        if (bid) {
+        const bs = (link as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+        if (bid && !classBatchMap.has(link.class_id)) {
           classBatchMap.set(link.class_id, bid);
         }
       }

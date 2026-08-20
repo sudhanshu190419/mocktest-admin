@@ -74,10 +74,10 @@ interface LiveStudioViewProps {
  * Manages camera preview, Go Live, LiveKit connection, and End Class.
  */
 export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassId, onLiveClassStarted }: LiveStudioViewProps): React.JSX.Element | null {
-  const { teacherProfile, isDemoMode, user } = useAuth();
+  const { teacherProfile, user } = useAuth();
 
-  const teacherId = teacherProfile?.id || 'demo-teacher';
-  const teacherName = teacherProfile?.name || 'Dr. Arvind Sharma';
+  const teacherId = teacherProfile?.id ?? '';
+  const teacherName = teacherProfile?.name ?? '';
   const currentProfileId = user?.id ?? null;
   const [showStartDialog, setShowStartDialog] = useState(false);
   const [showChat, setShowChat] = useState(false);

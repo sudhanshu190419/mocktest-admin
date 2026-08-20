@@ -143,6 +143,7 @@ export interface ApprovalQuestionExplanation {
   explanationVideoUrl: string | null;
   correctNumericalAnswer: number | null;
   numericalTolerance: number | null;
+  correctTextAnswer: string | null;
 }
 
 /** Full question detail for the approval detail view. */
@@ -428,31 +429,48 @@ export const questionApprovalService = {
       // Initialise items — teacher name is populated below via batch resolution
       const items = (data ?? []).map(toApprovalListItem);
 
-      // Batch-resolve teacher names from created_by IDs
-      // created_by references teacher_details.teacher_id, not profiles.profile_id,
-      // so we resolve through teacher_details → profiles in a second pass.
-      const distinctTeacherIds = [...new Set(items.map((i) => i.createdBy).filter(Boolean))];
+      // Batch-resolve creator names from created_by IDs (profiles.profile_id with teacher_id fallback)
+      const distinctCreatorIds = [...new Set(items.map((i) => i.createdBy).filter(Boolean))];
 
-      if (distinctTeacherIds.length > 0) {
-        // teacher_details has profile_id → join to profiles.name
-        const { data: teacherNameData } = await supabase
-          .from('teacher_details')
-          .select(
-            `\n            teacher_id,\n            profiles!inner ( name )\n          `,
-          )
-          .in('teacher_id', distinctTeacherIds);
+      if (distinctCreatorIds.length > 0) {
+        const nameMap = new Map<string, string | null>();
 
-        if (teacherNameData) {
-          const nameMap = new Map<string, string | null>();
-          for (const td of teacherNameData) {
-            const p = (td as any).profiles;
-            nameMap.set(td.teacher_id, p?.name ?? null);
+        // 1. Direct profile lookup (for admin and profile-backed creators)
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('profile_id, name')
+          .in('profile_id', distinctCreatorIds);
+
+        if (profileData) {
+          for (const p of profileData) {
+            nameMap.set(p.profile_id, p.name ?? null);
           }
+        }
 
-          // Apply resolved names
-          for (const item of items) {
-            item.teacherName = nameMap.get(item.createdBy) ?? item.teacherName;
+        // 2. Legacy fallback: check teacher_details where created_by was teacher_id
+        const unresolvedIds = distinctCreatorIds.filter((id) => !nameMap.has(id));
+        if (unresolvedIds.length > 0) {
+          const { data: teacherNameData } = await supabase
+            .from('teacher_details')
+            .select(
+              `
+              teacher_id,
+              profiles!inner ( name )
+            `,
+            )
+            .in('teacher_id', unresolvedIds);
+
+          if (teacherNameData) {
+            for (const td of teacherNameData) {
+              const p = (td as any).profiles;
+              nameMap.set(td.teacher_id, p?.name ?? null);
+            }
           }
+        }
+
+        // Apply resolved names
+        for (const item of items) {
+          item.teacherName = nameMap.get(item.createdBy) ?? item.teacherName;
         }
       }
 
@@ -559,6 +577,7 @@ export const questionApprovalService = {
             explanationVideoUrl: explanationData.explanation_video_url,
             correctNumericalAnswer: explanationData.correct_numerical_answer,
             numericalTolerance: explanationData.numerical_tolerance,
+            correctTextAnswer: explanationData.correct_text_answer ?? null,
           }
         : null;
 
@@ -1026,33 +1045,57 @@ async function fetchOptionsWithImages(
 }
 
 /**
- * Resolve teacher info from a `created_by` (teacher_details.teacher_id) value.
- *
- * Joins through `teacher_details` → `profiles` to get name and email.
+ * Resolve teacher/creator info from a `created_by` (profiles.profile_id or teacher_details.teacher_id) value.
  */
 async function resolveTeacherInfo(
-  teacherId: string,
+  creatorId: string,
 ): Promise<{ teacherId: string | null; name: string | null; email: string | null }> {
   try {
-    const { data } = await supabase
-      .from('teacher_details')
-      .select(
-        `\n        teacher_id,\n        profiles!inner ( name, email )\n      `,
-      )
-      .eq('teacher_id', teacherId)
+    // 1. Direct profile lookup (for admin creators and profile-backed creators)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('profile_id, name, email')
+      .eq('profile_id', creatorId)
       .maybeSingle();
 
-    if (!data) {
-      return { teacherId, name: null, email: null };
+    if (profile) {
+      // Check if this profile has a teacher_details entry
+      const { data: teacher } = await supabase
+        .from('teacher_details')
+        .select('teacher_id')
+        .eq('profile_id', profile.profile_id)
+        .maybeSingle();
+
+      return {
+        teacherId: teacher?.teacher_id ?? null,
+        name: profile.name ?? null,
+        email: profile.email ?? null,
+      };
     }
 
-    const p = (data as any).profiles;
-    return {
-      teacherId: data.teacher_id,
-      name: p?.name ?? null,
-      email: p?.email ?? null,
-    };
+    // 2. Legacy fallback: check if creatorId was a teacher_id
+    const { data: teacherData } = await supabase
+      .from('teacher_details')
+      .select(
+        `
+        teacher_id,
+        profiles!inner ( name, email )
+      `,
+      )
+      .eq('teacher_id', creatorId)
+      .maybeSingle();
+
+    if (teacherData) {
+      const p = (teacherData as any).profiles;
+      return {
+        teacherId: teacherData.teacher_id,
+        name: p?.name ?? null,
+        email: p?.email ?? null,
+      };
+    }
+
+    return { teacherId: null, name: null, email: null };
   } catch {
-    return { teacherId, name: null, email: null };
+    return { teacherId: null, name: null, email: null };
   }
 }

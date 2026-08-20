@@ -8,7 +8,7 @@ import { useUnreadNotifications } from '@/hooks/notification/useNotifications';
 
 export function TeacherHeader() {
   const router = useRouter();
-  const { user, teacherProfile, isDemoMode } = useAuth();
+  const { user, teacherProfile } = useAuth();
   const [showLiveStudio, setShowLiveStudio] = useState(false);
 
   const { data: unreadData } = useUnreadNotifications(
@@ -21,11 +21,6 @@ export function TeacherHeader() {
     <>
       <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white/80 px-6 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/80">
         <div className="flex items-center gap-3">
-          {isDemoMode && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-              Demo Mode
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-4">

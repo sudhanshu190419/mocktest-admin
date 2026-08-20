@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MOCK_TEACHER, MOCK_LEAVE_REQUESTS, EMPTY_TEACHER } from '@/data/mockData';
+import { MOCK_LEAVE_REQUESTS, EMPTY_TEACHER } from '@/data/mockData';
 import type { LeaveRequest } from '@/data/mockData';
 import { 
   Bank, 
@@ -21,16 +21,15 @@ import { useAuth } from '@/context/AuthContext';
 import { teacherService } from '@/services/teacherService';
 
 export const HrPortalView: React.FC = () => {
-  const { teacherProfile, isDemoMode } = useAuth();
+  const { teacherProfile } = useAuth();
   
-  // SWR local states initialized with mock data as fallback/initial if in demo mode
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(() => isDemoMode ? MOCK_LEAVE_REQUESTS : []);
-  const [employment, setEmployment] = useState(() => isDemoMode ? MOCK_TEACHER.employment : EMPTY_TEACHER.employment);
-  const [bankDetails, setBankDetails] = useState(() => isDemoMode ? MOCK_TEACHER.bankDetails : EMPTY_TEACHER.bankDetails);
-  const [qualifications, setQualifications] = useState(() => isDemoMode ? MOCK_TEACHER.qualifications : EMPTY_TEACHER.qualifications);
-  const [experiences, setExperiences] = useState(() => isDemoMode ? MOCK_TEACHER.experiences : EMPTY_TEACHER.experiences);
-  const [documents, setDocuments] = useState(() => isDemoMode ? MOCK_TEACHER.documents : EMPTY_TEACHER.documents);
-  const [specializations, setSpecializations] = useState(() => isDemoMode ? MOCK_TEACHER.specializations : EMPTY_TEACHER.specializations);
+  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [employment, setEmployment] = useState(() => EMPTY_TEACHER.employment);
+  const [bankDetails, setBankDetails] = useState(() => EMPTY_TEACHER.bankDetails);
+  const [qualifications, setQualifications] = useState(() => EMPTY_TEACHER.qualifications);
+  const [experiences, setExperiences] = useState(() => EMPTY_TEACHER.experiences);
+  const [documents, setDocuments] = useState(() => EMPTY_TEACHER.documents);
+  const [specializations, setSpecializations] = useState(() => EMPTY_TEACHER.specializations);
 
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [newCategory, setNewCategory] = useState<LeaveRequest['category']>('casual');
@@ -40,7 +39,7 @@ export const HrPortalView: React.FC = () => {
 
   useEffect(() => {
     const fetchHrPortalStats = async () => {
-      if (teacherProfile && !isDemoMode) {
+      if (teacherProfile) {
         const res = await teacherService.getTeacherHrData(teacherProfile.id);
         if (res) {
           if (res.leaves) setLeaves(res.leaves);
@@ -54,13 +53,13 @@ export const HrPortalView: React.FC = () => {
       }
     };
     fetchHrPortalStats();
-  }, [teacherProfile, isDemoMode]);
+  }, [teacherProfile]);
 
   const handleApplyLeave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) return;
 
-    if (teacherProfile && !isDemoMode) {
+    if (teacherProfile) {
       const res = await teacherService.applyForLeave(
         teacherProfile.id,
         newCategory,
@@ -71,18 +70,6 @@ export const HrPortalView: React.FC = () => {
       if (res) {
         setLeaves(prev => [res, ...prev]);
       }
-    } else {
-      // Demo fallback
-      const newReq: LeaveRequest = {
-        id: `lvr-${Date.now().toString().slice(-3)}`,
-        category: newCategory,
-        startDate,
-        endDate,
-        reason,
-        status: 'pending',
-        appliedDate: 'Today',
-      };
-      setLeaves(prev => [newReq, ...prev]);
     }
     
     setReason('');

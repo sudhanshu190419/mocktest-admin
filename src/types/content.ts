@@ -123,8 +123,14 @@ export interface Content {
   contentId: string;
   /** Institute that owns this content (FK → public.institutes). Denormalized for RLS. */
   instituteId: string;
-  /** Teacher who authored and uploaded this content (FK → public.teacher_details). */
-  teacherId: string;
+  /** Teacher who authored and uploaded this content (FK → public.teacher_details). Nullable for admin-created content. */
+  teacherId: string | null;
+  /** Profile ID of the creator (teacher or admin). */
+  createdBy?: string | null;
+  /** Full name of the creator from profiles. */
+  creatorName?: string | null;
+  /** Role of the creator from profiles (e.g. super_admin, academic_admin, teacher). */
+  creatorRole?: string | null;
   /** Chapter this content belongs to (FK → public.chapters). Exactly one per content. */
   chapterId: string;
   /** Subject derived from the chapter (FK → public.subjects). Denormalized for analytics. */

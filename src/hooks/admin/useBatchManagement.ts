@@ -157,8 +157,13 @@ export function useCreateBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (input: import('@/services/admin/batchManagementService').CreateBatchInput) =>
-      batchManagementService.createBatch(input),
+    mutationFn: async (input: import('@/services/admin/batchManagementService').CreateBatchInput) => {
+      const result = await batchManagementService.createBatch(input);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to create batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -172,13 +177,19 @@ export function useUpdateBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchId,
       input,
     }: {
       batchId: string;
       input: import('@/services/admin/batchManagementService').UpdateBatchInput;
-    }) => batchManagementService.updateBatch(batchId, input),
+    }) => {
+      const result = await batchManagementService.updateBatch(batchId, input);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to update batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -192,7 +203,13 @@ export function useArchiveBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (batchId: string) => batchManagementService.archive(batchId),
+    mutationFn: async (batchId: string) => {
+      const result = await batchManagementService.archive(batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to archive batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -206,7 +223,13 @@ export function useRestoreBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (batchId: string) => batchManagementService.restore(batchId),
+    mutationFn: async (batchId: string) => {
+      const result = await batchManagementService.restore(batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to restore batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -220,7 +243,13 @@ export function useActivateBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (batchId: string) => batchManagementService.activate(batchId),
+    mutationFn: async (batchId: string) => {
+      const result = await batchManagementService.activate(batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to activate batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -234,7 +263,13 @@ export function useDeactivateBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (batchId: string) => batchManagementService.deactivate(batchId),
+    mutationFn: async (batchId: string) => {
+      const result = await batchManagementService.deactivate(batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to deactivate batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -249,9 +284,16 @@ export function useDeleteBatch() {
   const invalidate = useInvalidateBatchManagement();
 
   return useMutation({
-    mutationFn: (batchId: string) => batchManagementService.delete(batchId),
+    mutationFn: async (batchId: string) => {
+      const result = await batchManagementService.delete(batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to delete batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
   });
 }
+

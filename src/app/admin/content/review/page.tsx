@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useContentList, useApproveContent, useRejectContent, useArchiveContent, useRestoreContent, useDeleteContent } from '@/hooks/content/useContent';
+import { useContentList, useApproveContent, useRejectContent, useArchiveContent, useRestoreContent, useUnarchiveContent, useDeleteContent } from '@/hooks/content/useContent';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -17,6 +17,7 @@ const TABS: { key: LifecycleStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All Content' },
   { key: 'pending_review', label: 'Pending Review' },
   { key: 'approved', label: 'Approved' },
+  { key: 'draft', label: 'Drafts' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'archived', label: 'Archived' },
 ];
@@ -74,6 +75,7 @@ export default function AdminContentReviewPage() {
   const { mutate: rejectContent } = useRejectContent();
   const { mutate: archiveContent } = useArchiveContent();
   const { mutate: restoreContent } = useRestoreContent();
+  const { mutate: unarchiveContent } = useUnarchiveContent();
   const { mutate: deleteContent } = useDeleteContent();
 
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; title: string } | null>(null);
@@ -117,6 +119,44 @@ export default function AdminContentReviewPage() {
       render: (c) => <StatusBadge status={c.status} />,
     },
     {
+      key: 'createdBy' as keyof Content,
+      header: 'Created By',
+      render: (c) => {
+        const name = c.creatorName || (c.createdBy ? 'Unknown' : 'Legacy Content');
+        const role = c.creatorRole;
+
+        const roleStyles: Record<string, string> = {
+          super_admin: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+          academic_admin: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+          teacher: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+          student: 'bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700',
+        };
+
+        const roleLabels: Record<string, string> = {
+          super_admin: 'Super Admin',
+          academic_admin: 'Academic Admin',
+          teacher: 'Teacher',
+          student: 'Student',
+        };
+
+        const badgeClass = role ? roleStyles[role] ?? 'bg-gray-100 text-gray-700 border-gray-200' : 'bg-gray-100 text-gray-500 border-gray-200';
+        const roleLabel = role ? roleLabels[role] ?? role : null;
+
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-xs font-medium text-gray-900 dark:text-gray-100">
+              {name}
+            </span>
+            {roleLabel && (
+              <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border ${badgeClass}`}>
+                {roleLabel}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: 'viewCount',
       header: 'Views',
       sortable: true,
@@ -133,19 +173,14 @@ export default function AdminContentReviewPage() {
       header: '',
       render: (c) => (
         <div className="flex items-center gap-1">
-          <Link href={`/teacher/content/${c.contentId}/preview`}
+          <Link href={`/admin/content/review/${c.contentId}`}
             className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50">
-            Preview
+            {c.status === 'pending_review' ? 'Review' : 'View'}
           </Link>
 
           {/* Pending Review actions */}
           {c.status === 'pending_review' && (
             <>
-              <Link
-                href={`/admin/content/review/${c.contentId}`}
-                className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50">
-                Review
-              </Link>
               <button type="button"
                 onClick={(e) => { e.stopPropagation(); approveContent(c.contentId); }}
                 className="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
@@ -162,6 +197,15 @@ export default function AdminContentReviewPage() {
             </>
           )}
 
+          {/* Draft actions */}
+          {c.status === 'draft' && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); approveContent(c.contentId); }}
+              className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50">
+              Publish
+            </button>
+          )}
+
           {/* Approved actions */}
           {c.status === 'approved' && (
             <button type="button"
@@ -169,7 +213,7 @@ export default function AdminContentReviewPage() {
                 e.stopPropagation();
                 setConfirmAction({ type: 'archive', id: c.contentId, title: c.title });
               }}
-              className="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">
+              className="rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50">
               Archive
             </button>
           )}
@@ -177,9 +221,9 @@ export default function AdminContentReviewPage() {
           {/* Archived actions */}
           {c.status === 'archived' && (
             <button type="button"
-              onClick={(e) => { e.stopPropagation(); restoreContent(c.contentId); }}
-              className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50">
-              Restore
+              onClick={(e) => { e.stopPropagation(); unarchiveContent(c.contentId); }}
+              className="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
+              Unarchive
             </button>
           )}
 
@@ -203,12 +247,23 @@ export default function AdminContentReviewPage() {
     <div>
       <PageHeader
         title="Content Review"
-        description="Review and manage teacher-uploaded content"
+        description="Review and manage academic study material"
         breadcrumbs={[
           { label: 'Admin', href: '/admin' },
           { label: 'Content', href: '/admin/content' },
           { label: 'Review' },
         ]}
+        actions={
+          <Link
+            href="/admin/content/create"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Upload Content
+          </Link>
+        }
       />
 
       {/* Tabs */}

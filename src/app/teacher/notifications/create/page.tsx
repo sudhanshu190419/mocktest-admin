@@ -9,7 +9,7 @@ import { useNotificationPermissions, AUDIENCE_LABELS } from '@/hooks/notificatio
 import { useSendAudienceNotification } from '@/hooks/notification/useSendNotification';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { priorityLabel, priorityColor } from '@/utils/notification';
-import type { NotificationPriority, NotificationAudienceType } from '@/types/notification';
+import type { NotificationPriority, NotificationType, NotificationAudienceType } from '@/types/notification';
 
 const PRIORITIES: { value: NotificationPriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400' },
@@ -70,7 +70,7 @@ export default function TeacherCreateNotificationPage() {
       instituteId,
       title: title.trim(),
       body: message.trim(),
-      eventType: 'announcement',
+      eventType: 'announcement' as NotificationType,
       priority,
       channel: 'in_app' as const,
       triggeredBy: user?.id ?? null,

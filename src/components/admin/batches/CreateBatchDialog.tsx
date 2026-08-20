@@ -1,11 +1,33 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, CircleNotch, Plus } from '@phosphor-icons/react';
+import { X, CircleNotch, Plus, ArrowsClockwise } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { useCreateBatch } from '@/hooks/admin/useBatchManagement';
 import type { CreateBatchInput } from '@/services/admin/batchManagementService';
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Derives a clean, standard batch code suggestion from the batch name.
+ * Enforces PostgreSQL regex format `^[A-Z0-9_-]+$` and maximum length 20.
+ */
+export function generateBatchCodeSuggestion(name: string): string {
+  if (!name.trim()) return '';
+
+  let cleaned = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  if (cleaned.length > 20) {
+    cleaned = cleaned.substring(0, 20).replace(/-+$/, '');
+  }
+
+  return cleaned;
+}
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +44,7 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
   // ── Form fields ────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [batchCode, setBatchCode] = useState('');
+  const [isManualCode, setIsManualCode] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
   const [streamId, setStreamId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -41,6 +64,25 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
     }
   }, [streams, streamId]);
 
+  // ── Handlers ───────────────────────────────────────────────────────────
+  function handleNameChange(val: string) {
+    setName(val);
+    if (!isManualCode) {
+      setBatchCode(generateBatchCodeSuggestion(val));
+    }
+  }
+
+  function handleBatchCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    setBatchCode(raw);
+    setIsManualCode(true);
+  }
+
+  function handleRegenerateCode() {
+    setIsManualCode(false);
+    setBatchCode(generateBatchCodeSuggestion(name));
+  }
+
   // ── Mutation ───────────────────────────────────────────────────────────
   const createMutation = useCreateBatch();
 
@@ -48,6 +90,7 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
   function resetForm() {
     setName('');
     setBatchCode('');
+    setIsManualCode(false);
     setAcademicYear('');
     setStreamId(streams[0]?.streamId ?? '');
     setStartDate('');
@@ -140,7 +183,7 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="e.g. JEE Target Alpha"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
                 required
@@ -149,13 +192,26 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                Batch Code <span className="text-red-500">*</span>
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Batch Code <span className="text-red-500">*</span>
+                </label>
+                {isManualCode && name.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleRegenerateCode}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                    title="Reset to auto-generated code"
+                  >
+                    <ArrowsClockwise size={12} weight="bold" />
+                    Auto
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={batchCode}
-                onChange={(e) => setBatchCode(e.target.value.toUpperCase())}
+                onChange={handleBatchCodeChange}
                 placeholder="e.g. JEE26-MOR-A"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 uppercase"
                 required

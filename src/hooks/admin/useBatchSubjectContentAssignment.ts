@@ -209,13 +209,19 @@ export function useAssignSubjectsToBatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchId,
       subjectIds,
     }: {
       batchId: string;
       subjectIds: string[];
-    }) => batchSubjectContentService.assignSubjectsToBatch(batchId, subjectIds),
+    }) => {
+      const result = await batchSubjectContentService.assignSubjectsToBatch(batchId, subjectIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to assign subjects to batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -239,13 +245,19 @@ export function useRemoveBatchSubject() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchSubjectId,
       force,
     }: {
       batchSubjectId: string;
       force?: boolean;
-    }) => batchSubjectContentService.removeBatchSubject(batchSubjectId, force),
+    }) => {
+      const result = await batchSubjectContentService.removeBatchSubject(batchSubjectId, force);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove batch subject.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -271,7 +283,7 @@ export function useAssignBatchSubjectContent() {
   const invalidate = useInvalidateBatchSubjectContent();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchSubjectId,
       contentIds,
       sectionName,
@@ -279,7 +291,13 @@ export function useAssignBatchSubjectContent() {
       batchSubjectId: string;
       contentIds: string[];
       sectionName?: string | null;
-    }) => batchSubjectContentService.assignContent(batchSubjectId, contentIds, sectionName),
+    }) => {
+      const result = await batchSubjectContentService.assignContent(batchSubjectId, contentIds, sectionName);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to assign content.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -295,13 +313,19 @@ export function useRemoveBatchSubjectContent() {
   const invalidate = useInvalidateBatchSubjectContent();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchSubjectId,
       contentId,
     }: {
       batchSubjectId: string;
       contentId: string;
-    }) => batchSubjectContentService.removeContent(batchSubjectId, contentId),
+    }) => {
+      const result = await batchSubjectContentService.removeContent(batchSubjectId, contentId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove content.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -317,13 +341,19 @@ export function useRemoveBatchSubjectContents() {
   const invalidate = useInvalidateBatchSubjectContent();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchSubjectId,
       contentIds,
     }: {
       batchSubjectId: string;
       contentIds: string[];
-    }) => batchSubjectContentService.removeContents(batchSubjectId, contentIds),
+    }) => {
+      const result = await batchSubjectContentService.removeContents(batchSubjectId, contentIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove contents.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -339,11 +369,17 @@ export function useReorderBatchSubjectContent() {
   const invalidate = useInvalidateBatchSubjectContent();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       reorderList,
     }: {
       reorderList: { batchSubjectContentId: string; orderSequence: number }[];
-    }) => batchSubjectContentService.reorderContent(reorderList),
+    }) => {
+      const result = await batchSubjectContentService.reorderContent(reorderList);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to reorder content.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -359,7 +395,7 @@ export function useUpdateBatchSubjectContentAssignment() {
   const invalidate = useInvalidateBatchSubjectContent();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       batchSubjectContentId,
       updates,
     }: {
@@ -369,9 +405,16 @@ export function useUpdateBatchSubjectContentAssignment() {
         isOptional?: boolean;
         orderSequence?: number;
       };
-    }) => batchSubjectContentService.updateAssignment(batchSubjectContentId, updates),
+    }) => {
+      const result = await batchSubjectContentService.updateAssignment(batchSubjectContentId, updates);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to update content assignment.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
   });
 }
+

@@ -38,6 +38,7 @@ import {
   uploadThumbnail as storageUploadThumbnail,
   deleteFile as storageDeleteFile,
 } from '../storage/storageService';
+import { auditService } from '@/services/audit/auditService';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type {
   DemoClass,
@@ -68,6 +69,9 @@ interface DbDemoClass {
   created_at: string;
   updated_at: string;
   published_at: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   streams?: { stream_id: string; name: string } | null;
 }
 
@@ -108,6 +112,9 @@ function mapDemoClass(db: DbDemoClass): DemoClass {
     createdAt: db.created_at,
     updatedAt: db.updated_at,
     publishedAt: db.published_at,
+    deletedAt: db.deleted_at ?? null,
+    deletedBy: db.deleted_by ?? null,
+    deleteReason: db.delete_reason ?? null,
   };
 }
 
@@ -167,7 +174,8 @@ export async function getDemoClasses(
   try {
     let query = supabase
       .from('demo_classes')
-      .select(DEMO_SELECT, { count: 'exact' });
+      .select(DEMO_SELECT, { count: 'exact' })
+      .is('deleted_at', null);
 
     // ── Filters ──────────────────────────────────────────────────────
     if (filters?.instituteId) {
@@ -220,6 +228,7 @@ export async function getDemoClassById(demoClassId: string): Promise<ApiResponse
       .from('demo_classes')
       .select(DEMO_SELECT)
       .eq('demo_class_id', demoClassId)
+      .is('deleted_at', null)
       .single<DbDemoClass>();
 
     if (error) {
@@ -573,6 +582,61 @@ export async function archiveDemoClass(demoClassId: string): Promise<ApiResponse
     }
 
     return { success: true, data: mapDemoClass(data) };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
+ * Soft-delete a demo class record (Enterprise Soft Delete).
+ *
+ * Sets `deleted_at` / `deleted_by` / `delete_reason` on the demo_classes row.
+ * Storage files are PRESERVED so the demo class can be restored from the Recycle Bin.
+ *
+ * @param demoClassId - The UUID of the demo class to delete.
+ * @param reason      - Optional reason captured for audit / delete_reason.
+ */
+export async function deleteDemoClass(
+  demoClassId: string,
+  reason?: string,
+): Promise<ApiResponse<void>> {
+  try {
+    validateUUID(demoClassId, 'demoClassId');
+
+    const existing = await getDemoClassById(demoClassId);
+    if (!existing.success || !existing.data) {
+      return { success: false, error: `Demo class not found: ${demoClassId}` };
+    }
+
+    const current = existing.data;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const deletedBy = user?.id ?? null;
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('demo_classes')
+      .update({
+        deleted_at: now,
+        deleted_by: deletedBy,
+        delete_reason: reason ?? null,
+      })
+      .eq('demo_class_id', demoClassId);
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    await auditService.logSoftDelete({
+      resourceType: 'demo_classes',
+      resourceId: demoClassId,
+      metadata: { demoClassId, title: current.title, deletedAt: now, deletedBy },
+      reason,
+    });
+
+    return { success: true };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }

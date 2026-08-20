@@ -70,7 +70,8 @@ export interface StudentListItem {
   isActive: boolean;
   enrollmentNo: string | null;
   targetYear: string | null;
-  batchInfo: { batchId: string; batchName: string } | null;
+  /** All batches this student is enrolled in (may be 0, 1, or many). */
+  batches: { batchId: string; batchName: string }[];
   createdAt: string;
   updatedAt: string | null;
 }
@@ -155,10 +156,19 @@ function mapBulkLifecycleAction(
   }
 }
 
-/** Maps a raw Supabase row (profiles JOIN student_details) to StudentListItem. */
+/** Maps a raw Supabase row (profiles → student_details → batch_students → batches) to StudentListItem. */
 function toStudentListItem(row: any): StudentListItem {
   const details = row.student_details ?? {};
-  const batch = row.batch_students?.[0]?.batch ?? null;
+  // batch_students is nested under student_details (FK: student_details.student_id → batch_students.student_id)
+  const rawBatches: any[] = Array.isArray(details.batch_students)
+    ? details.batch_students
+    : details.batch_students
+      ? [details.batch_students]
+      : [];
+  const batches = rawBatches
+    .map((bs: any) => bs?.batch)
+    .filter(Boolean)
+    .map((b: any) => ({ batchId: b.batch_id, batchName: b.name }));
   return {
     profileId: row.profile_id,
     studentId: details.student_id ?? null,
@@ -172,7 +182,7 @@ function toStudentListItem(row: any): StudentListItem {
     isActive: row.is_active ?? true,
     enrollmentNo: details.enrollment_no ?? null,
     targetYear: details.target_year ?? null,
-    batchInfo: batch ? { batchId: batch.batch_id, batchName: batch.name } : null,
+    batches,
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? null,
   };
@@ -264,12 +274,12 @@ export const studentLifecycleService = {
           student_details!left (
             student_id,
             enrollment_no,
-            target_year
-          ),
-          batch_students!left (
-            batch:batch_id (
-              batch_id,
-              name
+            target_year,
+            batch_students!left (
+              batch:batch_id (
+                batch_id,
+                name
+              )
             )
           )
         `,
@@ -292,7 +302,7 @@ export const studentLifecycleService = {
       }
 
       if (filters?.batchId) {
-        query = query.eq('batch_students.batch_id', filters.batchId);
+        query = query.eq('student_details.batch_students.batch_id', filters.batchId);
       }
 
       if (filters?.search) {
@@ -406,17 +416,16 @@ export const studentLifecycleService = {
           ? (lastActivityRes.value as any)?.data?.submitted_at ?? null
           : null;
 
-      // Extract first batch info from the batch response
-      let batchInfo: { batchId: string; batchName: string } | null = null;
+      // Extract batch info from the batch response
+      const batches: { batchId: string; batchName: string }[] = [];
       if (batchRes.status === 'fulfilled') {
         const batchData = (batchRes.value as any)?.data;
-        if (Array.isArray(batchData) && batchData.length > 0) {
-          const firstBatch = batchData[0]?.batch;
-          if (firstBatch) {
-            batchInfo = {
-              batchId: firstBatch.batch_id,
-              batchName: firstBatch.name,
-            };
+        if (Array.isArray(batchData)) {
+          for (const row of batchData) {
+            const b = row?.batch;
+            if (b?.batch_id && b?.name) {
+              batches.push({ batchId: b.batch_id, batchName: b.name });
+            }
           }
         }
       }
@@ -434,7 +443,7 @@ export const studentLifecycleService = {
         isActive: profile.is_active ?? true,
         enrollmentNo: details.enrollment_no ?? null,
         targetYear: details.target_year ?? null,
-        batchInfo,
+        batches,
         createdAt: profile.created_at ?? new Date().toISOString(),
         updatedAt: profile.updated_at ?? null,
         dob: details.dob ?? null,
@@ -668,12 +677,12 @@ export const studentLifecycleService = {
           student_details!left (
             student_id,
             enrollment_no,
-            target_year
-          ),
-          batch_students!left (
-            batch:batch_id (
-              batch_id,
-              name
+            target_year,
+            batch_students!left (
+              batch:batch_id (
+                batch_id,
+                name
+              )
             )
           )
         `,

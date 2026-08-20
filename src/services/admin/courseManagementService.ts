@@ -156,8 +156,6 @@ export interface CourseManagementFilters {
   status?: string;
   /** Filter by stream ID. */
   streamId?: string;
-  /** Filter by teacher ID (via course_teachers junction). */
-  teacherId?: string;
   /** Filter featured courses only. */
   featured?: boolean;
   /** Filter trending courses only. */
@@ -400,23 +398,6 @@ export const courseManagementService = {
         query = query.eq('stream_id', filters.streamId);
       }
 
-      if (filters?.teacherId) {
-        // Filter via course_teachers junction
-        const { data: courseIds } = await supabase
-          .from('course_teachers')
-          .select('course_id')
-          .eq('teacher_id', filters.teacherId);
-
-        const ids = (courseIds ?? []).map((r: any) => r.course_id);
-        if (ids.length === 0) {
-          return {
-            success: true,
-            data: buildPaginatedResponse([], 0, pagination?.page ?? 1, pagination?.pageSize ?? 20),
-          };
-        }
-        query = query.in('course_id', ids);
-      }
-
       if (filters?.featured !== undefined) {
         query = query.eq('featured', filters.featured);
       }
@@ -447,42 +428,28 @@ export const courseManagementService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
-      // Build items with teacher/batch counts from separate queries
+      // Build items with batch counts from separate query
       const courseIdList = (data ?? []).map((row: any) => row.course_id);
 
-      // Fetch teacher and batch counts in parallel for all courses
-      let teachersCountMap = new Map<string, number>();
       let batchesCountMap = new Map<string, number>();
 
       if (courseIdList.length > 0) {
-        const [teachersRes, batchesRes] = await Promise.allSettled([
-          // Teacher counts per course
-          supabase
-            .from('course_teachers')
-            .select('course_id, count:teacher_id', { count: 'exact' })
-            .in('course_id', courseIdList),
-          // Batch counts per course
-          supabase
-            .from('course_batches')
-            .select('course_id, count:batch_id', { count: 'exact' })
-            .in('course_id', courseIdList),
-        ]);
+        const { data: batchesData } = await supabase
+          .from('course_batches')
+          .select('course_id, batch_id')
+          .in('course_id', courseIdList);
 
-        if (teachersRes.status === 'fulfilled' && teachersRes.value.data) {
-          for (const row of teachersRes.value.data as any[]) {
-            teachersCountMap.set(row.course_id, typeof row.count === 'number' ? row.count : 0);
-          }
-        }
-        if (batchesRes.status === 'fulfilled' && batchesRes.value.data) {
-          for (const row of batchesRes.value.data as any[]) {
-            batchesCountMap.set(row.course_id, typeof row.count === 'number' ? row.count : 0);
+        if (batchesData) {
+          for (const row of batchesData as any[]) {
+            const current = batchesCountMap.get(row.course_id) ?? 0;
+            batchesCountMap.set(row.course_id, current + 1);
           }
         }
       }
 
       const items = (data ?? []).map((row: any) => ({
         ...toCourseListItem(row),
-        teachersCount: teachersCountMap.get(row.course_id) ?? 0,
+        teachersCount: 0,
         batchesCount: batchesCountMap.get(row.course_id) ?? 0,
       }));
 
@@ -529,24 +496,7 @@ export const courseManagementService = {
       }
 
       // 2. Fetch related data in parallel
-      const [teachersRes, batchesRes, contentRes, enrollmentsRes] = await Promise.allSettled([
-        // Teachers assigned to this course
-        supabase
-          .from('course_teachers')
-          .select(
-            `
-            teacher_id,
-            role,
-            teacher_details!inner (
-              teacher_id,
-              profiles!inner (
-                name
-              )
-            )
-          `,
-          )
-          .eq('course_id', courseId),
-
+      const [batchesRes, contentRes, enrollmentsRes] = await Promise.allSettled([
         // Batches assigned to this course
         supabase
           .from('course_batches')
@@ -576,14 +526,6 @@ export const courseManagementService = {
           .eq('is_active', true),
       ]);
 
-      // Process teachers
-      const teacherData = teachersRes.status === 'fulfilled' ? teachersRes.value.data ?? [] : [];
-      const teachers = (Array.isArray(teacherData) ? teacherData : []).map((row: any) => ({
-        teacherId: row.teacher_details?.teacher_id ?? row.teacher_id,
-        name: row.teacher_details?.profiles?.name ?? 'Unknown',
-        role: row.role ?? null,
-      }));
-
       // Process batches
       const batchData = batchesRes.status === 'fulfilled' ? batchesRes.value.data ?? [] : [];
       const batches = (Array.isArray(batchData) ? batchData : []).map((row: any) => ({
@@ -608,7 +550,7 @@ export const courseManagementService = {
         deletedAt: course.deleted_at ?? null,
         contentCount,
         enrollmentCount,
-        teachers,
+        teachers: [],
         batches,
       };
 
@@ -1019,7 +961,7 @@ export const courseManagementService = {
         .eq('course_id', courseId);
 
       if (contentErr) {
-        console.warn('Could not check course_content:', contentErr.message);
+        return { success: false, error: extractErrorMessage(contentErr) };
       }
 
       if (contentCount && contentCount > 0) {
@@ -1082,7 +1024,7 @@ export const courseManagementService = {
     try {
       const instituteScope = instituteId ? { institute_id: instituteId } : {};
 
-      // 1. Count by stream
+      // 1. Count by stream — fetch active courses and aggregate by stream in memory
       const { data: streamData } = await supabase
         .from('courses')
         .select(
@@ -1090,19 +1032,28 @@ export const courseManagementService = {
           stream_id,
           streams!inner (
             name
-          ),
-          count:course_id
+          )
         `,
         )
         .is('deleted_at', null)
-        .match(instituteScope)
-        .order('count', { ascending: false })
-        .limit(10);
+        .match(instituteScope);
 
-      const byStream = (streamData ?? []).map((row: any) => ({
-        streamName: row.streams?.name ?? 'Unknown',
-        count: typeof row.count === 'number' ? row.count : 0,
-      }));
+      const streamCountMap = new Map<string, { streamName: string; count: number }>();
+      for (const row of (streamData ?? []) as any[]) {
+        const streamId = row.stream_id;
+        if (!streamId) continue;
+        const streamName = (Array.isArray(row.streams) ? row.streams[0]?.name : row.streams?.name) ?? 'Unknown';
+        const existing = streamCountMap.get(streamId);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          streamCountMap.set(streamId, { streamName, count: 1 });
+        }
+      }
+
+      const byStream = Array.from(streamCountMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
 
       // 2. Count by status — use getCounts and transform
       const countsRes = await this.getCounts(instituteId);
@@ -1137,16 +1088,19 @@ export const courseManagementService = {
       const newestCourses = (newestData ?? []).map(toCourseListItem);
 
       // 4. Most enrolled courses (top 10)
-      // Get enrollment counts via course_enrollments
+      // Get active enrollment counts via course_enrollments
       const { data: enrollmentData } = await supabase
         .from('course_enrollments')
-        .select('course_id, count:enrollment_id', { count: 'exact' })
+        .select('course_id')
         .eq('is_active', true);
 
       const enrollmentCountMap = new Map<string, number>();
       if (enrollmentData) {
         for (const row of enrollmentData as any[]) {
-          enrollmentCountMap.set(row.course_id, typeof row.count === 'number' ? row.count : 0);
+          if (row.course_id) {
+            const current = enrollmentCountMap.get(row.course_id) ?? 0;
+            enrollmentCountMap.set(row.course_id, current + 1);
+          }
         }
       }
 
@@ -1169,6 +1123,7 @@ export const courseManagementService = {
           `,
           )
           .is('deleted_at', null)
+          .match(instituteScope)
           .in('course_id', sortedByEnrollments);
 
         mostEnrolled = (topData ?? [])

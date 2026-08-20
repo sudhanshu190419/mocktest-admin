@@ -422,6 +422,7 @@ async function buildQuestionSnapshot(
     let explanationVideoUrl: string | null = null;
     let correctNumericalAnswer: number | null = null;
     let numericalTolerance: number | null = null;
+    let correctTextAnswer: string | null = null;
 
     const explResult = await getQuestionExplanation(questionId);
     if (explResult.success && explResult.data) {
@@ -429,6 +430,7 @@ async function buildQuestionSnapshot(
       explanationVideoUrl = explResult.data.explanationVideoUrl;
       correctNumericalAnswer = explResult.data.correctNumericalAnswer;
       numericalTolerance = explResult.data.numericalTolerance;
+      correctTextAnswer = explResult.data.correctTextAnswer;
     }
 
     // ── Load stem/explanation images ───────────────────────────────────
@@ -457,6 +459,7 @@ async function buildQuestionSnapshot(
       options: snapshotOptions,
       correctNumericalAnswer,
       numericalTolerance,
+      correctTextAnswer,
       explanationText,
       explanationVideoUrl,
       images: snapshotImages,

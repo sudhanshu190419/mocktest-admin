@@ -43,6 +43,7 @@ interface DbQuestionExplanation {
   explanation_video_url: string | null;
   correct_numerical_answer: number | null;
   numerical_tolerance: number | null;
+  correct_text_answer: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -65,6 +66,8 @@ interface CreateExplanationInput {
   correctNumericalAnswer?: number | null;
   /** Numerical tolerance for approximate matching. NULL = exact match. */
   numericalTolerance?: number | null;
+  /** Accepted text answer for text_based questions. */
+  correctTextAnswer?: string | null;
 }
 
 /**
@@ -79,6 +82,8 @@ interface UpdateExplanationInput {
   correctNumericalAnswer?: number | null;
   /** Updated numerical tolerance. */
   numericalTolerance?: number | null;
+  /** Updated correct text answer. */
+  correctTextAnswer?: string | null;
 }
 
 // ─── Mapping Helpers ────────────────────────────────────────────────────────
@@ -95,6 +100,7 @@ function mapExplanation(db: DbQuestionExplanation): QuestionExplanation {
     explanationVideoUrl: db.explanation_video_url,
     correctNumericalAnswer: db.correct_numerical_answer,
     numericalTolerance: db.numerical_tolerance,
+    correctTextAnswer: db.correct_text_answer,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
   };
@@ -233,6 +239,7 @@ export async function createQuestionExplanation(
       explanation_video_url: input.videoUrl ?? null,
       correct_numerical_answer: input.correctNumericalAnswer ?? null,
       numerical_tolerance: input.numericalTolerance ?? null,
+      correct_text_answer: input.correctTextAnswer ?? null,
     };
 
     // ── Insert ─────────────────────────────────────────────────────────
@@ -319,6 +326,10 @@ export async function updateQuestionExplanation(
 
     if (input.numericalTolerance !== undefined) {
       dbRecord.numerical_tolerance = input.numericalTolerance;
+    }
+
+    if (input.correctTextAnswer !== undefined) {
+      dbRecord.correct_text_answer = input.correctTextAnswer;
     }
 
     // ── If nothing to update, return current ────────────────────────────
@@ -456,6 +467,7 @@ export async function upsertQuestionExplanation(
       videoUrl: input.videoUrl,
       correctNumericalAnswer: input.correctNumericalAnswer,
       numericalTolerance: input.numericalTolerance,
+      correctTextAnswer: input.correctTextAnswer,
     });
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };

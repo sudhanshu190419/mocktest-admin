@@ -59,12 +59,13 @@ import type {
 //  Selects (RLS-scoped; FK-hinted embeds follow the project convention)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Request rows + joined teacher (teacher_details → profiles.name). */
+/** Request rows + joined teacher (teacher_details → profiles.name) + resolutions summary. */
 const ADMIN_REQUEST_SELECT = `*,
   teacher:teacher_details!fk_teacher_leave_requests_teacher(
     teacher_id, department,
     profile:profiles!fk_teacher_details_profile(profile_id, name)
-  )`;
+  ),
+  resolutions:class_resolution_events!fk_cre_leave_request(status, resolution_type)`;
 
 /** Occurrence rows + joined slot day/time and batch/subject names. */
 const ADMIN_OCCURRENCE_SELECT = `*,

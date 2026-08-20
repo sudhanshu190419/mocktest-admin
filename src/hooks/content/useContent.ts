@@ -35,7 +35,9 @@ import {
   rejectContent,
   archiveContent,
   restoreContent,
+  unarchiveContent,
 } from '../../services/content/contentService';
+import { generateSignedUrl } from '../../services/storage/storageService';
 import type { Content, ContentFilters, ContentSortOptions } from '../../types/content';
 import type { PaginatedResponse, PaginationParams } from '../../types/academic';
 import type { CreateContentParams, UpdateContentParams } from '../../services/content/contentService';
@@ -92,6 +94,52 @@ export function useContent(contentId: string | undefined | null) {
       return result.data!;
     },
     enabled: !!contentId,
+  });
+}
+
+/**
+ * Hook to retrieve a temporary secure signed URL for viewing/downloading content.
+ *
+ * Reuses `storageService.generateSignedUrl()` with React Query caching.
+ *
+ * @param content - The Content entity containing storageBucket, storagePath, and contentType.
+ * @param options - Optional override options (e.g. expiresIn seconds, enabled).
+ */
+export function useContentSignedUrl(
+  content: Content | undefined | null,
+  options?: { expiresIn?: number; enabled?: boolean },
+) {
+  const contentId = content?.contentId;
+  const storageBucket = content?.storageBucket;
+  const storagePath = content?.storagePath;
+  const contentType = content?.contentType;
+
+  const isEnabled =
+    (options?.enabled ?? true) &&
+    !!contentId &&
+    !!storageBucket &&
+    !!storagePath &&
+    !!contentType;
+
+  return useQuery<{ signedUrl: string; expiresAt: number }>({
+    queryKey: contentKeys.content.signedUrl(contentId ?? ''),
+    queryFn: async () => {
+      const result = await generateSignedUrl({
+        bucket: storageBucket!,
+        storagePath: storagePath!,
+        contentType: contentType!,
+        expiresIn: options?.expiresIn,
+      });
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error ?? 'Failed to generate signed URL.');
+      }
+
+      return result.data;
+    },
+    enabled: isEnabled,
+    staleTime: 45 * 60 * 1000, // 45 minutes cache
+    gcTime: 60 * 60 * 1000,
   });
 }
 
@@ -257,7 +305,7 @@ export function useArchiveContent() {
 }
 
 /**
- * Restore archived content (archived → draft).
+ * Restore archived content (archived → approved).
  *
  * On success, invalidates the affected detail and all list queries.
  */
@@ -269,6 +317,29 @@ export function useRestoreContent() {
       const result = await restoreContent(id);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to restore content.');
+      }
+      return result.data!;
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.detail(id) });
+      queryClient.invalidateQueries({ queryKey: contentKeys.content.lists() });
+    },
+  });
+}
+
+/**
+ * Unarchive content back to approved status (archived → approved).
+ *
+ * On success, invalidates the affected detail and all list queries.
+ */
+export function useUnarchiveContent() {
+  const queryClient = useQueryClient();
+
+  return useMutation<Content, Error, string>({
+    mutationFn: async (id) => {
+      const result = await unarchiveContent(id);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to unarchive content.');
       }
       return result.data!;
     },

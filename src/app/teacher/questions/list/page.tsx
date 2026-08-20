@@ -21,7 +21,9 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   mcq: 'MCQ',
   msq: 'MSQ (Multi)',
   numerical: 'Numerical',
+  text_based: 'Text-Based',
   true_false: 'True/False',
+  subjective: 'Subjective / Descriptive',
 };
 
 const DIFFICULTY_LABELS: Record<DifficultyLevel, string> = {

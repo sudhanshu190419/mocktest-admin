@@ -38,6 +38,7 @@ export interface QuestionFormData {
   explanationVideoUrl: string;
   correctNumericalAnswer: string;
   numericalTolerance: string;
+  correctTextAnswer: string;
   images: Array<{
     id: string;
     file?: File;
@@ -77,6 +78,8 @@ const QUESTION_TYPES: { value: string; label: string }[] = [
   { value: 'mcq', label: 'Multiple Choice (Single)' },
   { value: 'msq', label: 'Multiple Choice (Multi)' },
   { value: 'numerical', label: 'Numerical' },
+  { value: 'text_based', label: 'Text-Based / Short Answer' },
+  { value: 'subjective', label: 'Subjective / Descriptive' },
   { value: 'true_false', label: 'True / False' },
 ];
 
@@ -135,12 +138,16 @@ export function QuestionForm({
       const qType = type as QuestionType;
       const updates: Partial<QuestionFormData> = {
         questionType: qType,
-        options: defaultOptions(qType),
+        options: qType === 'numerical' || qType === 'text_based' || qType === 'subjective' ? [] : defaultOptions(qType),
       };
       // Clear numerical fields if not numerical
       if (qType !== 'numerical') {
         updates.correctNumericalAnswer = '';
         updates.numericalTolerance = '';
+      }
+      // Clear text answer if not text_based or subjective
+      if (qType !== 'text_based' && qType !== 'subjective') {
+        updates.correctTextAnswer = '';
       }
       onChange({ ...data, ...updates });
     },
@@ -321,6 +328,7 @@ export function QuestionForm({
           />
           {errors.marks && <p className="text-xs text-red-500">{errors.marks}</p>}
         </div>
+        {data.questionType !== 'subjective' && (
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Negative Marks
@@ -335,10 +343,11 @@ export function QuestionForm({
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
           />
         </div>
+        )}
       </div>
 
       {/* Options (for MCQ, MSQ, True/False) */}
-      {data.questionType !== 'numerical' && (
+      {data.questionType !== 'numerical' && data.questionType !== 'text_based' && data.questionType !== 'subjective' && (
         <OptionEditor
           options={data.options}
           questionType={data.questionType}
@@ -358,20 +367,17 @@ export function QuestionForm({
             explanationVideoUrl: data.explanationVideoUrl,
             correctNumericalAnswer: data.correctNumericalAnswer,
             numericalTolerance: data.numericalTolerance,
+            correctTextAnswer: data.correctTextAnswer,
           }}
           questionType={data.questionType}
           onChange={(ed) => {
-            // Merge all 4 fields into a single state update.
-            // Calling handleFieldChange 4 times sequentially would be batched
-            // by React, each starting from the same base `data` object, so
-            // only the last call's change would survive (the others get
-            // overwritten). A single call preserves all changes atomically.
             onChange({
               ...data,
               explanationText: ed.explanationText,
               explanationVideoUrl: ed.explanationVideoUrl,
               correctNumericalAnswer: ed.correctNumericalAnswer,
               numericalTolerance: ed.numericalTolerance,
+              correctTextAnswer: ed.correctTextAnswer,
             });
           }}
         />

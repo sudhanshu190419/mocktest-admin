@@ -14,21 +14,9 @@ import { useAuth } from '@/context/AuthContext';
 import { LiveStudioView } from '@/components/live-studio/LiveStudioView';
 
 export default function App() {
-  const { user, teacherProfile, isDemoMode, loading, completeOnboarding, skipOnboarding } = useAuth();
-  const [activeRole, setActiveRole] = useState<'teacher' | 'admin'>(() => {
-    if (typeof window !== 'undefined') {
-      const simRole = localStorage.getItem('EDTECH_SIM_ROLE');
-      return simRole === 'admin' ? 'admin' : 'teacher';
-    }
-    return 'teacher';
-  });
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const simRole = localStorage.getItem('EDTECH_SIM_ROLE');
-      return simRole === 'admin' ? 'admin-overview' : 'overview';
-    }
-    return 'overview';
-  });
+  const { user, teacherProfile, loading, completeOnboarding, skipOnboarding } = useAuth();
+  const [activeRole, setActiveRole] = useState<'teacher' | 'admin'>('teacher');
+  const [activeTab, setActiveTab] = useState('overview');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
 
   useEffect(() => {
@@ -41,7 +29,7 @@ export default function App() {
   const [showLiveStudio, setShowLiveStudio] = useState(false);
 
   useEffect(() => {
-    const role = teacherProfile?.role === 'admin' || localStorage.getItem('EDTECH_SIM_ROLE') === 'admin' ? 'admin' : 'teacher';
+    const role = teacherProfile?.role === 'admin' ? 'admin' : 'teacher';
     setActiveRole(role);
     if (role === 'admin' && (activeTab === 'overview' || activeTab === 'hr-portal')) {
       setActiveTab('admin-overview');
@@ -65,7 +53,7 @@ export default function App() {
     );
   }
 
-  if (!user && !isDemoMode) {
+  if (!user) {
     return <LoginView />;
   }
 

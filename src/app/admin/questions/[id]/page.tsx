@@ -882,6 +882,17 @@ export default function QuestionReviewPage() {
                   </div>
                 )}
 
+                {question.explanation!.correctTextAnswer && (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                      {question.questionType === 'subjective' ? 'Model Answer / Evaluation Guidance' : 'Accepted Text Answer'}
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-blue-700 dark:text-blue-400">
+                      {question.explanation!.correctTextAnswer}
+                    </p>
+                  </div>
+                )}
+
                 {/* Explanation images */}
                 {explanationImages.length > 0 && (
                   <div>

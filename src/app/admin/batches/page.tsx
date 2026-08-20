@@ -12,6 +12,8 @@ import {
   useRestoreBatch,
   useDeleteBatch,
 } from '@/hooks/admin/useBatchManagement';
+import { useStreams } from '@/hooks/academic/useStreams';
+import { useTeacherList } from '@/hooks/admin/useTeacherLifecycle';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { CreateBatchDialog } from '@/components/admin/batches/CreateBatchDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -64,17 +66,6 @@ const SORT_OPTIONS = [
   { value: 'teacherName_desc', label: 'Teacher (Z-A)' },
 ];
 
-const STREAM_OPTIONS = [
-  { value: '', label: 'All Streams' },
-];
-
-const TEACHER_OPTIONS = [
-  { value: '', label: 'All Teachers' },
-];
-
-const SUBJECT_OPTIONS = [
-  { value: '', label: 'All Subjects' },
-];
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Helpers
@@ -232,12 +223,44 @@ export default function BatchManagementPage() {
     refetch: refetchList,
   } = useBatchList(filters, sort, { page, pageSize });
 
+  // ── Stream & Teacher Options for Filters ─────────────────────────────
+  const { data: streamsData, refetch: refetchStreams } = useStreams(undefined, undefined, { page: 1, pageSize: 100 });
+  const { data: teachersData, refetch: refetchTeachers } = useTeacherList(
+    { status: 'approved' },
+    undefined,
+    { page: 1, pageSize: 100 },
+  );
+
+  const streamOptions = useMemo(() => {
+    const options = [{ value: '', label: 'All Streams' }];
+    if (streamsData?.data) {
+      streamsData.data.forEach((s) => {
+        options.push({ value: s.streamId, label: s.name });
+      });
+    }
+    return options;
+  }, [streamsData]);
+
+  const teacherOptions = useMemo(() => {
+    const options = [{ value: '', label: 'All Teachers' }];
+    if (teachersData?.data) {
+      teachersData.data.forEach((t) => {
+        if (t.teacherId) {
+          options.push({ value: t.teacherId, label: t.name });
+        }
+      });
+    }
+    return options;
+  }, [teachersData]);
+
   const isLoading = countsLoading || listLoading;
 
   const handleRefresh = useCallback(() => {
     refetchCounts();
     refetchList();
-  }, [refetchCounts, refetchList]);
+    refetchStreams();
+    refetchTeachers();
+  }, [refetchCounts, refetchList, refetchStreams, refetchTeachers]);
 
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const activateMutation = useActivateBatch();
@@ -684,7 +707,7 @@ export default function BatchManagementPage() {
         <Select
           value={streamFilter}
           onChange={(v) => handleFilterChange(setStreamFilter, v)}
-          options={STREAM_OPTIONS}
+          options={streamOptions}
           placeholder="All Streams"
           label="Stream"
           className="min-w-[140px]"
@@ -692,7 +715,7 @@ export default function BatchManagementPage() {
         <Select
           value={teacherFilter}
           onChange={(v) => handleFilterChange(setTeacherFilter, v)}
-          options={TEACHER_OPTIONS}
+          options={teacherOptions}
           placeholder="All Teachers"
           label="Teacher"
           className="min-w-[140px]"

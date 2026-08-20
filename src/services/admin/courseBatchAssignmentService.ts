@@ -5,7 +5,7 @@
  * Admin Course Management module.
  *
  * Every public method returns a standardised `ApiResponse<T>` shape.
- * Follows the exact same architecture as `courseTeacherAssignmentService.ts`,
+ * Follows the exact same architecture as `courseContentAssignmentService.ts`,
  * `batchTeacherAssignmentService.ts`, and `batchStudentAssignmentService.ts`.
  *
  * ## Scope
@@ -133,7 +133,7 @@ export const courseBatchAssignmentService = {
           // Student counts per batch (active only)
           supabase
             .from('batch_students')
-            .select('batch_id, count:student_id')
+            .select('batch_id, student_id')
             .in('batch_id', batchIds)
             .eq('status', 'active'),
         ]);
@@ -157,7 +157,8 @@ export const courseBatchAssignmentService = {
 
         if (studentsRes.status === 'fulfilled' && studentsRes.value.data) {
           for (const row of studentsRes.value.data as any[]) {
-            studentsCountMap.set(row.batch_id, typeof row.count === 'number' ? row.count : 0);
+            const current = studentsCountMap.get(row.batch_id) ?? 0;
+            studentsCountMap.set(row.batch_id, current + 1);
           }
         }
       }

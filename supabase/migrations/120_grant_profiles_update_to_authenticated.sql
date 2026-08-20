@@ -1,0 +1,95 @@
+-- ============================================================================
+-- Migration: 120 — Grant UPDATE on profiles to authenticated
+--
+-- PostgreSQL 16 | Supabase Compatible | Production Ready
+--
+-- Scope: SINGLE-SQL fix for the Teacher Management RLS failure (HTTP 403
+--        on PATCH public.profiles when a Super Admin suspends/approves/
+--        rejects/activates/deactivates a teacher).
+--
+-- Root cause:
+--   The authenticated role lacks the PostgreSQL UPDATE privilege on
+--   public.profiles. RLS policy "Admins have full access to profiles"
+--   (migration 029) correctly authorizes admins via is_admin(), but
+--   the UPDATE is denied at the privilege layer before RLS is evaluated.
+--
+-- Why this happened:
+--   Migration 001 created RLS policies on profiles referencing column "id",
+--   but migration 002 created the table with column "profile_id". Migration
+--   001 failed (table didn't exist yet), and the default Supabase
+--   authenticated-role grants may not have been applied to profiles.
+--
+-- What this migration does:
+--   Grants UPDATE on public.profiles to the authenticated role.
+--   RLS remains enabled. No existing policies are modified, weakened,
+--   or removed. The is_admin() gate in the RLS policy is the
+--   authorization layer; this migration only ensures the privilege
+--   layer does not block it.
+--
+-- Security impact:
+--   • After this migration, ANY authenticated user technically has the
+--     UPDATE privilege on profiles.
+--   • However, RLS policies still enforce authorization:
+--     - "Users can update their own profile" (migration 001) — self-access
+--     - "Admins have full access to profiles" (migration 029) — is_admin()
+--   • A non-admin attempting to UPDATE another user's profile will be
+--     denied by RLS (no matching policy).
+--   • A teacher attempting to UPDATE another teacher's profile will be
+--     denied by RLS (self-access policy requires auth.uid() = profile_id).
+--
+-- Depends on:
+--   Migration 002 (profiles table)
+--   Migration 021 (is_admin() function)
+--   Migration 029 (admin RLS policy on profiles)
+--
+-- Safe to re-run: Yes (GRANT is idempotent).
+-- ============================================================================
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECTION 1 — Grant UPDATE privilege
+-- ════════════════════════════════════════════════════════════════════════════
+-- Grant only UPDATE (not ALL) to follow the principle of least privilege.
+-- SELECT, INSERT, DELETE remain governed by existing grants/policies.
+
+grant update on public.profiles to authenticated;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECTION 2 — Verification (run after applying)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- 2a. Confirm the privilege was granted:
+--     SELECT has_table_privilege('authenticated', 'public.profiles', 'UPDATE');
+--     → Expected: true
+--
+-- 2b. Confirm RLS is still enabled:
+--     SELECT relrowsecurity FROM pg_class
+--     WHERE relname = 'profiles' AND relnamespace = 'public'::regnamespace;
+--     → Expected: true (relrowsecurity = true)
+--
+-- 2c. Confirm existing policies are unchanged:
+--     SELECT policyname, cmd, qual, with_check
+--     FROM pg_policies
+--     WHERE tablename = 'profiles'
+--     ORDER BY policyname;
+--     → Expected: "Admins have full access to profiles" (ALL, is_admin())
+--                  "Teachers can read profiles of students in their batches" (SELECT)
+--                  Any self-access policies from migration 001 (if they exist)
+--
+-- 2d. Functional smoke test (as a Super Admin):
+--     -- The following UPDATE should now succeed for admins:
+--     UPDATE public.profiles
+--     SET account_status = 'suspended'
+--     WHERE profile_id = '<teacher-profile-id>' AND role = 'teacher';
+--     → Expected: 1 row updated (not 403)
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECTION 3 — Rollback
+-- ════════════════════════════════════════════════════════════════════════════
+-- ROLLBACK SQL (NOT executed by this migration — copy & run manually only
+-- if this migration must be reverted):
+--
+--   REVOKE UPDATE ON public.profiles FROM authenticated;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- END OF MIGRATION — 120 Grant profiles UPDATE to authenticated
+-- ════════════════════════════════════════════════════════════════════════════

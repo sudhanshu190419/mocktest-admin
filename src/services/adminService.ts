@@ -218,7 +218,7 @@ export const adminService = {
       console.warn('Error in Supabase batch subject allotment:', err);
     }
 
-    // Dynamic fallback for both connected & demo mode to sync instantly in localStorage:
+    // Cache batch allotment locally for instant UI sync:
     const allottedKey = `EDTECH_ALLOTTED_BATCHES_${teacherId}`;
     const existingBatches = localStorage.getItem(allottedKey);
     const batchesList = existingBatches ? JSON.parse(existingBatches) : [];

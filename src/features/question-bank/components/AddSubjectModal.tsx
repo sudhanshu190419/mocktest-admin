@@ -31,6 +31,10 @@ export interface AddSubjectModalProps {
   isOpen: boolean;
   /** Existing subjects for duplicate detection. Pass the raw Subject array. */
   existingSubjects: Subject[];
+  /** Optional initial subject name to prefill. */
+  initialName?: string;
+  /** Optional initial subject code to prefill. */
+  initialCode?: string;
   /** Called when the modal should close without creating. */
   onClose: () => void;
   /** Called after a subject is successfully created, with the new Subject. */
@@ -42,6 +46,8 @@ export interface AddSubjectModalProps {
 export function AddSubjectModal({
   isOpen,
   existingSubjects,
+  initialName,
+  initialCode,
   onClose,
   onCreated,
 }: AddSubjectModalProps) {
@@ -72,11 +78,11 @@ export function AddSubjectModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setName('');
+      setName(initialName || '');
       setError(null);
       setSuccessMsg(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialName]);
 
   // ── Duplicate detection (case-insensitive) ──────────────────────────────
   const normalisedExistingNames = useMemo(

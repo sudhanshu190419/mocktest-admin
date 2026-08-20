@@ -14,6 +14,8 @@ export interface AddChapterModalProps {
   subjectId: string;
   /** Existing chapters under this subject for duplicate detection. */
   existingChapters: Chapter[];
+  /** Optional initial chapter name to prefill. */
+  initialName?: string;
   /** Called when the modal should close without creating. */
   onClose: () => void;
   /** Called after a chapter is successfully created, with the new Chapter. */
@@ -26,6 +28,7 @@ export function AddChapterModal({
   isOpen,
   subjectId,
   existingChapters,
+  initialName,
   onClose,
   onCreated,
 }: AddChapterModalProps) {
@@ -40,16 +43,21 @@ export function AddChapterModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setName('');
+      setName(initialName || '');
       setError(null);
       setSuccessMsg(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialName]);
 
-  // ── Duplicate detection (case-insensitive) ──────────────────────────────
+  // ── Duplicate detection (case-insensitive, scoped to subject) ───────────
   const normalisedExistingNames = useMemo(
-    () => new Set(existingChapters.map((c) => c.name.trim().toLowerCase())),
-    [existingChapters],
+    () =>
+      new Set(
+        existingChapters
+          .filter((c) => !c.subjectId || !subjectId || c.subjectId === subjectId)
+          .map((c) => c.name.trim().toLowerCase()),
+      ),
+    [existingChapters, subjectId],
   );
 
   // ── Submit handler ───────────────────────────────────────────────────────

@@ -12,14 +12,6 @@ import {
 } from '@/hooks/admin/useCourseManagement';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import {
-  useAssignedTeachers,
-  useAvailableTeachers,
-  useAssignTeachers,
-  useRemoveTeacher,
-  useRemoveTeachers,
-} from '@/hooks/admin/useCourseTeacherAssignment';
-import type { AssignedCourseTeacher, AvailableCourseTeacher } from '@/services/admin/courseTeacherAssignmentService';
-import {
   useAssignedBatches,
   useAvailableBatches,
   useAssignBatches,
@@ -35,6 +27,7 @@ import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable } from '@/components/ui/DataTable';
+import { CourseEditModal } from '@/components/ui/CourseEditModal';
 import type { Column } from '@/components/ui/DataTable';
 import type { CourseManagementDetail } from '@/services/admin/courseManagementService';
 import {
@@ -42,7 +35,6 @@ import {
   CalendarBlank,
   Clock,
   FileText,
-  ChalkboardTeacher,
   CheckCircle,
   Archive,
   Star,
@@ -60,6 +52,7 @@ import {
   GraduationCap,
   CircleNotch,
   PlusCircle,
+  PencilSimple,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -242,6 +235,9 @@ export default function CourseDetailPage() {
 
   const { data: course, isLoading, isError, error, refetch } = useCourseDetail(courseId);
 
+  // ── Edit Modal State ──────────────────────────────────────────────────
+  const [editModalOpen, setEditModalOpen] = useState(false);
+
   // ── Confirmation & Feedback State (Lifecycle) ────────────────────────
   const [confirmAction, setConfirmAction] = useState<{
     type: 'publish' | 'archive' | 'restore' | 'delete';
@@ -255,49 +251,6 @@ export default function CourseDetailPage() {
       setActionError(null);
       setActionSuccess(null);
     }, 4000);
-  }, []);
-
-  // ── Teacher Assignment State ─────────────────────────────────────────
-  const [teacherSearch, setTeacherSearch] = useState('');
-  const [debouncedTeacherSearch, setDebouncedTeacherSearch] = useState('');
-  const teacherSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const [selectedAssignedIds, setSelectedAssignedIds] = useState<Set<string>>(new Set());
-  const [selectedAvailableIds, setSelectedAvailableIds] = useState<Set<string>>(new Set());
-
-  const [teacherConfirmAction, setTeacherConfirmAction] = useState<{
-    type: 'assign' | 'remove-single' | 'remove-bulk';
-    teacherId?: string;
-    teacherName?: string;
-    count?: number;
-  } | null>(null);
-
-  const [teacherFeedback, setTeacherFeedback] = useState<{
-    type: 'success' | 'error';
-    message: string;
-  } | null>(null);
-
-  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const clearTeacherFeedback = useCallback(() => {
-    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-    feedbackTimeoutRef.current = setTimeout(() => setTeacherFeedback(null), 4000);
-  }, []);
-
-  // Teacher search debounce
-  useEffect(() => {
-    if (teacherSearchRef.current) clearTimeout(teacherSearchRef.current);
-    teacherSearchRef.current = setTimeout(() => setDebouncedTeacherSearch(teacherSearch), 400);
-    return () => {
-      if (teacherSearchRef.current) clearTimeout(teacherSearchRef.current);
-    };
-  }, [teacherSearch]);
-
-  // Clean up feedback timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-    };
   }, []);
 
   // ── Batch Assignment State ───────────────────────────────────────────
@@ -336,18 +289,12 @@ export default function CourseDetailPage() {
     };
   }, [batchSearch]);
 
-
-
-  // ── Query Hooks (Teacher Assignment) ─────────────────────────────────
-  const {
-    data: assignedTeachers,
-    isLoading: assignedLoading,
-  } = useAssignedTeachers(courseId);
-
-  const {
-    data: availableTeachers,
-    isLoading: availableLoading,
-  } = useAvailableTeachers(courseId, debouncedTeacherSearch || undefined);
+  // Clean up feedback timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (batchFeedbackTimeoutRef.current) clearTimeout(batchFeedbackTimeoutRef.current);
+    };
+  }, []);
 
   // ── Query Hooks (Batch Assignment) ───────────────────────────────────
   const {
@@ -360,17 +307,11 @@ export default function CourseDetailPage() {
     isLoading: availableBatchesLoading,
   } = useAvailableBatches(courseId, debouncedBatchSearch || undefined);
 
-
-
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const publishMutation = usePublishCourse();
   const archiveMutation = useArchiveCourse();
   const restoreMutation = useRestoreCourse();
   const deleteMutation = useDeleteCourse();
-
-  const assignMutation = useAssignTeachers();
-  const removeTeacherMutation = useRemoveTeacher();
-  const removeTeachersMutation = useRemoveTeachers();
 
   const assignBatchesMutation = useAssignBatches();
   const removeBatchMutation = useRemoveBatch();
@@ -422,212 +363,101 @@ export default function CourseDetailPage() {
     executeAction(confirmAction.type);
   }, [confirmAction, executeAction]);
 
-  // ── Teacher Confirm Dialog Handlers ──────────────────────────────────
-  const handleConfirmAssign = async () => {
-    if (!selectedAvailableIds.size) return;
-
-    const result = await assignMutation.mutateAsync({
-      courseId,
-      teacherIds: Array.from(selectedAvailableIds),
-    });
-
-    if (result.success) {
-      const count = result.data?.assigned ?? selectedAvailableIds.size;
-      setTeacherFeedback({
-        type: 'success',
-        message: `${count} teacher(s) assigned to this course successfully.`,
-      });
-      setSelectedAvailableIds(new Set());
-    } else {
-      setTeacherFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to assign teachers.',
-      });
-    }
-    setTeacherConfirmAction(null);
-    clearTeacherFeedback();
-  };
-
-  const handleConfirmRemoveSingle = async () => {
-    if (!teacherConfirmAction?.teacherId) return;
-
-    const result = await removeTeacherMutation.mutateAsync({
-      courseId,
-      teacherId: teacherConfirmAction.teacherId,
-    });
-
-    if (result.success) {
-      setTeacherFeedback({
-        type: 'success',
-        message: `"${teacherConfirmAction.teacherName ?? 'Teacher'}" removed from this course.`,
-      });
-    } else {
-      setTeacherFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to remove teacher.',
-      });
-    }
-    setTeacherConfirmAction(null);
-    clearTeacherFeedback();
-  };
-
-  const handleConfirmRemoveBulk = async () => {
-    if (!selectedAssignedIds.size) return;
-
-    const result = await removeTeachersMutation.mutateAsync({
-      courseId,
-      teacherIds: Array.from(selectedAssignedIds),
-    });
-
-    if (result.success) {
-      setTeacherFeedback({
-        type: 'success',
-        message: `${selectedAssignedIds.size} teacher(s) removed from this course.`,
-      });
-      setSelectedAssignedIds(new Set());
-    } else {
-      setTeacherFeedback({
-        type: 'error',
-        message: result.error ?? 'Failed to remove teachers.',
-      });
-    }
-    setTeacherConfirmAction(null);
-    clearTeacherFeedback();
-  };
-
-  const handleTeacherConfirm = async () => {
-    if (!teacherConfirmAction) return;
-    switch (teacherConfirmAction.type) {
-      case 'assign':
-        await handleConfirmAssign();
-        break;
-      case 'remove-single':
-        await handleConfirmRemoveSingle();
-        break;
-      case 'remove-bulk':
-        await handleConfirmRemoveBulk();
-        break;
-    }
-  };
-
-  const getTeacherConfirmProps = () => {
-    if (!teacherConfirmAction) {
-      return { open: false, title: '', message: '', variant: 'default' as const };
-    }
-
-    switch (teacherConfirmAction.type) {
-      case 'assign':
-        return {
-          open: true,
-          title: 'Assign Teachers',
-          message: `Assign ${teacherConfirmAction.count ?? selectedAvailableIds.size} selected teacher(s) to this course?`,
-          confirmLabel: 'Assign',
-          variant: 'default' as const,
-        };
-      case 'remove-single':
-        return {
-          open: true,
-          title: 'Remove Teacher',
-          message: `Remove "${teacherConfirmAction.teacherName ?? 'this teacher'}" from this course? They can be re-assigned later.`,
-          confirmLabel: 'Remove',
-          variant: 'danger' as const,
-        };
-      case 'remove-bulk':
-        return {
-          open: true,
-          title: 'Remove Teachers',
-          message: `Remove ${teacherConfirmAction.count ?? selectedAssignedIds.size} selected teacher(s) from this course? They can be re-assigned later.`,
-          confirmLabel: 'Remove All',
-          variant: 'danger' as const,
-        };
-      default:
-        return {
-          open: true,
-          title: 'Confirm Action',
-          message: 'Are you sure you want to proceed?',
-          confirmLabel: 'Confirm',
-          variant: 'default' as const,
-        };
-    }
-  };
-
-  const teacherConfirmProps = getTeacherConfirmProps();
-  const isTeacherConfirmLoading =
-    (teacherConfirmAction?.type === 'assign' && assignMutation.isPending) ||
-    (teacherConfirmAction?.type === 'remove-single' && removeTeacherMutation.isPending) ||
-    (teacherConfirmAction?.type === 'remove-bulk' && removeTeachersMutation.isPending);
-
   // ── Batch Confirm Dialog Handlers ────────────────────────────────────
   const handleBatchConfirmAssign = async () => {
     if (!selectedAvailableBatchIds.size) return;
 
-    const result = await assignBatchesMutation.mutateAsync({
-      courseId,
-      batchIds: Array.from(selectedAvailableBatchIds),
-    });
-
-    if (result.success) {
-      const count = result.data?.assigned ?? selectedAvailableBatchIds.size;
-      setBatchFeedback({
-        type: 'success',
-        message: `${count} batch(es) assigned to this course successfully.`,
+    try {
+      const result = await assignBatchesMutation.mutateAsync({
+        courseId,
+        batchIds: Array.from(selectedAvailableBatchIds),
       });
-      setSelectedAvailableBatchIds(new Set());
-    } else {
+
+      if (result.success) {
+        const count = result.data?.assigned ?? selectedAvailableBatchIds.size;
+        setBatchFeedback({
+          type: 'success',
+          message: `${count} batch(es) assigned to this course successfully.`,
+        });
+        setSelectedAvailableBatchIds(new Set());
+      } else {
+        setBatchFeedback({
+          type: 'error',
+          message: result.error ?? 'Failed to assign batches.',
+        });
+      }
+    } catch (err: any) {
       setBatchFeedback({
         type: 'error',
-        message: result.error ?? 'Failed to assign batches.',
+        message: err?.message ?? 'Failed to assign batches.',
       });
+    } finally {
+      setBatchConfirmAction(null);
+      clearBatchFeedback();
     }
-    setBatchConfirmAction(null);
-    clearBatchFeedback();
   };
 
   const handleBatchConfirmRemoveSingle = async () => {
     if (!batchConfirmAction?.batchId) return;
 
-    const result = await removeBatchMutation.mutateAsync({
-      courseId,
-      batchId: batchConfirmAction.batchId,
-    });
-
-    if (result.success) {
-      setBatchFeedback({
-        type: 'success',
-        message: `"${batchConfirmAction.batchName ?? 'Batch'}" removed from this course.`,
+    try {
+      const result = await removeBatchMutation.mutateAsync({
+        courseId,
+        batchId: batchConfirmAction.batchId,
       });
-    } else {
+
+      if (result.success) {
+        setBatchFeedback({
+          type: 'success',
+          message: `"${batchConfirmAction.batchName ?? 'Batch'}" removed from this course.`,
+        });
+      } else {
+        setBatchFeedback({
+          type: 'error',
+          message: result.error ?? 'Failed to remove batch.',
+        });
+      }
+    } catch (err: any) {
       setBatchFeedback({
         type: 'error',
-        message: result.error ?? 'Failed to remove batch.',
+        message: err?.message ?? 'Failed to remove batch.',
       });
+    } finally {
+      setBatchConfirmAction(null);
+      clearBatchFeedback();
     }
-    setBatchConfirmAction(null);
-    clearBatchFeedback();
   };
 
   const handleBatchConfirmRemoveBulk = async () => {
     if (!selectedAssignedBatchIds.size) return;
 
-    const result = await removeBatchesMutation.mutateAsync({
-      courseId,
-      batchIds: Array.from(selectedAssignedBatchIds),
-    });
-
-    if (result.success) {
-      setBatchFeedback({
-        type: 'success',
-        message: `${selectedAssignedBatchIds.size} batch(es) removed from this course.`,
+    try {
+      const result = await removeBatchesMutation.mutateAsync({
+        courseId,
+        batchIds: Array.from(selectedAssignedBatchIds),
       });
-      setSelectedAssignedBatchIds(new Set());
-    } else {
+
+      if (result.success) {
+        setBatchFeedback({
+          type: 'success',
+          message: `${selectedAssignedBatchIds.size} batch(es) removed from this course.`,
+        });
+        setSelectedAssignedBatchIds(new Set());
+      } else {
+        setBatchFeedback({
+          type: 'error',
+          message: result.error ?? 'Failed to remove batches.',
+        });
+      }
+    } catch (err: any) {
       setBatchFeedback({
         type: 'error',
-        message: result.error ?? 'Failed to remove batches.',
+        message: err?.message ?? 'Failed to remove batches.',
       });
+    } finally {
+      setBatchConfirmAction(null);
+      clearBatchFeedback();
     }
-    setBatchConfirmAction(null);
-    clearBatchFeedback();
   };
 
   const handleBatchConfirm = async () => {
@@ -732,140 +562,6 @@ export default function CourseDetailPage() {
         return null;
     }
   }, [confirmAction]);
-
-  // ── Assigned Teachers Columns ────────────────────────────────────────
-  const assignedTeacherColumns: Column<AssignedCourseTeacher>[] = useMemo(() => [
-    {
-      key: 'teacherName',
-      header: 'Name',
-      render: (item) => (
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-[10px] font-bold text-white shadow-sm">
-            {getInitials(item.teacherName)}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-              {item.teacherName}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'facultyId',
-      header: 'Faculty ID',
-      render: (item) => (
-        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-          {item.facultyId ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'department',
-      header: 'Department',
-      render: (item) => (
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {item.department ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'role',
-      header: 'Role',
-      render: (item) => (
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {item.role ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'assignedAt',
-      header: 'Assigned Date',
-      render: (item) => (
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {item.assignedAt ? formatDate(item.assignedAt) : '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (item) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setTeacherConfirmAction({
-              type: 'remove-single',
-              teacherId: item.teacherId,
-              teacherName: item.teacherName,
-            });
-          }}
-          disabled={removeTeacherMutation.isPending || removeTeachersMutation.isPending}
-          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
-        >
-          {removeTeacherMutation.isPending &&
-          teacherConfirmAction?.type === 'remove-single' &&
-          teacherConfirmAction?.teacherId === item.teacherId ? (
-            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <Trash size={12} />
-          )}
-          Remove
-        </button>
-      ),
-    },
-  ], [removeTeacherMutation.isPending, removeTeachersMutation.isPending, teacherConfirmAction]);
-
-  // ── Available Teachers Columns ───────────────────────────────────────
-  const availableTeacherColumns: Column<AvailableCourseTeacher>[] = useMemo(() => [
-    {
-      key: 'teacherName',
-      header: 'Name',
-      render: (item) => (
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[10px] font-bold text-white shadow-sm">
-            {getInitials(item.teacherName)}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-              {item.teacherName}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'facultyId',
-      header: 'Faculty ID',
-      render: (item) => (
-        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-          {item.facultyId ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'department',
-      header: 'Department',
-      render: (item) => (
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {item.department ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'designation',
-      header: 'Designation',
-      render: (item) => (
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {item.designation ?? '—'}
-        </span>
-      ),
-    },
-  ], []);
 
   // ── Assigned Batches Columns ─────────────────────────────────────────
   const assignedBatchColumns: Column<AssignedCourseBatch>[] = useMemo(() => [
@@ -1110,12 +806,22 @@ export default function CourseDetailPage() {
           { label: course.title },
         ]}
         actions={
-          <Link
-            href="/admin/courses"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            ← Back to List
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setEditModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+            >
+              <PencilSimple size={14} weight="bold" />
+              Edit Course
+            </button>
+            <Link
+              href="/admin/courses"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              ← Back to List
+            </Link>
+          </div>
         }
       />
 
@@ -1139,10 +845,6 @@ export default function CourseDetailPage() {
 
           {/* Quick stats */}
           <div className="flex flex-wrap gap-4 sm:flex-shrink-0">
-            <div className="text-center">
-              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{course.teachersCount}</p>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Teachers</p>
-            </div>
             <div className="text-center">
               <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{course.batchesCount}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Batches</p>
@@ -1281,13 +983,7 @@ export default function CourseDetailPage() {
               Statistics
             </h3>
             <p className="mb-4 text-xs text-gray-500">Usage and performance overview</p>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <StatCard
-                icon={<ChalkboardTeacher size={22} weight="duotone" />}
-                label="Teachers"
-                value={course.teachersCount}
-                color="purple"
-              />
+            <div className="grid grid-cols-2 gap-4">
               <StatCard
                 icon={<GraduationCap size={22} weight="duotone" />}
                 label="Batches"
@@ -1301,41 +997,6 @@ export default function CourseDetailPage() {
                 color="emerald"
               />
             </div>
-          </div>
-
-          {/* ════════════════════════════════════════════════════════════
-              Teachers Summary (Section 4)
-              ════════════════════════════════════════════════════════════ */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Teachers Summary
-            </h3>
-            <p className="mb-3 text-xs text-gray-500">Teachers assigned to this course</p>
-            {course.teachers.length > 0 ? (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {course.teachers.map((teacher) => (
-                  <div key={teacher.teacherId} className="flex items-center gap-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-[10px] font-bold text-white">
-                      {getInitials(teacher.name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {teacher.name}
-                      </p>
-                      {teacher.role && (
-                        <p className="text-xs text-gray-500">{teacher.role}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={<ChalkboardTeacher size={28} weight="thin" />}
-                title="No teachers assigned"
-                description="Teachers can be assigned to this course in the Teacher Assignment phase."
-              />
-            )}
           </div>
 
           {/* ════════════════════════════════════════════════════════════
@@ -1376,153 +1037,6 @@ export default function CourseDetailPage() {
           </div>
 
 
-
-          {/* ════════════════════════════════════════════════════════════
-              Teacher Assignment (Section — NEW)
-              ════════════════════════════════════════════════════════════ */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Teacher Assignment
-              </h3>
-            </div>
-            <p className="mb-4 text-xs text-gray-500">
-              Assign or remove teachers from this course. A course may have multiple teachers.
-            </p>
-
-            {/* Teacher feedback banners */}
-            {teacherFeedback && (
-              <div
-                className={`mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
-                  teacherFeedback.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                    : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                }`}
-              >
-                {teacherFeedback.type === 'success' ? (
-                  <CheckCircle size={16} weight="duotone" />
-                ) : (
-                  <XCircle size={16} weight="duotone" />
-                )}
-                {teacherFeedback.message}
-              </div>
-            )}
-
-            {/* Two-panel layout */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* ─── LEFT: Assigned Teachers ────────────────────────── */}
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Assigned ({assignedTeachers?.length ?? 0})
-                  </h4>
-                  {selectedAssignedIds.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTeacherConfirmAction({
-                          type: 'remove-bulk',
-                          count: selectedAssignedIds.size,
-                        })
-                      }
-                      disabled={removeTeachersMutation.isPending}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/20"
-                    >
-                      {removeTeachersMutation.isPending ? (
-                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <Trash size={12} />
-                      )}
-                      Remove Selected ({selectedAssignedIds.size})
-                    </button>
-                  )}
-                </div>
-
-                <DataTable
-                  columns={assignedTeacherColumns}
-                  data={assignedTeachers ?? []}
-                  keyExtractor={(item) => item.teacherId}
-                  isLoading={assignedLoading}
-                  selectedIds={selectedAssignedIds}
-                  onSelectionChange={setSelectedAssignedIds}
-                  emptyState={
-                    <EmptyState
-                      icon={<ChalkboardTeacher size={28} weight="thin" />}
-                      title="No teachers assigned"
-                      description="Use the Available Teachers panel to assign teachers to this course."
-                    />
-                  }
-                  className="min-h-[200px]"
-                />
-              </div>
-
-              {/* ─── RIGHT: Available Teachers ──────────────────────── */}
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Available ({availableTeachers?.length ?? 0})
-                  </h4>
-                  {selectedAvailableIds.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTeacherConfirmAction({
-                          type: 'assign',
-                          count: selectedAvailableIds.size,
-                        })
-                      }
-                      disabled={assignMutation.isPending}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
-                    >
-                      {assignMutation.isPending ? (
-                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <PlusCircle size={12} />
-                      )}
-                      Assign Selected ({selectedAvailableIds.size})
-                    </button>
-                  )}
-                </div>
-
-                {/* Search */}
-                <div className="mb-3">
-                  <SearchBar
-                    value={teacherSearch}
-                    onChange={setTeacherSearch}
-                    placeholder="Search by name or faculty ID..."
-                    className="w-full"
-                  />
-                </div>
-
-                <DataTable
-                  columns={availableTeacherColumns}
-                  data={availableTeachers ?? []}
-                  keyExtractor={(item) => item.teacherId}
-                  isLoading={availableLoading}
-                  selectedIds={selectedAvailableIds}
-                  onSelectionChange={setSelectedAvailableIds}
-                  emptyState={
-                    <EmptyState
-                      icon={<ChalkboardTeacher size={28} weight="thin" />}
-                      title={debouncedTeacherSearch ? 'No matching teachers' : 'No teachers available'}
-                      description={
-                        debouncedTeacherSearch
-                          ? 'Try a different search term.'
-                          : 'All eligible teachers are already assigned to this course.'
-                      }
-                    />
-                  }
-                  className="min-h-[200px]"
-                />
-              </div>
-            </div>
-          </div>
 
           {/* ════════════════════════════════════════════════════════════
               Batch Assignment (Section — NEW)
@@ -1903,22 +1417,6 @@ export default function CourseDetailPage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          Confirm Dialog (Teacher Assignment)
-         ════════════════════════════════════════════════════════════════ */}
-      <ConfirmDialog
-        open={teacherConfirmProps.open}
-        onClose={() => {
-          if (!isTeacherConfirmLoading) setTeacherConfirmAction(null);
-        }}
-        onConfirm={handleTeacherConfirm}
-        title={teacherConfirmProps.title}
-        message={teacherConfirmProps.message}
-        confirmLabel={teacherConfirmProps.confirmLabel}
-        variant={teacherConfirmProps.variant}
-        loading={isTeacherConfirmLoading}
-      />
-
-      {/* ════════════════════════════════════════════════════════════════
           Confirm Dialog (Batch Assignment)
          ════════════════════════════════════════════════════════════════ */}
       <ConfirmDialog
@@ -1935,6 +1433,15 @@ export default function CourseDetailPage() {
       />
 
 
+      {/* ════════════════════════════════════════════════════════════════
+          Edit Course Modal
+         ════════════════════════════════════════════════════════════════ */}
+      <CourseEditModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        course={course}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }

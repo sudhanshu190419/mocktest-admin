@@ -2,8 +2,8 @@
  * Course Content Assignment Hooks
  *
  * React Query hooks for the Admin Course Content Assignment module.
- * Follows the exact same pattern as hooks/admin/useCourseBatchAssignment.ts,
- * hooks/admin/useCourseTeacherAssignment.ts, and hooks/admin/useMockTestAssignment.ts.
+ * Follows the exact same pattern as hooks/admin/useCourseBatchAssignment.ts
+ * and hooks/admin/useMockTestAssignment.ts.
  *
  * ## Exports
  *
@@ -125,13 +125,19 @@ export function useAssignContent() {
   const invalidate = useInvalidateCourseContentAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       contentIds,
     }: {
       courseId: string;
       contentIds: string[];
-    }) => courseContentAssignmentService.assignContent(courseId, contentIds),
+    }) => {
+      const result = await courseContentAssignmentService.assignContent(courseId, contentIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to assign content.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -147,13 +153,19 @@ export function useRemoveContent() {
   const invalidate = useInvalidateCourseContentAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       contentId,
     }: {
       courseId: string;
       contentId: string;
-    }) => courseContentAssignmentService.removeContent(courseId, contentId),
+    }) => {
+      const result = await courseContentAssignmentService.removeContent(courseId, contentId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove content.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -169,13 +181,19 @@ export function useRemoveContents() {
   const invalidate = useInvalidateCourseContentAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       contentIds,
     }: {
       courseId: string;
       contentIds: string[];
-    }) => courseContentAssignmentService.removeContents(courseId, contentIds),
+    }) => {
+      const result = await courseContentAssignmentService.removeContents(courseId, contentIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove content items.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },

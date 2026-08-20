@@ -58,7 +58,13 @@ export type AuditAction =
   | 'failed_login'
   | 'reset_password'
   | 'device_approve'
-  | 'device_revoke';
+  | 'device_revoke'
+  // ── Migration 129 — subjective evaluation actions ───────────────────
+  | 'subjective_evaluation_saved'
+  | 'subjective_evaluation_finalized'
+  // ── Migration 133 — result release actions ─────────────────────────
+  | 'result_released'
+  | 'result_unreleased';
 
 // ─── AuditPayload ──────────────────────────────────────────────────────────
 

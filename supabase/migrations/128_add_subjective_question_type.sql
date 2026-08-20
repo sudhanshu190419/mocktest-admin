@@ -1,0 +1,21 @@
+-- ============================================================================
+-- Migration 128: Add Subjective / Descriptive Question Type
+--
+-- Adds 'subjective' to the public.question_type enum.
+-- This is a TYPE-DEFINITION-ONLY migration — no behavioral changes.
+--
+-- The 'subjective' type is for long-form free-text answers that require
+-- manual teacher evaluation. It is distinct from:
+--   - 'text_based' (short-answer with auto exact-match evaluation)
+--   - All other existing types (auto-evaluated via options/numerical)
+--
+-- No changes to:
+--   - existing enum values
+--   - existing constraints
+--   - existing text_based behavior
+--   - existing question data
+--   - existing tables or columns
+-- ============================================================================
+
+-- Add the new enum value
+ALTER TYPE public.question_type ADD VALUE IF NOT EXISTS 'subjective';

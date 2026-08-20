@@ -819,17 +819,20 @@ export const batchSubjectContentService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
+      const batch = Array.isArray(data.batches) ? data.batches[0] : data.batches;
+      const subject = Array.isArray(data.subjects) ? data.subjects[0] : data.subjects;
+
       return {
         success: true,
         data: {
           batchSubjectId: data.batch_subject_id,
           batchId: data.batch_id,
-          batchName: data.batches?.name ?? 'Unknown Batch',
+          batchName: batch?.name ?? 'Unknown Batch',
           subjectId: data.subject_id,
-          subjectName: data.subjects?.name ?? 'Unknown Subject',
-          subjectCode: data.subjects?.code ?? '',
+          subjectName: subject?.name ?? 'Unknown Subject',
+          subjectCode: subject?.code ?? '',
           isActive: data.is_active ?? true,
-          batchSubjectName: `${data.batches?.name ?? ''} - ${data.subjects?.name ?? ''}`,
+          batchSubjectName: `${batch?.name ?? ''} - ${subject?.name ?? ''}`,
         },
       };
     } catch (err) {
@@ -1163,12 +1166,25 @@ export const batchSubjectContentService = {
           .select('teacher_id', { count: 'exact', head: true })
           .eq('batch_subject_id', batchSubjectId),
         supabase
-          .from('live_classes')
-          .select('class_id', { count: 'exact', head: true })
+          .from('batch_subject_live_classes')
+          .select('assignment_id', { count: 'exact', head: true })
           .eq('batch_subject_id', batchSubjectId),
       ] as const;
 
       const [contentRes, mockTestRes, teacherRes, liveClassRes] = await Promise.all(promises);
+
+      if (contentRes.error) {
+        return { success: false, error: extractErrorMessage(contentRes.error) };
+      }
+      if (mockTestRes.error) {
+        return { success: false, error: extractErrorMessage(mockTestRes.error) };
+      }
+      if (teacherRes.error) {
+        return { success: false, error: extractErrorMessage(teacherRes.error) };
+      }
+      if (liveClassRes.error) {
+        return { success: false, error: extractErrorMessage(liveClassRes.error) };
+      }
 
       const contentCount = contentRes.count ?? 0;
       const mockTestCount = mockTestRes.count ?? 0;

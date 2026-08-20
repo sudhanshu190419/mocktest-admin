@@ -36,9 +36,12 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
     msq: 'Multiple Choice (Multi Correct)',
     numerical: 'Numerical',
     true_false: 'True / False',
+    text_based: 'Text-Based / Short Answer',
+    subjective: 'Subjective / Descriptive',
   };
 
   const isNumerical = question.questionType === 'numerical';
+  const isSubjective = question.questionType === 'subjective';
   const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
   return (
@@ -84,7 +87,7 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
           </p>
         </div>
 
-        {!isNumerical && options && options.length > 0 && (
+        {!isNumerical && !isSubjective && options && options.length > 0 && (
           <div className="space-y-3 px-6 pb-6">
             {options.map((option, index) => (
               <div
@@ -138,6 +141,14 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
                   {explanation.numericalTolerance != null && explanation.numericalTolerance > 0 && (
                     <span className="ml-2 text-blue-600">(±{explanation.numericalTolerance} tolerance)</span>
                   )}
+                </p>
+              </div>
+            )}
+            {explanation.correctTextAnswer && (
+              <div className="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <span className="font-medium">{isSubjective ? 'Model Answer / Evaluation Guidance: ' : 'Accepted Answer: '}</span>
+                  {explanation.correctTextAnswer}
                 </p>
               </div>
             )}

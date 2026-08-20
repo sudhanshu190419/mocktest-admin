@@ -5,12 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useContent,
+  useContentSignedUrl,
+  useContentList,
   useApproveContent,
   useRejectContent,
+  useArchiveContent,
+  useUnarchiveContent,
   useDeleteContent,
 } from '@/hooks/content/useContent';
 import { usePermissions } from '@/hooks/admin/usePermissions';
-import { useContentList } from '@/hooks/content/useContent';
 import { useApprovalHistory } from '@/hooks/content/useApproval';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -38,6 +41,9 @@ import {
   UserCircle,
   HardDrives,
   Sparkle,
+  Archive,
+  ArrowClockwise,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,6 +165,12 @@ export default function AdminContentReviewDetailPage() {
   const { canRestoreDeletedData } = usePermissions();
 
   const { data: content, isLoading, isError, error, refetch } = useContent(contentId);
+  const {
+    data: signedUrlData,
+    isLoading: signedUrlLoading,
+    isError: signedUrlError,
+    error: signedUrlErrorObj,
+  } = useContentSignedUrl(content);
 
   // ── Pending queue for Prev/Next navigation ───────────────────────────
   const { data: pendingQueueData, isLoading: pendingQueueLoading } = useContentList(
@@ -175,7 +187,7 @@ export default function AdminContentReviewDetailPage() {
   const { data: approvalHistory } = useApprovalHistory(contentId, 'content');
 
   // ── Confirmation & Feedback State ────────────────────────────────────
-  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' | 'delete' } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' | 'delete' | 'archive' | 'unarchive' } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -190,16 +202,17 @@ export default function AdminContentReviewDetailPage() {
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const approveMutation = useApproveContent();
   const rejectMutation = useRejectContent();
+  const archiveMutation = useArchiveContent();
+  const unarchiveMutation = useUnarchiveContent();
   const deleteMutation = useDeleteContent();
 
   // ── Action Executor ─────────────────────────────────────────────────
-  const executeAction = useCallback(async (action: 'approve' | 'reject' | 'delete') => {
+  const executeAction = useCallback(async (action: 'approve' | 'reject' | 'delete' | 'archive' | 'unarchive') => {
     setActionError(null);
     setActionSuccess(null);
     setActionLoading(true);
 
     try {
-      // Soft delete — handled separately (void mutation; item moves to Recycle Bin)
       if (action === 'delete') {
         await deleteMutation.mutateAsync(contentId);
         setActionSuccess('Content moved to the Recycle Bin successfully');
@@ -207,9 +220,15 @@ export default function AdminContentReviewDetailPage() {
         return;
       }
 
-      if (action === 'approve') {
+      if (action === 'archive') {
+        await archiveMutation.mutateAsync(contentId);
+        setActionSuccess('Content archived successfully');
+      } else if (action === 'unarchive') {
+        await unarchiveMutation.mutateAsync(contentId);
+        setActionSuccess('Content unarchived and restored to Approved successfully');
+      } else if (action === 'approve') {
         await approveMutation.mutateAsync(contentId);
-        setActionSuccess('Content approved successfully');
+        setActionSuccess('Content published successfully');
       } else {
         await rejectMutation.mutateAsync(contentId);
         setActionSuccess('Content rejected. The teacher can revise and resubmit it.');
@@ -222,7 +241,7 @@ export default function AdminContentReviewDetailPage() {
       setConfirmAction(null);
       clearFeedback();
     }
-  }, [contentId, approveMutation, rejectMutation, deleteMutation, router, refetch, clearFeedback]);
+  }, [contentId, approveMutation, rejectMutation, archiveMutation, unarchiveMutation, deleteMutation, router, refetch, clearFeedback]);
 
   const handleConfirm = useCallback(() => {
     if (!confirmAction) return;
@@ -232,11 +251,25 @@ export default function AdminContentReviewDetailPage() {
   const confirmDialogConfig = confirmAction
     ? confirmAction.type === 'approve'
       ? {
-          title: 'Approve Content',
-          message: 'Are you sure you want to approve this content? It will become visible to students immediately.',
-          confirmLabel: 'Approve Content',
+          title: 'Publish / Approve Content',
+          message: 'Are you sure you want to publish this content? It will become visible to students immediately.',
+          confirmLabel: 'Publish Content',
           variant: 'default' as const,
         }
+      : confirmAction.type === 'archive'
+        ? {
+            title: 'Archive Content',
+            message: 'Are you sure you want to archive this content? It will be retired and hidden from students, but can be unarchived at any time.',
+            confirmLabel: 'Archive Content',
+            variant: 'default' as const,
+          }
+      : confirmAction.type === 'unarchive'
+        ? {
+            title: 'Unarchive Content',
+            message: 'Are you sure you want to unarchive this content? It will become active and visible to students immediately.',
+            confirmLabel: 'Unarchive Content',
+            variant: 'default' as const,
+          }
       : confirmAction.type === 'reject'
         ? {
             title: 'Reject Content',
@@ -371,6 +404,24 @@ export default function AdminContentReviewDetailPage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Draft Publish */}
+          {content.status === 'draft' && (
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'approve' })}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+            >
+              {actionLoading && confirmAction?.type === 'approve' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <CheckCircle size={14} weight="fill" />
+              )}
+              Publish Content
+            </button>
+          )}
+
+          {/* Pending Review actions */}
           {content.status === 'pending_review' && (
             <>
               <button
@@ -401,6 +452,40 @@ export default function AdminContentReviewDetailPage() {
               </button>
             </>
           )}
+
+          {/* Approved actions */}
+          {content.status === 'approved' && (
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'archive' })}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-40"
+            >
+              {actionLoading && confirmAction?.type === 'archive' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <Archive size={14} weight="fill" />
+              )}
+              Archive Content
+            </button>
+          )}
+
+          {/* Archived actions */}
+          {content.status === 'archived' && (
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'unarchive' })}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+            >
+              {actionLoading && confirmAction?.type === 'unarchive' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <ArrowClockwise size={14} weight="bold" />
+              )}
+              Unarchive Content
+            </button>
+          )}
           {/* Soft Delete (Super Admin only) */}
           {canRestoreDeletedData && (
             <button
@@ -417,15 +502,28 @@ export default function AdminContentReviewDetailPage() {
               {actionLoading && confirmAction?.type === 'delete' ? 'Deleting...' : 'Delete'}
             </button>
           )}
-          <Link
-            href={`/teacher/content/${contentId}/preview`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <Eye size={14} />
-            Open Preview
-          </Link>
+          {/* Actions for Viewing / Downloading */}
+          {signedUrlData?.signedUrl && (
+            <>
+              <a
+                href={signedUrlData.signedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <ArrowSquareOut size={14} />
+                Open in New Tab
+              </a>
+              <a
+                href={signedUrlData.signedUrl}
+                download={content.originalFileName || content.title}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <DownloadSimple size={14} />
+                Download
+              </a>
+            </>
+          )}
         </div>
       </div>
 
@@ -503,10 +601,125 @@ export default function AdminContentReviewDetailPage() {
                 {content.mimeType}
               </span>
               <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                <UserCircle size={12} />
+                <FileText size={12} />
                 {content.originalFileName}
               </span>
+              {content.creatorName && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                  <UserCircle size={12} />
+                  By {content.creatorName} {content.creatorRole ? `(${content.creatorRole.replace('_', ' ')})` : ''}
+                </span>
+              )}
             </div>
+          </div>
+
+          {/* ─── Embedded Media / Document Preview Section ──────────────── */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Eye size={18} weight="duotone" className="text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Content Preview
+                </h3>
+              </div>
+              {signedUrlData?.signedUrl && (
+                <div className="flex items-center gap-2">
+                  <a
+                    href={signedUrlData.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    <ArrowSquareOut size={13} />
+                    New Tab
+                  </a>
+                  <a
+                    href={signedUrlData.signedUrl}
+                    download={content.originalFileName || content.title}
+                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    <DownloadSimple size={13} />
+                    Download
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Loading State */}
+            {signedUrlLoading && (
+              <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/40">
+                <CircleNotch size={24} className="animate-spin text-blue-600" />
+                <p className="mt-2 text-xs text-gray-500">Generating secure preview...</p>
+              </div>
+            )}
+
+            {/* Error State */}
+            {signedUrlError && (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-red-200 bg-red-50 p-6 text-center dark:border-red-900/40 dark:bg-red-900/10">
+                <XCircle size={24} className="text-red-500" />
+                <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-300">
+                  Unable to generate preview link.
+                </p>
+                <p className="mt-1 text-[11px] text-red-500">
+                  {signedUrlErrorObj?.message || 'Storage object may be missing or inaccessible.'}
+                </p>
+              </div>
+            )}
+
+            {/* Success State */}
+            {signedUrlData?.signedUrl && (
+              <div>
+                {/* 1. PDF / Document Preview */}
+                {(content.contentType === 'pdf' || content.mimeType === 'application/pdf') && (
+                  <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700">
+                    <iframe
+                      src={`${signedUrlData.signedUrl}#toolbar=1&navpanes=0`}
+                      className="h-[600px] w-full"
+                      title={content.title}
+                    />
+                  </div>
+                )}
+
+                {/* 2. Video Preview */}
+                {content.contentType === 'video' && (
+                  <div className="overflow-hidden rounded-lg bg-black">
+                    <video
+                      controls
+                      preload="metadata"
+                      className="max-h-[500px] w-full"
+                      src={signedUrlData.signedUrl}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                )}
+
+                {/* 3. Notes / Assignment / Other Document formats */}
+                {content.contentType !== 'pdf' &&
+                  content.contentType !== 'video' &&
+                  content.mimeType !== 'application/pdf' && (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800/40">
+                      <FileText size={40} className="text-gray-400" />
+                      <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {content.originalFileName}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Inline preview is not available for this file type ({content.mimeType}).
+                      </p>
+                      <div className="mt-4 flex items-center gap-2">
+                        <a
+                          href={signedUrlData.signedUrl}
+                          download={content.originalFileName || content.title}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+                        >
+                          <DownloadSimple size={14} />
+                          Download Document
+                        </a>
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
           </div>
 
           {/* File Information */}
@@ -522,6 +735,17 @@ export default function AdminContentReviewDetailPage() {
                 icon={<FileText size={18} />}
                 label="Original Name"
                 value={content.originalFileName}
+              />
+              <InfoRow
+                icon={<UserCircle size={18} />}
+                label="Created By"
+                value={
+                  content.creatorName
+                    ? `${content.creatorName}${content.creatorRole ? ` (${content.creatorRole.replace('_', ' ')})` : ''}`
+                    : content.createdBy
+                      ? 'Unknown'
+                      : 'Legacy Content'
+                }
               />
               <InfoRow
                 icon={<Tag size={18} />}
@@ -691,27 +915,61 @@ export default function AdminContentReviewDetailPage() {
                 </button>
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-gray-200 p-3 text-center dark:border-gray-700">
-                <p className="text-xs text-gray-400">
+              <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center dark:border-gray-700 space-y-3">
+                <p className="text-xs text-gray-500">
                   {content.status === 'approved'
-                    ? 'This content has been approved.'
-                    : content.status === 'rejected'
-                      ? 'This content has been rejected. The teacher can revise and resubmit it.'
-                      : 'This content is not awaiting review.'}
+                    ? 'This content is currently active and approved for students.'
+                    : content.status === 'archived'
+                      ? 'This content is archived and hidden from students.'
+                      : content.status === 'draft'
+                        ? 'This content is currently in draft.'
+                        : 'This content has been rejected. The teacher can revise and resubmit it.'}
                 </p>
+                {content.status === 'approved' && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction({ type: 'archive' })}
+                    disabled={actionLoading}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-40"
+                  >
+                    Archive Content
+                  </button>
+                )}
+                {content.status === 'archived' && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction({ type: 'unarchive' })}
+                    disabled={actionLoading}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+                  >
+                    Unarchive Content
+                  </button>
+                )}
+                {content.status === 'draft' && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction({ type: 'approve' })}
+                    disabled={actionLoading}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    Publish Content
+                  </button>
+                )}
               </div>
             )}
-            <div className="mt-3">
-              <Link
-                href={`/teacher/content/${contentId}/preview`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <Eye size={16} />
-                Open Full Preview
-              </Link>
-            </div>
+            {signedUrlData?.signedUrl && (
+              <div className="mt-3">
+                <a
+                  href={signedUrlData.signedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <ArrowSquareOut size={16} />
+                  Open Full Document
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </div>

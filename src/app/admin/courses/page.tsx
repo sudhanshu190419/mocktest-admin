@@ -11,7 +11,9 @@ import {
   useDeleteCourse,
 } from '@/hooks/admin/useCourseManagement';
 import { usePermissions } from '@/hooks/admin/usePermissions';
+import { useStreams } from '@/hooks/academic/useStreams';
 import { CourseCreateModal } from '@/components/ui/CourseCreateModal';
+import { CourseEditModal } from '@/components/ui/CourseEditModal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -61,14 +63,6 @@ const SORT_OPTIONS = [
   { value: 'duration_desc', label: 'Duration (Longest)' },
   { value: 'duration_asc', label: 'Duration (Shortest)' },
   { value: 'publishedAt_desc', label: 'Published (Newest)' },
-];
-
-const STREAM_OPTIONS = [
-  { value: '', label: 'All Streams' },
-];
-
-const TEACHER_OPTIONS = [
-  { value: '', label: 'All Teachers' },
 ];
 
 const BOOLEAN_OPTIONS = [
@@ -148,14 +142,14 @@ export default function CourseManagementPage() {
   const router = useRouter();
   const { canRestoreDeletedData } = usePermissions();
 
-  // ── Create Modal State ───────────────────────────────────────────────
+  // ── Create & Edit Modal State ─────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<CourseListItem | null>(null);
 
   // ── Filter State ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [streamFilter, setStreamFilter] = useState('');
-  const [teacherFilter, setTeacherFilter] = useState('');
   const [featuredFilter, setFeaturedFilter] = useState('');
   const [trendingFilter, setTrendingFilter] = useState('');
   const [sortKey, setSortKey] = useState('createdAt_desc');
@@ -202,11 +196,10 @@ export default function CourseManagementPage() {
   const filters = useMemo(() => ({
     status: statusFilter || undefined,
     streamId: streamFilter || undefined,
-    teacherId: teacherFilter || undefined,
     featured: featuredFilter ? featuredFilter === 'true' : undefined,
     trending: trendingFilter ? trendingFilter === 'true' : undefined,
     search: debouncedSearch || undefined,
-  }), [statusFilter, streamFilter, teacherFilter, featuredFilter, trendingFilter, debouncedSearch]);
+  }), [statusFilter, streamFilter, featuredFilter, trendingFilter, debouncedSearch]);
 
   const { data: counts, isLoading: countsLoading, refetch: refetchCounts } = useCourseManagementCounts();
 
@@ -218,12 +211,26 @@ export default function CourseManagementPage() {
     refetch: refetchList,
   } = useCourseList(filters, sort, { page, pageSize });
 
+  // ── Dynamic Streams for Filter ──────────────────────────────────────
+  const { data: streamsData, refetch: refetchStreams } = useStreams(undefined, undefined, { page: 1, pageSize: 100 });
+
+  const streamOptions = useMemo(() => {
+    const options = [{ value: '', label: 'All Streams' }];
+    if (streamsData?.data) {
+      streamsData.data.forEach((s) => {
+        options.push({ value: s.streamId, label: s.name });
+      });
+    }
+    return options;
+  }, [streamsData]);
+
   const isLoading = countsLoading || listLoading;
 
   const handleRefresh = useCallback(() => {
     refetchCounts();
     refetchList();
-  }, [refetchCounts, refetchList]);
+    refetchStreams();
+  }, [refetchCounts, refetchList, refetchStreams]);
 
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const publishMutation = usePublishCourse();
@@ -378,15 +385,6 @@ export default function CourseManagementPage() {
       ),
     },
     {
-      key: 'teachersCount',
-      header: 'Teachers',
-      render: (item) => (
-        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-          {item.teachersCount}
-        </span>
-      ),
-    },
-    {
       key: 'batchesCount',
       header: 'Batches',
       render: (item) => (
@@ -462,9 +460,18 @@ export default function CourseManagementPage() {
     {
       key: 'actions',
       header: 'Actions',
-      className: 'w-28 text-right',
+      className: 'w-32 text-right',
       render: (_item) => (
         <div className="flex items-center justify-end gap-1">
+          {/* Edit */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditingCourse(_item); }}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20"
+          >
+            Edit
+          </button>
+
           {/* Draft → Publish, Delete */}
           {(_item.status === 'draft' || _item.status === 'pending_approval' || _item.status === 'approved') && (
             <>
@@ -664,17 +671,9 @@ export default function CourseManagementPage() {
         <Select
           value={streamFilter}
           onChange={(v) => handleFilterChange(setStreamFilter, v)}
-          options={STREAM_OPTIONS}
+          options={streamOptions}
           placeholder="All Streams"
           label="Stream"
-          className="min-w-[140px]"
-        />
-        <Select
-          value={teacherFilter}
-          onChange={(v) => handleFilterChange(setTeacherFilter, v)}
-          options={TEACHER_OPTIONS}
-          placeholder="All Teachers"
-          label="Teacher"
           className="min-w-[140px]"
         />
         <Select
@@ -717,7 +716,7 @@ export default function CourseManagementPage() {
             icon={<BookOpen size={40} weight="thin" />}
             title="No courses found"
             description={
-              debouncedSearch || statusFilter || streamFilter || teacherFilter || featuredFilter || trendingFilter
+              debouncedSearch || statusFilter || streamFilter || featuredFilter || trendingFilter
                 ? 'Try adjusting your search or filters.'
                 : 'Courses will appear here once they are created.'
             }
@@ -755,6 +754,20 @@ export default function CourseManagementPage() {
         onClose={() => setCreateModalOpen(false)}
         onSuccess={() => {
           setActionSuccess('Course created successfully!');
+          clearFeedback();
+          handleRefresh();
+        }}
+      />
+
+      {/* ════════════════════════════════════════════════════════════════
+          Edit Course Modal
+         ════════════════════════════════════════════════════════════════ */}
+      <CourseEditModal
+        open={!!editingCourse}
+        onClose={() => setEditingCourse(null)}
+        course={editingCourse}
+        onSuccess={() => {
+          setActionSuccess('Course updated successfully!');
           clearFeedback();
           handleRefresh();
         }}

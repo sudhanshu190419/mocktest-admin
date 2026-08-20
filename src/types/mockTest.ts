@@ -46,7 +46,7 @@ export type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection };
  *
  * @see public.questions.question_type column
  */
-export type QuestionType = 'mcq' | 'msq' | 'numerical' | 'true_false';
+export type QuestionType = 'mcq' | 'msq' | 'numerical' | 'true_false' | 'text_based' | 'subjective';
 
 /**
  * Question difficulty level.
@@ -210,6 +210,8 @@ export interface QuestionSnapshot {
   correctNumericalAnswer: number | null;
   /** Acceptable margin of error for numerical answers. NULL = exact match. */
   numericalTolerance: number | null;
+  /** Correct accepted text answer for text_based type questions. NULL for non-text. */
+  correctTextAnswer?: string | null;
   /** Explanation text at snapshot time. NULL if no explanation was authored. */
   explanationText: string | null;
   /** Explanation video URL at snapshot time. NULL if no video was provided. */
@@ -413,6 +415,11 @@ export interface CreateQuestionInput {
   numericalTolerance?: number | null;
 
   /**
+   * Correct text answer (only relevant for text_based / short_answer type questions).
+   */
+  correctTextAnswer?: string | null;
+
+  /**
    * Stem/explanation images to upload for this question.
    * Images are uploaded after the question is created, before options are
    * processed. Each image is uploaded via questionImageService and linked
@@ -444,6 +451,8 @@ export interface UpdateQuestionInput {
   marks?: number;
   /** Only mutable when status is `draft` or `pending_approval`. */
   negativeMarks?: number;
+  /** Correct text answer for text_based questions */
+  correctTextAnswer?: string | null;
   /**
    * Option image operations to perform as part of the update.
    * Supports add, delete, replace, and reorder actions.
@@ -772,6 +781,11 @@ export interface QuestionExplanation {
    * NULL means exact match required.
    */
   numericalTolerance: number | null;
+  /**
+   * The accepted text answer for `text_based` type questions.
+   * NULL for MCQ, MSQ, True/False, and Numerical.
+   */
+  correctTextAnswer: string | null;
   /** UTC timestamp of row creation. */
   createdAt: string;
   /** UTC timestamp of last modification. Trigger-maintained. */
@@ -797,6 +811,8 @@ export interface CreateQuestionExplanationInput {
   correctNumericalAnswer?: number | null;
   /** Numerical tolerance for approximate matching. NULL = exact match. */
   numericalTolerance?: number | null;
+  /** Accepted text answer for text_based questions. */
+  correctTextAnswer?: string | null;
 }
 
 /**
@@ -810,6 +826,7 @@ export interface UpdateQuestionExplanationInput {
   explanationVideoUrl?: string | null;
   correctNumericalAnswer?: number | null;
   numericalTolerance?: number | null;
+  correctTextAnswer?: string | null;
 }
 
 /**
@@ -1433,6 +1450,11 @@ export interface MockAnswer {
    */
   numericalAnswer: number | null;
   /**
+   * Student's entered text value for `text_based` type questions.
+   * NULL for MCQ, MSQ, True/False, and Numerical.
+   */
+  textAnswer: string | null;
+  /**
    * NULL until scored. Set by the result-generation job.
    * TRUE if all correct options were selected and no incorrect options.
    * For numerical: TRUE if within tolerance.
@@ -1453,6 +1475,16 @@ export interface MockAnswer {
    * (last option selection or numerical entry). NULL for unattempted.
    */
   answeredAt: string | null;
+  /** Manual evaluation status for subjective questions. NULL for objective questions. */
+  evaluationStatus: 'pending' | 'manual_evaluated' | null;
+  /** Teacher-awarded marks for subjective questions. NULL until manually evaluated. */
+  awardedMarks: number | null;
+  /** Profile ID of the teacher who evaluated. NULL until evaluated. */
+  evaluatedBy: string | null;
+  /** UTC timestamp when manual evaluation was saved. NULL until evaluated. */
+  evaluatedAt: string | null;
+  /** Teacher feedback for the student. NULL until evaluated. */
+  evaluatorFeedback: string | null;
   /** UTC timestamp of row creation. Set at attempt creation time. */
   createdAt: string;
   /** UTC timestamp of last modification. Trigger-maintained. Updated on auto-save. */
@@ -1482,6 +1514,7 @@ export interface UpdateMockAnswerInput {
   isAnswered?: boolean;
   isMarkedForReview?: boolean;
   numericalAnswer?: number | null;
+  textAnswer?: string | null;
   /** Set to null the numerical answer (clear the field). */
   timeSpentSeconds?: number;
   answeredAt?: string | null;

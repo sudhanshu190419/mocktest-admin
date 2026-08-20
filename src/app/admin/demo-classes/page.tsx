@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
   useDemoClassList,
   usePublishDemoClass,
   useArchiveDemoClass,
+  useDeleteDemoClass,
 } from '@/hooks/admin/useDemoClassAdmin';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { DemoClassFormModal } from '@/components/admin/demo-classes/DemoClassFormModal';
@@ -17,7 +19,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Select } from '@/components/ui/Select';
 import { getDemoClassThumbnailUrl } from '@/services/admin/demoClassAdminService';
-import { Plus, PencilSimple, PaperPlaneTilt, ArchiveBoxIcon, VideoCamera } from '@phosphor-icons/react';
+import { Plus, PencilSimple, PaperPlaneTilt, ArchiveBoxIcon, VideoCamera, Eye, Trash } from '@phosphor-icons/react';
 import type { DemoClass } from '@/types/demoClass';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -66,6 +68,7 @@ export default function AdminDemoClassesPage() {
   // Changes on every open so the modal remounts with fresh form state.
   const [modalSession, setModalSession] = useState(0);
   const [archiveTarget, setArchiveTarget] = useState<DemoClass | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DemoClass | null>(null);
 
   // ── Feedback state (toast pattern from admin pages) ──────────────────
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -116,6 +119,7 @@ export default function AdminDemoClassesPage() {
   // ── Mutations ────────────────────────────────────────────────────────
   const publishMutation = usePublishDemoClass();
   const archiveMutation = useArchiveDemoClass();
+  const deleteMutation = useDeleteDemoClass();
 
   const openCreate = useCallback(() => {
     setEditingDemo(null);
@@ -154,6 +158,24 @@ export default function AdminDemoClassesPage() {
     });
   }, [archiveTarget, archiveMutation, showToast]);
 
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteMutation.mutate(
+      { demoClassId: target.demoClassId },
+      {
+        onSuccess: () => {
+          showToast('success', `"${target.title}" moved to Recycle Bin.`);
+          setDeleteTarget(null);
+        },
+        onError: (err) => {
+          showToast('error', err.message);
+          setDeleteTarget(null);
+        },
+      },
+    );
+  }, [deleteTarget, deleteMutation, showToast]);
+
   // ── Table columns ────────────────────────────────────────────────────
   const columns = useMemo<Column<DemoClass>[]>(
     () => [
@@ -162,17 +184,25 @@ export default function AdminDemoClassesPage() {
         header: 'Preview',
         render: (item) => {
           const url = getDemoClassThumbnailUrl(item);
-          return url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={url}
-              alt={item.title}
-              className="h-10 w-16 rounded-lg border border-gray-200 object-cover dark:border-gray-700"
-            />
-          ) : (
-            <div className="flex h-10 w-16 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-              <VideoCamera size={18} className="text-gray-400" />
-            </div>
+          return (
+            <Link
+              href={`/admin/demo-classes/${item.demoClassId}`}
+              className="block transition-transform hover:scale-105"
+              title="View demo class details"
+            >
+              {url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={url}
+                  alt={item.title}
+                  className="h-10 w-16 rounded-lg border border-gray-200 object-cover dark:border-gray-700"
+                />
+              ) : (
+                <div className="flex h-10 w-16 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                  <VideoCamera size={18} className="text-gray-400" />
+                </div>
+              )}
+            </Link>
           );
         },
       },
@@ -181,7 +211,12 @@ export default function AdminDemoClassesPage() {
         header: 'Title',
         render: (item) => (
           <div className="max-w-xs">
-            <p className="font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
+            <Link
+              href={`/admin/demo-classes/${item.demoClassId}`}
+              className="font-medium text-gray-900 transition-colors hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+            >
+              {item.title}
+            </Link>
             {item.description && (
               <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
                 {item.description}
@@ -219,6 +254,13 @@ export default function AdminDemoClassesPage() {
         header: 'Actions',
         render: (item) => (
           <div className="flex items-center gap-1">
+            <Link
+              href={`/admin/demo-classes/${item.demoClassId}`}
+              title="View Details & Video"
+              className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            >
+              <Eye size={16} />
+            </Link>
             <button
               type="button"
               title="Edit"
@@ -256,6 +298,17 @@ export default function AdminDemoClassesPage() {
                 <ArchiveBoxIcon size={16} />
               </button>
             )}
+            <button
+              type="button"
+              title="Delete (Move to Recycle Bin)"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteTarget(item);
+              }}
+              className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400"
+            >
+              <Trash size={16} />
+            </button>
           </div>
         ),
       },
@@ -375,6 +428,18 @@ export default function AdminDemoClassesPage() {
         confirmLabel="Archive"
         loading={archiveMutation.isPending}
         variant="warning"
+      />
+
+      {/* Delete confirmation (Soft delete to Recycle Bin) */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Move to Recycle Bin?"
+        message={`"${deleteTarget?.title ?? ''}" will be moved to the Recycle Bin. You can restore it later if needed.`}
+        confirmLabel="Move to Trash"
+        loading={deleteMutation.isPending}
+        variant="danger"
       />
     </div>
   );

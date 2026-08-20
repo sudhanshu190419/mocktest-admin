@@ -5,8 +5,8 @@
  * Admin Course Management module.
  *
  * Every public method returns a standardised `ApiResponse<T>` shape.
- * Follows the exact same architecture as `courseBatchAssignmentService.ts`,
- * `courseTeacherAssignmentService.ts`, and `batchStudentAssignmentService.ts`.
+ * Follows the exact same architecture as `courseBatchAssignmentService.ts`
+ * and `batchStudentAssignmentService.ts`.
  *
  * ## Scope
  *

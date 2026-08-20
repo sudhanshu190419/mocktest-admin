@@ -65,8 +65,8 @@ import type {
 export interface CreateContentParams {
   /** Institute that owns this content. */
   instituteId: string;
-  /** Teacher uploading this content. */
-  teacherId: string;
+  /** Optional authoring teacher (FK → public.teacher_details). If caller is a teacher, resolved automatically. */
+  teacherId?: string | null;
   /** Chapter this content belongs to. */
   chapterId: string;
   /** For versioned uploads: the content row this revision supersedes. */
@@ -140,7 +140,18 @@ export interface ContentQueryFilters extends ContentFilters {
 interface DbContent {
   content_id: string;
   institute_id: string;
-  teacher_id: string;
+  teacher_id: string | null;
+  created_by?: string | null;
+  creator?: {
+    profile_id: string;
+    name: string;
+    role: string;
+  } | null;
+  profiles?: {
+    profile_id: string;
+    name: string;
+    role: string;
+  } | null;
   chapter_id: string;
   subject_id: string;
   parent_content_id: string | null;
@@ -190,11 +201,11 @@ const SORT_FIELD_MAP: Record<string, string> = {
  * Value: allowed next statuses
  */
 const VALID_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
-  draft: ['pending_review', 'archived'],
+  draft: ['pending_review', 'approved', 'archived'],
   pending_review: ['approved', 'rejected'],
   approved: ['archived'],
   rejected: ['draft', 'archived'],
-  archived: ['draft'], // Restore from archive
+  archived: ['approved', 'draft'], // Restore from archive to approved or draft
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -205,10 +216,14 @@ const VALID_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
  * Converts a raw snake_case database row into a camelCase `Content` interface.
  */
 function mapContent(db: DbContent): Content {
+  const creator = db.creator ?? db.profiles ?? null;
   return {
     contentId: db.content_id,
     instituteId: db.institute_id,
-    teacherId: db.teacher_id,
+    teacherId: db.teacher_id ?? null,
+    createdBy: db.created_by ?? null,
+    creatorName: creator?.name ?? null,
+    creatorRole: creator?.role ?? null,
     chapterId: db.chapter_id,
     subjectId: db.subject_id,
     parentContentId: db.parent_content_id,
@@ -293,7 +308,7 @@ export async function getContents(
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('content')
-      .select('*', { count: 'exact' })
+      .select('*, creator:profiles!fk_content_created_by(profile_id, name, role)', { count: 'exact' })
       .is('deleted_at', null);
 
     // ── Apply filters ──────────────────────────────────────────────────
@@ -420,7 +435,7 @@ export async function getContentById(contentId: string): Promise<ApiResponse<Con
 
     const { data, error } = await supabase
       .from('content')
-      .select('*')
+      .select('*, creator:profiles!fk_content_created_by(profile_id, name, role)')
       .eq('content_id', contentId)
       .is('deleted_at', null)
       .single<DbContent>();
@@ -491,9 +506,6 @@ export async function createContent(
     if (!instituteId) {
       return { success: false, error: 'instituteId is required.' };
     }
-    if (!teacherId) {
-      return { success: false, error: 'teacherId is required.' };
-    }
     if (!chapterId) {
       return { success: false, error: 'chapterId is required.' };
     }
@@ -505,7 +517,9 @@ export async function createContent(
     }
 
     validateUUID(instituteId, 'instituteId');
-    validateUUID(teacherId, 'teacherId');
+    if (teacherId) {
+      validateUUID(teacherId, 'teacherId');
+    }
     validateUUID(chapterId, 'chapterId');
 
     if (parentContentId) {
@@ -515,27 +529,37 @@ export async function createContent(
     // ── 1. Generate content ID ─────────────────────────────────────────
     const contentId = generateUUID();
 
-    // ── 1.5 Resolve teacher_id from authenticated user ───────────────────
-    // The caller passes the profile_id as teacherId. We must resolve the
-    // actual teacher_details.teacher_id to satisfy RLS policies that join
-    // on teacher_details.profile_id = auth.uid().
-    // Uses the shared teacherResolver — the Content module's single source
-    // of truth for the profile_id → teacher_details.teacher_id mapping.
+    // ── 1.5 Resolve creator, admin role & teacher_id ─────────────────────
+    const { data: authData } = await supabase.auth.getUser();
+    const createdBy = authData?.user?.id ?? null;
+
+    const nowIso = new Date().toISOString();
+    let resolvedTeacherId: string | null = null;
+    let initialStatus: LifecycleStatus = 'draft';
+    let publishedAt: string | null = null;
+
+    // Check if the authenticated user is an authorized Super Admin or Academic Admin
+    const isAdmin = await canApproveAcademicResources();
     const resolved = await resolveCurrentTeacherId();
 
-    if (!resolved) {
-      return {
-        success: false,
-        error: 'No teacher profile exists for the authenticated user.',
-      };
+    if (isAdmin) {
+      // Super Admin / Academic Admin: directly approved & published
+      // Admin-created content uses teacher_id = NULL and created_by = authenticated admin
+      resolvedTeacherId = null;
+      initialStatus = 'approved';
+      publishedAt = nowIso;
+    } else {
+      // Ordinary teacher: must have an active teacher profile and starts in draft
+      if (!resolved) {
+        return {
+          success: false,
+          error: 'No teacher profile exists for the authenticated user.',
+        };
+      }
+      resolvedTeacherId = resolved.teacherId;
+      initialStatus = 'draft';
+      publishedAt = null;
     }
-
-    const resolvedTeacherId = resolved.teacherId;
-
-    // ── Validation log ──────────────────────────────────────────────────
-    console.log('Profile ID:', resolved.profileId);
-    console.log('Resolved Teacher ID:', resolvedTeacherId);
-    console.log('Final Payload Teacher ID:', resolvedTeacherId);
 
     // ── 2. Upload file ──────────────────────────────────────────────────
     const uploadResult = await storageUploadFile({
@@ -576,6 +600,7 @@ export async function createContent(
       content_id: contentId,
       institute_id: instituteId,
       teacher_id: resolvedTeacherId,
+      created_by: createdBy,
       chapter_id: chapterId,
       subject_id: chapterRow.subject_id,
       title: title.trim(),
@@ -588,6 +613,9 @@ export async function createContent(
       duration_seconds: durationSeconds ?? null,
       page_count: pageCount ?? null,
       file_size_bytes: fileSizeBytes,
+      status: initialStatus,
+      created_at: nowIso,
+      published_at: publishedAt,
       is_free_preview: isFreePreview ?? false,
     };
 
@@ -892,8 +920,22 @@ export async function archiveContent(contentId: string): Promise<ApiResponse<Con
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  10. restoreContent()
+//  10. restoreContent() / unarchiveContent()
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Restores archived content back to approved (active) status or draft.
+ *
+ * Status transition: `archived` → `approved`
+ *
+ * @param contentId - The UUID of the content to restore/unarchive.
+ */
+export async function unarchiveContent(contentId: string): Promise<ApiResponse<Content>> {
+  if (!(await canApproveAcademicResources())) {
+    return approvalPermissionDenied();
+  }
+  return transitionStatus(contentId, 'approved');
+}
 
 /**
  * Restores archived content back to draft for revision.
@@ -903,7 +945,7 @@ export async function archiveContent(contentId: string): Promise<ApiResponse<Con
  * @param contentId - The UUID of the content to restore.
  */
 export async function restoreContent(contentId: string): Promise<ApiResponse<Content>> {
-  return transitionStatus(contentId, 'draft');
+  return transitionStatus(contentId, 'approved');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

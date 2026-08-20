@@ -41,6 +41,8 @@
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
+import { auditService } from '../audit/auditService';
+import { createBulkNotification } from '../notification/notificationService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -52,6 +54,53 @@ import type {
   MockResultFilters,
   MockResultSortOptions,
 } from '../../types/mockTest';
+
+// ─── Internal Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Get the current authenticated user's profile_id.
+ * Returns null if not authenticated.
+ */
+async function getCurrentProfileId(): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send a student notification that their mock test result has been released.
+ * Fire-and-forget: notification failure must not block the release operation.
+ */
+async function notifyStudentResultReleased(
+  mockResult: MockResult,
+): Promise<void> {
+  try {
+    // Resolve the student's profile_id from student_details
+    const { data: studentRow } = await supabase
+      .from('student_details')
+      .select('profile_id')
+      .eq('student_id', mockResult.studentId)
+      .single();
+
+    if (!studentRow?.profile_id) return;
+
+    await createBulkNotification({
+      instituteId: mockResult.instituteId,
+      title: 'Mock Test Result Released',
+      body: 'Your result is now available. Check your My Results section.',
+      eventType: 'result_published',
+      referenceType: 'test_result',
+      referenceId: mockResult.attemptId,
+      recipientIds: [studentRow.profile_id],
+    });
+  } catch (err) {
+    // Notification failure must not block result release
+    console.warn('[ResultService] Failed to send release notification:', err);
+  }
+}
 
 // ─── Database Row Shape ────────────────────────────────────────────────────
 
@@ -618,7 +667,28 @@ export async function releaseResult(
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockResult(data) };
+    const released = mapMockResult(data);
+
+    // ── Audit log ────────────────────────────────────────────────────
+    const releasedBy = await getCurrentProfileId();
+    await auditService.log({
+      action: 'result_released',
+      resourceType: 'mock_results',
+      resourceId: released.resultId,
+      metadata: {
+        attemptId: released.attemptId,
+        studentId: released.studentId,
+        testId: released.testId,
+        releasedBy,
+        totalScore: released.totalScore,
+        maxScore: released.maxScore,
+      },
+    });
+
+    // ── Student notification (fire-and-forget) ───────────────────────
+    await notifyStudentResultReleased(released);
+
+    return { success: true, data: released };
   } catch (err) {
     console.group('RESULT SERVICE');
     console.log('Operation: releaseResult');
@@ -665,7 +735,23 @@ export async function hideResult(
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockResult(data) };
+    const hidden = mapMockResult(data);
+
+    // ── Audit log ────────────────────────────────────────────────────
+    const unreleasedBy = await getCurrentProfileId();
+    await auditService.log({
+      action: 'result_unreleased',
+      resourceType: 'mock_results',
+      resourceId: hidden.resultId,
+      metadata: {
+        attemptId: hidden.attemptId,
+        studentId: hidden.studentId,
+        testId: hidden.testId,
+        unreleasedBy,
+      },
+    });
+
+    return { success: true, data: hidden };
   } catch (err) {
     console.group('RESULT SERVICE');
     console.log('Operation: hideResult');
@@ -861,6 +947,13 @@ export async function releaseMockResults(
 
     validateUUID(testId, 'testId');
 
+    // ── Snapshot unreleased results BEFORE the RPC changes them ──────
+    const { data: unreleasedRows } = await supabase
+      .from('mock_results')
+      .select('result_id, attempt_id, student_id, test_id, institute_id, total_score, max_score')
+      .eq('test_id', testId)
+      .eq('is_released', false);
+
     const { data, error } = await supabase.rpc('release_test_results', {
       p_test_id: testId,
     });
@@ -873,9 +966,46 @@ export async function releaseMockResults(
     }
 
     const result = (data as DbReleaseCount[])?.[0];
+    const updatedCount = result?.updated_count ?? 0;
+
+    // ── Audit log (one per result released) ──────────────────────────
+    if (updatedCount > 0 && unreleasedRows && unreleasedRows.length > 0) {
+      const releasedBy = await getCurrentProfileId();
+      for (const row of unreleasedRows) {
+        // Audit log
+        await auditService.log({
+          action: 'result_released',
+          resourceType: 'mock_results',
+          resourceId: row.result_id,
+          metadata: {
+            attemptId: row.attempt_id,
+            studentId: row.student_id,
+            testId: row.test_id,
+            releasedBy,
+            totalScore: row.total_score,
+            maxScore: row.max_score,
+            bulkRelease: true,
+          },
+        });
+      }
+
+      // ── Student notifications (fire-and-forget) ────────────────────
+      for (const row of unreleasedRows) {
+        await notifyStudentResultReleased({
+          resultId: row.result_id,
+          attemptId: row.attempt_id,
+          studentId: row.student_id,
+          testId: row.test_id,
+          instituteId: row.institute_id,
+          totalScore: row.total_score,
+          maxScore: row.max_score,
+        } as MockResult);
+      }
+    }
+
     return {
       success: true,
-      data: { updatedCount: result?.updated_count ?? 0 },
+      data: { updatedCount },
     };
   } catch (err) {
     console.group('RESULT SERVICE');
@@ -912,6 +1042,13 @@ export async function unreleaseMockResults(
 
     validateUUID(testId, 'testId');
 
+    // ── Snapshot released results BEFORE the RPC changes them ────────
+    const { data: releasedRows } = await supabase
+      .from('mock_results')
+      .select('result_id, attempt_id, student_id, test_id')
+      .eq('test_id', testId)
+      .eq('is_released', true);
+
     const { data, error } = await supabase.rpc('unrelease_test_results', {
       p_test_id: testId,
     });
@@ -924,9 +1061,30 @@ export async function unreleaseMockResults(
     }
 
     const result = (data as DbReleaseCount[])?.[0];
+    const updatedCount = result?.updated_count ?? 0;
+
+    // ── Audit log (one per result unreleased) ────────────────────────
+    if (updatedCount > 0 && releasedRows && releasedRows.length > 0) {
+      const unreleasedBy = await getCurrentProfileId();
+      for (const row of releasedRows) {
+        await auditService.log({
+          action: 'result_unreleased',
+          resourceType: 'mock_results',
+          resourceId: row.result_id,
+          metadata: {
+            attemptId: row.attempt_id,
+            studentId: row.student_id,
+            testId: row.test_id,
+            unreleasedBy,
+            bulkUnrelease: true,
+          },
+        });
+      }
+    }
+
     return {
       success: true,
-      data: { updatedCount: result?.updated_count ?? 0 },
+      data: { updatedCount },
     };
   } catch (err) {
     console.group('RESULT SERVICE');

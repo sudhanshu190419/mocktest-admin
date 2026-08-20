@@ -23,9 +23,7 @@ export const notificationService = {
         .order('created_at', { ascending: false });
 
       if (error || !data || data.length === 0) {
-        // Fallback to local storage notifications in demo mode
-        const cached = localStorage.getItem(`EDTECH_NOTIFICATIONS_${profileId}`);
-        return cached ? JSON.parse(cached) : [];
+        return [];
       }
 
       return data.map((item: any) => {
@@ -42,8 +40,7 @@ export const notificationService = {
       });
     } catch (err) {
       console.error('Error fetching notifications:', err);
-      const cached = localStorage.getItem(`EDTECH_NOTIFICATIONS_${profileId}`);
-      return cached ? JSON.parse(cached) : [];
+      return [];
     }
   },
 
@@ -56,14 +53,6 @@ export const notificationService = {
         .from('notification_recipients')
         .update({ is_read: true, read_at: new Date().toISOString() })
         .eq('recipient_id', recipientId);
-
-      // Also update local storage if in demo mode
-      const cached = localStorage.getItem(`EDTECH_NOTIFICATIONS_${profileId}`);
-      if (cached) {
-        const notifs = JSON.parse(cached);
-        const updated = notifs.map((n: any) => n.id === recipientId ? { ...n, isRead: true } : n);
-        localStorage.setItem(`EDTECH_NOTIFICATIONS_${profileId}`, JSON.stringify(updated));
-      }
 
       return !error;
     } catch (err) {

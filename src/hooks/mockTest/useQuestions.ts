@@ -23,6 +23,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { questionKeys } from './queryKeys';
+import { adminKeys } from '../admin/queryKeys';
 import {
   getQuestions,
   getQuestionById,
@@ -145,6 +146,7 @@ export function useCreateQuestion() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: questionKeys.questions.lists() });
+      queryClient.invalidateQueries({ queryKey: adminKeys.questionApproval.all() });
     },
   });
 }

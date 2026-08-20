@@ -120,6 +120,10 @@ export const adminKeys = {
     /** Key for a single demo class detail by demoClassId. */
     detail: (demoClassId: string) =>
       [...adminKeys.demoClasses.details(), demoClassId] as const,
+
+    /** Key for signed URL of a demo class video. */
+    signedUrl: (demoClassId: string) =>
+      [...adminKeys.demoClasses.all(), 'signedUrl', demoClassId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -412,29 +416,6 @@ export const adminKeys = {
   // ═════════════════════════════════════════════════════════════════════════
   //  Course Teacher Assignment (admin Course Teacher Assignment module)
   // ═════════════════════════════════════════════════════════════════════════
-
-  courseTeacherAssignment: {
-    /** Root key for all course teacher assignment queries. */
-    all: () => [...adminKeys.all, 'courseTeacherAssignment'] as const,
-
-    /** Key for every assigned-teachers list query (broad invalidation). */
-    assigned: () => [...adminKeys.courseTeacherAssignment.all(), 'assigned'] as const,
-
-    /** Key for assigned teachers of a specific course. */
-    assignedTeachers: (courseId: string) =>
-      [...adminKeys.courseTeacherAssignment.assigned(), courseId] as const,
-
-    /** Key for every available-teachers list query. */
-    available: () => [...adminKeys.courseTeacherAssignment.all(), 'available'] as const,
-
-    /** Key for available teachers for a specific course. */
-    availableTeachers: (courseId: string) =>
-      [...adminKeys.courseTeacherAssignment.available(), courseId] as const,
-
-    /** Key for assignment stats of a specific course. */
-    stats: (courseId: string) =>
-      [...adminKeys.courseTeacherAssignment.all(), 'stats', courseId] as const,
-  },
 
   // ═════════════════════════════════════════════════════════════════════════
   //  Course Batch Assignment (admin Course Batch Assignment module)

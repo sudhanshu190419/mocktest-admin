@@ -15,6 +15,7 @@ import {
   useBulkActivateStudents,
 } from '@/hooks/admin/useStudentLifecycle';
 import { studentLifecycleService } from '@/services/admin/studentLifecycleService';
+import { useBatchList } from '@/hooks/admin/useBatchManagement';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -63,11 +64,7 @@ const SORT_OPTIONS = [
   { value: 'targetYear_asc', label: 'Target Year (Oldest)' },
 ];
 
-const BATCH_OPTIONS = [
-  { value: '', label: 'All Batches' },
-  // TODO: Fetch available batches from useBatches() hook and populate dynamically.
-  // The batchId filter still works programmatically when a valid batch UUID is passed.
-];
+
 
 const STATUS_COLOR_MAP: Record<string, 'amber' | 'emerald' | 'rose' | 'indigo' | 'gray'> = {
   pending: 'amber',
@@ -178,6 +175,16 @@ export default function StudentManagementPage() {
       setActionSuccess(null);
     }, 4000);
   }, []);
+
+  // ── Batch Options (dynamic) ────────────────────────────────────────
+  const { data: batchListData } = useBatchList();
+  const batchOptions = useMemo(() => {
+    const batches = batchListData?.data ?? [];
+    return [
+      { value: '', label: 'All Batches' },
+      ...batches.map((b) => ({ value: b.batchId, label: b.batchName })),
+    ];
+  }, [batchListData]);
 
   // ── Data Fetching ────────────────────────────────────────────────────
   const sort = getSortValue(sortKey);
@@ -462,9 +469,20 @@ export default function StudentManagementPage() {
       key: 'batch',
       header: 'Batch',
       render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.batchInfo?.batchName ?? '—'}
-        </span>
+        <div className="flex flex-wrap gap-1">
+          {item.batches.length === 0 ? (
+            <span className="text-xs text-gray-400">—</span>
+          ) : (
+            item.batches.map((b) => (
+              <span
+                key={b.batchId}
+                className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+              >
+                {b.batchName}
+              </span>
+            ))
+          )}
+        </div>
       ),
     },
     {
@@ -673,7 +691,7 @@ export default function StudentManagementPage() {
         <Select
           value={batchFilter}
           onChange={(v) => { setBatchFilter(v); setPage(1); }}
-          options={BATCH_OPTIONS}
+          options={batchOptions}
           placeholder="All Batches"
           label="Batch"
           className="min-w-[160px]"

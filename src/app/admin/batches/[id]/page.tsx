@@ -16,6 +16,7 @@ import {
 import type { AssignedStudent, AvailableStudent } from '@/services/admin/batchStudentAssignmentService';
 
 import BatchSubjectTeacherSection from '@/components/admin/batches/BatchSubjectTeacherSection';
+import { EditBatchDialog } from '@/components/admin/batches/EditBatchDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -45,6 +46,7 @@ import {
   Trash,
   PlusCircle,
   FileText,
+  PencilSimple,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -223,6 +225,7 @@ export default function BatchDetailPage() {
   // ── Student Assignment State ──────────────────────────────────────────
   const [studentSearch, setStudentSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [selectedAssignedIds, setSelectedAssignedIds] = useState<Set<string>>(new Set());
@@ -264,8 +267,6 @@ export default function BatchDetailPage() {
     };
   }, []);
 
-
-
   // ── Query Hooks ───────────────────────────────────────────────────────
   const {
     data: assignedStudents,
@@ -289,15 +290,12 @@ export default function BatchDetailPage() {
   const removeStudentMutation = useRemoveStudent();
   const removeStudentsMutation = useRemoveStudents();
 
-
   // ── Computed Values ───────────────────────────────────────────────────
   const isAtCapacity = batch?.capacity !== null && batch?.capacity !== undefined
     && (batch?.studentCount ?? 0) >= batch.capacity;
   const availableSeats = batch?.capacity !== null && batch?.capacity !== undefined
     ? Math.max(0, batch.capacity - (batch?.studentCount ?? 0))
     : null;
-
-
 
   // ── Handler: Assign Selected Students ─────────────────────────────────
   const handleConfirmAssign = async () => {
@@ -387,7 +385,6 @@ export default function BatchDetailPage() {
       case 'remove-bulk':
         await handleConfirmRemoveBulk();
         break;
-
     }
   };
 
@@ -628,6 +625,12 @@ export default function BatchDetailPage() {
 
   return (
     <div className="space-y-6">
+      <EditBatchDialog
+        isOpen={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        batch={batch}
+        onSuccess={() => refetch()}
+      />
       {/* ════════════════════════════════════════════════════════════════
           Section 1: Page Header
          ════════════════════════════════════════════════════════════════ */}
@@ -640,12 +643,22 @@ export default function BatchDetailPage() {
           { label: batch.batchName },
         ]}
         actions={
-          <Link
-            href="/admin/batches"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            ← Back to List
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEditDialog(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+            >
+              <PencilSimple size={14} weight="bold" />
+              Edit Batch
+            </button>
+            <Link
+              href="/admin/batches"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              ← Back to List
+            </Link>
+          </div>
         }
       />
 

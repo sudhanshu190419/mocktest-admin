@@ -21,7 +21,6 @@ interface FormErrors {
   streamId?: string;
   originalPrice?: string;
   discountedPrice?: string;
-  duration?: string;
 }
 
 interface CourseCreateModalProps {
@@ -50,14 +49,6 @@ const LANGUAGE_OPTIONS = [
   { value: 'bengali', label: 'Bengali' },
   { value: 'marathi', label: 'Marathi' },
   { value: 'gujarati', label: 'Gujarati' },
-];
-
-const DIFFICULTY_OPTIONS = [
-  { value: '', label: 'Select Difficulty' },
-  { value: 'beginner', label: 'Beginner' },
-  { value: 'intermediate', label: 'Intermediate' },
-  { value: 'advanced', label: 'Advanced' },
-  { value: 'all_levels', label: 'All Levels' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -137,11 +128,9 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
   const [shortDescription, setShortDescription] = useState('');
   const [description, setDescription] = useState('');
   const [language, setLanguage] = useState('');
-  const [difficultyLevel, setDifficultyLevel] = useState('');
   const [originalPrice, setOriginalPrice] = useState('');
   const [discountedPrice, setDiscountedPrice] = useState('');
   const [currency, setCurrency] = useState('INR');
-  const [duration, setDuration] = useState('');
   const [featured, setFeatured] = useState(false);
   const [trending, setTrending] = useState(false);
   const [sortOrder, setSortOrder] = useState('0');
@@ -160,11 +149,9 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
       setShortDescription('');
       setDescription('');
       setLanguage('');
-      setDifficultyLevel('');
       setOriginalPrice('');
       setDiscountedPrice('');
       setCurrency('INR');
-      setDuration('');
       setFeatured(false);
       setTrending(false);
       setSortOrder('0');
@@ -210,16 +197,9 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
       }
     }
 
-    if (duration) {
-      const dur = parseInt(duration, 10);
-      if (isNaN(dur) || dur < 0) {
-        newErrors.duration = 'Duration must be a positive number.';
-      }
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [title, streamId, originalPrice, discountedPrice, duration]);
+  }, [title, streamId, originalPrice, discountedPrice]);
 
   // ── Submit ─────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
@@ -229,31 +209,35 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
       return;
     }
 
-    const result = await createMutation.mutateAsync({
-      instituteId,
-      streamId,
-      title: title.trim(),
-      slug: slug.trim() || undefined,
-      shortDescription: shortDescription.trim() || null,
-      description: description.trim() || null,
-      language: language || null,
-      difficultyLevel: difficultyLevel || null,
-      duration: duration ? parseInt(duration, 10) : null,
-      originalPrice: parseFloat(originalPrice),
-      discountedPrice: discountedPrice ? parseFloat(discountedPrice) : null,
-      currency,
-      featured,
-      trending,
-      sortOrder: parseInt(sortOrder, 10) || 0,
-    });
+    try {
+      const result = await createMutation.mutateAsync({
+        instituteId,
+        streamId,
+        title: title.trim(),
+        slug: slug.trim() || undefined,
+        shortDescription: shortDescription.trim() || null,
+        description: description.trim() || null,
+        language: language || null,
+        difficultyLevel: null,
+        duration: null,
+        originalPrice: parseFloat(originalPrice),
+        discountedPrice: discountedPrice ? parseFloat(discountedPrice) : null,
+        currency,
+        featured,
+        trending,
+        sortOrder: parseInt(sortOrder, 10) || 0,
+      });
 
-    if (!result.success) {
-      setErrors((prev) => ({ ...prev, title: result.error ?? 'Failed to create course.' }));
-      return;
+      if (!result.success) {
+        setErrors((prev) => ({ ...prev, title: result.error ?? 'Failed to create course.' }));
+        return;
+      }
+
+      onSuccess?.();
+      onClose();
+    } catch (err: any) {
+      setErrors((prev) => ({ ...prev, title: err?.message ?? 'Failed to create course.' }));
     }
-
-    onSuccess?.();
-    onClose();
   }, [
     validate,
     instituteId,
@@ -263,8 +247,6 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
     shortDescription,
     description,
     language,
-    difficultyLevel,
-    duration,
     originalPrice,
     discountedPrice,
     currency,
@@ -543,47 +525,6 @@ export function CourseCreateModal({ open, onClose, onSuccess }: CourseCreateModa
 
             {showAdvanced && (
               <div className="mt-3 space-y-3">
-                {/* Difficulty & Duration row */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                      Difficulty
-                    </label>
-                    <select
-                      value={difficultyLevel}
-                      onChange={(e) => setDifficultyLevel(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                    >
-                      {DIFFICULTY_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                      Duration (min)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      placeholder="e.g., 120"
-                      className={cn(
-                        'w-full rounded-lg border px-3 py-1.5 text-sm transition-colors',
-                        'focus:outline-none focus:ring-2 focus:ring-blue-500/20',
-                        errors.duration
-                          ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-900/10'
-                          : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800',
-                        'text-gray-900 placeholder-gray-400 dark:text-gray-100 dark:placeholder-gray-500',
-                      )}
-                    />
-                    {errors.duration && (
-                      <p className="text-[11px] text-red-500">{errors.duration}</p>
-                    )}
-                  </div>
-                </div>
-
                 {/* Toggles */}
                 <div className="flex items-center gap-5">
                   <label className="flex items-center gap-2 cursor-pointer">

@@ -2,7 +2,7 @@
  * Course Batch Assignment Hooks
  *
  * React Query hooks for the Admin Course Batch Assignment module.
- * Follows the exact same pattern as hooks/admin/useCourseTeacherAssignment.ts,
+ * Follows the exact same pattern as hooks/admin/useCourseContentAssignment.ts,
  * hooks/admin/useBatchTeacherAssignment.ts, and hooks/admin/useMockTestAssignment.ts.
  *
  * ## Exports
@@ -126,13 +126,19 @@ export function useAssignBatches() {
   const invalidate = useInvalidateCourseBatchAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       batchIds,
     }: {
       courseId: string;
       batchIds: string[];
-    }) => courseBatchAssignmentService.assignBatches(courseId, batchIds),
+    }) => {
+      const result = await courseBatchAssignmentService.assignBatches(courseId, batchIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to assign batches.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -148,13 +154,19 @@ export function useRemoveBatch() {
   const invalidate = useInvalidateCourseBatchAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       batchId,
     }: {
       courseId: string;
       batchId: string;
-    }) => courseBatchAssignmentService.removeBatch(courseId, batchId),
+    }) => {
+      const result = await courseBatchAssignmentService.removeBatch(courseId, batchId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove batch.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -170,13 +182,19 @@ export function useRemoveBatches() {
   const invalidate = useInvalidateCourseBatchAssignment();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       batchIds,
     }: {
       courseId: string;
       batchIds: string[];
-    }) => courseBatchAssignmentService.removeBatches(courseId, batchIds),
+    }) => {
+      const result = await courseBatchAssignmentService.removeBatches(courseId, batchIds);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to remove batches.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },

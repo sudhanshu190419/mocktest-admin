@@ -126,23 +126,36 @@ export function LeaveRequestsInbox() {
       {
         key: 'affected',
         header: 'Classes',
-        render: (item) => (
-          <div>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-              {item.affectedOccurrences}
-            </p>
-            {item.status === 'approved' && item.pendingResolutions > 0 && (
-              <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                {item.pendingResolutions} awaiting resolution
+        render: (item) => {
+          if (item.affectedOccurrences === 0) {
+            return (
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">0</p>
+                <p className="text-[11px] text-gray-400">No classes</p>
+              </div>
+            );
+          }
+          return (
+            <div>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {item.affectedOccurrences}
               </p>
-            )}
-            {item.status === 'approved' && item.pendingResolutions === 0 && (
-              <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                All resolved
-              </p>
-            )}
-          </div>
-        ),
+              {item.status === 'approved' && item.pendingResolutions > 0 && (
+                <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  {item.pendingResolutions} of {item.affectedOccurrences} awaiting resolution
+                </p>
+              )}
+              {item.status === 'approved' && item.pendingResolutions === 0 && (
+                <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  All resolved
+                </p>
+              )}
+              {item.status === 'pending' && (
+                <p className="text-[11px] text-gray-400">Pending review</p>
+              )}
+            </div>
+          );
+        },
       },
       {
         key: 'status',

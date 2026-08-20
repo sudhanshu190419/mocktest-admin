@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  MOCK_TEACHER, 
   MOCK_LIVE_CLASSES, 
   MOCK_ASSESSMENTS,
   MOCK_ANALYTICS
@@ -27,62 +26,32 @@ interface OverviewViewProps {
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigateTab, onLaunchLive }) => {
-  const { teacherProfile, isDemoMode } = useAuth();
+  const { teacherProfile } = useAuth();
   
-  // Stale-While-Revalidate pattern using mock data as the initial state ONLY in demo mode or test isolation
-  const [dashboardData, setDashboardData] = useState(() => {
-    if (!teacherProfile || isDemoMode) {
-      return {
-        rating: MOCK_TEACHER.rating,
-        specialization: MOCK_TEACHER.department,
-        activeBatches: MOCK_TEACHER.activeBatches,
-        totalStudents: MOCK_TEACHER.totalStudents,
-        analytics: MOCK_ANALYTICS,
-        nextClass: MOCK_LIVE_CLASSES[0] ? {
-          id: MOCK_LIVE_CLASSES[0].id,
-          title: MOCK_LIVE_CLASSES[0].title,
-          batchName: MOCK_LIVE_CLASSES[0].batchName,
-          startTime: MOCK_LIVE_CLASSES[0].startTime,
-          durationMinutes: MOCK_LIVE_CLASSES[0].durationMinutes,
-          status: MOCK_LIVE_CLASSES[0].status,
-          totalStudents: MOCK_LIVE_CLASSES[0].totalStudents
-        } : null,
-        activeTest: MOCK_ASSESSMENTS[0] ? {
-          id: MOCK_ASSESSMENTS[0].id,
-          title: MOCK_ASSESSMENTS[0].title,
-          batchName: MOCK_ASSESSMENTS[0].batchName,
-          totalQuestions: MOCK_ASSESSMENTS[0].totalQuestions,
-          submittedCount: MOCK_ASSESSMENTS[0].submittedCount,
-          totalStudents: MOCK_ASSESSMENTS[0].totalStudents,
-          avgScore: MOCK_ASSESSMENTS[0].avgScore
-        } : null
-      };
-    } else {
-      return {
-        rating: 5.0,
-        specialization: 'Physics',
-        activeBatches: 0,
-        totalStudents: 0,
-        analytics: {
-          totalStudents: 0,
-          totalClassesConducted: 0,
-          totalClassesScheduled: 0,
-          avgAttendanceRate: '0%',
-          totalContentUploaded: 0,
-          questionsCreated: 0,
-          testsCreated: 0,
-          avgStudentScore: '0%',
-          topChapter: 'None'
-        },
-        nextClass: null,
-        activeTest: null
-      };
-    }
-  });
+  // Initial state while data is being fetched from the backend
+  const [dashboardData, setDashboardData] = useState(() => ({
+    rating: 5.0,
+    specialization: '',
+    activeBatches: 0,
+    totalStudents: 0,
+    analytics: {
+      totalStudents: 0,
+      totalClassesConducted: 0,
+      totalClassesScheduled: 0,
+      avgAttendanceRate: '0%',
+      totalContentUploaded: 0,
+      questionsCreated: 0,
+      testsCreated: 0,
+      avgStudentScore: '0%',
+      topChapter: 'None'
+    },
+    nextClass: null as any,
+    activeTest: null as any
+  }));
 
   useEffect(() => {
     const fetchOverviewStats = async () => {
-      if (teacherProfile && !isDemoMode) {
+      if (teacherProfile) {
         const res = await teacherService.getTeacherOverviewData(teacherProfile.id);
         if (res) {
           setDashboardData(prev => ({
@@ -98,7 +67,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigateTab, onLau
       }
     };
     fetchOverviewStats();
-  }, [teacherProfile, isDemoMode]);
+  }, [teacherProfile]);
 
   const { rating, specialization, activeBatches, totalStudents, analytics, nextClass, activeTest } = dashboardData;
 
@@ -118,7 +87,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigateTab, onLau
               Welcome back, {teacherProfile?.name || 'Faculty Member'} <span className="text-amber-400">👋</span>
             </h1>
             <p className="text-blue-100/80 text-sm sm:text-base leading-relaxed">
-              Your academic studio is ready. You have <strong className="text-white font-semibold">{nextClass ? '1' : '0'} upcoming live session</strong>{nextClass ? ' today' : ''} and <strong className="text-white font-semibold">{activeTest ? activeTest.totalStudents - activeTest.submittedCount : (isDemoMode ? 44 : 0)} pending test submissions</strong> to review today.
+              Your academic studio is ready. You have <strong className="text-white font-semibold">{nextClass ? '1' : '0'} upcoming live session</strong>{nextClass ? ' today' : ''} and <strong className="text-white font-semibold">{activeTest ? activeTest.totalStudents - activeTest.submittedCount : 0} pending test submissions</strong> to review today.
             </p>
           </div>
 

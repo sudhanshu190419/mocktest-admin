@@ -157,8 +157,13 @@ export function useCreateCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: (input: import('@/services/admin/courseManagementService').CreateCourseInput) =>
-      courseManagementService.createCourse(input),
+    mutationFn: async (input: import('@/services/admin/courseManagementService').CreateCourseInput) => {
+      const result = await courseManagementService.createCourse(input);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to create course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -172,13 +177,19 @@ export function useUpdateCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       courseId,
       input,
     }: {
       courseId: string;
       input: import('@/services/admin/courseManagementService').UpdateCourseInput;
-    }) => courseManagementService.updateCourse(courseId, input),
+    }) => {
+      const result = await courseManagementService.updateCourse(courseId, input);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to update course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -192,7 +203,13 @@ export function usePublishCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: (courseId: string) => courseManagementService.publish(courseId),
+    mutationFn: async (courseId: string) => {
+      const result = await courseManagementService.publish(courseId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to publish course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -206,7 +223,13 @@ export function useArchiveCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: (courseId: string) => courseManagementService.archive(courseId),
+    mutationFn: async (courseId: string) => {
+      const result = await courseManagementService.archive(courseId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to archive course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -220,7 +243,13 @@ export function useRestoreCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: (courseId: string) => courseManagementService.restore(courseId),
+    mutationFn: async (courseId: string) => {
+      const result = await courseManagementService.restore(courseId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to restore course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -235,7 +264,13 @@ export function useDeleteCourse() {
   const invalidate = useInvalidateCourseManagement();
 
   return useMutation({
-    mutationFn: (courseId: string) => courseManagementService.delete(courseId),
+    mutationFn: async (courseId: string) => {
+      const result = await courseManagementService.delete(courseId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to delete course.');
+      }
+      return result;
+    },
     onSuccess: async () => {
       await invalidate();
     },

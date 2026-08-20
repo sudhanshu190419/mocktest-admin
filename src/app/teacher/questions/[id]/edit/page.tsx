@@ -201,6 +201,7 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
         explanationVideoUrl: expl?.explanationVideoUrl ?? '',
         correctNumericalAnswer: expl?.correctNumericalAnswer != null ? String(expl.correctNumericalAnswer) : '',
         numericalTolerance: expl?.numericalTolerance != null ? String(expl.numericalTolerance) : '',
+        correctTextAnswer: expl?.correctTextAnswer ?? '',
         images: stemImageEntries,
       });
     }
@@ -230,7 +231,7 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
       else if (formData.questionText.trim().length < 10) errs.questionText = 'Question text must be at least 10 characters';
       if (!formData.marks || Number(formData.marks) <= 0) errs.marks = 'Marks must be greater than 0';
 
-      if (formData.questionType !== 'numerical') {
+      if (formData.questionType !== 'numerical' && formData.questionType !== 'text_based' && formData.questionType !== 'subjective') {
         const validOptions = formData.options.filter((o) => o.optionText.trim() || (o.images ?? []).length > 0);
         if (validOptions.length < 2) errs.options = 'At least 2 non-empty options required';
         const correctCount = formData.options.filter((o) => o.isCorrect).length;
@@ -243,6 +244,12 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
       if (formData.questionType === 'numerical' && formData.correctNumericalAnswer === '') {
         errs.explanationText = 'Correct numerical answer is required';
       }
+
+      if (formData.questionType === 'text_based' && !formData.correctTextAnswer?.trim()) {
+        errs.explanationText = 'Accepted text answer is required';
+      }
+
+      // subjective: model answer is optional, no validation needed
 
       setErrors(errs);
       if (Object.keys(errs).length > 0) return;
@@ -266,7 +273,7 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
 
         // Step 2: Replace options (only for non-numerical question types)
         let freshOptions: QuestionOption[] | undefined;
-        if (formData.questionType !== 'numerical') {
+        if (formData.questionType !== 'numerical' && formData.questionType !== 'subjective') {
           const optionsPayload = formData.options
             .filter((o) => o.optionText.trim() || (o.images ?? []).length > 0)
             .map((o) => ({
@@ -296,7 +303,8 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
         const hasExistingExplanation = !!explanation?.explanationId;
         const hasExplanationContent =
           !!formData.explanationText?.trim() ||
-          formData.correctNumericalAnswer !== '';
+          formData.correctNumericalAnswer !== '' ||
+          !!formData.correctTextAnswer?.trim();
 
         if (hasExistingExplanation || hasExplanationContent) {
           await upsertExplanationAsync({
@@ -306,6 +314,7 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
             videoUrl: formData.explanationVideoUrl?.trim() || null,
             correctNumericalAnswer: formData.correctNumericalAnswer !== '' ? Number(formData.correctNumericalAnswer) : null,
             numericalTolerance: formData.numericalTolerance !== '' ? Number(formData.numericalTolerance) : null,
+            correctTextAnswer: formData.correctTextAnswer?.trim() || null,
           });
         }
 

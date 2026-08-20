@@ -33,6 +33,7 @@ const INITIAL_FORM: QuestionFormData = {
   explanationVideoUrl: '',
   correctNumericalAnswer: '',
   numericalTolerance: '',
+  correctTextAnswer: '',
   images: [],
 };
 
@@ -104,13 +105,12 @@ export default function CreateQuestionPage() {
     const errs: Record<string, string> = {};
     if (!formData.subjectId) errs.subjectId = 'Subject is required';
     if (!formData.chapterId) errs.chapterId = 'Chapter is required';
-    if (!formData.questionType) errs.questionType = 'Question type is required';
     if (!formData.difficulty) errs.difficulty = 'Difficulty is required';
     if (!formData.questionText?.trim()) errs.questionText = 'Question text is required';
     else if (formData.questionText.trim().length < 10) errs.questionText = 'Question text must be at least 10 characters';
     if (!formData.marks || Number(formData.marks) <= 0) errs.marks = 'Marks must be greater than 0';
 
-    if (formData.questionType !== 'numerical') {
+    if (formData.questionType !== 'numerical' && formData.questionType !== 'text_based' && formData.questionType !== 'subjective') {
       const validOptions = formData.options.filter((o) => o.optionText.trim() || (o.images ?? []).length > 0);
       if (validOptions.length < 2) errs.options = 'At least 2 non-empty options required';
       const correctCount = formData.options.filter((o) => o.isCorrect).length;
@@ -123,6 +123,12 @@ export default function CreateQuestionPage() {
     if (formData.questionType === 'numerical' && formData.correctNumericalAnswer === '') {
       errs.explanationText = 'Correct numerical answer is required';
     }
+
+    if (formData.questionType === 'text_based' && !formData.correctTextAnswer?.trim()) {
+      errs.explanationText = 'Accepted text answer is required';
+    }
+
+    // subjective: model answer is optional, no validation needed
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -143,8 +149,8 @@ export default function CreateQuestionPage() {
 
       setSaveError(null);
 
-      // Build options payload with image files (only for non-numerical types)
-      const optionsPayload = formData.questionType !== 'numerical'
+      // Build options payload with image files (only for non-numerical / non-text types)
+      const optionsPayload = formData.questionType !== 'numerical' && formData.questionType !== 'text_based' && formData.questionType !== 'subjective'
         ? formData.options
             .filter((o) => o.optionText.trim() || (o.images ?? []).length > 0)
             .map((o) => ({
@@ -189,6 +195,7 @@ export default function CreateQuestionPage() {
           numericalTolerance: formData.numericalTolerance
             ? Number(formData.numericalTolerance)
             : null,
+          correctTextAnswer: formData.correctTextAnswer?.trim() || null,
         },
         {
           onSuccess: (question) => {

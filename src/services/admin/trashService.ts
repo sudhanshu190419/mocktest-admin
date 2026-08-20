@@ -90,7 +90,8 @@ export type TrashResourceType =
   | 'courses'
   | 'recordings'
   | 'pyq_packages'
-  | 'pyq_papers';
+  | 'pyq_papers'
+  | 'demo_classes';
 
 /** Result of a restore operation. */
 export interface RestoreResult {
@@ -569,6 +570,43 @@ async function cleanupPyqPaperStorage(
   }
 }
 
+/** Storage cleanup for a demo class row (video + thumbnail). Best-effort. */
+async function cleanupDemoClassStorage(
+  row: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; deleted?: number }> {
+  try {
+    if (row.storage_bucket && row.storage_path) {
+      const { data: shared } = await supabase
+        .from('demo_classes')
+        .select('demo_class_id')
+        .eq('storage_bucket', String(row.storage_bucket))
+        .eq('storage_path', String(row.storage_path))
+        .neq('demo_class_id', String(row.demo_class_id));
+
+      if (!shared || shared.length === 0) {
+        const res = await storageDeleteFile(String(row.storage_bucket), String(row.storage_path));
+        if (!res.success) console.warn('[TrashService] Demo class video cleanup failed:', res.error);
+      }
+    }
+    if (row.thumbnail_bucket && row.thumbnail_path) {
+      const { data: sharedThumb } = await supabase
+        .from('demo_classes')
+        .select('demo_class_id')
+        .eq('thumbnail_bucket', String(row.thumbnail_bucket))
+        .eq('thumbnail_path', String(row.thumbnail_path))
+        .neq('demo_class_id', String(row.demo_class_id));
+
+      if (!sharedThumb || sharedThumb.length === 0) {
+        const res = await storageDeleteFile(String(row.thumbnail_bucket), String(row.thumbnail_path));
+        if (!res.success) console.warn('[TrashService] Demo class thumbnail cleanup failed:', res.error);
+      }
+    }
+    return { success: true, deleted: 0 };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
 /**
  * Fully delete one PYQ paper (mappings → PDFs → row).
  *
@@ -855,6 +893,27 @@ const RESOURCE_REGISTRY: Record<TrashResourceType, ResourceMeta> = {
       totalQuestions: row.total_questions ?? null,
     }),
   },
+  demo_classes: {
+    table: 'demo_classes',
+    idColumn: 'demo_class_id',
+    label: 'Demo Class',
+    displayColumn: 'title',
+    statusColumn: 'status',
+    parentDisplayRef: {
+      column: 'stream_id',
+      table: 'streams',
+      idColumn: 'stream_id',
+      nameColumn: 'name',
+    },
+    parentRefs: [
+      { column: 'stream_id', table: 'streams', idColumn: 'stream_id', label: 'Stream' },
+    ],
+    storageCleanup: cleanupDemoClassStorage,
+    listingSummary: (row) => ({
+      streamId: row.stream_id ?? null,
+      durationSeconds: row.duration_seconds ?? null,
+    }),
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -980,13 +1039,18 @@ export async function restore(
     }
 
     // ── Restore the row itself ─────────────────────────────────────────
+    const extraUpdates: Record<string, unknown> = { ...(meta.extraClear ?? {}) };
+    if (meta.table === 'demo_classes') {
+      extraUpdates.status = row.published_at ? 'archived' : 'draft';
+    }
+
     const { error: restoreError } = await supabase
       .from(meta.table)
       .update({
         deleted_at: null,
         deleted_by: null,
         delete_reason: null,
-        ...(meta.extraClear ?? {}),
+        ...extraUpdates,
       })
       .eq(meta.idColumn, resourceId);
 

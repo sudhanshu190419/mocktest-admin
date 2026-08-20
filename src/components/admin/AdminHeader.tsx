@@ -14,7 +14,7 @@ import {
 } from '@/utils/notification';
 
 export function AdminHeader() {
-  const { user, teacherProfile, isDemoMode, signOut } = useAuth();
+  const { user, teacherProfile, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const userId = user?.id;
@@ -61,13 +61,8 @@ export function AdminHeader() {
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white/80 px-6 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/80">
-      {/* Left: Breadcrumbs + Demo badge */}
+      {/* Left: Breadcrumbs */}
       <div className="flex items-center gap-3">
-        {isDemoMode && (
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-            Demo Mode
-          </span>
-        )}
         {segments.length > 0 && (
           <nav className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
             {segments.map((seg, i) => (

@@ -25,7 +25,12 @@ import type { PaginationParams } from '../../types/academic';
 import type {
   ContentFilters,
   ContentSortOptions,
+  ApprovalRequestSortOptions,
+  ApprovalResourceType,
+  TagFilters,
+  TagSortOptions,
 } from '../../types/content';
+import type { ApprovalQueryFilters } from '../../services/content/approvalService';
 
 export const contentKeys = {
   all: ['content'] as const,
@@ -53,5 +58,85 @@ export const contentKeys = {
 
     /** Key for a single content by ID. */
     detail: (id: string) => [...contentKeys.content.details(), id] as const,
+
+    /** Key for content signed URL queries. */
+    signedUrl: (id: string) => [...contentKeys.content.all(), 'signedUrl', id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Contents (alias for invalidating content queries from approval/tag hooks)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  contents: {
+    /** Key for every content list query. */
+    lists: () => [...contentKeys.content.all(), 'list'] as const,
+
+    /** Key for a single content by ID. */
+    detail: (id: string) => [...contentKeys.content.details(), id] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Approvals
+  // ═════════════════════════════════════════════════════════════════════════
+
+  approvals: {
+    /** Root key for all approval queries. */
+    all: () => [...contentKeys.all, 'approvals'] as const,
+
+    /** Key for every approval list query. */
+    lists: () => [...contentKeys.approvals.all(), 'list'] as const,
+
+    /** Key for a specific approval list query. */
+    list: (
+      filters?: ApprovalQueryFilters,
+      sort?: ApprovalRequestSortOptions,
+      pagination?: PaginationParams,
+    ) => [...contentKeys.approvals.lists(), filters, sort, pagination] as const,
+
+    /** Key for pending approval list queries. */
+    pending: () => [...contentKeys.approvals.all(), 'pending'] as const,
+
+    /** Key for a specific pending approval list. */
+    pendingList: (
+      instituteId?: string,
+      pagination?: PaginationParams,
+    ) => [...contentKeys.approvals.pending(), instituteId, pagination] as const,
+
+    /** Key for every approval detail query. */
+    details: () => [...contentKeys.approvals.all(), 'detail'] as const,
+
+    /** Key for a single approval by ID. */
+    detail: (id: string) => [...contentKeys.approvals.details(), id] as const,
+
+    /** Key for approval history queries. */
+    historyList: (
+      resourceId: string,
+      resourceType?: ApprovalResourceType,
+    ) => [...contentKeys.approvals.all(), 'history', resourceId, resourceType] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Tags
+  // ═════════════════════════════════════════════════════════════════════════
+
+  tags: {
+    /** Root key for all tag queries. */
+    all: () => [...contentKeys.all, 'tags'] as const,
+
+    /** Key for every tag list query. */
+    lists: () => [...contentKeys.tags.all(), 'list'] as const,
+
+    /** Key for a specific tag list query. */
+    list: (
+      filters?: TagFilters,
+      sort?: TagSortOptions,
+      pagination?: PaginationParams,
+    ) => [...contentKeys.tags.lists(), filters, sort, pagination] as const,
+
+    /** Key for every tag detail query. */
+    details: () => [...contentKeys.tags.all(), 'detail'] as const,
+
+    /** Key for a single tag by ID. */
+    detail: (id: string) => [...contentKeys.tags.details(), id] as const,
   },
 };

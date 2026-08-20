@@ -47,6 +47,7 @@ export interface UpdateExplanationParams {
   videoUrl?: string | null;
   correctNumericalAnswer?: number | null;
   numericalTolerance?: number | null;
+  correctTextAnswer?: string | null;
 }
 
 /** Input for upserting a question explanation. */
@@ -57,6 +58,7 @@ export interface UpsertExplanationParams {
   videoUrl?: string | null;
   correctNumericalAnswer?: number | null;
   numericalTolerance?: number | null;
+  correctTextAnswer?: string | null;
 }
 
 // ─── Queries ────────────────────────────────────────────────────────────────

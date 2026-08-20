@@ -25,8 +25,6 @@ export const teacherService = {
       const allottedKey = `EDTECH_ALLOTTED_BATCHES_${teacherId}`;
       const localAllotmentsStr = localStorage.getItem(allottedKey);
 
-      // Check if we are in demo mode or if this is the default simulation/mock teacher profile
-      const isDefaultMockTeacher = teacherId === 'tch-8492-phy' || teacherId.toLowerCase().includes('t-sim-101');
 
       // ── [DBG] TEMPORARY: progressive query tracing — identify where rows disappear (remove after diagnosis) ──
       // A: batch_subject_teachers only
@@ -119,11 +117,6 @@ export const teacherService = {
       if (localAllotmentsStr) {
         const batchIds: string[] = JSON.parse(localAllotmentsStr);
         return MOCK_BATCHES.filter(b => batchIds.includes(b.id));
-      }
-
-      // Default mock teacher gets all mock batches by default
-      if (isDefaultMockTeacher) {
-        return MOCK_BATCHES;
       }
 
       // Newly registered teachers/custom profiles start with ZERO batches

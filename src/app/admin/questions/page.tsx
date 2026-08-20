@@ -37,6 +37,8 @@ import {
   Question as QuestionIcon,
   XCircle,
   CircleNotch,
+  Plus,
+  UploadSimple,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -656,15 +658,33 @@ export default function QuestionApprovalPage() {
           { label: 'Question Approval' },
         ]}
         actions={
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/admin/questions/import')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <UploadSimple size={14} weight="bold" />
+              Bulk Upload
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/admin/questions/create')}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-blue-700"
+            >
+              <Plus size={14} weight="bold" />
+              Create Question
+            </button>
+          </div>
         }
       />
 

@@ -83,10 +83,16 @@ interface DbMockAnswer {
   is_answered: boolean;
   is_marked_for_review: boolean;
   numerical_answer: number | null;
+  text_answer: string | null;
   is_correct: boolean | null;
   marks_awarded: number | null;
   time_spent_seconds: number;
   answered_at: string | null;
+  evaluation_status: string | null;
+  awarded_marks: number | null;
+  evaluated_by: string | null;
+  evaluated_at: string | null;
+  evaluator_feedback: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,10 +156,16 @@ function mapMockAnswer(db: DbMockAnswer): MockAnswer {
     isAnswered: db.is_answered,
     isMarkedForReview: db.is_marked_for_review,
     numericalAnswer: db.numerical_answer,
+    textAnswer: db.text_answer,
     isCorrect: db.is_correct,
     marksAwarded: db.marks_awarded,
     timeSpentSeconds: db.time_spent_seconds,
     answeredAt: db.answered_at,
+    evaluationStatus: db.evaluation_status as 'pending' | 'manual_evaluated' | null,
+    awardedMarks: db.awarded_marks,
+    evaluatedBy: db.evaluated_by,
+    evaluatedAt: db.evaluated_at,
+    evaluatorFeedback: db.evaluator_feedback,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
   };
@@ -607,6 +619,7 @@ export async function updateMockAnswer(
     if (input.isAnswered !== undefined) dbRecord.is_answered = input.isAnswered;
     if (input.isMarkedForReview !== undefined) dbRecord.is_marked_for_review = input.isMarkedForReview;
     if (input.numericalAnswer !== undefined) dbRecord.numerical_answer = input.numericalAnswer;
+    if (input.textAnswer !== undefined) dbRecord.text_answer = input.textAnswer;
     if (input.timeSpentSeconds !== undefined) dbRecord.time_spent_seconds = input.timeSpentSeconds;
     if (input.answeredAt !== undefined) dbRecord.answered_at = input.answeredAt;
 

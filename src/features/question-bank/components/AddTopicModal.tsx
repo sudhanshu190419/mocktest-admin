@@ -14,6 +14,8 @@ export interface AddTopicModalProps {
   chapterId: string;
   /** Existing topics under this chapter for duplicate detection. */
   existingTopics: Topic[];
+  /** Optional initial topic name to prefill. */
+  initialName?: string;
   /** Called when the modal should close without creating. */
   onClose: () => void;
   /** Called after a topic is successfully created, with the new Topic. */
@@ -26,6 +28,7 @@ export function AddTopicModal({
   isOpen,
   chapterId,
   existingTopics,
+  initialName,
   onClose,
   onCreated,
 }: AddTopicModalProps) {
@@ -40,16 +43,21 @@ export function AddTopicModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setName('');
+      setName(initialName || '');
       setError(null);
       setSuccessMsg(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialName]);
 
-  // ── Duplicate detection (case-insensitive) ──────────────────────────────
+  // ── Duplicate detection (case-insensitive, scoped to chapter) ───────────
   const normalisedExistingNames = useMemo(
-    () => new Set(existingTopics.map((t) => t.name.trim().toLowerCase())),
-    [existingTopics],
+    () =>
+      new Set(
+        existingTopics
+          .filter((t) => !t.chapterId || !chapterId || t.chapterId === chapterId)
+          .map((t) => t.name.trim().toLowerCase()),
+      ),
+    [existingTopics, chapterId],
   );
 
   // ── Submit handler ───────────────────────────────────────────────────────

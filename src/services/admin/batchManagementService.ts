@@ -46,6 +46,7 @@ import { buildPaginatedResponse } from '@/utils/response';
 import { auditService } from '@/services/audit/auditService';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type { BatchStatus } from '@/types/academic';
+export type { BatchStatus };
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -574,7 +575,7 @@ export const batchManagementService = {
       }
 
       // 2. Fetch related data in parallel
-      const [teachersRes, studentsRes, studentProfilesRes] = await Promise.allSettled([
+      const [teachersRes, studentsRes, studentProfilesRes, mockTestsRes] = await Promise.allSettled([
         // Teacher info (via batch_subject_teachers -> batch_subjects)
         // First get batch_subject_ids for this batch
         (async () => {
@@ -626,6 +627,12 @@ export const batchManagementService = {
           .eq('batch_id', batchId)
           .eq('status', 'active')
           .order('enrolled_on', { ascending: true }),
+
+        // Mock tests count (via batch_subject_mock_tests -> batch_subjects)
+        supabase
+          .from('batch_subject_mock_tests')
+          .select('assignment_id, batch_subjects!inner(batch_id)', { count: 'exact', head: true })
+          .eq('batch_subjects.batch_id', batchId),
       ]);
 
       // Process teacher info
@@ -642,10 +649,8 @@ export const batchManagementService = {
       // Process student count
       const studentCount = studentsRes.status === 'fulfilled' ? (studentsRes.value.count ?? 0) : 0;
 
-      // Mock test count: There is no direct FK from batches to mock_tests in the current
-      // schema.  This field is reserved for a future relationship (e.g. batch_mock_tests
-      // junction table or a batch_id FK on mock_tests).  For now it remains 0.
-      const mockTestCount = 0;
+      // Process mock test count
+      const mockTestCount = mockTestsRes.status === 'fulfilled' ? (mockTestsRes.value.count ?? 0) : 0;
 
       // Process assigned students
       const studentProfiles = studentProfilesRes.status === 'fulfilled'
@@ -1036,20 +1041,19 @@ export const batchManagementService = {
       }
 
       // 2. Check for scheduled live classes (via batch_subject_live_classes → batch_subjects)
-      const { data: classBSData, error: classErr } = await supabase
+      const { count: classCount, error: classErr } = await supabase
         .from('batch_subject_live_classes')
-        .select('class_id')
+        .select('assignment_id, batch_subjects!inner(batch_id)', { count: 'exact', head: true })
         .eq('batch_subjects.batch_id', batchId);
 
       if (classErr) {
-        console.warn('Could not check batch_subject_live_classes:', classErr.message);
+        return { success: false, error: extractErrorMessage(classErr) };
       }
-      const classCount = classBSData?.length ?? 0;
 
       if (classCount && classCount > 0) {
         return {
           success: false,
-          error: `Cannot delete this batch because it has scheduled live classes. Remove the batch from all classes first.`,
+          error: `Cannot delete this batch because it has ${classCount} scheduled live class(es) assigned. Remove the batch from all classes first.`,
         };
       }
 

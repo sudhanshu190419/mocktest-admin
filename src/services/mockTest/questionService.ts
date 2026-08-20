@@ -48,6 +48,7 @@ import {
   getQuestionOptions,
 } from './questionOptionService';
 import { auditService } from '../audit/auditService';
+import { canApproveAcademicResources } from '../admin/approvalGuard';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -405,51 +406,64 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
       validateUUID(input.parentQuestionId, 'parentQuestionId');
     }
 
-    // ── Resolve teacher ID ────────────────────────────────────────────────
-    // The RLS policy requires created_by = get_my_teacher_id(), which returns
-    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
-    // We must resolve the teacher_id from the current session.
-    const resolved = await resolveCurrentTeacherId();
-    if (!resolved) {
-      return {
-        success: false,
-        error:
-          'Cannot create question: no teacher profile found for the current user. ' +
-          'Ensure the authenticated user has a corresponding teacher_details record.',
-      };
+    // ── Resolve creator authorization & profile ID ─────────────────────────
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user?.id) {
+      return { success: false, error: 'User is not authenticated.' };
+    }
+    const currentUserId = userData.user.id;
+
+    // 1. Check if the caller is an Admin (Super Admin or Academic Admin)
+    const isAdmin = await canApproveAcademicResources();
+
+    let creatorProfileId: string;
+    let targetStatus: QuestionStatus;
+    let approvedBy: string | null = null;
+    let approvedAt: string | null = null;
+
+    const now = new Date().toISOString();
+
+    if (isAdmin) {
+      // Super Admin or Academic Admin: direct auto-publish
+      creatorProfileId = currentUserId;
+      targetStatus = 'published';
+      approvedBy = currentUserId;
+      approvedAt = now;
+    } else {
+      // Teacher creator: must have a valid teacher_details record
+      const resolved = await resolveCurrentTeacherId();
+      if (!resolved) {
+        return {
+          success: false,
+          error:
+            'Cannot create question: you must be an authorized teacher or academic administrator.',
+        };
+      }
+      creatorProfileId = currentUserId;
+      targetStatus = input.status ?? 'draft';
+      approvedBy = null;
+      approvedAt = null;
     }
 
-    const teacherId: string = resolved.teacherId;
-    const profileId: string = resolved.profileId;
-
-    // ── Build DB record (created_by uses teacher_details.teacher_id) ───────
+    // ── Build DB record (created_by uses profiles.profile_id) ───────────────
     const dbRecord: Record<string, unknown> = {
       institute_id: input.instituteId,
       subject_id: input.subjectId,
       chapter_id: input.chapterId,
-      created_by: teacherId,
+      created_by: creatorProfileId,
+      approved_by: approvedBy,
+      approved_at: approvedAt,
+      created_at: now,
+      updated_at: now,
       parent_question_id: input.parentQuestionId ?? null,
       question_type: input.questionType,
       difficulty: input.difficulty,
-      status: input.status ?? 'draft',
+      status: targetStatus,
       version: 1,
       question_text: input.questionText.trim(),
       marks: input.marks ?? 1,
       negative_marks: input.negativeMarks ?? 0,
     };
-
-    // ── RLS debug logging ────────────────────────────────────────────────
-    console.group('QUESTION CREATE DEBUG');
-
-    console.log('Authenticated profile ID (profiles.profile_id):', profileId);
-    console.log('Resolved teacher_details.teacher_id:', teacherId);
-    console.log('Payload created_by:', dbRecord.created_by);
-    console.log('created_by === profileId:', dbRecord.created_by === profileId);
-    console.log('created_by === teacherId:', dbRecord.created_by === teacherId);
-    console.log('✅ created_by uses teacher_details.teacher_id (RLS-compliant)');
-    console.log('Payload:', dbRecord);
-
-    console.groupEnd();
 
     // ── Insert ─────────────────────────────────────────────────────────
     const { data, error } = await supabase
@@ -497,7 +511,8 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
         input.explanationText?.trim() ||
         input.explanationVideoUrl?.trim() ||
         input.correctNumericalAnswer != null ||
-        input.numericalTolerance != null;
+        input.numericalTolerance != null ||
+        input.correctTextAnswer?.trim();
 
       if (hasExplanationContent) {
         const explRecord: Record<string, unknown> = {
@@ -507,6 +522,7 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
           explanation_video_url: input.explanationVideoUrl?.trim() ?? null,
           correct_numerical_answer: input.correctNumericalAnswer ?? null,
           numerical_tolerance: input.numericalTolerance ?? null,
+          correct_text_answer: input.correctTextAnswer?.trim() ?? null,
         };
 
         const { data: explData, error: explError } = await supabase
@@ -630,6 +646,16 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
         success: false,
         error: `Question created but image setup failed: ${optError.message}`,
       };
+    }
+
+    if (isAdmin) {
+      await auditService.log({
+        action: 'create',
+        resourceType: 'questions',
+        resourceId: createdQuestion.questionId,
+        newValue: { status: 'published', createdBy: creatorProfileId },
+        metadata: { questionId: createdQuestion.questionId, autoPublished: true },
+      });
     }
 
     return { success: true, data: createdQuestion };

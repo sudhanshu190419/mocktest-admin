@@ -270,7 +270,6 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({ onNavigate
 
                 <div className="pt-6 mt-6 border-t border-border flex items-center justify-between text-xs text-text-muted">
                   <span>System Role: <strong className="text-text-primary">Institute Admin</strong></span>
-                  <span className="font-mono bg-primary-100 text-primary-800 px-2 py-0.5 rounded font-bold">RLS BYPASS ACTIVE</span>
                 </div>
               </div>
             </div>

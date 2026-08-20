@@ -314,10 +314,11 @@ export default function BatchSubjectContentPage() {
       key: 'actions',
       header: '',
       width: '120px',
-      render: (item, index) => {
+      render: (item) => {
         const items = assignedContent ?? [];
+        const index = items.findIndex((c) => c.batchSubjectContentId === item.batchSubjectContentId);
         const canMoveUp = index > 0;
-        const canMoveDown = index < items.length - 1;
+        const canMoveDown = index >= 0 && index < items.length - 1;
 
         return (
           <div className="flex items-center gap-1">
@@ -603,7 +604,6 @@ export default function BatchSubjectContentPage() {
             data={assignedContent}
             keyExtractor={(item) => item.batchSubjectContentId}
             isLoading={false}
-            selectable
             selectedIds={selectedAssignedIds}
             onSelectionChange={setSelectedAssignedIds}
             emptyState={
@@ -700,7 +700,6 @@ export default function BatchSubjectContentPage() {
                   data={availableContent}
                   keyExtractor={(item) => item.contentId}
                   isLoading={false}
-                  selectable
                   selectedIds={selectedContentIds}
                   onSelectionChange={setSelectedContentIds}
                   emptyState={
@@ -845,7 +844,7 @@ export default function BatchSubjectContentPage() {
         message={confirmProps.message}
         confirmLabel={confirmProps.confirmLabel}
         variant={confirmProps.variant}
-        isLoading={isConfirmLoading}
+        loading={isConfirmLoading}
       />
     </div>
   );

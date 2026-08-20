@@ -531,7 +531,7 @@ export const liveClassAttendanceService = {
 
       const { error: insertErr } = await supabase
         .from('attendance')
-        .insert(absentRecords, { onConflict: 'class_id, student_id', ignoreDuplicates: true });
+        .upsert(absentRecords, { onConflict: 'class_id, student_id', ignoreDuplicates: true });
 
       if (insertErr) {
         console.error('[Attendance] Failed to insert absent records:', insertErr.message);

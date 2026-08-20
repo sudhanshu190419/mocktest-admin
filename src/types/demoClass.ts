@@ -38,6 +38,9 @@ export interface DemoClass {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  deleteReason?: string | null;
 }
 
 /** Filters for the admin demo class list. */

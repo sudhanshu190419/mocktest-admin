@@ -57,6 +57,7 @@ const RESOURCE_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'recordings', label: 'Recordings' },
   { value: 'pyq_packages', label: 'PYQ Packages' },
   { value: 'pyq_papers', label: 'PYQ Papers' },
+  { value: 'demo_classes', label: 'Demo Classes' },
 ];
 
 const SORT_OPTIONS = [
@@ -81,6 +82,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   recordings: 'Recording',
   pyq_packages: 'PYQ Package',
   pyq_papers: 'PYQ Paper',
+  demo_classes: 'Demo Class',
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -286,6 +288,8 @@ export default function RecycleBinPage() {
   const [purgeTarget, setPurgeTarget] = useState<TrashItem | null>(null);
   const [purgeReason, setPurgeReason] = useState('');
   const [purgeReasonError, setPurgeReasonError] = useState<string | null>(null);
+  const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const [purgeConfirmError, setPurgeConfirmError] = useState<string | null>(null);
 
   // ── Bulk Selection State (Phase 8C.5) ────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -435,16 +439,25 @@ export default function RecycleBinPage() {
   const openPurgeDialog = useCallback((item: TrashItem) => {
     setPurgeReason('');
     setPurgeReasonError(null);
+    setPurgeConfirmText('');
+    setPurgeConfirmError(null);
     setPurgeTarget(item);
   }, []);
 
   const handlePermanentDelete = useCallback(
     async (item: TrashItem) => {
-      // Mandatory delete reason (matches the audit design)
+      let hasError = false;
+      const expectedTitle = (item.displayName ?? item.resourceId).trim();
+      if (purgeConfirmText.trim() !== expectedTitle) {
+        setPurgeConfirmError(`Please type "${expectedTitle}" exactly to confirm.`);
+        hasError = true;
+      }
       if (!purgeReason.trim()) {
         setPurgeReasonError('A delete reason is required.');
-        return;
+        hasError = true;
       }
+      if (hasError) return;
+
       setActionError(null);
       setActionSuccess(null);
       try {
@@ -1092,30 +1105,58 @@ export default function RecycleBinPage() {
             variant="danger"
             loading={purgeMutation.isPending}
           >
-            <div className="mt-4">
-              <label
-                htmlFor="purge-reason"
-                className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300"
-              >
-                Delete reason <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                id="purge-reason"
-                value={purgeReason}
-                onChange={(e) => {
-                  setPurgeReason(e.target.value);
-                  if (purgeReasonError) setPurgeReasonError(null);
-                }}
-                rows={2}
-                placeholder="Why is this being permanently removed? (recorded in audit log)"
-                disabled={purgeMutation.isPending}
-                className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-              />
-              {purgeReasonError && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {purgeReasonError}
-                </p>
-              )}
+            <div className="mt-4 space-y-3">
+              <div>
+                <label
+                  htmlFor="purge-confirm-title"
+                  className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Type <span className="font-semibold text-red-600 dark:text-red-400">{(purgeTarget.displayName ?? purgeTarget.resourceId).trim()}</span> to confirm <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="purge-confirm-title"
+                  type="text"
+                  value={purgeConfirmText}
+                  onChange={(e) => {
+                    setPurgeConfirmText(e.target.value);
+                    if (purgeConfirmError) setPurgeConfirmError(null);
+                  }}
+                  placeholder="Type exact title to confirm"
+                  disabled={purgeMutation.isPending}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+                {purgeConfirmError && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {purgeConfirmError}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="purge-reason"
+                  className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Delete reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="purge-reason"
+                  value={purgeReason}
+                  onChange={(e) => {
+                    setPurgeReason(e.target.value);
+                    if (purgeReasonError) setPurgeReasonError(null);
+                  }}
+                  rows={2}
+                  placeholder="Why is this being permanently removed? (recorded in audit log)"
+                  disabled={purgeMutation.isPending}
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+                {purgeReasonError && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {purgeReasonError}
+                  </p>
+                )}
+              </div>
             </div>
           </ConfirmDialog>
         )}

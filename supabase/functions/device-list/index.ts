@@ -29,7 +29,7 @@
 // ============================================================================
 
 import {
-  CORS_HEADERS,
+  CORS_HEADERS as SHARED_CORS_HEADERS,
   createAdminClient,
   errorResponse,
   isApprovedSuperAdmin,
@@ -37,6 +37,16 @@ import {
   resolveCallerProfileId,
   structuredLog,
 } from '../_shared/adminIdentity.ts';
+
+/**
+ * Local CORS override — device-list is a GET endpoint, but the shared
+ * CORS_HEADERS only allows POST + OPTIONS.  Override here so the browser
+ * preflight permits the GET method.
+ */
+const CORS_HEADERS = {
+  ...SHARED_CORS_HEADERS,
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers

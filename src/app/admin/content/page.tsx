@@ -42,6 +42,13 @@ export default function AdminContentDashboardPage() {
 
   const quickActions = [
     {
+      title: 'Upload Content',
+      description: 'Upload study material, lecture videos, and notes directly',
+      href: '/admin/content/create',
+      icon: '📤',
+      color: 'bg-emerald-600',
+    },
+    {
       title: 'Review Content',
       description: 'Review and approve/reject content submitted by teachers',
       href: '/admin/content/review',

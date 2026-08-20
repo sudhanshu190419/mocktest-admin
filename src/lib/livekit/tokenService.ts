@@ -9,8 +9,9 @@
  * @module lib/livekit/tokenService
  */
 
+import { FunctionsError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
-import { getTokenExpirySummary } from '@/utils/supabase';
+import { getTokenExpirySummary, extractErrorMessage } from '@/utils/supabase';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -186,9 +187,9 @@ export async function getLiveKitToken(
   const invokeStartTime = Date.now();
 
   // ── [LK-DIAG-WEB] Wrap invoke in try/catch ──
-  let invokeResult: { data: unknown; error: unknown } | null = null;
+  let invokeResult: { data: TokenResponse | null; error: FunctionsError | null } | null = null;
   try {
-    invokeResult = await supabase.functions.invoke('livekit-token', {
+    invokeResult = await supabase.functions.invoke<TokenResponse>('livekit-token', {
       body: request,
     });
   } catch (invokeException: unknown) {
@@ -210,14 +211,14 @@ export async function getLiveKitToken(
     console.error('[LiveKit Debug] Error object (full):', JSON.stringify({
       name: error.name,
       message: error.message,
-      status: (error as any)?.status,
-      context: (error as any)?.context,
+      status: Reflect.get(error, 'status'),
+      context: error.context,
     }, null, 2));
     console.error('[LiveKit Debug] Error toString():', error.toString());
     console.error('[LiveKit Debug] Error keys:', Object.keys(error));
     // Log every enumerable property on the error
     for (const key of Object.keys(error)) {
-      const val = (error as any)[key];
+      const val = Reflect.get(error, key);
       const valStr = typeof val === 'object' ? JSON.stringify(val) : String(val);
       console.error('[LiveKit Debug] Error.' + key + ':', valStr);
     }
@@ -233,15 +234,14 @@ export async function getLiveKitToken(
     // ── [LK-DIAG-WEB] Log FunctionsHttpError properties individually ──
     const now2 = new Date().toISOString();
     console.error(`[${now2}] [LK-DIAG-WEB] FunctionsHttpError individual properties:`);
-    const errRecord = error as Record<string, unknown>;
     const errProps = ['error', 'status', 'context', 'response', 'message', 'name'];
     for (const key of errProps) {
-      const val = errRecord[key];
+      const val = Reflect.get(error, key);
       const valStr = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val ?? 'N/A');
       console.error(`[${now2}] [LK-DIAG-WEB]   ${key} = ${valStr}`);
     }
 
-    throw new Error(`Failed to fetch LiveKit token: ${error.message}`);
+    throw new Error(`Failed to fetch LiveKit token: ${extractErrorMessage(error)}`);
   }
 
   console.log('[LiveKit Debug] INVOKE SUCCEEDED (duration: ' + invokeDuration + 'ms)');

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import type { Session, User } from '@supabase/supabase-js';
 import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
-import { MOCK_TEACHER, EMPTY_TEACHER } from '@/data/mockData';
+import { EMPTY_TEACHER } from '@/data/mockData';
 import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacherIdentity';
 import type { TeacherProfile } from '@/data/mockData';
 import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
@@ -28,7 +28,6 @@ interface AuthContextType {
   teacherProfile: TeacherProfile | null;
   instituteId: string | null;
   loading: boolean;
-  isDemoMode: boolean;
   needsOtpVerification: boolean;
   pendingPhone: string | null;
   signIn: (phone: string, pass: string) => Promise<{ error: string | null }>;
@@ -36,7 +35,6 @@ interface AuthContextType {
   verifyRegistrationOtp: (token: string) => Promise<{ error: string | null }>;
   resendRegistrationOtp: () => Promise<{ error: string | null }>;
   cancelOtpVerification: () => void;
-  signInAsDemo: () => void;
   signOut: () => Promise<void>;
   updateSpecialization: (specialization: string) => void;
   completeOnboarding: (onboardingData: { qualification: string; institution: string; year: string; accountHolder: string; bankName: string; accountNumber: string; ifscCode: string; }) => Promise<void>;
@@ -58,15 +56,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [instituteId, setInstituteId] = useState<string | null>(null);
 
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('EDTECH_DEMO_MODE') === 'true';
-    }
-    return false;
-  });
-
   // Trusted Device state (Phase 7D). Defaults to 'bypass' (non-blocking)
-  // so teachers / students / super admins and demo mode are unaffected.
+  // so teachers / students / super admins are unaffected.
   const [deviceStatus, setDeviceStatus] = useState<DeviceCheckState>('bypass');
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
 
@@ -178,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Runs AFTER the Supabase session + profile + admin roles are loaded.
    *
    * Rules (client-side short-circuit; the edge function re-enforces):
-   *   - demo mode / non-admin (teacher, student)         → bypass
+   *   - non-admin (teacher, student)                   → bypass
    *   - admin with approved super_admin role             → bypass
    *   - academic / finance admin                         → challenge
    *
@@ -198,13 +189,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[TD-eval] ENTER evaluateDeviceTrust', {
       role,
       approvedRoles: (adminRoles ?? []).filter((r) => r.accessStatus === 'approved').map((r) => r.adminRole),
-      isDemoMode,
       inFlightRefSet: Boolean(deviceChallengeInFlightRef.current),
     });
 
-    // Demo mode and non-admins always bypass the device system.
-    if (isDemoMode || role !== 'admin') {
-      console.log('[TD-eval] → bypass (demo/non-admin)');
+    // Non-admins always bypass the device system.
+    if (role !== 'admin') {
+      console.log('[TD-eval] → bypass (non-admin)');
       setDeviceStatus('bypass');
       setDeviceInfo(null);
       return;
@@ -490,7 +480,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('profile_id', userId)
         .single();
 
-      const baseProfile = isDemoMode ? MOCK_TEACHER : EMPTY_TEACHER;
+      const baseProfile = EMPTY_TEACHER;
 
       if (teacherErr || !teacherData) {
         // Fallback to empty/default profile if teacher_details record is not seeded yet
@@ -551,7 +541,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error('Error fetching teacher details:', err);
-      setTeacherProfile(isDemoMode ? MOCK_TEACHER : EMPTY_TEACHER);
+      setTeacherProfile(EMPTY_TEACHER);
       // Profile load failed — reset device state to a safe, non-blocking
       // default so the guards never strand the user.
       console.log('[TD-load] profile load FAILED → setDeviceStatus("bypass")');
@@ -564,69 +554,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (phone: string, pass: string): Promise<{ error: string | null }> => {
     setLoading(true);
-    
+
     let result: { data: any; error: any };
     try {
       result = await supabase.auth.signInWithPassword({
         phone,
-        password: pass || 'defaultPass123',
+        password: pass,
       });
     } catch (netError: any) {
-      result = {
-        data: { session: null },
-        error: { message: 'offline test mock' }
-      };
+      setLoading(false);
+      return { error: 'Network error. Please check your connection and try again.' };
     }
 
     const { data, error } = result;
 
     if (error) {
-      const lowerPhone = phone.toLowerCase();
-      const isSimId = lowerPhone.includes('demo') || lowerPhone === 'teacher' || lowerPhone === 'admin';
-
-      if (isSimId || error.message === 'offline test mock' || error.message === 'Failed to fetch') {
-        // Offline fallback mock sign in for simulation accounts and test suites
-        setIsDemoMode(true);
-        if (lowerPhone === 'teacher') {
-          setTeacherProfile({
-            ...MOCK_TEACHER,
-            id: 'tch-8492-phy',
-            name: 'Dr. Vikramaditya Rao',
-            designation: 'Senior Physics Studio Head',
-          });
-          localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
-        } else if (lowerPhone === 'admin') {
-          setTeacherProfile({
-            ...MOCK_TEACHER,
-            id: 'admin-101',
-            name: 'Dr. Raghavendra Shastri (Director)',
-            designation: 'Institute Director & Admin',
-            role: 'admin',
-          });
-          localStorage.setItem('EDTECH_SIM_ROLE', 'admin');
-        } else {
-          setTeacherProfile(MOCK_TEACHER);
-          localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
-        }
-        localStorage.setItem('EDTECH_DEMO_MODE', 'true');
-        setLoading(false);
-        return { error: null };
-      }
-
-      // Show actual network or database login error
       setLoading(false);
-      return { 
-        error: !process.env.NEXT_PUBLIC_SUPABASE_URL 
-          ? 'Database connection failed. To test locally in Demo Mode, please use "demo" as the Faculty ID.'
-          : extractErrorMessage(error)
-      };
+      return { error: extractErrorMessage(error) };
     }
 
     if (data.session) {
-      setIsDemoMode(false);
-      localStorage.removeItem('EDTECH_DEMO_MODE');
-      const userRole = data.session.user.user_metadata?.role || 'teacher';
-      localStorage.setItem('EDTECH_SIM_ROLE', userRole);
       setSession(data.session);
       setUser(data.session.user);
       await loadTeacherProfileDetails(data.session.user.id);
@@ -648,7 +595,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         result = await supabase.auth.signUp({
           phone,
-          password: pass || 'defaultPass123',
+          password: pass,
           options: {
             data: {
               full_name: fullName,
@@ -659,47 +606,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         });
       } catch (signUpNetErr: any) {
-        result = {
-          data: { user: null },
-          error: { message: 'offline test mock' }
-        };
+        setLoading(false);
+        return { error: 'Network error. Please check your connection and try again.' };
       }
 
       const { data, error } = result;
 
-      const baseProfile = isDemoMode ? MOCK_TEACHER : EMPTY_TEACHER;
-      const newProfile: TeacherProfile = {
-        ...baseProfile,
-        id: facultyId,
-        role: 'teacher',
-        accountStatus: 'pending',
-        name: fullName || facultyId,
-        department: department || baseProfile.department,
-        designation: 'Senior Faculty Mentor',
-        phone,
-        needsOnboarding: true
-      };
-
       if (error) {
-        if (error.message === 'offline test mock' || error.message === 'Failed to fetch') {
-          // Allow mock fallback for unit tests
-          setIsDemoMode(true);
-          setTeacherProfile(newProfile);
-          localStorage.setItem('EDTECH_DEMO_MODE', 'true');
-          localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
-          localStorage.setItem('EDTECH_CUSTOM_FACULTY', JSON.stringify(newProfile));
-          setNeedsOtpVerification(false);
-          setPendingPhone(null);
-          setPendingRegistration(null);
-          setLoading(false);
-          return { error: null };
-        } else {
-          // Show actual network or database registration error
-          const errorMsg = extractErrorMessage(error);
-          console.error('Registration failed:', errorMsg, error);
-          setLoading(false);
-          return { error: errorMsg };
-        }
+        const errorMsg = extractErrorMessage(error);
+        console.error('Registration failed:', errorMsg, error);
+        setLoading(false);
+        return { error: errorMsg };
       }
 
       // SignUp succeeded — store pending data for OTP verification
@@ -786,9 +703,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Set the session and load profile
-      setIsDemoMode(false);
-      localStorage.removeItem('EDTECH_DEMO_MODE');
-      localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
       setSession(data.session ?? null);
       setUser(data.user);
 
@@ -843,21 +757,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPendingRegistration(null);
   };
 
-  const signInAsDemo = () => {
-    setIsDemoMode(true);
-    setTeacherProfile(MOCK_TEACHER);
-    localStorage.setItem('EDTECH_DEMO_MODE', 'true');
-    localStorage.setItem('EDTECH_SIM_ROLE', 'teacher');
-    setLoading(false);
-  };
-
   const signOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
     setTeacherProfile(null);
-    setIsDemoMode(false);
     // Reset device trust state (logout only removes the session — the
     // td_device cookie is deliberately kept, per Phase 7D spec).
     console.log('[TD-signOut] setDeviceStatus("bypass")');
@@ -865,9 +770,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDeviceInfo(null);
     // Allow a future login (same or different user) to re-evaluate the device.
     deviceEvaluatedRef.current = null;
-    localStorage.removeItem('EDTECH_DEMO_MODE');
-    localStorage.removeItem('EDTECH_SIM_ROLE');
-    localStorage.removeItem('EDTECH_CUSTOM_FACULTY');
     // Clear the teacher identity cache so downstream services re-resolve
     clearTeacherIdentityCache();
     setLoading(false);
@@ -875,15 +777,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateSpecialization = (specialization: string) => {
     if (teacherProfile) {
-      const baseProfile = isDemoMode ? MOCK_TEACHER : EMPTY_TEACHER;
+      const baseProfile = EMPTY_TEACHER;
       const updated = {
         ...teacherProfile,
         department: specialization || baseProfile.department,
       };
       setTeacherProfile(updated);
-      if (isDemoMode) {
-        localStorage.setItem('EDTECH_CUSTOM_FACULTY', JSON.stringify(updated));
-      }
     }
   };
 
@@ -898,7 +797,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }) => {
     if (!teacherProfile) return;
 
-    const baseProfile = isDemoMode ? MOCK_TEACHER : EMPTY_TEACHER;
+    const baseProfile = EMPTY_TEACHER;
     const updatedProfile: TeacherProfile = {
       ...teacherProfile,
       needsOnboarding: false,
@@ -922,7 +821,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setTeacherProfile(updatedProfile);
-    localStorage.setItem('EDTECH_CUSTOM_FACULTY', JSON.stringify(updatedProfile));
 
     try {
       if (onboardingData.qualification) {
@@ -948,37 +846,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const skipOnboarding = () => {
     if (!teacherProfile) return;
-    const updatedProfile = {
+    setTeacherProfile({
       ...teacherProfile,
       needsOnboarding: false
-    };
-    setTeacherProfile(updatedProfile);
-    localStorage.setItem('EDTECH_CUSTOM_FACULTY', JSON.stringify(updatedProfile));
+    });
   };
 
   useEffect(() => {
     const initAuth = async () => {
-      // Check local storage for custom faculty override
-      const customFaculty = localStorage.getItem('EDTECH_CUSTOM_FACULTY');
-      if (isDemoMode && customFaculty) {
-        try {
-          setTeacherProfile(JSON.parse(customFaculty));
-          setLoading(false);
-          return;
-        } catch (e) {
-          console.warn('Failed to parse cached custom faculty:', e);
-        }
-      }
-
       const { data } = await supabase.auth.getSession();
-      console.log('ACCESS TOKEN:', data.session?.access_token);
       if (data.session) {
         setSession(data.session);
         setUser(data.session.user);
-        setIsDemoMode(false);
         await loadTeacherProfileDetails(data.session.user.id);
-      } else if (isDemoMode) {
-        setTeacherProfile(MOCK_TEACHER);
       }
       setLoading(false);
     };
@@ -989,15 +869,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (newSession) {
         setSession(newSession);
         setUser(newSession.user);
-        setIsDemoMode(false);
-        localStorage.removeItem('EDTECH_DEMO_MODE');
         await loadTeacherProfileDetails(newSession.user.id);
       } else {
         setSession(null);
         setUser(null);
-        if (!isDemoMode) {
-          setTeacherProfile(null);
-        }
+        setTeacherProfile(null);
       }
       setLoading(false);
     });
@@ -1005,7 +881,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       subscription.unsubscribe();
     };
-  }, [isDemoMode]);
+  }, []);
 
   return (
     <AuthContext.Provider value={{
@@ -1014,7 +890,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       teacherProfile,
       instituteId,
       loading,
-      isDemoMode,
       needsOtpVerification,
       pendingPhone,
       signIn,
@@ -1022,7 +897,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       verifyRegistrationOtp,
       resendRegistrationOtp,
       cancelOtpVerification,
-      signInAsDemo,
       signOut,
       updateSpecialization,
       completeOnboarding,

@@ -216,9 +216,6 @@ export function clearAllLocalData(): ApiResponse<null> {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(SETTINGS_KEY);
       localStorage.removeItem('EDTECH_NOTIFICATION_PREFS');
-      localStorage.removeItem('EDTECH_DEMO_MODE');
-      localStorage.removeItem('EDTECH_SIM_ROLE');
-      localStorage.removeItem('EDTECH_CUSTOM_FACULTY');
     }
     return { success: true, data: null };
   } catch (err) {

@@ -21,11 +21,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from './queryKeys';
 import {
   getDemoClasses,
+  getDemoClassById,
   createDemoClass,
   updateDemoClass,
   publishDemoClass,
   archiveDemoClass,
+  deleteDemoClass,
 } from '@/services/admin/demoClassAdminService';
+import { generateSignedUrl } from '@/services/storage/storageService';
 import type {
   DemoClass,
   DemoClassFilters,
@@ -35,6 +38,62 @@ import type {
 import type { PaginatedResponse, PaginationParams } from '@/types/academic';
 
 // ─── Queries ────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch a single demo class by ID.
+ *
+ * @param demoClassId - UUID of the demo class.
+ */
+export function useDemoClass(demoClassId: string | null | undefined) {
+  return useQuery<DemoClass>({
+    queryKey: adminKeys.demoClasses.detail(demoClassId ?? ''),
+    queryFn: async () => {
+      if (!demoClassId) throw new Error('Demo class ID is required.');
+      const result = await getDemoClassById(demoClassId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch demo class.');
+      }
+      return result.data!;
+    },
+    enabled: !!demoClassId,
+  });
+}
+
+/**
+ * Fetch a time-limited signed URL for a demo class video stored in private content-videos.
+ *
+ * @param demoClass - Demo class object or storage identifiers.
+ * @param options   - Additional query options (e.g. enabled toggle).
+ */
+export function useDemoClassSignedUrl(
+  demoClass: Pick<DemoClass, 'demoClassId' | 'storageBucket' | 'storagePath'> | null | undefined,
+  options?: { enabled?: boolean },
+) {
+  const demoClassId = demoClass?.demoClassId;
+  const storageBucket = demoClass?.storageBucket;
+  const storagePath = demoClass?.storagePath;
+
+  return useQuery<{ signedUrl: string; expiresAt: number }>({
+    queryKey: adminKeys.demoClasses.signedUrl(demoClassId ?? ''),
+    queryFn: async () => {
+      if (!storageBucket || !storagePath) {
+        throw new Error('Storage location not available.');
+      }
+      const result = await generateSignedUrl({
+        bucket: storageBucket,
+        storagePath,
+        contentType: 'video',
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to generate signed URL.');
+      }
+      return result.data!;
+    },
+    enabled: Boolean(demoClassId && storageBucket && storagePath && (options?.enabled ?? true)),
+    staleTime: 45 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  });
+}
 
 /**
  * Fetch a paginated, filtered demo class list (newest first).
@@ -53,7 +112,7 @@ export function useDemoClassList(
   pagination?: PaginationParams,
 ) {
   return useQuery<PaginatedResponse<DemoClass>>({
-    queryKey: adminKeys.demoClasses.list(filters as Record<string, unknown>, pagination),
+    queryKey: adminKeys.demoClasses.list(filters as Record<string, unknown>, pagination as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDemoClasses(
         filters,
@@ -176,3 +235,31 @@ export function useArchiveDemoClass() {
     },
   });
 }
+
+/**
+ * Soft-delete a demo class (moves to Recycle Bin).
+ *
+ * On success, invalidates demo class lists, detail, and trash queries.
+ *
+ * @example
+ * const { mutate, isPending } = useDeleteDemoClass();
+ * mutate({ demoClassId, reason: 'Outdated content' });
+ */
+export function useDeleteDemoClass() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, { demoClassId: string; reason?: string }>({
+    mutationFn: async ({ demoClassId, reason }) => {
+      const result = await deleteDemoClass(demoClassId, reason);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to delete demo class.');
+      }
+    },
+    onSuccess: (_data, { demoClassId }) => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.demoClasses.detail(demoClassId) });
+      queryClient.invalidateQueries({ queryKey: adminKeys.demoClasses.lists() });
+      queryClient.invalidateQueries({ queryKey: adminKeys.trash.lists() });
+    },
+  });
+}
+
