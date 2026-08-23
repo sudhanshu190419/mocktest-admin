@@ -32,7 +32,7 @@ import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supa
 import { buildPaginatedResponse } from '@/utils/response';
 import { auditService } from '@/services/audit/auditService';
 import {
-  isCurrentUserSuperAdmin,
+  canManagePyq,
   resolveCurrentProfileId,
 } from './pyqOwnershipGuard';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
@@ -80,7 +80,7 @@ function toPyqPackage(row: any): PyqPackage {
     thumbnailPath: row.thumbnail_path ?? null,
     yearFrom: row.year_from ?? null,
     yearTo: row.year_to ?? null,
-    totalPapers: row.total_papers ?? 0,
+    totalPapers: Array.isArray(row.pyq_papers) ? row.pyq_papers.length : (row.total_papers ?? 0),
     isActive: row.is_active ?? false,
     publishedAt: row.published_at ?? null,
     createdAt: row.created_at,
@@ -247,10 +247,10 @@ export const pyqPackageService = {
   async createPackage(input: CreatePyqPackageInput): Promise<ApiResponse<PyqPackage>> {
     try {
       // ── Authorization: Super Admin only ────────────────────────────
-      if (!(await isCurrentUserSuperAdmin())) {
+      if (!(await canManagePyq())) {
         return {
           success: false,
-          error: 'Only a Super Admin can create PYQ packages.',
+          error: 'Only a Super Admin or Academic Admin can create PYQ packages.',
         };
       }
 
@@ -390,10 +390,10 @@ export const pyqPackageService = {
       validateUUID(packageId, 'packageId');
 
       // ── Authorization: Super Admin only ────────────────────────────
-      if (!(await isCurrentUserSuperAdmin())) {
+      if (!(await canManagePyq())) {
         return {
           success: false,
-          error: 'Only a Super Admin can edit PYQ packages.',
+          error: 'Only a Super Admin or Academic Admin can edit PYQ packages.',
         };
       }
 
@@ -517,8 +517,8 @@ export const pyqPackageService = {
       validateUUID(packageId, 'packageId');
 
       // ── Authorization: Super Admin only ────────────────────────────
-      if (!(await isCurrentUserSuperAdmin())) {
-        return { success: false, error: 'Only a Super Admin can publish PYQ packages.' };
+      if (!(await canManagePyq())) {
+        return { success: false, error: 'Only a Super Admin or Academic Admin can publish PYQ packages.' };
       }
 
       // 1. Fetch current package to validate
@@ -588,8 +588,8 @@ export const pyqPackageService = {
       validateUUID(packageId, 'packageId');
 
       // ── Authorization: Super Admin only ────────────────────────────
-      if (!(await isCurrentUserSuperAdmin())) {
-        return { success: false, error: 'Only a Super Admin can unpublish PYQ packages.' };
+      if (!(await canManagePyq())) {
+        return { success: false, error: 'Only a Super Admin or Academic Admin can unpublish PYQ packages.' };
       }
 
       // 1. Fetch current package
@@ -654,28 +654,25 @@ export const pyqPackageService = {
       validateUUID(packageId, 'packageId');
 
       // ── Authorization: Super Admin only ────────────────────────────
-      if (!(await isCurrentUserSuperAdmin())) {
-        return { success: false, error: 'Only a Super Admin can delete PYQ packages.' };
+      if (!(await canManagePyq())) {
+        return { success: false, error: 'Only a Super Admin or Academic Admin can delete PYQ packages.' };
       }
 
-      // 1. Check for existing papers
-      const { data: current, error: fetchErr } = await supabase
-        .from('pyq_packages')
-        .select('total_papers')
+      // 1. Authoritative check for existing active child papers
+      const { count: activePaperCount, error: countErr } = await supabase
+        .from('pyq_papers')
+        .select('paper_id', { count: 'exact', head: true })
         .eq('package_id', packageId)
-        .single();
+        .is('deleted_at', null);
 
-      if (fetchErr) {
-        if (fetchErr.code === 'PGRST116') {
-          return { success: false, error: `PYQ package not found: ${packageId}` };
-        }
-        return { success: false, error: extractErrorMessage(fetchErr) };
+      if (countErr) {
+        return { success: false, error: extractErrorMessage(countErr) };
       }
 
-      if (current.total_papers > 0) {
+      if ((activePaperCount ?? 0) > 0) {
         return {
           success: false,
-          error: `Cannot delete this package because it contains ${current.total_papers} paper(s). Remove all papers first.`,
+          error: `Cannot delete this package because it contains ${activePaperCount} active paper(s). Remove all papers first.`,
         };
       }
 

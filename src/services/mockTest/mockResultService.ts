@@ -1032,6 +1032,34 @@ export async function releaseMockResults(
  *
  * @see supabase/migrations/035_mock_test_result_release.sql
  */
+/**
+ * Run the scheduled mock test result release sweep.
+ * Releases all unreleased results for tests where:
+ *   result_release_mode = 'scheduled' AND result_release_at <= now()
+ *
+ * Calls PostgreSQL RPC `process_scheduled_mock_test_releases`.
+ */
+export async function processScheduledMockTestReleases(): Promise<
+  ApiResponse<{ testsProcessed: number; resultsReleased: number }>
+> {
+  try {
+    const { data, error } = await supabase.rpc('process_scheduled_mock_test_releases');
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+    const row = (data as any)?.[0] as { tests_processed?: number; results_released?: number } | undefined;
+    return {
+      success: true,
+      data: {
+        testsProcessed: Number(row?.tests_processed ?? 0),
+        resultsReleased: Number(row?.results_released ?? 0),
+      },
+    };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
 export async function unreleaseMockResults(
   testId: string,
 ): Promise<ApiResponse<BatchReleaseResult>> {

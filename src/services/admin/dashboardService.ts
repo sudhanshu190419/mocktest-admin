@@ -156,7 +156,7 @@ export const adminDashboardService = {
         // Upcoming Live Classes (next 5)
         supabase
           .from('live_classes')
-          .select('class_id, title, scheduled_at, duration_min')
+          .select('class_id, title, scheduled_at, duration_min, teacher_id')
           .eq('status', 'scheduled')
           .match(instituteFilter)
           .gte('scheduled_at', new Date().toISOString())
@@ -190,13 +190,51 @@ export const adminDashboardService = {
       // Upcoming Live Classes
       let upcomingClasses: UpcomingLiveClass[] = [];
       if (upcomingClassesRes.status === 'fulfilled' && upcomingClassesRes.value.data) {
-        upcomingClasses = upcomingClassesRes.value.data.map((c: any) => ({
+        const rawClasses = upcomingClassesRes.value.data as any[];
+        const upcomingClassIds = rawClasses.map((c) => c.class_id);
+        const upcomingTeacherIds = [...new Set(rawClasses.map((c) => c.teacher_id).filter(Boolean))];
+
+        let teacherNameMap = new Map<string, string>();
+        if (upcomingTeacherIds.length > 0) {
+          const { data: teachers } = await supabase
+            .from('teacher_details')
+            .select('teacher_id, profiles(name)')
+            .in('teacher_id', upcomingTeacherIds);
+          for (const t of teachers ?? []) {
+            const p = (t as any).profiles;
+            const name = Array.isArray(p) ? p[0]?.name : p?.name;
+            if (name) teacherNameMap.set(t.teacher_id, name);
+          }
+        }
+
+        let classBatchMap = new Map<string, string>();
+        if (upcomingClassIds.length > 0) {
+          const { data: links } = await supabase
+            .from('batch_subject_live_classes')
+            .select(`
+              class_id,
+              batch_subjects!inner(
+                batches!inner(name)
+              )
+            `)
+            .in('class_id', upcomingClassIds);
+          for (const l of links ?? []) {
+            const bs = (l as any).batch_subjects;
+            const b = Array.isArray(bs) ? bs[0]?.batches : bs?.batches;
+            const bName = Array.isArray(b) ? b[0]?.name : b?.name;
+            if (bName && !classBatchMap.has(l.class_id)) {
+              classBatchMap.set(l.class_id, bName);
+            }
+          }
+        }
+
+        upcomingClasses = rawClasses.map((c: any) => ({
           classId: c.class_id,
           title: c.title,
-          teacherName: null, // would need a join — placeholder for now
+          teacherName: teacherNameMap.get(c.teacher_id) ?? null,
           scheduledAt: c.scheduled_at,
           durationMin: c.duration_min,
-          batchName: null,   // would need a join — placeholder for now
+          batchName: classBatchMap.get(c.class_id) ?? null,
         }));
       }
 

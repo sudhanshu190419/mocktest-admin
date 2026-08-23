@@ -80,6 +80,10 @@ export interface ValidationDetails {
   validDuration: boolean;
   /** Whether the computed total marks are greater than 0. */
   validTotalMarks: boolean;
+  /** Whether passing marks (if set) is <= total marks. */
+  validPassingMarks: boolean;
+  /** Computed sum of marks across all assigned questions. */
+  computedTotalMarks: number;
   /** Number of questions currently assigned to the test. */
   questionCount: number;
 }
@@ -172,6 +176,8 @@ export async function validateMockTestReady(
     validAvailabilityDates: true,
     validDuration: true,
     validTotalMarks: true,
+    validPassingMarks: true,
+    computedTotalMarks: 0,
     questionCount: 0,
   };
 
@@ -193,6 +199,12 @@ export async function validateMockTestReady(
     const mockTest = testResult.data;
     details.testExists = true;
     details.status = mockTest.status;
+
+    console.log('[MOCK_ORDER_DEBUG] VALIDATION_START', {
+      testId,
+      title: mockTest.title,
+      status: mockTest.status,
+    });
 
     // ── 2. Status is draft, pending_approval, or archived (restore) ────
     if (!VALID_PRE_PUBLISH_STATUSES.includes(mockTest.status)) {
@@ -240,6 +252,14 @@ export async function validateMockTestReady(
     const assignments = questionsResult.data;
     details.questionCount = assignments.length;
 
+    console.log('[MOCK_ORDER_DEBUG] ASSIGNMENTS', assignments.map((a, idx) => ({
+      index: idx,
+      questionId: a.questionId,
+      orderSequence: a.orderSequence,
+      marks: a.marks,
+      addedAt: a.addedAt,
+    })));
+
     if (assignments.length === 0) {
       errors.push('The mock test has no questions assigned. Add at least one question before publishing.');
       details.hasQuestions = false;
@@ -261,6 +281,38 @@ export async function validateMockTestReady(
     // ── 6. No duplicate displayOrder ───────────────────────────────────
     const orderSequences = assignments.map((a) => a.orderSequence);
     const uniqueOrders = new Set(orderSequences);
+
+    const orderCounts = new Map<number, number>();
+    for (const o of orderSequences) {
+      orderCounts.set(o, (orderCounts.get(o) ?? 0) + 1);
+    }
+    const duplicateOrders = Array.from(orderCounts.entries())
+      .filter(([_, count]) => count > 1)
+      .map(([order, count]) => ({ order, count }));
+
+    console.log('[MOCK_ORDER_DEBUG] ORDER_ANALYSIS', {
+      allOrders: orderSequences,
+      uniqueOrders: Array.from(uniqueOrders),
+      duplicates: duplicateOrders,
+    });
+
+    if (duplicateOrders.length > 0) {
+      for (const dup of duplicateOrders) {
+        const matchingRows = assignments
+          .filter((a) => a.orderSequence === dup.order)
+          .map((a) => ({
+            questionId: a.questionId,
+            orderSequence: a.orderSequence,
+            marks: a.marks,
+            addedAt: a.addedAt,
+          }));
+        console.log('[MOCK_ORDER_DEBUG] DUPLICATE_ROWS', {
+          order: dup.order,
+          rows: matchingRows,
+        });
+      }
+    }
+
     if (uniqueOrders.size !== orderSequences.length) {
       errors.push(
         'Duplicate displayOrder values detected. ' +
@@ -346,6 +398,7 @@ export async function validateMockTestReady(
       (sum, a) => sum + Number(a.marks),
       0,
     );
+    details.computedTotalMarks = computedTotalMarks;
     if (computedTotalMarks <= 0) {
       errors.push(
         `Total marks (${computedTotalMarks}) must be greater than 0. ` +
@@ -354,19 +407,44 @@ export async function validateMockTestReady(
       details.validTotalMarks = false;
     }
 
+    // ── 12. Passing marks <= computed total marks (if configured) ────────
+    if (mockTest.passingMarks !== null && mockTest.passingMarks !== undefined) {
+      if (mockTest.passingMarks < 0) {
+        errors.push('Passing marks cannot be negative.');
+        details.validPassingMarks = false;
+      } else if (mockTest.passingMarks > computedTotalMarks) {
+        errors.push(
+          `Passing marks (${mockTest.passingMarks}) cannot exceed total marks (${computedTotalMarks}). ` +
+          'Lower the passing marks in test settings or add more questions before publishing.'
+        );
+        details.validPassingMarks = false;
+      }
+    }
+
     // ── Warnings (non-blocking) ────────────────────────────────────────
     if (!mockTest.description) {
       warnings.push('The test has no description set. Consider adding one for student clarity.');
     }
 
+    const finalReport: ValidationReport = {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      details,
+    };
+
+    console.log('[MOCK_ORDER_DEBUG] FINAL_ORDER_STATE', {
+      testId,
+      allQuestionIds: questionIds,
+      allOrderSequences: orderSequences,
+      duplicates: duplicateOrders,
+      isValid: finalReport.isValid,
+      errors: finalReport.errors,
+    });
+
     return {
       success: true,
-      data: {
-        isValid: errors.length === 0,
-        errors,
-        warnings,
-        details,
-      },
+      data: finalReport,
     };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -676,8 +754,13 @@ export async function publishMockTestWorkflow(
     // the audit trail of the first publication survives.
     const publishResult =
       previousStatus === 'archived'
-        ? await publishMockTest(testId, { preservePublishedAt: true })
-        : await publishMockTest(testId);
+        ? await publishMockTest(testId, {
+            preservePublishedAt: true,
+            totalMarks: report.details.computedTotalMarks,
+          })
+        : await publishMockTest(testId, {
+            totalMarks: report.details.computedTotalMarks,
+          });
 
     if (!publishResult.success || !publishResult.data) {
       return {

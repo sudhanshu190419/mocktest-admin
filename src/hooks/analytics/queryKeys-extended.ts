@@ -22,6 +22,8 @@ export const teacherAnalyticsKeys = {
     all: (instituteId: string) => [...teacherAnalyticsKeys.all, 'students', instituteId] as const,
     aggregate: (instituteId: string, filters?: AnalyticsFilters) =>
       [...teacherAnalyticsKeys.students.all(instituteId), 'aggregate', filters] as const,
+    drilldown: (instituteId: string, params?: any) =>
+      [...teacherAnalyticsKeys.students.all(instituteId), 'drilldown', params] as const,
   },
 
   mockTests: {

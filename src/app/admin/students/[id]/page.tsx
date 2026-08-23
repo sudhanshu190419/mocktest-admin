@@ -295,6 +295,8 @@ export default function StudentDetailPage() {
   const profileId = params.id as string;
 
   const { data: student, isLoading, isError, error, refetch } = useStudentDetail(profileId);
+  const resolvedProfileId = student?.profileId || profileId;
+  const { data: commerceData, isLoading: commerceLoading } = useStudentCommerce(resolvedProfileId);
 
   // ═════════════════════════════════════════════════════════════════════
   //  Loading State
@@ -363,8 +365,7 @@ export default function StudentDetailPage() {
     );
   }
 
-  // ── Student Commerce Data ──────────────────────────────────────────
-  const { data: commerceData, isLoading: commerceLoading } = useStudentCommerce(profileId);
+
 
   // ═════════════════════════════════════════════════════════════════════
   //  Render — Student Data Loaded

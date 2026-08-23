@@ -382,6 +382,30 @@ function friendlyBulkImportError(message: string): string {
  * @param payload     - The validator-produced p_slots + p_plans.
  * @returns `ApiResponse<BulkImportRpcResult>` with the RPC's counts.
  */
+/**
+ * Best-effort: reconcile and materialize all active timetable slots for an institute
+ * via `public.reconcile_institute_timetable` RPC (migration 116).
+ * Never throws and never fails the bulk import response.
+ */
+async function bestEffortReconcileInstitute(instituteId: string): Promise<void> {
+  try {
+    validateUUID(instituteId, 'instituteId');
+    const { data, error } = await supabase.rpc('reconcile_institute_timetable', {
+      p_institute_id: instituteId,
+    });
+
+    if (error) {
+      console.error('[BulkTimetableImport] reconcile_institute_timetable failed:', error.message);
+      return;
+    }
+    console.log(
+      '[BulkTimetableImport] reconciled & materialized institute timetable =>', data ?? 0, 'classes affected',
+    );
+  } catch (err) {
+    console.error('[BulkTimetableImport] best-effort reconciliation error:', err);
+  }
+}
+
 export async function importBulkTimetable(
   instituteId: string,
   payload: BulkImportPayload,
@@ -401,6 +425,11 @@ export async function importBulkTimetable(
     if (error) {
       return { success: false, error: friendlyBulkImportError(extractErrorMessage(error)) };
     }
+
+    // ── Best-effort immediate materialization & reconciliation ──
+    // Generates live_classes occurrences immediately so teacher/student
+    // calendars reflect the new import without waiting for the daily cron.
+    void bestEffortReconcileInstitute(instituteId);
 
     return { success: true, data: data as BulkImportRpcResult };
   } catch (err) {

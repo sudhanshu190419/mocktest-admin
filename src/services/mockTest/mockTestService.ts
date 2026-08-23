@@ -39,6 +39,7 @@ import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
 import { resolveCurrentTeacherId } from '../content/teacherResolver';
+import { canApproveAcademicResources } from '../admin/approvalGuard';
 import { auditService } from '../audit/auditService';
 import type {
   ApiResponse,
@@ -105,7 +106,7 @@ const SORT_FIELD_MAP: Record<string, string> = {
  * Value: allowed next statuses
  */
 const VALID_TRANSITIONS: Record<MockTestStatus, MockTestStatus[]> = {
-  draft: ['pending_approval', 'archived'],
+  draft: ['pending_approval', 'published', 'archived'],
   pending_approval: ['published', 'draft'],
   published: ['archived'],
   // 'published' = restore (re-publish an archived test). Routing restore
@@ -126,7 +127,8 @@ const VALID_TRANSITIONS: Record<MockTestStatus, MockTestStatus[]> = {
 interface DbMockTest {
   test_id: string;
   institute_id: string;
-  teacher_id: string;
+  teacher_id: string | null;
+  created_by?: string | null;
   stream_id: string;
   subject_id: string | null;
   title: string;
@@ -163,6 +165,7 @@ function mapMockTest(db: DbMockTest): MockTest {
     testId: db.test_id,
     instituteId: db.institute_id,
     teacherId: db.teacher_id,
+    createdBy: db.created_by ?? null,
     streamId: db.stream_id,
     subjectId: db.subject_id,
     title: db.title,
@@ -350,7 +353,32 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockTest(data) };
+    const createdTest = mapMockTest(data);
+
+    // Audit log
+    await auditService.logCreate({
+      resourceType: 'mock_tests',
+      resourceId: createdTest.testId,
+      newValue: {
+        title: createdTest.title,
+        testType: createdTest.testType,
+        durationMin: createdTest.durationMin,
+        totalMarks: createdTest.totalMarks,
+        passingMarks: createdTest.passingMarks,
+        shuffleQuestions: createdTest.shuffleQuestions,
+        shuffleOptions: createdTest.shuffleOptions,
+        calculatorAllowed: createdTest.calculatorAllowed,
+        resultReleaseMode: createdTest.resultReleaseMode,
+        status: createdTest.status,
+      },
+      metadata: {
+        title: createdTest.title,
+        streamId: createdTest.streamId,
+        subjectId: createdTest.subjectId,
+      },
+    });
+
+    return { success: true, data: createdTest };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -375,21 +403,27 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
  */
 export async function createMockTest(input: CreateMockTestInput): Promise<ApiResponse<MockTest>> {
   try {
-    // ── Resolve teacher ID first ──────────────────────────────────────────
-    // The RLS policy requires teacher_id = get_my_teacher_id(), which returns
-    // teacher_details.teacher_id — NOT the auth profile (profiles.profile_id).
-    // This is resolved server-side so the frontend doesn't need to send it.
-    const resolved = await resolveCurrentTeacherId();
-    if (!resolved) {
-      return {
-        success: false,
-        error:
-          'Cannot create mock test: no teacher profile found for the current user. ' +
-          'Ensure the authenticated user has a corresponding teacher_details record.',
-      };
-    }
+    // ── Resolve creator identity (Admin vs Teacher) ──────────────────────
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUserId = authData?.user?.id ?? null;
 
-    const teacherId: string = resolved.teacherId;
+    const isAcademicOrSuperAdmin = await canApproveAcademicResources();
+    let teacherId: string | null = null;
+
+    if (!isAcademicOrSuperAdmin) {
+      const resolved = await resolveCurrentTeacherId();
+      if (!resolved) {
+        return {
+          success: false,
+          error:
+            'Cannot create mock test: no teacher profile found for the current user. ' +
+            'Ensure the authenticated user has a corresponding teacher_details record.',
+        };
+      }
+      teacherId = resolved.teacherId;
+    } else {
+      teacherId = input.teacherId ?? null;
+    }
 
     // ── Validate required fields ───────────────────────────────────────
     if (!input.instituteId) {
@@ -417,13 +451,16 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
       return { success: false, error: 'Total marks must be greater than 0.' };
     }
 
-    // ── Validate passingMarks vs totalMarks ────────────────────────────
-    if (input.passingMarks != null && input.passingMarks > input.totalMarks) {
+    // ── Validate passingMarks ──────────────────────────────────────────
+    if (input.passingMarks != null && input.passingMarks < 0) {
       return {
         success: false,
-        error: 'Passing marks cannot exceed total marks.',
+        error: 'Passing marks cannot be negative.',
       };
     }
+    const initialTotalMarks = input.passingMarks && input.passingMarks > 0
+      ? Math.max(input.totalMarks || 1, input.passingMarks)
+      : (input.totalMarks || 1);
 
     // ── Validate UUID formats ──────────────────────────────────────────
     validateUUID(input.instituteId, 'instituteId');
@@ -437,12 +474,13 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
     const dbRecord: Record<string, unknown> = {
       institute_id: input.instituteId,
       teacher_id: teacherId,
+      created_by: currentUserId,
       stream_id: input.streamId,
       subject_id: input.subjectId ?? null,
       title: input.title.trim(),
       description: input.description ?? null,
       duration_min: input.durationMin,
-      total_marks: input.totalMarks,
+      total_marks: initialTotalMarks,
       passing_marks: input.passingMarks ?? null,
       negative_marking: input.negativeMarking ?? 0,
       attempt_limit: input.attemptLimit ?? null,
@@ -458,6 +496,15 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
     };
 
     // ── Insert ─────────────────────────────────────────────────────────
+    console.log('[DATETIME_DEBUG] FINAL_INSERT', {
+      rawInputResultReleaseAt: input.resultReleaseAt,
+      dbRecordResultReleaseAt: dbRecord.result_release_at,
+      dbRecordAvailableFrom: dbRecord.available_from,
+      dbRecordAvailableUntil: dbRecord.available_until,
+      runtimeEnvironment: typeof window !== 'undefined' ? 'browser' : 'node/server',
+      browserTimezone: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'unknown',
+    });
+
     const { data, error } = await supabase
       .from('mock_tests')
       .insert(dbRecord)
@@ -477,7 +524,32 @@ export async function createMockTest(input: CreateMockTestInput): Promise<ApiRes
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockTest(data) };
+    const createdTest = mapMockTest(data);
+
+    // Audit log
+    await auditService.logCreate({
+      resourceType: 'mock_tests',
+      resourceId: createdTest.testId,
+      newValue: {
+        title: createdTest.title,
+        testType: createdTest.testType,
+        durationMin: createdTest.durationMin,
+        totalMarks: createdTest.totalMarks,
+        passingMarks: createdTest.passingMarks,
+        shuffleQuestions: createdTest.shuffleQuestions,
+        shuffleOptions: createdTest.shuffleOptions,
+        calculatorAllowed: createdTest.calculatorAllowed,
+        resultReleaseMode: createdTest.resultReleaseMode,
+        status: createdTest.status,
+      },
+      metadata: {
+        title: createdTest.title,
+        streamId: createdTest.streamId,
+        subjectId: createdTest.subjectId,
+      },
+    });
+
+    return { success: true, data: createdTest };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -508,6 +580,12 @@ export async function updateMockTest(
   try {
     validateUUID(testId, 'testId');
 
+    const existingTestCheck = await getMockTestById(testId);
+    if (!existingTestCheck.success || !existingTestCheck.data) {
+      return { success: false, error: existingTestCheck.error ?? `Mock test not found: ${testId}` };
+    }
+    const previousTest = existingTestCheck.data;
+
     // ── Build update payload (only provided fields) ────────────────────
     const dbRecord: Record<string, unknown> = {};
 
@@ -533,6 +611,31 @@ export async function updateMockTest(
     }
 
     if (input.passingMarks !== undefined) {
+      if (input.passingMarks !== null && input.passingMarks < 0) {
+        return { success: false, error: 'Passing marks cannot be negative.' };
+      }
+      const existing = await getMockTestById(testId);
+      if (!existing.success || !existing.data) {
+        return { success: false, error: `Mock test not found: ${testId}` };
+      }
+      if (input.passingMarks !== null && existing.data.totalMarks > 0 && input.passingMarks > existing.data.totalMarks) {
+        return {
+          success: false,
+          error: `Passing marks (${input.passingMarks}) cannot exceed total marks (${existing.data.totalMarks}).`,
+        };
+      }
+      if (existing.data.status === 'published' || existing.data.status === 'archived') {
+        const { count: attemptCount } = await supabase
+          .from('mock_attempts')
+          .select('*', { count: 'exact', head: true })
+          .eq('test_id', testId);
+        if (attemptCount && attemptCount > 0 && input.passingMarks !== existing.data.passingMarks) {
+          return {
+            success: false,
+            error: 'Passing marks cannot be modified on a published test with student attempts. Duplicate the test to create a new version.',
+          };
+        }
+      }
       dbRecord.passing_marks = input.passingMarks;
     }
 
@@ -614,7 +717,30 @@ export async function updateMockTest(
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockTest(data) };
+    const updatedTest = mapMockTest(data);
+
+    // Build diff snapshots
+    const oldValues: Record<string, unknown> = {};
+    const newValues: Record<string, unknown> = {};
+    for (const key of Object.keys(dbRecord)) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()) as keyof MockTest;
+      oldValues[key] = previousTest[camelKey] ?? null;
+      newValues[key] = dbRecord[key];
+    }
+
+    // Audit log
+    await auditService.logUpdate({
+      resourceType: 'mock_tests',
+      resourceId: testId,
+      oldValue: oldValues,
+      newValue: newValues,
+      metadata: {
+        title: updatedTest.title,
+        changedFields: Object.keys(dbRecord),
+      },
+    });
+
+    return { success: true, data: updatedTest };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -701,7 +827,7 @@ export async function deleteMockTest(testId: string, reason?: string): Promise<A
  */
 export async function publishMockTest(
   testId: string,
-  options?: { preservePublishedAt?: boolean },
+  options?: { preservePublishedAt?: boolean; totalMarks?: number },
 ): Promise<ApiResponse<MockTest>> {
   return transitionStatus(testId, 'published', options);
 }
@@ -765,7 +891,7 @@ export async function restoreMockTest(testId: string): Promise<ApiResponse<MockT
 async function transitionStatus(
   testId: string,
   newStatus: MockTestStatus,
-  options?: { preservePublishedAt?: boolean },
+  options?: { preservePublishedAt?: boolean; totalMarks?: number },
 ): Promise<ApiResponse<MockTest>> {
   try {
     validateUUID(testId, 'testId');
@@ -822,6 +948,10 @@ async function transitionStatus(
 
     // Build update payload
     const dbUpdate: Record<string, unknown> = { status: newStatus };
+
+    if (newStatus === 'published' && options?.totalMarks && options.totalMarks > 0) {
+      dbUpdate.total_marks = options.totalMarks;
+    }
 
     // Set published_at when publishing (pending_approval → published).
     // Preserved when re-publishing an archived test (restore) so the

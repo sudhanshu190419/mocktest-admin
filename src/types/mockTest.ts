@@ -968,7 +968,9 @@ export interface MockTest {
   /** Institute that owns this test (FK → public.institutes). Denormalized for RLS. */
   instituteId: string;
   /** Teacher who authored and owns this test (FK → public.teacher_details). */
-  teacherId: string;
+  teacherId: string | null;
+  /** Creator profile ID (teacher or admin). */
+  createdBy?: string | null;
   /** Exam stream this test is designed for (FK → public.streams). */
   streamId: string;
   /**
@@ -1060,6 +1062,8 @@ export interface MockTest {
 export interface CreateMockTestInput {
   /** Institute that owns this test. */
   instituteId: string;
+  /** Optional creator profile ID (set automatically on server). */
+  createdBy?: string;
   /**
    * Teacher creating this test.
    * NOTE: This field is overridden server-side by resolveCurrentTeacherId().

@@ -196,22 +196,54 @@ export default function AdminNotificationDetailPage() {
             </div>
 
             {/* Reference Link */}
-            {notification.actionUrl && (
-              <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-900/30 dark:bg-blue-900/10">
-                <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Related Resource</p>
-                <Link
-                  href={
-                    notification.referenceType === 'student_doubt'
-                      ? buildActionUrl(notification.referenceType, notification.referenceId, 'admin') ??
-                        notification.actionUrl
-                      : notification.actionUrl
-                  }
-                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  View {notification.referenceType === 'mock_test' ? 'Mock Test' : notification.referenceType === 'result' ? 'Result' : notification.referenceType === 'content' ? 'Content' : 'Resource'} →
-                </Link>
-              </div>
-            )}
+            {(() => {
+              const actionUrl =
+                buildActionUrl(notification.referenceType, notification.referenceId, 'admin') ??
+                (notification.actionUrl && notification.actionUrl.startsWith('/') ? notification.actionUrl : null);
+              if (!actionUrl) return null;
+              return (
+                <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-900/30 dark:bg-blue-900/10">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Related Resource</p>
+                  <Link
+                    href={actionUrl}
+                    className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    View{' '}
+                    {notification.referenceType === 'mock_test'
+                      ? 'Mock Test'
+                      : notification.referenceType === 'result'
+                      ? 'Result'
+                      : notification.referenceType === 'content'
+                      ? 'Content'
+                      : notification.referenceType === 'student_doubt' || notification.referenceType === 'doubt'
+                      ? 'Doubt'
+                      : notification.referenceType === 'order'
+                      ? 'Order'
+                      : notification.referenceType === 'course'
+                      ? 'Course'
+                      : notification.referenceType === 'pyq_package' || notification.referenceType === 'pyq'
+                      ? 'PYQ Package'
+                      : notification.referenceType === 'question'
+                      ? 'Question'
+                      : notification.referenceType === 'batch'
+                      ? 'Batch'
+                      : notification.referenceType === 'trusted_devices' ||
+                        notification.referenceType === 'trusted_device' ||
+                        notification.referenceType === 'device'
+                      ? 'Trusted Device'
+                      : notification.referenceType === 'teacher_leave_request' ||
+                        notification.referenceType === 'leave_request' ||
+                        notification.referenceType === 'leave'
+                      ? 'Leave Request'
+                      : notification.referenceType === 'subscription' ||
+                        notification.referenceType === 'subscription_plan'
+                      ? 'Subscription'
+                      : 'Resource'}{' '}
+                    →
+                  </Link>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Timeline */}

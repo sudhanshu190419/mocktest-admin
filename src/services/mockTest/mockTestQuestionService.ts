@@ -42,6 +42,7 @@
 
 import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage } from '../../utils/supabase';
+import { auditService } from '../audit/auditService';
 import type { ApiResponse } from '../../types/academic';
 import type {
   MockTestQuestion,
@@ -453,6 +454,75 @@ export async function getMockTestQuestionById(
  *   sectionName: 'Physics',
  * });
  */
+/**
+ * Synchronizes `mock_tests.total_marks` with the sum of marks from `mock_test_questions`.
+ *
+ * Runs after question additions, updates, or removals to keep the denormalized
+ * `total_marks` column in `public.mock_tests` accurate during drafting.
+ *
+ * Handles the `ck_mock_tests_total_marks` constraint (total_marks > 0):
+ * If all questions are removed (sum = 0), sets total_marks to 1 (valid placeholder).
+ *
+ * @param testId - The UUID of the mock test.
+ * @returns ApiResponse with the new totalMarks value.
+ */
+export async function syncMockTestTotalMarks(
+  testId: string,
+): Promise<ApiResponse<number>> {
+  try {
+    validateUUID(testId, 'testId');
+
+    // 1. Fetch current test passing_marks
+    const { data: testData, error: testErr } = await supabase
+      .from('mock_tests')
+      .select('passing_marks')
+      .eq('test_id', testId)
+      .single<{ passing_marks: number | null }>();
+
+    if (testErr) {
+      return { success: false, error: extractErrorMessage(testErr) };
+    }
+
+    // 2. Fetch current assigned question marks
+    const { data, error: fetchErr } = await supabase
+      .from('mock_test_questions')
+      .select('marks')
+      .eq('test_id', testId);
+
+    if (fetchErr) {
+      return { success: false, error: extractErrorMessage(fetchErr) };
+    }
+
+    const calculatedSum = (data ?? []).reduce(
+      (sum, q) => sum + Number(q.marks || 0),
+      0,
+    );
+
+    const passingMarks = testData?.passing_marks ?? null;
+    if (passingMarks !== null && calculatedSum > 0 && passingMarks > calculatedSum) {
+      return {
+        success: false,
+        error: `Passing marks (${passingMarks}) cannot exceed total marks (${calculatedSum}). Lower the passing marks in test settings before removing this question.`,
+      };
+    }
+
+    const totalMarksToPersist = calculatedSum > 0 ? calculatedSum : 1;
+
+    const { error: updateErr } = await supabase
+      .from('mock_tests')
+      .update({ total_marks: totalMarksToPersist })
+      .eq('test_id', testId);
+
+    if (updateErr) {
+      return { success: false, error: extractErrorMessage(updateErr) };
+    }
+
+    return { success: true, data: totalMarksToPersist };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
 export async function addQuestionToMockTest(input: {
   testId: string;
   questionId: string;
@@ -493,6 +563,13 @@ export async function addQuestionToMockTest(input: {
       return { success: false, error: testCheck.error };
     }
     const mockTest = testCheck.data;
+
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot add questions to a published mock test. Questions are locked.',
+      };
+    }
 
     // ── Validate question exists ───────────────────────────────────────
     const questionCheck = await validateQuestionExists(input.questionId);
@@ -552,10 +629,41 @@ export async function addQuestionToMockTest(input: {
       };
     }
 
+    // ── Determine authoritative next order_sequence ───────────────────
+    const { data: maxSeqData } = await supabase
+      .from('mock_test_questions')
+      .select('order_sequence')
+      .eq('test_id', input.testId)
+      .order('order_sequence', { ascending: false })
+      .limit(1);
+
+    const nextAvailableSequence = (maxSeqData && maxSeqData.length > 0 && maxSeqData[0].order_sequence != null)
+      ? maxSeqData[0].order_sequence + 1
+      : 1;
+
+    const finalOrderSequence = (input.orderSequence && input.orderSequence >= nextAvailableSequence)
+      ? input.orderSequence
+      : nextAvailableSequence;
+
+    const { data: allSeqData } = await supabase
+      .from('mock_test_questions')
+      .select('question_id, order_sequence')
+      .eq('test_id', input.testId)
+      .order('order_sequence', { ascending: true });
+
+    console.log('[MOCK_ORDER_DEBUG] ADD_SINGLE', {
+      testId: input.testId,
+      questionId: input.questionId,
+      requestedOrderSequence: input.orderSequence,
+      existingMaxOrderSequence: maxSeqData?.[0]?.order_sequence ?? null,
+      existingOrderSequences: (allSeqData ?? []).map((r) => r.order_sequence),
+      finalOrderSequenceSent: finalOrderSequence,
+    });
+
     const dbRecord: Record<string, unknown> = {
       test_id: input.testId,
       question_id: input.questionId,
-      order_sequence: input.orderSequence,
+      order_sequence: finalOrderSequence,
       marks,
       negative_marks_override: negativeMarksOverride,
       section_name: input.sectionName ?? null,
@@ -568,6 +676,20 @@ export async function addQuestionToMockTest(input: {
       .insert(dbRecord)
       .select()
       .single<DbMockTestQuestion>();
+
+    if (!error) {
+      const { data: postInsertData } = await supabase
+        .from('mock_test_questions')
+        .select('question_id, order_sequence')
+        .eq('test_id', input.testId)
+        .order('order_sequence', { ascending: true });
+
+      console.log('[MOCK_ORDER_DEBUG] POST_INSERT_STATE', {
+        operation: 'addQuestionToMockTest',
+        testId: input.testId,
+        items: postInsertData,
+      });
+    }
 
     if (error) {
       // Duplicate key violation (PK: test_id + question_id)
@@ -601,7 +723,27 @@ export async function addQuestionToMockTest(input: {
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockTestQuestion(data) };
+    const syncRes = await syncMockTestTotalMarks(input.testId);
+    if (!syncRes.success) {
+      return { success: false, error: `Question added but failed to sync test total marks: ${syncRes.error}` };
+    }
+
+    const resultQuestion = mapMockTestQuestion(data);
+
+    // Audit log
+    await auditService.logAssign({
+      resourceType: 'mock_test_questions',
+      resourceId: input.questionId,
+      metadata: {
+        testId: input.testId,
+        questionId: input.questionId,
+        orderSequence: input.orderSequence,
+        marks,
+        negativeMarksOverride,
+      },
+    });
+
+    return { success: true, data: resultQuestion };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -633,6 +775,19 @@ export async function updateMockTestQuestion(
 ): Promise<ApiResponse<MockTestQuestion>> {
   try {
     const { testId, questionId } = parseAssignmentId(id);
+
+    const testCheck = await validateMockTestExists(testId);
+    if (!testCheck.success || !testCheck.data) {
+      return { success: false, error: testCheck.error };
+    }
+    const mockTest = testCheck.data;
+
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot update questions on a published mock test. Questions are locked.',
+      };
+    }
 
     // ── Build update payload ───────────────────────────────────────────
     const dbRecord: Record<string, unknown> = {};
@@ -707,7 +862,20 @@ export async function updateMockTestQuestion(
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapMockTestQuestion(data) };
+    const resultQuestion = mapMockTestQuestion(data);
+
+    // Audit log
+    await auditService.logUpdate({
+      resourceType: 'mock_test_questions',
+      resourceId: questionId,
+      newValue: dbRecord,
+      metadata: {
+        testId,
+        questionId,
+      },
+    });
+
+    return { success: true, data: resultQuestion };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -736,11 +904,49 @@ export async function removeQuestionFromMockTest(
   try {
     const { testId, questionId } = parseAssignmentId(id);
 
+    const testCheck = await validateMockTestExists(testId);
+    if (!testCheck.success || !testCheck.data) {
+      return { success: false, error: testCheck.error };
+    }
+    const mockTest = testCheck.data;
+
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot remove questions from a published mock test. Questions are locked.',
+      };
+    }
+
+    const { data: preRemoveData } = await supabase
+      .from('mock_test_questions')
+      .select('question_id, order_sequence')
+      .eq('test_id', testId)
+      .order('order_sequence', { ascending: true });
+
+    console.log('[MOCK_ORDER_DEBUG] REMOVE', {
+      testId,
+      questionId,
+      currentOrdersBeforeRemove: preRemoveData,
+    });
+
     const { error } = await supabase
       .from('mock_test_questions')
       .delete()
       .eq('test_id', testId)
       .eq('question_id', questionId);
+
+    if (!error) {
+      const { data: postRemoveData } = await supabase
+        .from('mock_test_questions')
+        .select('question_id, order_sequence')
+        .eq('test_id', testId)
+        .order('order_sequence', { ascending: true });
+
+      console.log('[MOCK_ORDER_DEBUG] POST_REMOVE_STATE', {
+        testId,
+        currentOrdersAfterRemove: postRemoveData,
+      });
+    }
 
     if (error) {
       // FK violation — shouldn't happen on delete of a junction row,
@@ -756,6 +962,21 @@ export async function removeQuestionFromMockTest(
 
       return { success: false, error: extractErrorMessage(error) };
     }
+
+    const syncRes = await syncMockTestTotalMarks(testId);
+    if (!syncRes.success) {
+      return { success: false, error: `Question removed but failed to sync test total marks: ${syncRes.error}` };
+    }
+
+    // Audit log
+    await auditService.logUnassign({
+      resourceType: 'mock_test_questions',
+      resourceId: questionId,
+      metadata: {
+        testId,
+        questionId,
+      },
+    });
 
     return { success: true };
   } catch (err) {
@@ -807,6 +1028,13 @@ export async function addQuestionsToMockTest(
     }
     const mockTest = testCheck.data;
 
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot add questions to a published mock test. Questions are locked.',
+      };
+    }
+
     // ── Check maximum question limit ───────────────────────────────────
     const currentCount = await getQuestionCount(testId);
     if (currentCount + assignments.length > limit) {
@@ -817,11 +1045,26 @@ export async function addQuestionsToMockTest(
     }
 
     // ── Validate each assignment ───────────────────────────────────────
+    // ── Determine authoritative starting order_sequence ───────────────
+    const { data: maxSeqData } = await supabase
+      .from('mock_test_questions')
+      .select('order_sequence')
+      .eq('test_id', testId)
+      .order('order_sequence', { ascending: false })
+      .limit(1);
+
+    let currentMaxSequence = (maxSeqData && maxSeqData.length > 0 && maxSeqData[0].order_sequence != null)
+      ? maxSeqData[0].order_sequence
+      : 0;
+
+    // ── Validate each assignment ─────────────────────────────────────────
     const resolvedRecords: Record<string, unknown>[] = [];
     const seenQuestionIds = new Set<string>();
 
     for (let i = 0; i < assignments.length; i++) {
       const a = assignments[i];
+      currentMaxSequence += 1;
+      const finalOrderSequence = currentMaxSequence;
 
       // Check for duplicates within the batch (already checked in
       // validateAssignments, but also check against already-seen)
@@ -887,7 +1130,7 @@ export async function addQuestionsToMockTest(
       resolvedRecords.push({
         test_id: testId,
         question_id: a.questionId,
-        order_sequence: a.orderSequence,
+        order_sequence: finalOrderSequence,
         marks,
         negative_marks_override: negativeMarksOverride,
         section_name: a.sectionName ?? null,
@@ -923,9 +1166,26 @@ export async function addQuestionsToMockTest(
       return { success: false, error: extractErrorMessage(error) };
     }
 
+    const syncRes = await syncMockTestTotalMarks(testId);
+    if (!syncRes.success) {
+      return { success: false, error: `Questions added but failed to sync test total marks: ${syncRes.error}` };
+    }
+
+    const mappedQuestions = (data ?? []).map(mapMockTestQuestion);
+
+    // Audit log
+    await auditService.logAssign({
+      resourceType: 'mock_test_questions',
+      metadata: {
+        testId,
+        count: resolvedRecords.length,
+        questionIds: resolvedRecords.map((r) => r.question_id),
+      },
+    });
+
     return {
       success: true,
-      data: (data ?? []).map(mapMockTestQuestion),
+      data: mappedQuestions,
     };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -983,6 +1243,13 @@ export async function replaceMockTestQuestions(
       return { success: false, error: testCheck.error };
     }
     const mockTest = testCheck.data;
+
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot replace questions on a published mock test. Questions are locked.',
+      };
+    }
 
     // ── Validate each assignment ───────────────────────────────────────
     const resolvedRecords: Record<string, unknown>[] = [];
@@ -1074,9 +1341,23 @@ export async function replaceMockTestQuestions(
       return { success: false, error: extractErrorMessage(insertError) };
     }
 
+    const mappedQuestions = (data ?? []).map(mapMockTestQuestion);
+
+    // Audit log
+    await auditService.log({
+      action: 'update',
+      resourceType: 'mock_test_questions',
+      metadata: {
+        testId,
+        action: 'replace_all',
+        count: resolvedRecords.length,
+        questionIds: resolvedRecords.map((r) => r.question_id),
+      },
+    });
+
     return {
       success: true,
-      data: (data ?? []).map(mapMockTestQuestion),
+      data: mappedQuestions,
     };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -1111,9 +1392,28 @@ export async function reorderMockTestQuestions(
       return { success: false, error: 'At least one reorder item is required.' };
     }
 
+    const testCheck = await validateMockTestExists(testId);
+    if (!testCheck.success || !testCheck.data) {
+      return { success: false, error: testCheck.error };
+    }
+    const mockTest = testCheck.data;
+
+    if (mockTest.status === 'published') {
+      return {
+        success: false,
+        error: 'Cannot reorder questions on a published mock test. Questions are locked.',
+      };
+    }
+
     // ── Validate items ─────────────────────────────────────────────────
     const seenOrders = new Set<number>();
     const assignmentItems: { testId: string; questionId: string; orderSequence: number }[] = [];
+
+    console.log('[MOCK_ORDER_DEBUG] REORDER', {
+      testId,
+      requestedNewOrders: items,
+      finalOrdersSent: assignmentItems,
+    });
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -1181,6 +1481,16 @@ export async function reorderMockTestQuestions(
     }
 
     // ── Fetch and return the updated list ──────────────────────────────
+    // Audit log
+    await auditService.logUpdate({
+      resourceType: 'mock_test_questions',
+      metadata: {
+        testId,
+        action: 'reorder',
+        reorderedCount: items.length,
+      },
+    });
+
     return getMockTestQuestions(testId, 'orderSequence', 'asc');
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   useMockTestManagementCounts,
   useMockTestList,
@@ -12,6 +13,9 @@ import {
   useDeleteMockTest,
 } from '@/hooks/admin/useMockTestManagement';
 import { usePermissions } from '@/hooks/admin/usePermissions';
+import { useStreams } from '@/hooks/academic/useStreams';
+import { useSubjects } from '@/hooks/academic/useSubjects';
+import { useTeacherList } from '@/hooks/admin/useTeacherLifecycle';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -24,6 +28,7 @@ import { Select } from '@/components/ui/Select';
 import type { MockTestListItem } from '@/services/admin/mockTestManagementService';
 import {
   ArrowsClockwise,
+  Plus,
   Clock,
   CheckCircle,
   Archive,
@@ -60,17 +65,7 @@ const SORT_OPTIONS = [
   { value: 'totalMarks_asc', label: 'Total Marks (Low to High)' },
 ];
 
-const STREAM_OPTIONS = [
-  { value: '', label: 'All Streams' },
-];
 
-const SUBJECT_OPTIONS = [
-  { value: '', label: 'All Subjects' },
-];
-
-const TEACHER_OPTIONS = [
-  { value: '', label: 'All Teachers' },
-];
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Helpers
@@ -150,6 +145,38 @@ export default function MockTestManagementPage() {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => setDebouncedSearch(value), 400);
   }, []);
+
+  // ── Dynamic Filter Options ──────────────────────────────────────────
+  const { data: streamsData } = useStreams(undefined, { sortBy: 'displayOrder', sortDirection: 'asc' }, { page: 1, pageSize: 100 });
+  const streamOptions = useMemo(() => {
+    const list = streamsData?.data ?? [];
+    return [
+      { value: '', label: 'All Streams' },
+      ...list.map((s) => ({ value: s.streamId, label: s.name })),
+    ];
+  }, [streamsData]);
+
+  const { data: subjectsData } = useSubjects(
+    streamFilter ? { streamId: streamFilter } : undefined,
+    { sortBy: 'displayOrder', sortDirection: 'asc' },
+    { page: 1, pageSize: 200 }
+  );
+  const subjectOptions = useMemo(() => {
+    const list = subjectsData?.data ?? [];
+    return [
+      { value: '', label: 'All Subjects' },
+      ...list.map((s) => ({ value: s.subjectId, label: s.name })),
+    ];
+  }, [subjectsData]);
+
+  const { data: teachersData } = useTeacherList(undefined, undefined, { page: 1, pageSize: 100 });
+  const teacherOptions = useMemo(() => {
+    const list = teachersData?.data ?? [];
+    return [
+      { value: '', label: 'All Teachers' },
+      ...list.map((t) => ({ value: t.teacherId || t.profileId, label: t.name })),
+    ];
+  }, [teachersData]);
 
   // Reset page when any filter changes
   const handleFilterChange = useCallback((setter: (val: string) => void, value: string) => {
@@ -404,6 +431,15 @@ export default function MockTestManagementPage() {
       ),
     },
     {
+      key: 'passingMarks',
+      header: 'Passing Marks',
+      render: (item) => (
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+          {item.passingMarks !== null && item.passingMarks !== undefined ? item.passingMarks : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'createdAt',
       header: 'Created Date',
       render: (item) => (
@@ -419,9 +455,20 @@ export default function MockTestManagementPage() {
       className: 'w-28 text-right',
       render: (_item) => (
         <div className="flex items-center justify-end gap-1">
-          {/* Draft → Delete, Duplicate */}
+          {/* Draft → Publish, Duplicate, Delete */}
           {_item.status === 'draft' && (
             <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'publish', test: _item }); }}
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:hover:bg-emerald-900/20"
+              >
+                {actionLoading && confirmAction?.test?.testId === _item.testId && confirmAction?.type === 'publish' ? (
+                  <CircleNotch size={10} className="animate-spin" />
+                ) : null}
+                Publish
+              </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'duplicate', test: _item }); }}
@@ -556,15 +603,24 @@ export default function MockTestManagementPage() {
           { label: 'Mock Tests' },
         ]}
         actions={
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/mock-tests/create"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              <Plus size={14} weight="bold" />
+              Create Test
+            </Link>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         }
       />
 
@@ -635,8 +691,11 @@ export default function MockTestManagementPage() {
         />
         <Select
           value={streamFilter}
-          onChange={(v) => handleFilterChange(setStreamFilter, v)}
-          options={STREAM_OPTIONS}
+          onChange={(v) => {
+            handleFilterChange(setStreamFilter, v);
+            setSubjectFilter('');
+          }}
+          options={streamOptions}
           placeholder="All Streams"
           label="Stream"
           className="min-w-[140px]"
@@ -644,7 +703,7 @@ export default function MockTestManagementPage() {
         <Select
           value={subjectFilter}
           onChange={(v) => handleFilterChange(setSubjectFilter, v)}
-          options={SUBJECT_OPTIONS}
+          options={subjectOptions}
           placeholder="All Subjects"
           label="Subject"
           className="min-w-[140px]"
@@ -652,7 +711,7 @@ export default function MockTestManagementPage() {
         <Select
           value={teacherFilter}
           onChange={(v) => handleFilterChange(setTeacherFilter, v)}
-          options={TEACHER_OPTIONS}
+          options={teacherOptions}
           placeholder="All Teachers"
           label="Teacher"
           className="min-w-[140px]"

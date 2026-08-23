@@ -49,6 +49,7 @@ describe('manualEvaluationService', () => {
     expect(typeof mod.getPendingEvaluations).toBe('function');
     expect(typeof mod.evaluateSubjectiveAnswer).toBe('function');
     expect(typeof mod.finalizeSubjectiveEvaluation).toBe('function');
+    expect(typeof mod.getTestPendingEvaluationCount).toBe('function');
   });
 
   it('rejects unauthenticated users for getPendingEvaluations', async () => {
@@ -160,5 +161,40 @@ describe('manualEvaluationService', () => {
     const result = await getPendingEvaluations();
     // Should fail: finance_admin is not in ['super_admin', 'academic_admin']
     expect(result.success).toBe(false);
+  });
+  it('returns pending evaluation count for test with submitted attempts', async () => {
+    const testId = '11111111-1111-4111-8111-111111111111';
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mock_answers') {
+        return okChain([
+          { attempt_id: 'att-1', mock_attempts: { test_id: testId, status: 'submitted' } },
+          { attempt_id: 'att-1', mock_attempts: { test_id: testId, status: 'submitted' } }, // duplicate attempt with 2 pending questions
+          { attempt_id: 'att-2', mock_attempts: { test_id: testId, status: 'submitted' } },
+        ], null);
+      }
+      return okChain(null, null);
+    });
+
+    const { getTestPendingEvaluationCount } = await import('../manualEvaluationService');
+    const result = await getTestPendingEvaluationCount(testId);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.pendingEvaluationCount).toBe(2); // 2 distinct attempts
+  });
+
+  it('returns pending evaluation count = 0 when all evaluations complete', async () => {
+    const testId = '22222222-2222-4222-8222-222222222222';
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mock_answers') {
+        return okChain([], null);
+      }
+      return okChain(null, null);
+    });
+
+    const { getTestPendingEvaluationCount } = await import('../manualEvaluationService');
+    const result = await getTestPendingEvaluationCount(testId);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.pendingEvaluationCount).toBe(0);
   });
 });

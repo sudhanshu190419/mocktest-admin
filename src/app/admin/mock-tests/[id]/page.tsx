@@ -15,6 +15,7 @@ import {
 } from '@/hooks/admin/useMockTestManagement';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { ReviewNavigation } from '@/components/admin/ReviewNavigation';
+import { useTestPendingEvaluationCount } from '@/hooks/teacher/useEvaluation';
 import {
   useMockTestReleaseStatus,
   useReleaseMockResults,
@@ -27,6 +28,7 @@ import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { MockTestManagementDetail } from '@/services/admin/mockTestManagementService';
 import {
+  PencilSimple,
   Exam,
   CalendarBlank,
   Clock,
@@ -253,6 +255,17 @@ export default function MockTestDetailPage() {
 
   // ── Result Release Hooks ──────────────────────────────────────────────
   const { data: releaseStatus, isLoading: releaseStatusLoading, error: releaseStatusError } = useMockTestReleaseStatus(mockTestId);
+
+  // ── Subjective Evaluation State ──────────────────────────────────────────
+  const hasSubjectiveQuestions = useMemo(() => {
+    return (questions ?? []).some((q) => q.questionType === 'subjective');
+  }, [questions]);
+
+  const { data: pendingEvalData, isLoading: pendingEvalLoading } = useTestPendingEvaluationCount(
+    hasSubjectiveQuestions ? mockTestId : null,
+  );
+  const pendingEvaluationCount = pendingEvalData?.pendingEvaluationCount ?? 0;
+  const isEvaluationPending = hasSubjectiveQuestions && pendingEvaluationCount > 0;
   const releaseResultsMutation = useReleaseMockResults();
   const unreleaseResultsMutation = useUnreleaseMockResults();
 
@@ -484,12 +497,21 @@ export default function MockTestDetailPage() {
           { label: test.title },
         ]}
         actions={
-          <Link
-            href="/admin/mock-tests"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            ← Back to List
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/mock-tests/${mockTestId}/edit`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <PencilSimple size={15} />
+              Edit Test
+            </Link>
+            <Link
+              href="/admin/mock-tests"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Back to List
+            </Link>
+          </div>
         }
       />
 
@@ -719,8 +741,8 @@ export default function MockTestDetailPage() {
                 label="Availability"
                 value={
                   test.availableFrom
-                    ? `From ${formatDateTime(test.availableFrom)}${test.availableUntil ? ` until ${formatDateTime(test.availableUntil)}` : ''}`
-                    : 'Not configured'
+                    ? `Master: ${formatDateTime(test.availableFrom)}${test.availableUntil ? ` - ${formatDateTime(test.availableUntil)}` : ''} (Overrides per batch)`
+                    : 'Configured per Batch Assignment'
                 }
               />
             </div>
@@ -731,10 +753,20 @@ export default function MockTestDetailPage() {
               ════════════════════════════════════════════════════════════ */}
           <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
             <div className="p-5 pb-0">
-              <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Questions
-              </h3>
-              <p className="mb-4 text-xs text-gray-500">Questions assigned to this mock test</p>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Questions
+                  </h3>
+                  <p className="text-xs text-gray-500">Questions assigned to this mock test</p>
+                </div>
+                <Link
+                  href={`/admin/mock-tests/${mockTestId}/questions`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:text-blue-400 dark:hover:bg-gray-700"
+                >
+                  Manage Questions
+                </Link>
+              </div>
               <div className="flex items-center gap-4 mb-4">
                 <StatCard
                   icon={<Question size={22} weight="duotone" />}
@@ -952,13 +984,12 @@ export default function MockTestDetailPage() {
               />
               <InfoRow
                 icon={<PlayCircle size={18} />}
-                label="Available From"
-                value={test.availableFrom ? formatDateTime(test.availableFrom) : 'Immediately'}
-              />
-              <InfoRow
-                icon={<Archive size={18} />}
-                label="Available Until"
-                value={test.availableUntil ? formatDateTime(test.availableUntil) : 'No expiry'}
+                label="Student Availability"
+                value={
+                  test.availableFrom
+                    ? `Master: ${formatDateTime(test.availableFrom)} (Overrides per batch)`
+                    : 'Configured per Batch Assignment'
+                }
               />
             </div>
           </div>
@@ -1054,21 +1085,55 @@ export default function MockTestDetailPage() {
             </div>
 
             <div className="mt-4 space-y-2">
-              {/* Release Results — enabled when there are unreleased results */}
+              {/* Subjective Evaluation Status & Release Results */}
               {(!releaseStatusLoading && releaseStatus && releaseStatus.unreleasedResults > 0) && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmAction({ type: 'releaseResults' })}
-                  disabled={actionLoading}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
-                >
-                  {actionLoading && confirmAction?.type === 'releaseResults' ? (
-                    <CircleNotch size={16} className="animate-spin" />
-                  ) : (
-                    <Eye size={16} weight="fill" />
+                <>
+                  {hasSubjectiveQuestions && isEvaluationPending && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                        Evaluation Pending: {pendingEvaluationCount} student attempt{pendingEvaluationCount === 1 ? '' : 's'} require teacher evaluation before results can be released.
+                      </p>
+                    </div>
                   )}
-                  {actionLoading && confirmAction?.type === 'releaseResults' ? 'Releasing...' : 'Release Results'}
-                </button>
+
+                  {hasSubjectiveQuestions && !isEvaluationPending && !pendingEvalLoading && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                      <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                        All Subjective Evaluations Complete
+                      </p>
+                    </div>
+                  )}
+
+                  {isEvaluationPending ? (
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        disabled={true}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white opacity-40 cursor-not-allowed"
+                      >
+                        <Eye size={16} weight="fill" />
+                        Release Results
+                      </button>
+                      <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+                        Complete all teacher evaluations to release results.
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction({ type: 'releaseResults' })}
+                      disabled={actionLoading || (hasSubjectiveQuestions && pendingEvalLoading)}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+                    >
+                      {actionLoading && confirmAction?.type === 'releaseResults' ? (
+                        <CircleNotch size={16} className="animate-spin" />
+                      ) : (
+                        <Eye size={16} weight="fill" />
+                      )}
+                      {actionLoading && confirmAction?.type === 'releaseResults' ? 'Releasing...' : 'Release Results'}
+                    </button>
+                  )}
+                </>
               )}
 
               {/* Unrelease Results — enabled when there are released results */}
@@ -1114,8 +1179,16 @@ export default function MockTestDetailPage() {
             </h3>
             <p className="mb-4 text-xs text-gray-500">Manage this mock test</p>
             <div className="space-y-2">
-              {/* Pending Approval → Publish */}
-              {test.status === 'pending_approval' && (
+              <Link
+                href={`/admin/mock-tests/${mockTestId}/edit`}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <PencilSimple size={16} />
+                Edit Test Settings
+              </Link>
+
+              {/* Draft / Pending Approval → Publish */}
+              {(test.status === 'draft' || test.status === 'pending_approval') && (
                 <button
                   type="button"
                   onClick={() => setConfirmAction({ type: 'publish' })}

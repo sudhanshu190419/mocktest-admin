@@ -147,7 +147,7 @@ export default function AdminPyqPackageDetailPage({
         actions={
           <div className="flex items-center gap-2">
             <Link
-              href={`/teacher/pyq/packages/${packageId}/papers`}
+              href={`/admin/pyq-packages/${packageId}/papers`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

@@ -68,7 +68,7 @@ export default function AdminNotificationHistoryPage() {
 
   const columns: Column<(typeof enrichedRows)[0]>[] = [
     {
-      key: 'type',
+      key: 'icon',
       header: '',
       render: (n) => (
         <span className="text-lg" title={notificationTypeLabel(n.type)}>

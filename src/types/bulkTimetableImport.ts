@@ -375,12 +375,40 @@ export interface ImportSummary {
   plansToUpdate: number;
 }
 
+export interface MissingSubjectItem {
+  rawName: string;
+  rowNumbers: number[];
+}
+
+export interface MissingChapterItem {
+  rawSubject: string;
+  rawChapter: string;
+  resolvedSubjectId: string | null;
+  resolvedSubjectName: string | null;
+  rowNumbers: number[];
+}
+
+export interface MissingTopicItem {
+  rawChapter: string;
+  rawTopic: string;
+  resolvedChapterId: string | null;
+  resolvedChapterName: string | null;
+  rowNumbers: number[];
+}
+
+export interface MissingAcademicReferences {
+  subjects: MissingSubjectItem[];
+  chapters: MissingChapterItem[];
+  topics: MissingTopicItem[];
+}
+
 /** The complete validated import preview consumed by the Phase 3 UI. */
 export interface ImportPreview {
   rows: ImportedRow[];
   groups: ImportGroup[];
   issues: ImportIssue[];
   summary: ImportSummary;
+  missingReferences?: MissingAcademicReferences;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

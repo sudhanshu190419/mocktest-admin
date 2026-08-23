@@ -386,22 +386,55 @@ export const attendanceAnalyticsService = {
         studentStats.set(studentId, { present: 0, partial: 0, absent: 0, lastAttended: null });
       }
 
+      // Link completed classes to batches
+      const { data: classBSLinks } = await supabase
+        .from('batch_subject_live_classes')
+        .select(`
+          class_id,
+          batch_subjects!inner(batch_id)
+        `)
+        .in('class_id', classIds);
+
+      const batchCompletedClassesMap = new Map<string, Set<string>>();
+      for (const bid of batchIds) {
+        batchCompletedClassesMap.set(bid, new Set<string>());
+      }
+      for (const link of classBSLinks ?? []) {
+        const bs = (link as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+        if (bid && batchCompletedClassesMap.has(bid)) {
+          batchCompletedClassesMap.get(bid)!.add(link.class_id);
+        }
+      }
+
       // Build class date map
       const classDateMap = new Map(
         (liveClasses ?? []).map((c: any) => [c.class_id, c.scheduled_at])
       );
 
+      const attendanceMap = new Map<string, string>();
       for (const rec of attendanceRecords ?? []) {
+        attendanceMap.set(`${rec.class_id}:${rec.student_id}`, rec.attendance_status);
         const stats = studentStats.get(rec.student_id);
-        if (!stats) continue;
+        if (stats && (rec.attendance_status === 'present' || rec.attendance_status === 'partial')) {
+          const classDate = classDateMap.get(rec.class_id);
+          if (classDate && (!stats.lastAttended || classDate > stats.lastAttended)) {
+            stats.lastAttended = classDate;
+          }
+        }
+      }
 
-        if (rec.attendance_status === 'present') stats.present++;
-        else if (rec.attendance_status === 'partial') stats.partial++;
-        else stats.absent++;
+      // Compute stats per student across all completed classes for their batch
+      for (const sid of studentIds) {
+        const batchId = studentBatchMap.get(sid);
+        const completedClassesForStudent = (batchId ? batchCompletedClassesMap.get(batchId) : null) ?? new Set<string>();
+        const stats = studentStats.get(sid)!;
 
-        const classDate = classDateMap.get(rec.class_id);
-        if (classDate && (!stats.lastAttended || classDate > stats.lastAttended)) {
-          stats.lastAttended = classDate;
+        for (const cid of completedClassesForStudent) {
+          const status = attendanceMap.get(`${cid}:${sid}`);
+          if (status === 'present') stats.present++;
+          else if (status === 'partial') stats.partial++;
+          else stats.absent++;
         }
       }
 
@@ -647,44 +680,75 @@ export const attendanceAnalyticsService = {
         .select('student_id, batch_id')
         .in('batch_id', batchIds);
 
-      // Compute per-batch stats
-      const batchStats = new Map<string, { studentIds: Set<string>; present: number; partial: number; absent: number }>();
+      // Link completed classes to batches via batch_subject_live_classes
+      const batchCompletedClassesMap = new Map<string, Set<string>>();
       for (const bid of batchIds) {
-        batchStats.set(bid, { studentIds: new Set(), present: 0, partial: 0, absent: 0 });
+        batchCompletedClassesMap.set(bid, new Set<string>());
       }
 
-      for (const bs of batchStudents ?? []) {
-        const stats = batchStats.get(bs.batch_id);
-        if (stats) stats.studentIds.add(bs.student_id);
-      }
+      if (classIds.length > 0) {
+        const { data: classBSLinks } = await supabase
+          .from('batch_subject_live_classes')
+          .select(`
+            class_id,
+            batch_subjects!inner(batch_id)
+          `)
+          .in('class_id', classIds);
 
-      for (const rec of attendanceRecords ?? []) {
-        // Find which batch this student belongs to
-        for (const [bid, stats] of batchStats) {
-          if (stats.studentIds.has(rec.student_id)) {
-            if (rec.attendance_status === 'present') stats.present++;
-            else if (rec.attendance_status === 'partial') stats.partial++;
-            else stats.absent++;
-            break;
+        for (const link of classBSLinks ?? []) {
+          const bs = (link as any).batch_subjects;
+          const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+          if (bid && batchCompletedClassesMap.has(bid)) {
+            batchCompletedClassesMap.get(bid)!.add(link.class_id);
           }
         }
       }
 
+      const batchEnrolledStudentsMap = new Map<string, Set<string>>();
+      for (const bid of batchIds) {
+        batchEnrolledStudentsMap.set(bid, new Set<string>());
+      }
+      for (const bs of batchStudents ?? []) {
+        batchEnrolledStudentsMap.get(bs.batch_id)?.add(bs.student_id);
+      }
+
+      const attendanceMap = new Map<string, string>();
+      for (const rec of attendanceRecords ?? []) {
+        attendanceMap.set(`${rec.class_id}:${rec.student_id}`, rec.attendance_status);
+      }
+
       return batchIds.map((bid) => {
-        const stats = batchStats.get(bid)!;
-        const totalRecords = stats.present + stats.partial + stats.absent;
-        const avgPct = totalRecords > 0
-          ? Math.round(((stats.present * 100 + stats.partial * 50) / totalRecords))
+        const enrolledStudents = batchEnrolledStudentsMap.get(bid) ?? new Set<string>();
+        const completedBatchClassIds = batchCompletedClassesMap.get(bid) ?? new Set<string>();
+
+        let present = 0;
+        let partial = 0;
+        let absent = 0;
+
+        if (completedBatchClassIds.size > 0) {
+          for (const cid of completedBatchClassIds) {
+            for (const sid of enrolledStudents) {
+              const status = attendanceMap.get(`${cid}:${sid}`);
+              if (status === 'present') present++;
+              else if (status === 'partial') partial++;
+              else absent++;
+            }
+          }
+        }
+
+        const totalEvaluations = present + partial + absent;
+        const avgPct = totalEvaluations > 0
+          ? Math.round(((present * 100 + partial * 50) / totalEvaluations))
           : 0;
 
         return {
           batchId: bid,
           batchName: batchNameMap.get(bid) ?? 'Unknown',
-          studentCount: stats.studentIds.size,
+          studentCount: enrolledStudents.size,
           averageAttendancePercent: avgPct,
-          presentCount: stats.present,
-          partialCount: stats.partial,
-          absentCount: stats.absent,
+          presentCount: present,
+          partialCount: partial,
+          absentCount: absent,
         };
       });
     } catch (err) {
@@ -739,32 +803,83 @@ export const attendanceAnalyticsService = {
         .select('class_id, student_id, attendance_status')
         .in('class_id', classIds);
 
-      // Compute per-class stats
-      const classStats = new Map<string, { present: number; partial: number; absent: number; students: Set<string> }>();
+      // Link classes to all enrolled batch students
+      const { data: links } = await supabase
+        .from('batch_subject_live_classes')
+        .select(`
+          class_id,
+          batch_subjects!inner(batch_id)
+        `)
+        .in('class_id', classIds);
 
+      const classBatchIdsMap = new Map<string, Set<string>>();
       for (const cid of classIds) {
-        classStats.set(cid, { present: 0, partial: 0, absent: 0, students: new Set() });
+        classBatchIdsMap.set(cid, new Set<string>());
+      }
+      for (const link of links ?? []) {
+        const bs = (link as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+        if (bid) classBatchIdsMap.get(link.class_id)?.add(bid);
       }
 
+      const allLinkedBatchIds = [...new Set((links ?? []).map((l: any) => {
+        const bs = l.batch_subjects;
+        return Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+      }).filter(Boolean))];
+
+      const { data: batchStudents } = await supabase
+        .from('batch_students')
+        .select('student_id, batch_id')
+        .in('batch_id', allLinkedBatchIds);
+
+      const batchStudentsMap = new Map<string, Set<string>>();
+      for (const bid of allLinkedBatchIds) {
+        batchStudentsMap.set(bid, new Set<string>());
+      }
+      for (const bs of batchStudents ?? []) {
+        batchStudentsMap.get(bs.batch_id)?.add(bs.student_id);
+      }
+
+      const classEnrolledStudentsMap = new Map<string, Set<string>>();
+      for (const cid of classIds) {
+        const studentSet = new Set<string>();
+        const batchIdsForClass = classBatchIdsMap.get(cid) ?? new Set<string>();
+        for (const bid of batchIdsForClass) {
+          const sids = batchStudentsMap.get(bid) ?? new Set<string>();
+          for (const sid of sids) {
+            studentSet.add(sid);
+          }
+        }
+        classEnrolledStudentsMap.set(cid, studentSet);
+      }
+
+      const attendanceMap = new Map<string, string>();
       for (const rec of attendanceRecords ?? []) {
-        const stats = classStats.get(rec.class_id);
-        if (!stats) continue;
-        stats.students.add(rec.student_id);
-        if (rec.attendance_status === 'present') stats.present++;
-        else if (rec.attendance_status === 'partial') stats.partial++;
-        else stats.absent++;
+        attendanceMap.set(`${rec.class_id}:${rec.student_id}`, rec.attendance_status);
       }
 
       return (liveClasses ?? []).map((cls: any) => {
-        const stats = classStats.get(cls.class_id) ?? { present: 0, partial: 0, absent: 0, students: new Set() };
+        const enrolledStudents = classEnrolledStudentsMap.get(cls.class_id) ?? new Set<string>();
+
+        let present = 0;
+        let partial = 0;
+        let absent = 0;
+
+        for (const sid of enrolledStudents) {
+          const status = attendanceMap.get(`${cls.class_id}:${sid}`);
+          if (status === 'present') present++;
+          else if (status === 'partial') partial++;
+          else absent++;
+        }
+
         return {
           classId: cls.class_id,
           date: cls.scheduled_at,
           title: cls.title,
-          totalStudents: stats.students.size,
-          presentCount: stats.present,
-          partialCount: stats.partial,
-          absentCount: stats.absent,
+          totalStudents: enrolledStudents.size,
+          presentCount: present,
+          partialCount: partial,
+          absentCount: absent,
         };
       });
     } catch (err) {
@@ -978,22 +1093,33 @@ export const attendanceAnalyticsService = {
         }
       }
 
-      // 3. Map class_id to batch_id (safely handle PostgREST object or array)
-      const classBatchMap = new Map<string, string>();
+      // 3. Map batch_id to its completed class_ids
+      const batchCompletedClassesMap = new Map<string, Set<string>>();
+      for (const bid of batchIds) {
+        batchCompletedClassesMap.set(bid, new Set<string>());
+      }
+
+      const validClassIdSet = new Set(classIds);
       for (const link of classBSLinks ?? []) {
+        if (!validClassIdSet.has(link.class_id)) continue;
         const bs = (link as any).batch_subjects;
         const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
-        if (bid && !classBatchMap.has(link.class_id)) {
-          classBatchMap.set(link.class_id, bid);
+        if (bid && batchCompletedClassesMap.has(bid)) {
+          batchCompletedClassesMap.get(bid)!.add(link.class_id);
         }
       }
 
-      // 4. Compute per-batch stats
-      const batchStats = new Map<string, { present: number; partial: number; absent: number }>();
+      // 4. Map batch_id to enrolled students
+      const batchEnrolledStudentsMap = new Map<string, Set<string>>();
       for (const bid of batchIds) {
-        batchStats.set(bid, { present: 0, partial: 0, absent: 0 });
+        batchEnrolledStudentsMap.set(bid, new Set<string>());
+      }
+      for (const bs of batchStudents ?? []) {
+        batchEnrolledStudentsMap.get(bs.batch_id)?.add(bs.student_id);
       }
 
+      // 5. Fetch existing attendance records
+      const attendanceMap = new Map<string, string>();
       if (classIds.length > 0) {
         const { data: attendanceRecords } = await supabase
           .from('attendance')
@@ -1001,31 +1127,43 @@ export const attendanceAnalyticsService = {
           .in('class_id', classIds);
 
         for (const rec of attendanceRecords ?? []) {
-          const bid = classBatchMap.get(rec.class_id);
-          if (!bid) continue;
-          const stats = batchStats.get(bid);
-          if (!stats) continue;
-          if (rec.attendance_status === 'present') stats.present++;
-          else if (rec.attendance_status === 'partial') stats.partial++;
-          else stats.absent++;
+          attendanceMap.set(`${rec.class_id}:${rec.student_id}`, rec.attendance_status);
         }
       }
 
+      // 6. Compute per-batch stats across all enrolled students and completed classes
       return batchIds.map((bid) => {
-        const stats = batchStats.get(bid)!;
-        const totalRecords = stats.present + stats.partial + stats.absent;
-        const avgPct = totalRecords > 0
-          ? Math.round(((stats.present * 100 + stats.partial * 50) / totalRecords))
+        const enrolledStudents = batchEnrolledStudentsMap.get(bid) ?? new Set<string>();
+        const completedBatchClassIds = batchCompletedClassesMap.get(bid) ?? new Set<string>();
+
+        let present = 0;
+        let partial = 0;
+        let absent = 0;
+
+        if (completedBatchClassIds.size > 0) {
+          for (const cid of completedBatchClassIds) {
+            for (const sid of enrolledStudents) {
+              const status = attendanceMap.get(`${cid}:${sid}`);
+              if (status === 'present') present++;
+              else if (status === 'partial') partial++;
+              else absent++;
+            }
+          }
+        }
+
+        const totalEvaluations = present + partial + absent;
+        const avgPct = totalEvaluations > 0
+          ? Math.round(((present * 100 + partial * 50) / totalEvaluations))
           : 0;
 
         return {
           batchId: bid,
           batchName: batchNameMap.get(bid) ?? 'Unknown',
-          studentCount: batchEnrolledCountMap.get(bid) ?? 0,
+          studentCount: enrolledStudents.size,
           averageAttendancePercent: avgPct,
-          presentCount: stats.present,
-          partialCount: stats.partial,
-          absentCount: stats.absent,
+          presentCount: present,
+          partialCount: partial,
+          absentCount: absent,
         };
       });
     } catch (err) {
@@ -1360,33 +1498,84 @@ export const attendanceAnalyticsService = {
         }
       }
 
-      // Compute per-class stats
-      const classStats = new Map<string, { present: number; partial: number; absent: number; students: Set<string> }>();
+      // Link classes to all enrolled batch students
+      const classBatchIdsMap = new Map<string, Set<string>>();
       for (const cid of classIds) {
-        classStats.set(cid, { present: 0, partial: 0, absent: 0, students: new Set() });
+        classBatchIdsMap.set(cid, new Set<string>());
       }
+      for (const link of links ?? []) {
+        const bs = (link as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+        if (bid) classBatchIdsMap.get(link.class_id)?.add(bid);
+      }
+
+      const allLinkedBatchIds = [...new Set((links ?? []).map((l: any) => {
+        const bs = l.batch_subjects;
+        return Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+      }).filter(Boolean))];
+
+      const { data: batchStudents } = await supabase
+        .from('batch_students')
+        .select('student_id, batch_id')
+        .in('batch_id', allLinkedBatchIds);
+
+      const batchStudentsMap = new Map<string, Set<string>>();
+      for (const bid of allLinkedBatchIds) {
+        batchStudentsMap.set(bid, new Set<string>());
+      }
+      for (const bs of batchStudents ?? []) {
+        batchStudentsMap.get(bs.batch_id)?.add(bs.student_id);
+      }
+
+      const classEnrolledStudentsMap = new Map<string, Set<string>>();
+      for (const cid of classIds) {
+        const studentSet = new Set<string>();
+        const batchIdsForClass = classBatchIdsMap.get(cid) ?? new Set<string>();
+        for (const bid of batchIdsForClass) {
+          const sids = batchStudentsMap.get(bid) ?? new Set<string>();
+          for (const sid of sids) {
+            studentSet.add(sid);
+          }
+        }
+        classEnrolledStudentsMap.set(cid, studentSet);
+      }
+
+      const attendanceMap = new Map<string, string>();
       for (const rec of attendanceRecords ?? []) {
-        const stats = classStats.get(rec.class_id);
-        if (!stats) continue;
-        stats.students.add(rec.student_id);
-        if (rec.attendance_status === 'present') stats.present++;
-        else if (rec.attendance_status === 'partial') stats.partial++;
-        else stats.absent++;
+        attendanceMap.set(`${rec.class_id}:${rec.student_id}`, rec.attendance_status);
       }
 
       return liveClasses.map((cls: any) => {
-        const stats = classStats.get(cls.class_id) ?? { present: 0, partial: 0, absent: 0, students: new Set() };
-        const batchId = classBatchMap.get(cls.class_id);
+        const enrolledStudents = classEnrolledStudentsMap.get(cls.class_id) ?? new Set<string>();
+        const batchIdsForClass = classBatchIdsMap.get(cls.class_id) ?? new Set<string>();
+        const batchNames = [...batchIdsForClass]
+          .map((bid) => batchNameMap.get(bid))
+          .filter(Boolean) as string[];
+        const batchName = batchNames.length > 0
+          ? batchNames.join(', ')
+          : 'No Batch Assigned';
+
+        let present = 0;
+        let partial = 0;
+        let absent = 0;
+
+        for (const sid of enrolledStudents) {
+          const status = attendanceMap.get(`${cls.class_id}:${sid}`);
+          if (status === 'present') present++;
+          else if (status === 'partial') partial++;
+          else absent++;
+        }
+
         return {
           classId: cls.class_id,
           date: cls.scheduled_at,
           title: cls.title,
           teacherName: teacherNameMap.get(cls.teacher_id) ?? 'Unknown',
-          batchName: batchId ? (batchNameMap.get(batchId) ?? 'Unknown') : 'Unknown',
-          totalStudents: stats.students.size,
-          presentCount: stats.present,
-          partialCount: stats.partial,
-          absentCount: stats.absent,
+          batchName,
+          totalStudents: enrolledStudents.size,
+          presentCount: present,
+          partialCount: partial,
+          absentCount: absent,
         };
       });
     } catch (err) {

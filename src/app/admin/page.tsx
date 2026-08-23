@@ -248,7 +248,7 @@ export default function AdminDashboardPage() {
                 { label: 'Mock Tests', href: '/admin/mock-tests', icon: '📝', color: 'bg-rose-600' },
                 { label: 'Approval Center', href: '/admin/approvals', icon: '✅', color: 'bg-indigo-600' },
                 { label: 'Notifications', href: '/admin/notifications', icon: '🔔', color: 'bg-cyan-600' },
-                { label: 'Reports', href: '/admin/reports', icon: '📊', color: 'bg-gray-600' },
+                { label: 'Analytics', href: '/admin/analytics', icon: '📊', color: 'bg-indigo-600' },
               ].map((action) => (
                 <Link
                   key={action.label}

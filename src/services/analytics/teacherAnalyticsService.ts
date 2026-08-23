@@ -16,6 +16,9 @@ import { extractErrorMessage } from '@/utils/supabase';
 import { computeAccuracy, computeAverage, roundTo } from '@/utils/analytics';
 import type { ApiResponse } from '@/types/academic';
 import type {
+  StudentBucketDrilldownParams,
+  StudentBucketDrilldownItem,
+  StudentBucketDrilldownResult,
   TeacherAnalyticsDashboard,
   DashboardSummaryCards,
   StudentAggregateAnalytics,
@@ -157,7 +160,9 @@ function computeDistributionBucket(
   for (let i = 0; i < max; i += bucketSize) {
     const min = i;
     const maxVal = i + bucketSize;
-    const count = values.filter((v) => v >= min && v < maxVal).length;
+    const count = values.filter((v) =>
+      maxVal === max ? v >= min && v <= maxVal : v >= min && v < maxVal,
+    ).length;
     buckets.push({
       range: `${min}–${maxVal === max ? '100' : maxVal}`,
       min,
@@ -169,7 +174,10 @@ function computeDistributionBucket(
   return buckets;
 }
 
-function computeWeeklyPoints(data: { date: string; value: number }[]): TimeSeriesPoint[] {
+function computeWeeklyPoints(
+  data: { date: string; value: number }[],
+  mode: 'average' | 'count' | 'sum' = 'average',
+): TimeSeriesPoint[] {
   const weekMap = new Map<string, { total: number; count: number }>();
 
   for (const d of data) {
@@ -189,12 +197,15 @@ function computeWeeklyPoints(data: { date: string; value: number }[]): TimeSerie
     .map(([date, stats]) => ({
       date,
       label: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      value: stats.count > 0 ? roundTo(stats.total / stats.count) : 0,
+      value: mode === 'count' ? stats.count : mode === 'sum' ? roundTo(stats.total) : (stats.count > 0 ? roundTo(stats.total / stats.count) : 0),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function computeMonthlyPoints(data: { date: string; value: number }[]): TimeSeriesPoint[] {
+function computeMonthlyPoints(
+  data: { date: string; value: number }[],
+  mode: 'average' | 'count' | 'sum' = 'average',
+): TimeSeriesPoint[] {
   const monthMap = new Map<string, { total: number; count: number }>();
 
   for (const d of data) {
@@ -210,7 +221,7 @@ function computeMonthlyPoints(data: { date: string; value: number }[]): TimeSeri
     .map(([date, stats]) => ({
       date,
       label: new Date(date + '-01').toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
-      value: stats.count > 0 ? roundTo(stats.total / stats.count) : 0,
+      value: mode === 'count' ? stats.count : mode === 'sum' ? roundTo(stats.total) : (stats.count > 0 ? roundTo(stats.total / stats.count) : 0),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -412,9 +423,9 @@ export async function getStudentAggregateAnalytics(
       dates: s.dates,
     }));
 
-    // Score distribution
-    const allPercentages = r.map((x) => x.percentage);
-    const scoreDistribution = computeDistributionBucket(allPercentages, 10, 100);
+    // Score distribution (student-level average score distribution)
+    const allStudentAvgPercentages = students.map((s) => s.avgPercentage);
+    const scoreDistribution = computeDistributionBucket(allStudentAvgPercentages, 10, 100);
 
     // Accuracy distribution
     const allAccuracies = students
@@ -429,6 +440,28 @@ export async function getStudentAggregateAnalytics(
       return total > 0 ? (answered / total) * 100 : 0;
     });
     const completionRateDistribution = computeDistributionBucket(completionRates, 10, 100);
+
+    // Resolve total enrolled students from student_details
+    const { count: totalEnrolledCount } = await supabase
+      .from('student_details')
+      .select('student_id', { count: 'exact', head: true })
+      .eq('institute_id', instituteId);
+
+    const totalStudentsCount = totalEnrolledCount ?? students.length;
+
+    // Resolve real student names from student_details -> profiles
+    const uniqueStudentIds = Array.from(studentMap.keys());
+    const { data: studentDetails } = await supabase
+      .from('student_details')
+      .select('student_id, profiles(name)')
+      .in('student_id', uniqueStudentIds);
+
+    const studentNameMap = new Map<string, string>();
+    for (const sd of studentDetails ?? []) {
+      const p = (sd as any).profiles;
+      const name = Array.isArray(p) ? p[0]?.name : p?.name;
+      if (name) studentNameMap.set(sd.student_id, name);
+    }
 
     // Active students
     const now = Date.now();
@@ -447,19 +480,19 @@ export async function getStudentAggregateAnalytics(
     ).length;
 
     const activeStudentSummary: ActiveStudentSummary = {
-      total: students.length,
+      total: totalStudentsCount,
       activeLastWeek,
       activeLastMonth,
       activeLastQuarter,
-      inactive: students.length - activeLastQuarter,
+      inactive: Math.max(0, totalStudentsCount - activeLastQuarter),
     };
 
-    // Weekly activity
+    // Weekly activity (count of mock_results per week)
     const weeklyData = r.map((x) => ({ date: x.generated_at, value: 1 }));
-    const weeklyActivity = computeWeeklyPoints(weeklyData);
+    const weeklyActivity = computeWeeklyPoints(weeklyData, 'count');
 
-    // Monthly activity
-    const monthlyActivity = computeMonthlyPoints(weeklyData);
+    // Monthly activity (count of mock_results per month)
+    const monthlyActivity = computeMonthlyPoints(weeklyData, 'count');
 
     // Top performers (by avg percentage, min 2 tests)
     const topPerformers: StudentSummary[] = students
@@ -468,7 +501,7 @@ export async function getStudentAggregateAnalytics(
       .slice(0, 10)
       .map((s) => ({
         studentId: s.studentId,
-        name: `Student #${s.studentId.slice(0, 6)}`,
+        name: studentNameMap.get(s.studentId) ?? `Student #${s.studentId.slice(0, 6)}`,
         averagePercentage: roundTo(s.avgPercentage),
         testsAttempted: s.testsAttempted,
         trend: determineTrend(s.percentages),
@@ -482,7 +515,7 @@ export async function getStudentAggregateAnalytics(
       .slice(0, 10)
       .map((s) => ({
         studentId: s.studentId,
-        name: `Student #${s.studentId.slice(0, 6)}`,
+        name: studentNameMap.get(s.studentId) ?? `Student #${s.studentId.slice(0, 6)}`,
         averagePercentage: roundTo(s.avgPercentage),
         testsAttempted: s.testsAttempted,
         trend: determineTrend(s.percentages),
@@ -494,7 +527,7 @@ export async function getStudentAggregateAnalytics(
       .filter((s) => s.testsAttempted >= 3 && s.percentages.length >= 2)
       .map((s) => ({
         studentId: s.studentId,
-        name: `Student #${s.studentId.slice(0, 6)}`,
+        name: studentNameMap.get(s.studentId) ?? `Student #${s.studentId.slice(0, 6)}`,
         averagePercentage: roundTo(s.avgPercentage),
         testsAttempted: s.testsAttempted,
         improvement: s.percentages[s.percentages.length - 1] - s.percentages[0],
@@ -512,7 +545,7 @@ export async function getStudentAggregateAnalytics(
       .slice(0, 10)
       .map((s) => ({
         studentId: s.studentId,
-        name: `Student #${s.studentId.slice(0, 6)}`,
+        name: studentNameMap.get(s.studentId) ?? `Student #${s.studentId.slice(0, 6)}`,
         averagePercentage: roundTo(s.avgPercentage),
         testsAttempted: s.testsAttempted,
         trend: 'declining',
@@ -697,10 +730,10 @@ export async function getSubjectAnalytics(
   try {
     const dateFilter = getDateRangeFilter(filters);
 
-    // Get all results with subject breakdown
+    // Get all results with subject breakdown and attempt_id for fallback
     let query = supabase
       .from('mock_results')
-      .select('subject_breakdown, percentage, total_score, max_score, correct_count, wrong_count, skipped_count, generated_at')
+      .select('attempt_id, subject_breakdown, percentage, total_score, max_score, correct_count, wrong_count, skipped_count, generated_at')
       .eq('institute_id', instituteId);
 
     if (dateFilter.from) query = query.gte('generated_at', dateFilter.from);
@@ -743,21 +776,89 @@ export async function getSubjectAnalytics(
         existing.scores.push(sb.score ?? 0);
         existing.maxScores.push(sb.maxScore ?? 0);
         existing.count += 1;
-        if (sb.correct + sb.wrong > 0) existing.completed += 1;
+        if ((sb.correct ?? 0) + (sb.wrong ?? 0) > 0) existing.completed += 1;
+        if (sb.maxScore && (sb.score / sb.maxScore) >= 0.40) existing.passed += 1;
         subjectMap.set(sb.subjectId, existing);
       }
     }
 
+    // Historical fallback: if breakdown was null in historical rows, reconstruct from mock_answers
+    if (subjectMap.size === 0 && r.length > 0) {
+      const attemptIds = r.map((x: any) => x.attempt_id).filter(Boolean);
+      if (attemptIds.length > 0) {
+        const { data: answersData } = await supabase
+          .from('mock_answers')
+          .select(`
+            attempt_id,
+            is_correct,
+            marks_awarded,
+            is_answered,
+            questions (
+              question_id,
+              marks,
+              subject_id,
+              subjects (
+                subject_id,
+                name
+              )
+            )
+          `)
+          .in('attempt_id', attemptIds);
+
+        if (answersData) {
+          for (const ans of answersData as any[]) {
+            const subj = ans.questions?.subjects;
+            if (!subj?.subject_id) continue;
+
+            let existing = subjectMap.get(subj.subject_id);
+            if (!existing) {
+              existing = {
+                name: subj.name,
+                correct: 0,
+                wrong: 0,
+                skipped: 0,
+                scores: [],
+                maxScores: [],
+                percentages: [],
+                completed: 0,
+                passed: 0,
+                count: 0,
+              };
+            }
+
+            const qMarks = ans.questions?.marks ?? 1;
+            existing.maxScores.push(qMarks);
+            existing.count += 1;
+
+            if (!ans.is_answered) {
+              existing.skipped += 1;
+            } else if (ans.is_correct) {
+              existing.correct += 1;
+              existing.completed += 1;
+              existing.scores.push(ans.marks_awarded ?? qMarks);
+              if (ans.marks_awarded >= qMarks * 0.4) existing.passed += 1;
+            } else {
+              existing.wrong += 1;
+              existing.completed += 1;
+              existing.scores.push(ans.marks_awarded ?? 0);
+            }
+
+            subjectMap.set(subj.subject_id, existing);
+          }
+        }
+      }
+    }
+
     const subjects: SubjectComparisonItem[] = Array.from(subjectMap.entries()).map(([id, s]) => {
-      const answered = s.correct + s.wrong;
+      const totalMax = s.maxScores.reduce((a, b) => a + b, 0);
+      const totalScored = s.scores.reduce((a, b) => a + b, 0);
+      const pct = totalMax > 0 ? (totalScored / totalMax) * 100 : 0;
       const avgScore = s.scores.length > 0 ? computeAverage(s.scores) ?? 0 : 0;
-      const pct = s.maxScores.reduce((a, b) => a + b, 0) > 0
-        ? (s.scores.reduce((a, b) => a + b, 0) / s.maxScores.reduce((a, b) => a + b, 0)) * 100
-        : 0;
+
       return {
         subjectId: id,
         subjectName: s.name,
-        averageScore: roundTo(avgScore),
+        averageScore: roundTo(pct > 0 ? pct : avgScore),
         averageAccuracy: computeAccuracy(s.correct, s.wrong),
         totalAttempts: s.count,
         completionRate: s.count > 0 ? roundTo((s.completed / s.count) * 100) : 0,
@@ -766,6 +867,8 @@ export async function getSubjectAnalytics(
     });
 
     const sorted = [...subjects].sort((a, b) => b.averageScore - a.averageScore);
+    const totalCorrect = Array.from(subjectMap.values()).reduce((sum, s) => sum + s.correct, 0);
+    const totalWrong = Array.from(subjectMap.values()).reduce((sum, s) => sum + s.wrong, 0);
 
     const analytics: TeacherSubjectAnalytics = {
       subjects: subjects.map((s) => ({
@@ -792,10 +895,7 @@ export async function getSubjectAnalytics(
       overallStats: {
         totalSubjects: subjects.length,
         totalQuestionsAttempted: subjects.reduce((s, x) => s + x.totalAttempts, 0),
-        overallAccuracy: computeAccuracy(
-          subjects.reduce((s, x) => s + 0, 0),
-          subjects.reduce((s, x) => s + 0, 0),
-        ),
+        overallAccuracy: computeAccuracy(totalCorrect, totalWrong),
         bestSubject: sorted[0]?.subjectName ?? null,
         weakestSubject: sorted[sorted.length - 1]?.subjectName ?? null,
       },
@@ -1101,14 +1201,21 @@ export async function getPerformanceTrends(
   try {
     const dateFilter = getDateRangeFilter(filters);
 
+    const now = new Date();
+    const currentEnd = dateFilter.to ? new Date(dateFilter.to) : now;
+    const currentStart = dateFilter.from ? new Date(dateFilter.from) : new Date(now.getTime() - 30 * 86400000);
+
+    const periodDurationMs = Math.max(currentEnd.getTime() - currentStart.getTime(), 86400000);
+    const previousEnd = new Date(currentStart.getTime() - 1);
+    const previousStart = new Date(currentStart.getTime() - periodDurationMs);
+
     let query = supabase
       .from('mock_results')
       .select('percentage, total_score, max_score, generated_at')
       .eq('institute_id', instituteId)
+      .gte('generated_at', previousStart.toISOString())
+      .lte('generated_at', currentEnd.toISOString())
       .order('generated_at', { ascending: true });
-
-    if (dateFilter.from) query = query.gte('generated_at', dateFilter.from);
-    if (dateFilter.to) query = query.lte('generated_at', dateFilter.to);
 
     const { data: results, error } = await query
       .returns<{
@@ -1122,7 +1229,13 @@ export async function getPerformanceTrends(
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    const r = results ?? [];
+    const allRows = results ?? [];
+
+    // Filter to current period for points aggregation
+    const r = allRows.filter((x) => {
+      const d = new Date(x.generated_at);
+      return d >= currentStart && d <= currentEnd;
+    });
 
     // Week aggregation
     const weekData = r.map((x) => ({ date: x.generated_at, value: x.percentage }));
@@ -1163,19 +1276,11 @@ export async function getPerformanceTrends(
       : 0;
 
     // Current vs previous period comparison
-    const now = new Date();
-    const currentStart = new Date(now);
-    currentStart.setDate(currentStart.getDate() - 30);
-    const previousEnd = new Date(currentStart);
-    previousEnd.setDate(previousEnd.getDate() - 1);
-    const previousStart = new Date(previousEnd);
-    previousStart.setDate(previousStart.getDate() - 30);
-
-    const currentResults = r.filter((x) => {
+    const currentResults = allRows.filter((x) => {
       const d = new Date(x.generated_at);
-      return d >= currentStart && d <= now;
+      return d >= currentStart && d <= currentEnd;
     });
-    const previousResults = r.filter((x) => {
+    const previousResults = allRows.filter((x) => {
       const d = new Date(x.generated_at);
       return d >= previousStart && d <= previousEnd;
     });
@@ -1330,6 +1435,32 @@ export async function getLeaderboard(
 
     const r = results ?? [];
 
+    // Resolve student names
+    const uniqueStudentIds = [...new Set(r.map((x) => x.student_id))];
+    const { data: studentDetails } = await supabase
+      .from('student_details')
+      .select('student_id, profiles(name)')
+      .in('student_id', uniqueStudentIds);
+
+    const studentNameMap = new Map<string, string>();
+    for (const sd of studentDetails ?? []) {
+      const p = (sd as any).profiles;
+      const name = Array.isArray(p) ? p[0]?.name : p?.name;
+      if (name) studentNameMap.set(sd.student_id, name);
+    }
+
+    // Resolve test titles
+    const uniqueTestIds = [...new Set(r.map((x) => x.test_id))];
+    const { data: testRows } = await supabase
+      .from('mock_tests')
+      .select('test_id, title')
+      .in('test_id', uniqueTestIds);
+
+    const testTitleMap = new Map<string, string>();
+    for (const t of testRows ?? []) {
+      testTitleMap.set(t.test_id, t.title);
+    }
+
     // Student averages
     const studentMap = new Map<string, { percentages: number[]; scores: { score: number; maxScore: number; testId: string; date: string }[]; count: number }>();
     for (const row of r) {
@@ -1345,7 +1476,7 @@ export async function getLeaderboard(
       .map(([id, s]) => ({
         rank: 0,
         id,
-        name: `Student #${id.slice(0, 6)}`,
+        name: studentNameMap.get(id) ?? `Student #${id.slice(0, 6)}`,
         value: roundTo(computeAverage(s.percentages) ?? 0),
         unit: '%',
         change: 'stable' as const,
@@ -1367,9 +1498,9 @@ export async function getLeaderboard(
       .map((x) => ({
         rank: 0,
         studentId: x.student_id,
-        studentName: `Student #${x.student_id.slice(0, 6)}`,
+        studentName: studentNameMap.get(x.student_id) ?? `Student #${x.student_id.slice(0, 6)}`,
         testId: x.test_id,
-        testTitle: '',
+        testTitle: testTitleMap.get(x.test_id) ?? 'Mock Test',
         score: x.total_score,
         maxScore: x.max_score,
         percentage: roundTo(x.percentage),
@@ -1385,7 +1516,7 @@ export async function getLeaderboard(
       .map(([id, s]) => ({
         rank: 0,
         id,
-        name: `Student #${id.slice(0, 6)}`,
+        name: studentNameMap.get(id) ?? `Student #${id.slice(0, 6)}`,
         value: roundTo(s.percentages[s.percentages.length - 1] - s.percentages[0]),
         unit: '%',
         change: (s.percentages[s.percentages.length - 1] - s.percentages[0]) > 0 ? 'up' as const : 'down' as const,
@@ -1404,7 +1535,7 @@ export async function getLeaderboard(
         return {
           rank: 0,
           id,
-          name: `Student #${id.slice(0, 6)}`,
+          name: studentNameMap.get(id) ?? `Student #${id.slice(0, 6)}`,
           value: roundTo(100 - stddev),
           unit: 'pts',
           change: 'stable' as const,
@@ -1684,6 +1815,218 @@ export async function getInsights(
     };
 
     return { success: true, data: result };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+
+/**
+ * Server-side drilldown to fetch individual students belonging to a score or accuracy bucket.
+ */
+export async function getStudentBucketDrilldown(
+  instituteId: string,
+  params: StudentBucketDrilldownParams,
+): Promise<ApiResponse<StudentBucketDrilldownResult>> {
+  try {
+    let query = supabase
+      .from('mock_results')
+      .select('student_id, percentage, correct_count, wrong_count, generated_at')
+      .eq('institute_id', instituteId);
+
+    // Resolve date range through getDateRangeFilter for consistent preset handling
+    const resolvedFilter = getDateRangeFilter(
+      params.filters ?? (params.dateRange ? ({ dateRange: params.dateRange } as AnalyticsFilters) : undefined),
+    );
+
+    const fromDate = params.periodStart ?? (resolvedFilter.from || undefined);
+    const toDate = params.periodEnd ?? (resolvedFilter.to || undefined);
+
+    if (fromDate) {
+      query = query.gte('generated_at', fromDate);
+    }
+    if (toDate) {
+      query = query.lte('generated_at', toDate);
+    }
+
+    const { data: results, error } = await query;
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const r = (results as any[]) ?? [];
+
+    // Aggregate metrics per student
+    const studentMap = new Map<string, {
+      percentages: number[];
+      totalCorrect: number;
+      totalWrong: number;
+      tests: number;
+      lastActive: string | null;
+    }>();
+
+    for (const row of r) {
+      const existing = studentMap.get(row.student_id) ?? {
+        percentages: [],
+        totalCorrect: 0,
+        totalWrong: 0,
+        tests: 0,
+        lastActive: null,
+      };
+      existing.percentages.push(row.percentage);
+      existing.totalCorrect += row.correct_count;
+      existing.totalWrong += row.wrong_count;
+      existing.tests += 1;
+      if (!existing.lastActive || row.generated_at > existing.lastActive) {
+        existing.lastActive = row.generated_at;
+      }
+      studentMap.set(row.student_id, existing);
+    }
+
+    // Filter students matching the bucket or period
+    const matchingStudents: {
+      studentId: string;
+      averageScore: number;
+      accuracy: number | null;
+      testsAttempted: number;
+      lastActive: string | null;
+    }[] = [];
+
+    for (const [studentId, s] of studentMap.entries()) {
+      const avgScore = computeAverage(s.percentages) ?? 0;
+      const accuracy = computeAccuracy(s.totalCorrect, s.totalWrong);
+
+      if (params.type === 'weekly' || params.type === 'monthly') {
+        matchingStudents.push({
+          studentId,
+          averageScore: roundTo(avgScore),
+          accuracy,
+          testsAttempted: s.tests,
+          lastActive: s.lastActive,
+        });
+      } else {
+        const min = params.min ?? 0;
+        const max = params.max ?? 100;
+        const metric = params.type === 'score' ? avgScore : accuracy;
+        if (metric == null) continue;
+
+        const inRange = max === 100
+          ? metric >= min && metric <= 100
+          : metric >= min && metric < max;
+
+        if (inRange) {
+          matchingStudents.push({
+            studentId,
+            averageScore: roundTo(avgScore),
+            accuracy,
+            testsAttempted: s.tests,
+            lastActive: s.lastActive,
+          });
+        }
+      }
+    }
+
+    if (matchingStudents.length === 0) {
+      return {
+        success: true,
+        data: {
+          items: [],
+          totalCount: 0,
+          page: params.page ?? 1,
+          pageSize: params.pageSize ?? 10,
+          totalPages: 1,
+        },
+      };
+    }
+
+    // Resolve student names and emails
+    const matchingIds = matchingStudents.map((s) => s.studentId);
+    const { data: studentDetails } = await supabase
+      .from('student_details')
+      .select('student_id, profile_id, profiles(name, email)')
+      .in('student_id', matchingIds);
+
+    const studentProfileMap = new Map<string, { profileId: string; name: string; email: string | null }>();
+    for (const sd of studentDetails ?? []) {
+      const p = (sd as any).profiles;
+      const name = Array.isArray(p) ? p[0]?.name : p?.name;
+      const email = Array.isArray(p) ? p[0]?.email : p?.email;
+      studentProfileMap.set(sd.student_id, {
+        profileId: sd.profile_id,
+        name: name ?? `Student #${sd.student_id.slice(0, 6)}`,
+        email: email ?? null,
+      });
+    }
+
+    // Resolve batch names
+    const { data: batchLinks } = await supabase
+      .from('batch_students')
+      .select('student_id, batches(name)')
+      .in('student_id', matchingIds);
+
+    const studentBatchMap = new Map<string, string>();
+    for (const bl of batchLinks ?? []) {
+      const b = (bl as any).batches;
+      const bName = Array.isArray(b) ? b[0]?.name : b?.name;
+      if (bName && !studentBatchMap.has(bl.student_id)) {
+        studentBatchMap.set(bl.student_id, bName);
+      }
+    }
+
+    // Construct full items
+    let allItems: StudentBucketDrilldownItem[] = matchingStudents.map((s) => {
+      const prof = studentProfileMap.get(s.studentId);
+      return {
+        studentId: s.studentId,
+        profileId: prof?.profileId ?? s.studentId,
+        name: prof?.name ?? `Student #${s.studentId.slice(0, 6)}`,
+        email: prof?.email ?? null,
+        batchName: studentBatchMap.get(s.studentId) ?? 'Unassigned',
+        averageScore: s.averageScore,
+        accuracy: s.accuracy,
+        testsAttempted: s.testsAttempted,
+        lastActive: s.lastActive,
+      };
+    });
+
+    // Apply search filter if provided
+    if (params.searchQuery && params.searchQuery.trim()) {
+      const q = params.searchQuery.trim().toLowerCase();
+      allItems = allItems.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          (item.email && item.email.toLowerCase().includes(q)) ||
+          (item.batchName && item.batchName.toLowerCase().includes(q)),
+      );
+    }
+
+    // Sort by metric descending
+    if (params.type === 'score') {
+      allItems.sort((a, b) => b.averageScore - a.averageScore);
+    } else if (params.type === 'accuracy') {
+      allItems.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0));
+    } else {
+      allItems.sort((a, b) => b.testsAttempted - a.testsAttempted || b.averageScore - a.averageScore);
+    }
+
+    // Paginate
+    const page = Math.max(1, params.page ?? 1);
+    const pageSize = Math.max(1, params.pageSize ?? 10);
+    const totalCount = allItems.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const from = (page - 1) * pageSize;
+    const items = allItems.slice(from, from + pageSize);
+
+    return {
+      success: true,
+      data: {
+        items,
+        totalCount,
+        page,
+        pageSize,
+        totalPages,
+      },
+    };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }

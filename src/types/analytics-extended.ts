@@ -447,3 +447,40 @@ export const FILTER_DATE_PRESETS: { value: DateRangePreset; label: string }[] = 
   { value: 'thisQuarter', label: 'This Quarter' },
   { value: 'thisYear', label: 'This Year' },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Student Bucket Drilldown
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface StudentBucketDrilldownParams {
+  type: 'score' | 'accuracy' | 'weekly' | 'monthly';
+  min?: number;
+  max?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  filters?: AnalyticsFilters;
+  dateRange?: { from?: string; to?: string; preset?: string };
+  searchQuery?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface StudentBucketDrilldownItem {
+  studentId: string;
+  profileId?: string;
+  name: string;
+  email: string | null;
+  batchName: string | null;
+  averageScore: number;
+  accuracy: number | null;
+  testsAttempted: number;
+  lastActive: string | null;
+}
+
+export interface StudentBucketDrilldownResult {
+  items: StudentBucketDrilldownItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}

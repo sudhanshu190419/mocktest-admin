@@ -249,7 +249,7 @@ export const commerceService = {
         // Total Orders
         supabase
           .from('orders')
-          .select('total_amount', { count: 'exact' })
+          .select('total_amount, status', { count: 'exact' })
           .match(baseFilter),
 
         // Captured Payments
@@ -684,12 +684,21 @@ export const commerceService = {
    */
   async getStudentCommerce(profileId: string): Promise<ApiResponse<StudentCommerceData>> {
     try {
-      // First, find the student_details record
-      const { data: studentDetails, error: sdErr } = await supabase
+      // First, find the student_details record (supporting profile_id or student_id)
+      let { data: studentDetails, error: sdErr } = await supabase
         .from('student_details')
-        .select('student_id, institute_id')
+        .select('student_id, institute_id, profile_id')
         .eq('profile_id', profileId)
         .maybeSingle();
+
+      if (!studentDetails) {
+        const { data: sdByStudentId } = await supabase
+          .from('student_details')
+          .select('student_id, institute_id, profile_id')
+          .eq('student_id', profileId)
+          .maybeSingle();
+        studentDetails = sdByStudentId;
+      }
 
       const studentId = studentDetails?.student_id;
       const instituteId = studentDetails?.institute_id;

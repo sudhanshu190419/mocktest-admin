@@ -8,7 +8,7 @@ import { useUnreadNotifications } from '@/hooks/notification/useNotifications';
 
 export function TeacherHeader() {
   const router = useRouter();
-  const { user, teacherProfile } = useAuth();
+  const { user, teacherProfile, signOut } = useAuth();
   const [showLiveStudio, setShowLiveStudio] = useState(false);
 
   const { data: unreadData } = useUnreadNotifications(
@@ -16,6 +16,11 @@ export function TeacherHeader() {
     { page: 1, pageSize: 1 },
   );
   const unreadCount = unreadData?.unreadCount ?? 0;
+
+  const handleLogout = async () => {
+    await signOut();
+    router.push('/');
+  };
 
   return (
     <>
@@ -71,13 +76,25 @@ export function TeacherHeader() {
                 {teacherProfile?.name ?? 'Teacher'}
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                {teacherProfile?.designation ?? ''}
+                {teacherProfile?.designation ?? 'Faculty'}
               </p>
             </div>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
               {teacherProfile?.name?.charAt(0) ?? 'T'}
             </div>
           </div>
+
+          {/* Logout button */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-600 dark:hover:bg-gray-800"
+            title="Sign out"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+          </button>
         </div>
       </header>
 

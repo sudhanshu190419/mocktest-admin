@@ -29,7 +29,7 @@ import { uploadResource } from '@/services/storage/storageService';
 import { auditService } from '@/services/audit/auditService';
 import {
   assertPaperOwnership,
-  isCurrentUserSuperAdmin,
+  canManagePyq,
   resolveCurrentProfileId,
 } from './pyqOwnershipGuard';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
@@ -101,7 +101,6 @@ async function refreshPackagePaperCount(packageId: string): Promise<void> {
       .from('pyq_papers')
       .select('paper_id', { count: 'exact', head: true })
       .eq('package_id', packageId)
-      .eq('is_published', true)
       .is('deleted_at', null);
 
     if (error) {
@@ -153,13 +152,9 @@ export const pyqPaperService = {
         .eq('package_id', packageId)
         .is('deleted_at', null);
 
-      // ── Ownership scoping: teachers see only their own papers ───────
-      if (!(await isCurrentUserSuperAdmin())) {
-        const profileId = await resolveCurrentProfileId();
-        if (!profileId) {
-          return { success: false, error: 'No authenticated user found.' };
-        }
-        query = query.eq('created_by', profileId);
+      // ── Authorization: Super Admin or Academic Admin only ───────────
+      if (!(await canManagePyq())) {
+        return { success: false, error: 'Only a Super Admin or Academic Admin can access PYQ papers.' };
       }
 
       // ── Filters ─────────────────────────────────────────────────────
@@ -231,15 +226,12 @@ export const pyqPaperService = {
       }
 
       // ── Ownership scoping: teacher can only read their own paper ──
-      if (!(await isCurrentUserSuperAdmin())) {
-        const profileId = await resolveCurrentProfileId();
-        if (!profileId || data.created_by !== profileId) {
-          return {
-            success: false,
-            error:
-              'You do not have permission to view this PYQ paper. Only the paper owner or a Super Admin can view it.',
-          };
-        }
+      if (!(await canManagePyq())) {
+        return {
+          success: false,
+          error:
+            'You do not have permission to view this PYQ paper. Only a Super Admin or Academic Admin can view it.',
+        };
       }
 
       return { success: true, data: toPyqPaper(data) };
@@ -268,7 +260,9 @@ export const pyqPaperService = {
    */
   async createPaper(input: CreatePyqPaperInput): Promise<ApiResponse<PyqPaper>> {
     try {
-      // ── Resolve the authenticated creator (server-side) ────────────
+      if (!(await canManagePyq())) {
+        return { success: false, error: 'Only a Super Admin or Academic Admin can create PYQ papers.' };
+      }
       const creatorProfileId = await resolveCurrentProfileId();
       if (!creatorProfileId) {
         return { success: false, error: 'No authenticated user found.' };
@@ -378,14 +372,11 @@ export const pyqPaperService = {
         metadata: { paperId, packageId: input.packageId, title: input.title.trim() },
       });
 
-      // ── Upload PDFs after paper creation ────────────────────────────
+      // ── Upload Question Paper PDF after paper creation ─────────────
       let pdfBucket: string | null = null;
       let pdfPath: string | null = null;
-      let solBucket: string | null = null;
-      let solPath: string | null = null;
 
       try {
-        // Upload question paper PDF
         if (input.questionPdfFile) {
           const uploadResult = await uploadResource({
             file: input.questionPdfFile,
@@ -406,42 +397,14 @@ export const pyqPaperService = {
           pdfPath = uploadResult.data.storagePath;
         }
 
-        // Upload solution PDF
-        if (input.solutionPdfFile) {
-          const uploadResult = await uploadResource({
-            file: input.solutionPdfFile,
-            resourceType: 'pyq_solution_paper_pdf',
-            pathParams: {
-              instituteId,
-              packageId: input.packageId,
-              paperId,
-            },
-            onProgress: input.onProgress,
-          });
-
-          if (!uploadResult.success || !uploadResult.data) {
-            throw new Error(`Solution PDF upload failed: ${uploadResult.error ?? 'Upload failed.'}`);
-          }
-
-          solBucket = uploadResult.data.bucket;
-          solPath = uploadResult.data.storagePath;
-        }
-
-        // ── Update paper with storage paths ──────────────────────────────
-        if (pdfBucket || solBucket) {
-          const updateRecord: Record<string, unknown> = {};
-          if (pdfBucket) {
-            updateRecord.pdf_storage_bucket = pdfBucket;
-            updateRecord.pdf_storage_path = pdfPath;
-          }
-          if (solBucket) {
-            updateRecord.solution_pdf_storage_bucket = solBucket;
-            updateRecord.solution_pdf_storage_path = solPath;
-          }
-
+        // ── Update paper with storage path ───────────────────────────────
+        if (pdfBucket) {
           const { error: updateErr } = await supabase
             .from('pyq_papers')
-            .update(updateRecord)
+            .update({
+              pdf_storage_bucket: pdfBucket,
+              pdf_storage_path: pdfPath,
+            })
             .eq('paper_id', paperId);
 
           if (updateErr) {
@@ -453,7 +416,7 @@ export const pyqPaperService = {
         console.warn('Paper created but PDF upload failed:', uploadErr.message);
         return {
           success: true,
-          data: toPyqPaper({ ...data, pdf_storage_bucket: null, pdf_storage_path: null, solution_pdf_storage_bucket: null, solution_pdf_storage_path: null }),
+          data: toPyqPaper({ ...data, pdf_storage_bucket: null, pdf_storage_path: null }),
         };
       }
 
@@ -466,8 +429,8 @@ export const pyqPaperService = {
           ...data,
           pdf_storage_bucket: pdfBucket,
           pdf_storage_path: pdfPath,
-          solution_pdf_storage_bucket: solBucket,
-          solution_pdf_storage_path: solPath,
+          solution_pdf_storage_bucket: null,
+          solution_pdf_storage_path: null,
         }),
       };
     } catch (err) {
@@ -585,26 +548,7 @@ export const pyqPaperService = {
         dbRecord.pdf_storage_path = uploadResult.data.storagePath;
       }
 
-      // ── Handle solution PDF file replacement ──────────────────────────
-      if (input.solutionPdfFile) {
-        const uploadResult = await uploadResource({
-          file: input.solutionPdfFile,
-          resourceType: 'pyq_solution_paper_pdf',
-          pathParams: {
-            instituteId: current.institute_id,
-            packageId: current.package_id,
-            paperId,
-          },
-          onProgress: input.onProgress,
-        });
 
-        if (!uploadResult.success || !uploadResult.data) {
-          return { success: false, error: `Solution PDF upload failed: ${uploadResult.error ?? 'Upload failed.'}` };
-        }
-
-        dbRecord.solution_pdf_storage_bucket = uploadResult.data.bucket;
-        dbRecord.solution_pdf_storage_path = uploadResult.data.storagePath;
-      }
 
       // ── If nothing to update, return current ──────────────────────────
       if (Object.keys(dbRecord).length === 0) {

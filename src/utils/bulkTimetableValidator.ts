@@ -37,6 +37,9 @@ import type {
   ImportPreview,
   ImportedRow,
   ImportSummary,
+  MissingAcademicReferences,
+  MissingChapterItem,
+  MissingTopicItem,
   RawSheetRow,
   ReferenceData,
   ReferenceTimetableSlot,
@@ -945,6 +948,66 @@ export function buildImportPreview(
     }
   }
 
+  // ── Missing Academic References Extraction ───────────────────────────
+  const missingChaptersMap = new Map<string, MissingChapterItem>();
+  const missingTopicsMap = new Map<string, MissingTopicItem>();
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    const raw = rawRows[i];
+    if (!raw) continue;
+
+    const rawChap = raw.chapter.trim();
+    const rawTop = raw.topic.trim();
+
+    // Missing Chapter: chapter provided in file but not resolved
+    if (rawChap && !r.chapterId) {
+      const subjectName = r.subjectId
+        ? reference.subjects.find((s) => s.subjectId === r.subjectId)?.name ?? raw.subjectCode
+        : null;
+      const key = r.subjectId
+        ? `${r.subjectId}:::${rawChap.toLowerCase()}`
+        : `${raw.subjectCode.toLowerCase()}:::${rawChap.toLowerCase()}`;
+
+      const existing = missingChaptersMap.get(key);
+      if (existing) {
+        if (!existing.rowNumbers.includes(r.row)) existing.rowNumbers.push(r.row);
+      } else {
+        missingChaptersMap.set(key, {
+          rawSubject: raw.subjectCode,
+          rawChapter: rawChap,
+          resolvedSubjectId: r.subjectId,
+          resolvedSubjectName: subjectName,
+          rowNumbers: [r.row],
+        });
+      }
+    }
+
+    // Missing Topic: topic provided, chapter resolved, but topic not found
+    if (rawTop && r.chapterId && !r.topicId) {
+      const chapterName = reference.chapters.find((c) => c.chapterId === r.chapterId)?.name ?? rawChap;
+      const key = `${r.chapterId}:::${rawTop.toLowerCase()}`;
+      const existing = missingTopicsMap.get(key);
+      if (existing) {
+        if (!existing.rowNumbers.includes(r.row)) existing.rowNumbers.push(r.row);
+      } else {
+        missingTopicsMap.set(key, {
+          rawChapter: chapterName,
+          rawTopic: rawTop,
+          resolvedChapterId: r.chapterId,
+          resolvedChapterName: chapterName,
+          rowNumbers: [r.row],
+        });
+      }
+    }
+  }
+
+  const missingReferences: MissingAcademicReferences = {
+    subjects: [],
+    chapters: Array.from(missingChaptersMap.values()),
+    topics: Array.from(missingTopicsMap.values()),
+  };
+
   const summary: ImportSummary = {
     totalRows: rawRows.length,
     validRows: dedupedRows.length - errorRows,
@@ -958,7 +1021,7 @@ export function buildImportPreview(
     plansToUpdate,
   };
 
-  return { rows: dedupedRows, groups, issues: fileIssues, summary };
+  return { rows: dedupedRows, groups, issues: fileIssues, summary, missingReferences };
 }
 
 /** True when the preview contains any blocking error (row or file-level). */

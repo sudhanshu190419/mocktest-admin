@@ -713,9 +713,17 @@ export async function getInstituteAnalytics(
     // ── Top students ─────────────────────────────────────────────────
     const topStudents = await computeTopStudents(instituteId);
 
+    const [studentsCountRes, teachersCountRes] = await Promise.all([
+      supabase.from('student_details').select('*', { count: 'exact', head: true }).eq('institute_id', instituteId),
+      supabase.from('teacher_details').select('*', { count: 'exact', head: true }).eq('institute_id', instituteId),
+    ]);
+
+    const totalStudents = studentsCountRes.count ?? 0;
+    const totalTeachers = teachersCountRes.count ?? 0;
+
     const analytics: InstituteAnalytics = {
-      totalStudents: 0, // Would need student_details query
-      totalTeachers: 0, // Would need teacher_details query
+      totalStudents,
+      totalTeachers,
       totalMockTests: testCount ?? 0,
       totalAttempts: attemptCount ?? 0,
       totalQuestions: questionCount ?? 0,

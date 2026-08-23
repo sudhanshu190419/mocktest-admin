@@ -32,10 +32,6 @@ export default function TeacherCreateNotificationPage() {
   const [selectedBatch, setSelectedBatch] = useState('');
   const [sendPush, setSendPush] = useState(false);
 
-  // If teacher has no assigned batches, show empty state
-  const [scheduleMode, setScheduleMode] = useState<'immediate' | 'scheduled'>('immediate');
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [scheduledTime, setScheduledTime] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const sendNotif = useSendAudienceNotification();
@@ -54,10 +50,9 @@ export default function TeacherCreateNotificationPage() {
     if (!message.trim()) errs.message = 'Message is required';
     if (message.trim().length < 10) errs.message = 'Message must be at least 10 characters';
     if (audienceType === 'batch' && !selectedBatch) errs.batch = 'Please select a batch';
-    if (scheduleMode === 'scheduled' && !scheduledDate) errs.scheduledDate = 'Date is required for scheduled notifications';
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  }, [title, message, audienceType, selectedBatch, scheduleMode, scheduledDate]);
+  }, [title, message, audienceType, selectedBatch]);
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) return;
@@ -93,7 +88,7 @@ export default function TeacherCreateNotificationPage() {
     } catch (err) {
       setErrors({ submit: (err as Error)?.message ?? 'Failed to create notification' });
     }
-  }, [validate, instituteId, title, message, priority, audienceType, selectedBatch, sendPush, canSendPush, scheduleMode, sendNotif, router, user]);
+  }, [validate, instituteId, title, message, priority, audienceType, selectedBatch, sendPush, canSendPush, sendNotif, router, user]);
 
   const isPending = sendNotif.isPending;
 
@@ -233,61 +228,7 @@ export default function TeacherCreateNotificationPage() {
           </div>
         )}
 
-        {/* Schedule */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-          <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Schedule</h3>
-          <div className="space-y-3">
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => setScheduleMode('immediate')}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs transition-colors ${
-                  scheduleMode === 'immediate'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:text-gray-400'
-                }`}
-              >
-                <span>📨</span>
-                <span className="font-medium">Send Immediately</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setScheduleMode('scheduled')}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs transition-colors ${
-                  scheduleMode === 'scheduled'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:text-gray-400'
-                }`}
-              >
-                <span>⏰</span>
-                <span className="font-medium">Schedule for Later</span>
-              </button>
-            </div>
-            {scheduleMode === 'scheduled' && (
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
-                  <input
-                    type="date"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                  {errors.scheduledDate && <p className="mt-1 text-xs text-red-500">{errors.scheduledDate}</p>}
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label>
-                  <input
-                    type="time"
-                    value={scheduledTime}
-                    onChange={(e) => setScheduledTime(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+
 
         {/* Preview */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
@@ -306,8 +247,7 @@ export default function TeacherCreateNotificationPage() {
                 <span>📢 Announcement</span>
                 <span>·</span>
                 <span>{AUDIENCE_LABELS[audienceType]?.label ?? 'Selected audience'}</span>
-                <span>·</span>
-                <span>{scheduleMode === 'immediate' ? 'Send immediately' : `Scheduled for ${scheduledDate || '...'}`}</span>
+
               </div>
             </div>
           </div>
@@ -340,7 +280,7 @@ export default function TeacherCreateNotificationPage() {
             disabled={isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {isPending ? 'Sending...' : scheduleMode === 'immediate' ? 'Send Now' : 'Schedule'}
+            {isPending ? 'Sending...' : 'Send Notification'}
           </button>
         </div>
       </div>

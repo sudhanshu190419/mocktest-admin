@@ -30,6 +30,7 @@
  */
 
 import { supabase } from '@/config/supabase';
+import { auditService } from '@/services/audit/auditService';
 import { extractErrorMessage, buildPagination } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type {
@@ -463,6 +464,199 @@ export const auditLogService = {
       }
 
       return { success: true, data: mapLogEntry(data) };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  //  4. Export (CSV with applied filters and security redactions)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Export matching audit logs as a sanitized CSV string.
+   *
+   * Enforces pagination limits (max 5,000 rows by default) to protect memory,
+   * escapes CSV special characters, guards against formula injection,
+   * redacts sensitive credential keys in metadata, and logs the export event.
+   *
+   * @param instituteId - Institute scope (RLS-aligned).
+   * @param filters     - Active filter criteria (search, action, date range).
+   * @param sort        - Active sort direction.
+   * @param maxRows     - Maximum row threshold (default: 5,000).
+   */
+  async exportLogs(
+    instituteId: string | null,
+    filters?: AuditLogFilters,
+    sort?: AuditLogSortOptions,
+    maxRows = 5000,
+  ): Promise<ApiResponse<{ csv: string; rowCount: number; fileName: string }>> {
+    try {
+      let query = supabase
+        .from('audit_logs')
+        .select(
+          `
+          log_id,
+          institute_id,
+          profile_id,
+          actor_role,
+          action,
+          resource_type,
+          resource_id,
+          ip_address,
+          metadata,
+          performed_at,
+          outcome,
+          reason,
+          profiles!left (
+            name,
+            email
+          ),
+          institutes!left (
+            name
+          )
+        `,
+        );
+
+      if (instituteId) {
+        query = query.eq('institute_id', instituteId);
+      }
+
+      if (filters?.search?.trim()) {
+        const term = `%${filters.search.trim()}%`;
+        query = query.or(
+          `resource_type.ilike.${term},resource_id::text.ilike.${term},metadata::text.ilike.${term}`,
+        );
+      }
+
+      if (filters?.action) {
+        query = query.eq('action', filters.action);
+      }
+
+      if (filters?.resourceType) {
+        query = query.eq('resource_type', filters.resourceType);
+      }
+
+      if (filters?.outcome) {
+        query = query.eq('outcome', filters.outcome);
+      }
+
+      if (filters?.profileId) {
+        query = query.eq('profile_id', filters.profileId);
+      }
+
+      if (filters?.fromDate) {
+        query = query.gte('performed_at', filters.fromDate);
+      }
+
+      if (filters?.toDate) {
+        query = query.lte('performed_at', filters.toDate);
+      }
+
+      const ascending = (sort?.sortDirection ?? 'desc') === 'asc';
+      query = query.order('performed_at', { ascending }).limit(maxRows);
+
+      const { data, error } = await query;
+
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const rows = data ?? [];
+
+      // CSV Generation with formula injection guard & secret stripping
+            const escapeCsv = (val: unknown): string => {
+        if (val === null || val === undefined) return '""';
+        let str = String(val).replace(/"/g, '""');
+        // Prevent CSV formula injection (=, +, -, @, tab, CR)
+        if (/^[=+\-@\t\r]/.test(str)) {
+          str = "'" + str;
+        }
+        return '"' + str + '"';
+      };
+
+      const sanitizeMetadata = (meta: unknown): string => {
+        if (!meta || typeof meta !== 'object') return '';
+        const clone = { ...(meta as Record<string, unknown>) };
+        const sensitiveKeys = ['password', 'token', 'access_token', 'secret', 'hash', 'otp', 'apiKey', 'pin'];
+        for (const k of Object.keys(clone)) {
+          if (sensitiveKeys.some((sk) => k.toLowerCase().includes(sk.toLowerCase()))) {
+            clone[k] = '[REDACTED]';
+          }
+        }
+        try {
+          return JSON.stringify(clone);
+        } catch {
+          return '';
+        }
+      };
+
+      const headers = [
+        'Timestamp (ISO)',
+        'Action',
+        'Resource Type',
+        'Resource ID',
+        'Entity Name',
+        'Actor Name',
+        'Actor Email',
+        'Actor Role',
+        'Outcome',
+        'Reason',
+        'IP Address',
+        'Metadata Summary',
+      ];
+
+      const csvLines = [headers.map(escapeCsv).join(',')];
+
+      for (const row of rows) {
+        const p = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+        const actorName = p?.name ?? '';
+        const actorEmail = p?.email ?? '';
+        const meta = row.metadata as Record<string, unknown> | null;
+        const entityName = meta?.entityName ?? meta?.name ?? meta?.title ?? '';
+
+        csvLines.push(
+          [
+            row.performed_at ?? '',
+            row.action ?? '',
+            row.resource_type ?? '',
+            row.resource_id ?? '',
+            entityName,
+            actorName,
+            actorEmail,
+            row.actor_role ?? '',
+            row.outcome ?? 'success',
+            row.reason ?? '',
+            row.ip_address ?? '',
+            sanitizeMetadata(row.metadata),
+          ]
+            .map(escapeCsv)
+            .join(','),
+        );
+      }
+
+      const csv = csvLines.join('\r\n');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `audit_logs_export_${dateStr}.csv`;
+
+      // Log the export action
+      await auditService.log({
+        action: 'export',
+        resourceType: 'audit_logs',
+        metadata: {
+          rowCount: rows.length,
+          filters: filters ?? {},
+        },
+      });
+
+      return {
+        success: true,
+        data: {
+          csv,
+          rowCount: rows.length,
+          fileName,
+        },
+      };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
     }

@@ -49,7 +49,7 @@ export default function AdminCreatePyqPackagePage() {
     <div className="max-w-3xl">
       <PageHeader
         title="Create PYQ Package"
-        description="Configure the PYQ package settings. Papers can be added by teachers after creation."
+        description="Configure the PYQ package settings. Papers can be added after creation."
         breadcrumbs={[
           { label: 'PYQ Packages', href: '/admin/pyq-packages' },
           { label: 'Create Package' },

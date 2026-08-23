@@ -1,33 +1,19 @@
 /**
  * PYQ Ownership Guard
  *
- * Shared service-layer authorization helpers for the PYQ module (Phase 9B).
+ * Shared service-layer authorization helpers for the PYQ module.
  *
- * ## Why this exists
+ * ## Role Model
  *
- * Phase 9B splits PYQ responsibilities:
- *
- *   • PYQ **packages** are institute-owned and their mutations are restricted
- *     to Super Admin only.
- *   • PYQ **papers** are teacher-owned (`pyq_papers.created_by` == the
- *     creating profile) and may only be modified by their owner, with a
- *     Super Admin override.
+ * - PYQ **packages**, **papers**, and **mappings** are managed strictly by
+ *   **Super Admin** and **Academic Admin** within their institute.
+ * - **Finance Admin** is restricted to commerce/purchases and has zero
+ *   academic package/paper mutation rights.
+ * - **Teachers** have NO management access to PYQ packages or papers.
+ * - **Students** have read-only consumption access upon valid purchase.
  *
  * Ownership must NEVER be trusted from client data — it is always resolved
- * server-side from the authenticated session and the database row.
- *
- * ## Usage
- *
- * ```ts
- * // Super Admin-only mutation (packages):
- * if (!(await isCurrentUserSuperAdmin())) {
- *   return { success: false, error: 'Only a Super Admin can ...' };
- * }
- *
- * // Paper ownership check (papers, mappings, mock generation):
- * const guard = await assertPaperOwnership(paperId);
- * if (!guard.success) return guard;
- * ```
+ * server-side from the authenticated session and admin_roles.
  *
  * @module services/pyq/pyqOwnershipGuard
  */
@@ -37,7 +23,7 @@ import { adminRoleService } from '@/services/admin/adminRoleService';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
 
-// ─── Identity helpers ───────────────────────────────────────────────────────
+// ─── Identity & Role Helpers ────────────────────────────────────────────────
 
 /**
  * Resolves the current authenticated user's profile id
@@ -51,31 +37,38 @@ export async function resolveCurrentProfileId(): Promise<string | null> {
 }
 
 /**
- * True when the current user holds an APPROVED super_admin role.
+ * True when the current user holds an APPROVED super_admin or academic_admin role.
  *
  * Resolves live from `admin_roles` via `adminRoleService` — never from
- * client-supplied values (mirrors `approvalGuard.ts`).
+ * client-supplied values.
+ */
+export async function canManagePyq(): Promise<boolean> {
+  const roles = await adminRoleService.getCurrentAdminRoles();
+  if (!roles.success) return false;
+  return (roles.data ?? []).some(
+    (r) =>
+      (r.adminRole === 'super_admin' || r.adminRole === 'academic_admin') &&
+      r.accessStatus === 'approved',
+  );
+}
+
+/**
+ * Backward-compatible helper for Super Admin checks.
  */
 export async function isCurrentUserSuperAdmin(): Promise<boolean> {
   return adminRoleService.isSuperAdmin();
 }
 
-// ─── Paper ownership ────────────────────────────────────────────────────────
+// ─── Paper Management Authorization ──────────────────────────────────────────
 
 /**
  * Verifies the current user may manage the given PYQ paper.
  *
- * Allowed when:
- *   • the caller is an approved Super Admin (override), OR
- *   • the paper's `created_by` equals the caller's profile id (owner).
+ * Allowed strictly when:
+ *   • the caller is an approved Super Admin OR Academic Admin.
  *
- * The paper's `created_by` is read from the database — never from client
- * input. Returns a standard `ApiResponse` so callers can short-circuit:
- *
- * ```ts
- * const guard = await assertPaperOwnership(paperId);
- * if (!guard.success) return guard;
- * ```
+ * Under the target authorization model, teachers have NO management access
+ * to PYQ papers, question mappings, or mock mappings.
  *
  * @param paperId - The `pyq_papers.paper_id` to authorize against.
  */
@@ -96,31 +89,10 @@ export async function assertPaperOwnership(
       return { success: false, error: 'No authenticated user found.' };
     }
 
-    // Super Admin override — bypasses ownership entirely.
-    if (await isCurrentUserSuperAdmin()) {
+    if (await canManagePyq()) {
       return {
         success: true,
         data: { paperId, createdBy: null, profileId },
-      };
-    }
-
-    const { data, error } = await supabase
-      .from('pyq_papers')
-      .select('created_by')
-      .eq('paper_id', paperId)
-      .maybeSingle<{ created_by: string | null }>();
-
-    if (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
-    if (!data) {
-      return { success: false, error: `PYQ paper not found: ${paperId}` };
-    }
-
-    if (data.created_by === profileId) {
-      return {
-        success: true,
-        data: { paperId, createdBy: data.created_by, profileId },
       };
     }
 
@@ -128,7 +100,7 @@ export async function assertPaperOwnership(
       success: false,
       error:
         'You do not have permission to modify this PYQ paper. ' +
-        'Only the paper owner or a Super Admin can perform this action.',
+        'Only a Super Admin or Academic Admin can manage PYQ papers.',
     };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };

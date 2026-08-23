@@ -1072,3 +1072,47 @@ export async function finalizeSubjectiveEvaluation(
     return { success: false, error: extractErrorMessage(err) };
   }
 }
+
+/**
+ * Count submitted attempts for a given test that still have at least one
+ * pending subjective answer awaiting teacher evaluation.
+ *
+ * @param testId - UUID of the mock test.
+ */
+export async function getTestPendingEvaluationCount(
+  testId: string,
+): Promise<ApiResponse<{ pendingEvaluationCount: number }>> {
+  try {
+    validateUUID(testId, 'testId');
+
+    // Query mock_answers with pending evaluation_status belonging to submitted attempts of this test
+    const { data, error } = await supabase
+      .from('mock_answers')
+      .select(`
+        attempt_id,
+        mock_attempts!inner(
+          test_id,
+          status
+        )
+      `)
+      .eq('mock_attempts.test_id', testId)
+      .eq('mock_attempts.status', 'submitted')
+      .eq('evaluation_status', 'pending');
+
+    if (error) {
+      console.warn('[EVALUATION_SERVICE] getTestPendingEvaluationCount failed:', error);
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    // Count unique attemptIds that have pending evaluations
+    const uniqueAttemptIds = new Set((data ?? []).map((row: any) => row.attempt_id));
+    const pendingEvaluationCount = uniqueAttemptIds.size;
+
+    return {
+      success: true,
+      data: { pendingEvaluationCount },
+    };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}

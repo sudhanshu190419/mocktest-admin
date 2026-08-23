@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
+import { toLocalDatetime, toUtcIsoString } from '@/utils/dateTime';
 
 const TEST_TYPES = [
   { value: 'practice', label: 'Practice' },
@@ -30,6 +31,7 @@ interface FormData {
   description: string;
   testType: string;
   durationMin: number;
+  passingMarks: number | null;
   attemptLimit: number | null;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -40,17 +42,7 @@ interface FormData {
   availableUntil: string;
 }
 
-function toLocalDatetime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return '';
-  }
-}
+
 
 export default function EditMockTestPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -76,6 +68,7 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
         description: test.description ?? '',
         testType: test.testType,
         durationMin: test.durationMin,
+        passingMarks: test.passingMarks ?? null,
         attemptLimit: test.attemptLimit,
         shuffleQuestions: test.shuffleQuestions,
         shuffleOptions: test.shuffleOptions,
@@ -117,11 +110,7 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
     if (formData.resultReleaseMode === 'scheduled' && !formData.resultReleaseAt) {
       newErrors.resultReleaseAt = 'Release date is required for scheduled release.';
     }
-    if (formData.availableFrom && formData.availableUntil) {
-      if (new Date(formData.availableFrom) >= new Date(formData.availableUntil)) {
-        newErrors.availableUntil = 'End date must be after start date.';
-      }
-    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [formData]);
@@ -138,14 +127,18 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
             title: formData.title.trim(),
             description: formData.description || null,
             durationMin: formData.durationMin,
+            passingMarks: formData.passingMarks,
             attemptLimit: formData.attemptLimit,
             shuffleQuestions: formData.shuffleQuestions,
             shuffleOptions: formData.shuffleOptions,
             calculatorAllowed: formData.calculatorAllowed,
             resultReleaseMode: formData.resultReleaseMode,
-            resultReleaseAt: formData.resultReleaseMode === 'scheduled' ? formData.resultReleaseAt || null : null,
-            availableFrom: formData.availableFrom || null,
-            availableUntil: formData.availableUntil || null,
+            resultReleaseAt:
+              formData.resultReleaseMode === 'scheduled'
+                ? toUtcIsoString(formData.resultReleaseAt)
+                : null,
+            availableFrom: toUtcIsoString(formData.availableFrom),
+            availableUntil: toUtcIsoString(formData.availableUntil),
           },
         },
         { onError: (error) => setErrors({ form: error.message }) },
@@ -295,6 +288,15 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
               {errors.durationMin && <p className="mt-1 text-xs text-red-500">{errors.durationMin}</p>}
             </div>
             <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">Passing Marks</label>
+              <input type="number" value={formData.passingMarks ?? ''}
+                onChange={(e) => handleChange('passingMarks', e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0))} min={0}
+                placeholder="No cutoff"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
+              <p className="mt-1 text-[11px] text-gray-500">Optional. Leave blank if no pass/fail threshold applies.</p>
+              {errors.passingMarks && <p className="mt-1 text-xs text-red-500">{errors.passingMarks}</p>}
+            </div>
+            <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Attempt Limit</label>
               <input type="number" value={formData.attemptLimit ?? ''}
                 onChange={(e) => handleChange('attemptLimit', e.target.value ? parseInt(e.target.value) : null)} min={1}
@@ -329,7 +331,7 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
 
         {/* Availability */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Availability & Results</h2>
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Result Release</h2>
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Result Release Mode</label>
@@ -337,6 +339,8 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800">
                 {RESULT_RELEASE_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
+              <p className="mt-1.5 text-xs text-gray-500">Student availability dates (Available From / Until) are configured per batch assignment.</p>
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Tests containing subjective questions always require Admin release after teacher evaluation, regardless of the selected release mode.</p>
             </div>
             {formData.resultReleaseMode === 'scheduled' && (
               <div>
@@ -347,21 +351,6 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
                 {errors.resultReleaseAt && <p className="mt-1 text-xs text-red-500">{errors.resultReleaseAt}</p>}
               </div>
             )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Available From</label>
-                <input type="datetime-local" value={formData.availableFrom}
-                  onChange={(e) => handleChange('availableFrom', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Available Until</label>
-                <input type="datetime-local" value={formData.availableUntil}
-                  onChange={(e) => handleChange('availableUntil', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800" />
-                {errors.availableUntil && <p className="mt-1 text-xs text-red-500">{errors.availableUntil}</p>}
-              </div>
-            </div>
           </div>
         </section>
 

@@ -52,7 +52,7 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
   // ── Core (every admin) ────────────────────────────────────────────────
   { prefix: '/admin' }, // Dashboard
   { prefix: '/admin/notifications' },
-  { prefix: '/admin/reports' },
+  { prefix: '/admin/analytics' },
 
   // ── Academic management (super + academic) ────────────────────────────
   { prefix: '/admin/teachers', permission: 'approveAcademicResources' },
@@ -67,6 +67,7 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
   { prefix: '/admin/questions', permission: 'approveAcademicResources' },
   { prefix: '/admin/doubts', permission: 'approveAcademicResources' },
   { prefix: '/admin/mock-tests', permission: 'approveAcademicResources' },
+  { prefix: '/admin/pyq-packages', permission: 'approveAcademicResources' },
   { prefix: '/admin/approval-workspace', permission: 'approveAcademicResources' },
   { prefix: '/admin/approvals', permission: 'approveAcademicResources' },
   { prefix: '/admin/leave-requests', permission: 'approveAcademicResources' },
@@ -77,8 +78,7 @@ export const adminRoutePermissions: AdminRoutePermission[] = [
   // ── Super admin only ──────────────────────────────────────────────────
   { prefix: '/admin/admin-management', permission: 'manageAdmins' },
   { prefix: '/admin/devices', permission: 'manageAdmins' },
-  { prefix: '/admin/pyq-packages', permission: 'manageAdmins' },
-  { prefix: '/admin/audit-logs', permission: 'viewAuditLogs' },
+    { prefix: '/admin/audit-logs', permission: 'viewAuditLogs' },
   { prefix: '/admin/trash', permission: 'restoreDeletedData' },
   { prefix: '/admin/settings', permission: 'manageSystemSettings' },
 ];

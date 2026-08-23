@@ -34,6 +34,8 @@ import type {
   MockAnswerOption,
   MockTestQuestion,
   QuestionSnapshotOption,
+  SubjectBreakdownItem,
+  ChapterBreakdownItem,
   MockTest,
   MockAttempt,
 } from '../../types/mockTest';
@@ -276,13 +278,45 @@ export async function evaluateAttempt(
       }
     }
 
-    // ── Step 4: Build question lookup by questionId ─────────────────────
+    // ── Step 4: Build question lookup & pre-fetch Subject/Chapter metadata ──
     const questionMap = new Map<string, MockTestQuestion>();
     for (const mtq of testQuestions) {
       questionMap.set(mtq.questionId, mtq);
     }
 
-    // ── Step 5: Score each answer ────────────────────────────────────────
+    const subjectNameMap = new Map<string, string>();
+    const chapterNameMap = new Map<string, string>();
+    const questionSubjectChapterMap = new Map<
+      string,
+      { subjectId?: string; subjectName?: string; chapterId?: string; chapterName?: string }
+    >();
+
+    const qIds = testQuestions.map((q) => q.questionId);
+    if (qIds.length > 0) {
+      const { data: qMetadata } = await supabase
+        .from('questions')
+        .select('question_id, subject_id, chapter_id, subjects(subject_id, name), chapters(chapter_id, name)')
+        .in('question_id', qIds);
+
+      if (qMetadata) {
+        for (const q of qMetadata as any[]) {
+          if (q.subjects?.subject_id && q.subjects?.name) {
+            subjectNameMap.set(q.subjects.subject_id, q.subjects.name);
+          }
+          if (q.chapters?.chapter_id && q.chapters?.name) {
+            chapterNameMap.set(q.chapters.chapter_id, q.chapters.name);
+          }
+          questionSubjectChapterMap.set(q.question_id, {
+            subjectId: q.subject_id ?? q.subjects?.subject_id,
+            subjectName: q.subjects?.name,
+            chapterId: q.chapter_id ?? q.chapters?.chapter_id,
+            chapterName: q.chapters?.name,
+          });
+        }
+      }
+    }
+
+    // ── Step 5: Score each answer & accumulate Subject / Chapter breakdowns ─
     let totalScore = 0;
     let maxScore = 0;
     let correctCount = 0;
@@ -290,6 +324,9 @@ export async function evaluateAttempt(
     let skippedCount = 0;
     let totalTimeSeconds = 0;
     const answerUpdates: { answerId: string; isCorrect: boolean; marksAwarded: number }[] = [];
+
+    const subjectAccumMap = new Map<string, SubjectBreakdownItem>();
+    const chapterAccumMap = new Map<string, ChapterBreakdownItem>();
 
     for (const answer of answers) {
       const mtq = questionMap.get(answer.questionId);
@@ -301,9 +338,55 @@ export async function evaluateAttempt(
       maxScore += questionMarks;
       totalTimeSeconds += answer.timeSpentSeconds;
 
+      const qMeta = questionSubjectChapterMap.get(answer.questionId);
+      const snap = mtq.questionSnapshot;
+      const subjectId = snap?.subjectId ?? qMeta?.subjectId;
+      const subjectName = (subjectId ? subjectNameMap.get(subjectId) : undefined) ?? qMeta?.subjectName ?? 'General';
+
+      const chapterId = snap?.chapterId ?? qMeta?.chapterId;
+      const chapterName = (chapterId ? chapterNameMap.get(chapterId) : undefined) ?? qMeta?.chapterName;
+
+      let subAccum: SubjectBreakdownItem | undefined;
+      if (subjectId) {
+        subAccum = subjectAccumMap.get(subjectId);
+        if (!subAccum) {
+          subAccum = {
+            subjectId,
+            subjectName,
+            correct: 0,
+            wrong: 0,
+            skipped: 0,
+            score: 0,
+            maxScore: 0,
+          };
+          subjectAccumMap.set(subjectId, subAccum);
+        }
+        subAccum.maxScore += questionMarks;
+      }
+
+      let chapAccum: ChapterBreakdownItem | undefined;
+      if (chapterId && chapterName) {
+        chapAccum = chapterAccumMap.get(chapterId);
+        if (!chapAccum) {
+          chapAccum = {
+            chapterId,
+            chapterName,
+            correct: 0,
+            wrong: 0,
+            skipped: 0,
+            score: 0,
+            maxScore: 0,
+          };
+          chapterAccumMap.set(chapterId, chapAccum);
+        }
+        chapAccum.maxScore += questionMarks;
+      }
+
       if (!answer.isAnswered) {
         // Skipped
         skippedCount++;
+        if (subAccum) subAccum.skipped++;
+        if (chapAccum) chapAccum.skipped++;
         answerUpdates.push({
           answerId: answer.answerId,
           isCorrect: false,
@@ -313,13 +396,14 @@ export async function evaluateAttempt(
       }
 
       // Answered — determine correctness
-      const snapshot = mtq.questionSnapshot;
       let isCorrect = false;
       let marksAwarded = 0;
 
-      if (!snapshot) {
+      if (!snap) {
         // No snapshot — can't evaluate (shouldn't happen for published tests)
         skippedCount++;
+        if (subAccum) subAccum.skipped++;
+        if (chapAccum) chapAccum.skipped++;
         answerUpdates.push({
           answerId: answer.answerId,
           isCorrect: false,
@@ -328,25 +412,25 @@ export async function evaluateAttempt(
         continue;
       }
 
-      const snapshotOptions = snapshot.options ?? [];
+      const snapshotOptions = snap.options ?? [];
       const correctOptions = snapshotOptions.filter((o) => o.isCorrect);
 
-      if (snapshot.questionType === 'numerical') {
+      if (snap.questionType === 'numerical') {
         // Numerical answer
         if (answer.numericalAnswer !== null && answer.numericalAnswer !== undefined) {
           isCorrect = isNumericalAnswerCorrect(
             answer.numericalAnswer,
-            snapshot.correctNumericalAnswer ?? 0,
-            snapshot.numericalTolerance,
+            snap.correctNumericalAnswer ?? 0,
+            snap.numericalTolerance,
           );
         } else {
           isCorrect = false;
         }
-      } else if (snapshot.questionType === 'text_based') {
+      } else if (snap.questionType === 'text_based') {
         // Text-based / Short-answer
         isCorrect = isTextAnswerCorrect(
           answer.textAnswer,
-          snapshot.correctTextAnswer,
+          snap.correctTextAnswer,
         );
       } else {
         // MCQ, MSQ, True/False — compare selected options
@@ -359,12 +443,28 @@ export async function evaluateAttempt(
         marksAwarded = questionMarks;
         correctCount++;
         totalScore += marksAwarded;
+        if (subAccum) {
+          subAccum.correct++;
+          subAccum.score += marksAwarded;
+        }
+        if (chapAccum) {
+          chapAccum.correct++;
+          chapAccum.score += marksAwarded;
+        }
       } else {
         // Wrong answer — apply negative marking
         const negativeMarks = getEffectiveNegativeMarks(mtq, mockTest);
         marksAwarded = negativeMarks > 0 ? -negativeMarks : 0;
         wrongCount++;
         totalScore += marksAwarded;
+        if (subAccum) {
+          subAccum.wrong++;
+          subAccum.score += marksAwarded;
+        }
+        if (chapAccum) {
+          chapAccum.wrong++;
+          chapAccum.score += marksAwarded;
+        }
       }
 
       answerUpdates.push({ answerId: answer.answerId, isCorrect, marksAwarded });
@@ -418,15 +518,43 @@ export async function evaluateAttempt(
     };
     console.log('STEP 7 - Computed Result:', resultPayload);
 
-    // ── Step 8: Insert mock_results row ──────────────────────────────────
+    // ── Step 8: Calculate release state & Insert mock_results row ──────
+    // A test containing any manual 'subjective' questions is NEVER auto-released.
+    // 'text_based' questions are auto-graded and do not block immediate release.
+    const hasSubjectiveQuestions = testQuestions.some((tq) => {
+      const qType =
+        tq.questionSnapshot?.questionType ??
+        (tq.questionSnapshot as any)?.question_type ??
+        'mcq';
+      return qType === 'subjective';
+    });
+
+    const now = new Date().toISOString();
+    const isImmediate =
+      mockTest.resultReleaseMode === 'immediate' && !hasSubjectiveQuestions;
+    const isReleased = isImmediate;
+    const generatedAt = now;
+    const releasedAt = isImmediate ? now : null;
+
+    console.log('[RESULT_RELEASE_DEBUG] TIMESTAMPS', {
+      generatedAt,
+      releasedAt,
+      isReleased,
+      timestampOrderValid: !releasedAt || releasedAt >= generatedAt,
+    });
+
+    const subjectBreakdown = Array.from(subjectAccumMap.values());
+    const chapterBreakdown = Array.from(chapterAccumMap.values());
+
     const dbRecord: Record<string, unknown> = {
       ...resultPayload,
-      subject_breakdown: null,
-      chapter_breakdown: null,
-      is_released: true,
+      subject_breakdown: subjectBreakdown.length > 0 ? subjectBreakdown : null,
+      chapter_breakdown: chapterBreakdown.length > 0 ? chapterBreakdown : null,
+      is_released: isReleased,
       rank: null,
       percentile: null,
-      released_at: new Date().toISOString(),
+      generated_at: generatedAt,
+      released_at: releasedAt,
     };
 
     console.log('Attempting to insert mock_results row...');

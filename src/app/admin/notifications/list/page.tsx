@@ -74,7 +74,7 @@ export default function AdminNotificationListPage() {
 
   const columns: Column<Notification>[] = [
     {
-      key: 'type',
+      key: 'icon',
       header: '',
       render: (n) => (
         <span className="text-lg" title={notificationTypeLabel(n.type)}>

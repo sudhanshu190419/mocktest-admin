@@ -20,7 +20,10 @@ import {
   LockSimple,
   XCircle,
   Eye,
+  DownloadSimple,
+  CheckCircle,
 } from '@phosphor-icons/react';
+import { auditLogService } from '@/services/admin/auditLogService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Constants
@@ -132,6 +135,46 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
 
   // ── Detail Drawer State ──────────────────────────────────────────────
+  // Export State
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    setExportMessage(null);
+    try {
+      const result = await auditLogService.exportLogs(instituteId, filters, sort);
+      if (!result.success || !result.data) {
+        setExportMessage({ type: 'error', text: result.error ?? 'Export failed.' });
+        return;
+      }
+
+      const { csv, rowCount, fileName } = result.data;
+      if (rowCount === 0) {
+        setExportMessage({ type: 'error', text: 'No logs match the current filters to export.' });
+        return;
+      }
+
+      // Trigger browser download via Blob
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setExportMessage({ type: 'success', text: 'Successfully exported ' + rowCount + ' log records.' });
+      setTimeout(() => setExportMessage(null), 4000);
+    } catch (err: any) {
+      setExportMessage({ type: 'error', text: err?.message ?? 'Export failed.' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
   // ── Debounced search (avoid query on every keystroke) ────────────────
@@ -331,20 +374,52 @@ export default function AuditLogsPage() {
             { label: 'Audit Logs' },
           ]}
           actions={
-            <button
-              type="button"
-              onClick={() => refetch()}
-              disabled={isLoading}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
-              {isLoading ? 'Loading...' : 'Refresh'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting || isLoading}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                title="Export matching logs to CSV"
+              >
+                <DownloadSimple size={14} className={isExporting ? 'animate-bounce text-blue-600' : ''} />
+                {isExporting ? 'Exporting...' : 'Export CSV'}
+              </button>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isLoading}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
+                {isLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
           }
         />
 
         {/* Summary Cards */}
         <AuditSummaryCards data={summary} />
+
+        {/* Export Status Toast */}
+        {exportMessage && (
+          <div
+            className={'rounded-xl border p-4 transition-all ' + (
+              exportMessage.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300'
+            )}
+          >
+            <div className="flex items-center gap-2.5 text-xs font-medium">
+              {exportMessage.type === 'success' ? (
+                <CheckCircle size={16} className="text-emerald-600 dark:text-emerald-400" weight="fill" />
+              ) : (
+                <XCircle size={16} className="text-red-600 dark:text-red-400" weight="fill" />
+              )}
+              <span>{exportMessage.text}</span>
+            </div>
+          </div>
+        )}
 
         {/* Error State */}
         {isError && (

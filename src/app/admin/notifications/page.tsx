@@ -204,11 +204,10 @@ export default function AdminNotificationsDashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             { label: 'Create Notification', href: '/admin/notifications/create', icon: '📢', color: 'bg-blue-600' },
             { label: 'View All', href: '/admin/notifications/list', icon: '📋', color: 'bg-emerald-600' },
-            { label: 'Scheduled', href: '/admin/notifications/scheduled', icon: '⏰', color: 'bg-amber-600' },
             { label: 'History', href: '/admin/notifications/history', icon: '📜', color: 'bg-purple-600' },
           ].map((action) => (
             <Link

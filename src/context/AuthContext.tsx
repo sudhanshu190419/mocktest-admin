@@ -4,6 +4,7 @@ import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
 import { EMPTY_TEACHER } from '@/data/mockData';
 import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacherIdentity';
+import { auditService } from '@/services/audit/auditService';
 import type { TeacherProfile } from '@/data/mockData';
 import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
 import { trustedDeviceService } from '@/services/security/trustedDeviceService';
@@ -73,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // In-flight guard for profile loading (Bug 1 fix): signIn() AND the
   // onAuthStateChange handler both trigger loadTeacherProfileDetails for the
   // same login. Only the first invocation proceeds.
-  const profileLoadInFlightRef = useRef<string | null>(null);
+  const profileLoadInFlightRef = useRef<Promise<void> | null>(null);
 
   // RACE FIX: records the userId whose device trust has been evaluated (or is
   // currently being evaluated) so duplicate profile loads cannot restart the
@@ -432,15 +433,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loadTeacherProfileDetails = async (userId: string) => {
-    // De-dupe (Bug 1 fix): signIn() AND the onAuthStateChange handler both
-    // trigger this for the same login. Only the first invocation proceeds —
-    // otherwise the profile loads twice and the device challenge fires twice.
-    if (profileLoadInFlightRef.current === userId) {
-      return;
+  const loadTeacherProfileDetails = async (userId: string): Promise<void> => {
+    // Coalesce concurrent profile loads (e.g. initAuth + onAuthStateChange on page refresh).
+    // Both callers await the same in-flight Promise so setLoading(false) is not called
+    // while teacherProfile is still null.
+    if (profileLoadInFlightRef.current) {
+      return profileLoadInFlightRef.current;
     }
-    profileLoadInFlightRef.current = userId;
 
+    const loadPromise = (async () => {
     try {
       // 1. Fetch public profile
       const { data: profileData } = await supabase
@@ -547,6 +548,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[TD-load] profile load FAILED → setDeviceStatus("bypass")');
       setDeviceStatus('bypass');
       setDeviceInfo(null);
+    }
+    })();
+
+    profileLoadInFlightRef.current = loadPromise;
+    try {
+      await loadPromise;
     } finally {
       profileLoadInFlightRef.current = null;
     }
@@ -577,6 +584,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(data.session);
       setUser(data.session.user);
       await loadTeacherProfileDetails(data.session.user.id);
+
+      // Audit login
+      await auditService.logLogin({
+        resourceType: 'profiles',
+        resourceId: data.session.user.id,
+        metadata: { method: 'password', phone },
+      });
     }
     setLoading(false);
     return { error: null };
@@ -708,6 +722,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await loadTeacherProfileDetails(data.user.id);
 
+      // Audit login
+      if (data.user?.id) {
+        await auditService.logLogin({
+          resourceType: 'profiles',
+          resourceId: data.user.id,
+          metadata: { method: 'sms_otp', phone },
+        });
+      }
+
       // Clear pending state
       setNeedsOtpVerification(false);
       setPendingPhone(null);
@@ -759,6 +782,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     setLoading(true);
+    if (user?.id) {
+      await auditService.logLogout({
+        resourceType: 'profiles',
+        resourceId: user.id,
+      });
+    }
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);

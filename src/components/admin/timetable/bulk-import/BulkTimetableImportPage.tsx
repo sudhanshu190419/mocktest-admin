@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CircleNotch } from '@phosphor-icons/react';
+import { CircleNotch, CheckCircle } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
 import { parseImportFile, type ParsedImportFile } from '@/utils/bulkTimetableParser';
 import {
@@ -20,8 +20,12 @@ import type {
   ImportSummary,
   ReferenceData,
 } from '@/types/bulkTimetableImport';
+import type { Chapter, Topic } from '@/types/academic';
+import { AddChapterModal } from '@/features/question-bank/components/AddChapterModal';
+import { AddTopicModal } from '@/features/question-bank/components/AddTopicModal';
 import { BulkTimetableUpload } from './BulkTimetableUpload';
 import { BulkTimetableSummary } from './BulkTimetableSummary';
+import { BulkTimetableMissingReferences } from './BulkTimetableMissingReferences';
 import { BulkTimetableGroupList, buildDisplayMaps } from './BulkTimetableGroupList';
 import { BulkTimetableIssues } from './BulkTimetableIssues';
 import { BulkTimetableConfirm } from './BulkTimetableConfirm';
@@ -67,6 +71,17 @@ export function BulkTimetableImportPage() {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // ── Missing Reference Modals State ───────────────────────────────────────
+  const [missingChapterData, setMissingChapterData] = useState<{
+    subjectId: string;
+    chapterName: string;
+  } | null>(null);
+  const [missingTopicData, setMissingTopicData] = useState<{
+    chapterId: string;
+    topicName: string;
+  } | null>(null);
 
   const referenceQuery = useBulkImportReferenceData(instituteId);
   const reference: ReferenceData | undefined = referenceQuery.data;
@@ -116,9 +131,31 @@ export function BulkTimetableImportPage() {
   // Row-level issues live on `preview.rows`; file-level on `preview.issues`.
   const rowIssues = useMemo(() => (preview ? preview.rows.flatMap((r) => r.issues) : []), [preview]);
 
+  // ── Missing reference resolution callbacks ───────────────────────────────
+  const handleChapterCreated = useCallback(
+    async (chapter: Chapter) => {
+      setMissingChapterData(null);
+      await referenceQuery.refetch();
+      setToastMessage(`✓ Chapter "${chapter.name}" created successfully! Timetable revalidated.`);
+      setTimeout(() => setToastMessage(null), 5000);
+    },
+    [referenceQuery],
+  );
+
+  const handleTopicCreated = useCallback(
+    async (topic: Topic) => {
+      setMissingTopicData(null);
+      await referenceQuery.refetch();
+      setToastMessage(`✓ Topic "${topic.name}" created successfully! Timetable revalidated.`);
+      setTimeout(() => setToastMessage(null), 5000);
+    },
+    [referenceQuery],
+  );
+
   // ── File selection → parse → preview ───────────────────────────────────
   const handleFileSelected = useCallback((file: File) => {
     setConfirmOpen(false);
+    setToastMessage(null);
     setPhase({ kind: 'parsing', fileName: file.name });
     void (async () => {
       const parsed = await parseImportFile(file);
@@ -131,8 +168,8 @@ export function BulkTimetableImportPage() {
   }, []);
 
   const handleDownloadXlsx = useCallback(() => {
-    void downloadXlsxTemplate().then((ok) => setTemplateError(ok ? null : 'Could not generate the XLSX template.'));
-  }, []);
+    void downloadXlsxTemplate(reference).then((ok) => setTemplateError(ok ? null : 'Could not generate the XLSX template.'));
+  }, [reference]);
 
   const handleDownloadCsv = useCallback(() => {
     setTemplateError(downloadCsvTemplate() ? null : 'Could not generate the CSV template.');
@@ -162,7 +199,10 @@ export function BulkTimetableImportPage() {
   }, [phase]);
 
   const handleBackToTimetable = useCallback(() => router.push('/admin/timetable'), [router]);
-  const handleImportAnother = useCallback(() => setPhase({ kind: 'idle' }), []);
+  const handleImportAnother = useCallback(() => {
+    setToastMessage(null);
+    setPhase({ kind: 'idle' });
+  }, []);
 
   // ── Reference-data gap while a file is waiting to be validated ──────────
   // `isLoading` keeps the spinner from rendering alongside the error card.
@@ -184,6 +224,14 @@ export function BulkTimetableImportPage() {
         }
         templateError={templateError}
       />
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-xs dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <CheckCircle size={18} weight="fill" className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {phase.kind === 'parse-failed' && (
         <BulkTimetableIssues fileIssues={phase.issues} rowIssues={[]} />
@@ -219,6 +267,30 @@ export function BulkTimetableImportPage() {
       {preview && displayMaps && (
         <>
           <BulkTimetableSummary summary={preview.summary} />
+
+          {/* Missing Academic References Resolution Card */}
+          {preview.missingReferences && (
+            <BulkTimetableMissingReferences
+              missingReferences={preview.missingReferences}
+              onResolveChapter={(rawSubject, rawChapter, resolvedSubjectId) => {
+                if (resolvedSubjectId) {
+                  setMissingChapterData({
+                    subjectId: resolvedSubjectId,
+                    chapterName: rawChapter,
+                  });
+                }
+              }}
+              onResolveTopic={(rawChapter, rawTopic, resolvedChapterId) => {
+                if (resolvedChapterId) {
+                  setMissingTopicData({
+                    chapterId: resolvedChapterId,
+                    topicName: rawTopic,
+                  });
+                }
+              }}
+            />
+          )}
+
           <BulkTimetableIssues fileIssues={preview.issues} rowIssues={rowIssues} />
           <BulkTimetableGroupList
             key={currentFileName ?? 'groups'}
@@ -279,6 +351,33 @@ export function BulkTimetableImportPage() {
         summary={preview?.summary ?? EMPTY_SUMMARY}
         loading={mutation.isPending}
       />
+
+      {/* ── Modals for Inline Creation of Missing Academic References ── */}
+      {missingChapterData && (
+        <AddChapterModal
+          isOpen={true}
+          subjectId={missingChapterData.subjectId}
+          existingChapters={
+            (reference?.chapters.filter((c) => c.subjectId === missingChapterData.subjectId) ?? []) as unknown as Chapter[]
+          }
+          initialName={missingChapterData.chapterName}
+          onClose={() => setMissingChapterData(null)}
+          onCreated={handleChapterCreated}
+        />
+      )}
+
+      {missingTopicData && (
+        <AddTopicModal
+          isOpen={true}
+          chapterId={missingTopicData.chapterId}
+          existingTopics={
+            (reference?.topics.filter((t) => t.chapterId === missingTopicData.chapterId) ?? []) as unknown as Topic[]
+          }
+          initialName={missingTopicData.topicName}
+          onClose={() => setMissingTopicData(null)}
+          onCreated={handleTopicCreated}
+        />
+      )}
 
       <p className="sr-only" aria-live="polite">
         {phase.kind === 'importing'

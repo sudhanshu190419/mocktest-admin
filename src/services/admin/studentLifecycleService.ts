@@ -347,10 +347,10 @@ export const studentLifecycleService = {
    * Get the full profile details for a single student, including
    * batch information, mock attempt counts, and last activity.
    */
-  async getDetail(profileId: string): Promise<ApiResponse<StudentDetail>> {
+  async getDetail(identifier: string): Promise<ApiResponse<StudentDetail>> {
     try {
-      // 1. Fetch profile + student_details + batch_students
-      const { data: profile, error: profileErr } = await supabase
+      // 1. Fetch profile + student_details + batch_students (support both profile_id and student_id)
+      let { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select(
           `
@@ -358,18 +358,39 @@ export const studentLifecycleService = {
           student_details!left (*)
         `,
         )
-        .eq('profile_id', profileId)
-        .single();
+        .eq('profile_id', identifier)
+        .maybeSingle();
 
-      if (profileErr) {
-        if (profileErr.code === 'PGRST116') {
-          return { success: false, error: `Student not found: ${profileId}` };
+      if (!profile) {
+        // If not found by profile_id, check if identifier is a student_details.student_id
+        const { data: studentRecord } = await supabase
+          .from('student_details')
+          .select('profile_id')
+          .eq('student_id', identifier)
+          .maybeSingle();
+
+        if (studentRecord?.profile_id) {
+          const res = await supabase
+            .from('profiles')
+            .select(
+              `
+              *,
+              student_details!left (*)
+            `,
+            )
+            .eq('profile_id', studentRecord.profile_id)
+            .maybeSingle();
+          profile = res.data;
+          profileErr = res.error;
         }
-        return { success: false, error: extractErrorMessage(profileErr) };
+      }
+
+      if (!profile) {
+        return { success: false, error: `Student not found: ${identifier}` };
       }
 
       if (profile.role !== 'student') {
-        return { success: false, error: `Profile ${profileId} is not a student (role: ${profile.role}).` };
+        return { success: false, error: `Profile ${identifier} is not a student (role: ${profile.role}).` };
       }
 
       const details = profile.student_details ?? {};

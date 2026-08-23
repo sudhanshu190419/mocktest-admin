@@ -32,10 +32,14 @@ interface PdfUploadState {
   error: string | null;
 }
 
-export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: string }> }) {
+export default function CreatePyqPaperPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const router = useRouter();
   const { id: packageId } = use(params);
-  const { instituteId, teacherProfile } = useAuth();
+  const { user, instituteId } = useAuth();
 
   const { data: pkg, isLoading: pkgLoading } = usePyqPackage(packageId);
   const createPaper = useCreatePyqPaper();
@@ -43,44 +47,28 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // PDF upload state — stored as File objects, uploaded during save
+  // PDF upload state — stored as File object, uploaded during save
   const [questionPdf, setQuestionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
-  const [solutionPdf, setSolutionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
 
   const questionInputRef = useRef<HTMLInputElement>(null);
-  const solutionInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback(
-    (type: 'question' | 'solution', file: File | null) => {
+    (file: File | null) => {
       if (!file) return;
       if (file.type !== 'application/pdf') {
-        if (type === 'question') {
-          setQuestionPdf((prev) => ({ ...prev, file: null, status: 'error', error: 'Only PDF files are accepted.' }));
-        } else {
-          setSolutionPdf((prev) => ({ ...prev, file: null, status: 'error', error: 'Only PDF files are accepted.' }));
-        }
+        setQuestionPdf((prev) => ({ ...prev, file: null, status: 'error', error: 'Only PDF files are accepted.' }));
         return;
       }
       const state: PdfUploadState = { file, status: 'idle', progress: 0, error: null };
-      if (type === 'question') {
-        setQuestionPdf(state);
-        setErrors((prev) => ({ ...prev, questionPdf: '' }));
-      } else {
-        setSolutionPdf(state);
-        setErrors((prev) => ({ ...prev, solutionPdf: '' }));
-      }
+      setQuestionPdf(state);
+      setErrors((prev) => ({ ...prev, questionPdf: '' }));
     },
     [],
   );
 
-  const handleRemoveFile = useCallback((type: 'question' | 'solution') => {
-    if (type === 'question') {
-      setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
-      if (questionInputRef.current) questionInputRef.current.value = '';
-    } else {
-      setSolutionPdf({ file: null, status: 'idle', progress: 0, error: null });
-      if (solutionInputRef.current) solutionInputRef.current.value = '';
-    }
+  const handleRemoveFile = useCallback(() => {
+    setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
+    if (questionInputRef.current) questionInputRef.current.value = '';
   }, []);
 
   const handleChange = useCallback(
@@ -120,25 +108,19 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
       newErrors.questionPdf = 'Question paper PDF is required.';
     }
 
-    if (!solutionPdf.file) {
-      newErrors.solutionPdf = 'Solution PDF is required.';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, questionPdf.file, solutionPdf.file]);
+  }, [formData, questionPdf.file]);
 
-  // Both PDFs must be selected before save can proceed
-  const canSave = !createPaper.isPending && questionPdf.file && solutionPdf.file;
+  // Question PDF must be selected before save can proceed
+  const canSave = !createPaper.isPending && questionPdf.file;
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!validate()) return;
 
-      // Mark both as uploading
       setQuestionPdf((prev) => ({ ...prev, status: 'uploading', progress: 0 }));
-      setSolutionPdf((prev) => ({ ...prev, status: 'uploading', progress: 0 }));
 
       createPaper.mutate(
         {
@@ -150,7 +132,6 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
           totalMarks: null,
           durationMin: formData.durationMin ? parseInt(formData.durationMin) : null,
           questionPdfFile: questionPdf.file!,
-          solutionPdfFile: solutionPdf.file!,
           onProgress: (_loaded, _total) => {
             // Progress callback - updates happen at upload completion
           },
@@ -158,18 +139,16 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
         {
           onSuccess: () => {
             setQuestionPdf((prev) => ({ ...prev, status: 'done', progress: 100 }));
-            setSolutionPdf((prev) => ({ ...prev, status: 'done', progress: 100 }));
-            router.push(`/teacher/pyq/packages/${packageId}/papers`);
+            router.push(`/admin/pyq-packages/${packageId}/papers`);
           },
           onError: (error) => {
             setQuestionPdf((prev) => ({ ...prev, status: 'error', error: error.message }));
-            setSolutionPdf((prev) => ({ ...prev, status: 'error', error: error.message }));
             setErrors({ form: error.message });
           },
         },
       );
     },
-    [formData, questionPdf.file, solutionPdf.file, validate, createPaper, packageId, router],
+    [formData, questionPdf.file, validate, createPaper, packageId, router],
   );
 
   function PdfUploadSection({
@@ -255,6 +234,15 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
     );
   }
 
+    if (user?.role === 'teacher') {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
+        <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
+        <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">Teachers do not have permission to manage PYQ packages or papers.</p>
+      </div>
+    );
+  }
+
   // Loading state
   if (pkgLoading) {
     return (
@@ -270,7 +258,7 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center">
         <p className="text-sm text-rose-600">Package not found.</p>
-        <Link href="/teacher/pyq/packages" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
+        <Link href="/admin/pyq-packages" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
           Back to Packages
         </Link>
       </div>
@@ -283,9 +271,9 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
         title="Create Paper"
         description={`Add a new exam paper to "${pkg.name}"`}
         breadcrumbs={[
-          { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
-          { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
+          { label: 'PYQ Packages', href: '/admin/pyq-packages' },
+          { label: pkg.name, href: `/admin/pyq-packages/${packageId}/papers` },
+          { label: 'Papers', href: `/admin/pyq-packages/${packageId}/papers` },
           { label: 'Create Paper' },
         ]}
       />
@@ -310,8 +298,8 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
               {errors.title && <p className="mt-1 text-xs text-red-500">{errors.title}</p>}
             </div>
 
-            {/* Exam Year + Date + Session */}
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* Exam Year + Session */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Exam Year <span className="text-red-500">*</span>
@@ -328,21 +316,12 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
                 {errors.examYear && <p className="mt-1 text-xs text-red-500">{errors.examYear}</p>}
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Exam Date</label>
-                <input
-                  type="date"
-                  value={formData.examDate}
-                  onChange={(e) => handleChange('examDate', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-                />
-              </div>
-              <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Exam Session</label>
                 <input
                   type="text"
                   value={formData.examSession}
                   onChange={(e) => handleChange('examSession', e.target.value)}
-                  placeholder="e.g. January Session 1"
+                  placeholder="e.g. January Session 1, Shift 2"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
                 />
               </div>
@@ -370,29 +349,20 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
           </div>
         </section>
 
-        {/* PDF Uploads */}
+        {/* PDF Upload */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">PDF Files</h2>
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Question Paper PDF</h2>
           <p className="mb-4 text-xs text-gray-500">
-            Upload the question paper PDF and solution PDF. Both are required.
-            Files are uploaded automatically when you save the paper.
+            Upload the question paper PDF. The file is uploaded automatically when you save the paper.
           </p>
           <div className="space-y-6">
             <PdfUploadSection
               label="Question Paper PDF"
               state={questionPdf}
-              onFile={(f) => handleFileSelect('question', f)}
-              onRemove={() => handleRemoveFile('question')}
+              onFile={handleFileSelect}
+              onRemove={handleRemoveFile}
               inputRef={questionInputRef}
               error={errors.questionPdf}
-            />
-            <PdfUploadSection
-              label="Solution PDF"
-              state={solutionPdf}
-              onFile={(f) => handleFileSelect('solution', f)}
-              onRemove={() => handleRemoveFile('solution')}
-              inputRef={solutionInputRef}
-              error={errors.solutionPdf}
             />
           </div>
         </section>
@@ -430,7 +400,7 @@ export default function CreatePyqPaperPage({ params }: { params: Promise<{ id: s
             )}
           </button>
           <Link
-            href={`/teacher/pyq/packages/${packageId}/papers`}
+            href={`/admin/pyq-packages/${packageId}/papers`}
             className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
           >
             Cancel

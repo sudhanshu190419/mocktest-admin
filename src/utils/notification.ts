@@ -292,28 +292,75 @@ export function buildActionUrl(
 ): string | null {
   if (!referenceType || !referenceId) return null;
 
+  if (audience === 'admin') {
+    switch (referenceType) {
+      case 'mock_test':
+        return `/admin/mock-tests/${referenceId}`;
+      case 'content':
+        return `/admin/content/review/${referenceId}`;
+      case 'student_doubt':
+      case 'doubt':
+        return `/admin/doubts/${referenceId}`;
+      case 'order':
+        return `/admin/commerce/orders`;
+      case 'live_class':
+        return `/admin/demo-classes/${referenceId}`;
+      case 'pyq_package':
+      case 'pyq':
+        return `/admin/pyq-packages/${referenceId}`;
+      case 'question':
+        return `/admin/questions/${referenceId}`;
+      case 'course':
+        return `/admin/courses/${referenceId}`;
+      case 'batch':
+        return `/admin/batches/${referenceId}`;
+      case 'student':
+        return `/admin/students/${referenceId}`;
+      case 'teacher':
+        return `/admin/teachers/${referenceId}`;
+      case 'result':
+      case 'attempt':
+        return `/admin/mock-tests`;
+      case 'trusted_devices':
+      case 'trusted_device':
+      case 'device':
+        return `/admin/devices`;
+      case 'teacher_leave_request':
+      case 'leave_request':
+      case 'leave':
+        return `/admin/leave-requests/${referenceId}`;
+      case 'subscription':
+        return `/admin/commerce/subscriptions/${referenceId}`;
+      case 'subscription_plan':
+        return `/admin/commerce/subscription-plans`;
+      default:
+        return `/admin/${referenceType}/${referenceId}`;
+    }
+  }
+
+  // Teacher audience
   switch (referenceType) {
     case 'mock_test':
-      return `/mock-tests/${referenceId}`;
+      return `/teacher/mock-tests/${referenceId}`;
     case 'content':
-      return `/content/${referenceId}`;
-    case 'live_class':
-      return `/live-classes/${referenceId}`;
-    case 'result':
-      return `/results/${referenceId}`;
-    case 'attempt':
-      return `/attempts/${referenceId}`;
-    case 'order':
-      return `/orders/${referenceId}`;
+      return `/teacher/content/${referenceId}`;
     case 'student_doubt':
-      // Students consume doubts on the mobile app (own deep links); the web
-      // audience is teacher or admin. Admin deep-links to /admin/doubts so
-      // assignment actions are immediately available.
-      return audience === 'admin'
-        ? `/admin/doubts/${referenceId}`
-        : `/teacher/doubts/${referenceId}`;
+    case 'doubt':
+      return `/teacher/doubts/${referenceId}`;
+    case 'live_class':
+      return `/teacher/timetable`;
+    case 'question':
+      return `/teacher/questions/${referenceId}`;
+    case 'student':
+      return `/teacher/students/${referenceId}`;
+    case 'result':
+      return `/teacher/results/${referenceId}`;
+    case 'teacher_leave_request':
+    case 'leave_request':
+    case 'leave':
+      return `/teacher/leave`;
     default:
-      return `/${referenceType}/${referenceId}`;
+      return `/teacher/${referenceType}/${referenceId}`;
   }
 }
 

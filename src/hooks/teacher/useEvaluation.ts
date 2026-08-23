@@ -99,3 +99,21 @@ export function useFinalizeEvaluation() {
     },
   });
 }
+
+/**
+ * Fetch the pending subjective evaluation count for a given test.
+ */
+export function useTestPendingEvaluationCount(testId: string | undefined | null) {
+  return useQuery<{ pendingEvaluationCount: number }>({
+    queryKey: ['teacher-evaluation', 'testPendingCount', testId] as const,
+    queryFn: async () => {
+      const result = await manualEvaluationService.getTestPendingEvaluationCount(testId!);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch pending evaluation count.');
+      }
+      return result.data!;
+    },
+    enabled: !!testId,
+    refetchInterval: 30_000,
+  });
+}

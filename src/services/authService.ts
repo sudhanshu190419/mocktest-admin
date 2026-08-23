@@ -32,6 +32,7 @@
 import { supabase } from '../config/supabase';
 import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { getTokenExpirySummary } from '../utils/supabase';
+import { auditService } from './audit/auditService';
 import type { AdminRoleAssignment, DbAdminRole } from '../types/adminRoles';
 import type {
   AuthResponse,
@@ -290,6 +291,16 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<Use
 
     const userProfile = buildUserProfile(data.user, profile, adminRoles);
 
+    // Audit login
+    await auditService.logLogin({
+      resourceType: 'profiles',
+      resourceId: data.user.id,
+      metadata: {
+        method: 'otp',
+        phone: input.phone,
+      },
+    });
+
     return { success: true, data: userProfile };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -352,6 +363,16 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
 
     const userProfile = buildUserProfile(authData.user, profile, adminRoles);
 
+    // Audit login
+    await auditService.logLogin({
+      resourceType: 'profiles',
+      resourceId: authData.user.id,
+      metadata: {
+        method: 'password',
+        phone: input.phone,
+      },
+    });
+
     return { success: true, data: userProfile };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -372,6 +393,15 @@ export async function updatePassword(newPassword: string): Promise<AuthResponse<
       return { success: false, error: extractErrorMessage(error) };
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) {
+      await auditService.log({
+        action: 'reset_password',
+        resourceType: 'profiles',
+        resourceId: user.id,
+      });
+    }
+
     return { success: true, data: null };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
@@ -380,6 +410,14 @@ export async function updatePassword(newPassword: string): Promise<AuthResponse<
 
 export async function signOut(): Promise<AuthResponse<null>> {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) {
+      await auditService.logLogout({
+        resourceType: 'profiles',
+        resourceId: user.id,
+      });
+    }
+
     const { error } = await supabase.auth.signOut();
 
     if (error) {

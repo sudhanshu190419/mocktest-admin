@@ -40,6 +40,69 @@ export default function AdminEditPyqPackagePage({
   const [successMessage, setSuccessMessage] = useState('');
   const [formError, setFormError] = useState('');
 
+  const isPublished = Boolean(pkg?.isActive && pkg?.publishedAt);
+
+  const handleSave = useCallback(
+    (values: PyqPackageFormValues) => {
+      setFormError('');
+      setSuccessMessage('');
+      updatePackage.mutate(
+        {
+          id: packageId,
+          input: {
+            name: values.name.trim(),
+            description: values.description || null,
+            streamId: values.streamId,
+            price: values.price,
+            currency: values.currency,
+            thumbnailPath: values.thumbnailPath || null,
+            yearFrom: values.yearFrom ? parseInt(values.yearFrom) : null,
+            yearTo: values.yearTo ? parseInt(values.yearTo) : null,
+          },
+        },
+        {
+          onSuccess: () => {
+            setSuccessMessage('Package saved successfully.');
+            setTimeout(() => setSuccessMessage(''), 3000);
+          },
+          onError: (error) => {
+            setFormError(error.message);
+          },
+        },
+      );
+    },
+    [updatePackage, packageId],
+  );
+
+  const handlePublishToggle = useCallback(() => {
+    setFormError('');
+    if (isPublished) {
+      unpublishPackage.mutate(packageId, {
+        onSuccess: () => setSuccessMessage('Package unpublished.'),
+        onError: (error) => setFormError(error.message),
+      });
+    } else {
+      publishPackage.mutate(packageId, {
+        onSuccess: () => setSuccessMessage('Package published successfully!'),
+        onError: (error) => setFormError(error.message),
+      });
+    }
+    setConfirmAction(null);
+  }, [isPublished, packageId, publishPackage, unpublishPackage]);
+
+  const handleDelete = useCallback(() => {
+    setFormError('');
+    deletePackage.mutate(packageId, {
+      onSuccess: () => {
+        router.push('/admin/pyq-packages');
+      },
+      onError: (error) => {
+        setFormError(error.message);
+        setConfirmAction(null);
+      },
+    });
+  }, [deletePackage, packageId, router]);
+
   // Loading state
   if (pkgLoading) {
     return (
@@ -81,69 +144,6 @@ export default function AdminEditPyqPackagePage({
       </div>
     );
   }
-
-  const isPublished = pkg.isActive && pkg.publishedAt;
-
-  const handleSave = useCallback(
-    (values: PyqPackageFormValues) => {
-      setFormError('');
-      setSuccessMessage('');
-      updatePackage.mutate(
-        {
-          id: packageId,
-          input: {
-            name: values.name.trim(),
-            description: values.description || null,
-            streamId: values.streamId,
-            price: values.price,
-            currency: values.currency,
-            thumbnailPath: values.thumbnailPath || null,
-            yearFrom: values.yearFrom ? parseInt(values.yearFrom) : null,
-            yearTo: values.yearTo ? parseInt(values.yearTo) : null,
-          },
-        },
-        {
-          onSuccess: () => {
-            setSuccessMessage('Package saved successfully.');
-            setTimeout(() => setSuccessMessage(''), 3000);
-          },
-          onError: (error) => {
-            setFormError(error.message);
-          },
-        },
-      );
-    },
-    [updatePackage, packageId],
-  );
-
-  const handlePublishToggle = () => {
-    setFormError('');
-    if (isPublished) {
-      unpublishPackage.mutate(packageId, {
-        onSuccess: () => setSuccessMessage('Package unpublished.'),
-        onError: (error) => setFormError(error.message),
-      });
-    } else {
-      publishPackage.mutate(packageId, {
-        onSuccess: () => setSuccessMessage('Package published successfully!'),
-        onError: (error) => setFormError(error.message),
-      });
-    }
-    setConfirmAction(null);
-  };
-
-  const handleDelete = () => {
-    setFormError('');
-    deletePackage.mutate(packageId, {
-      onSuccess: () => {
-        router.push('/admin/pyq-packages');
-      },
-      onError: (error) => {
-        setFormError(error.message);
-        setConfirmAction(null);
-      },
-    });
-  };
 
   const confirmConfig = (() => {
     if (!confirmAction) return null;
@@ -188,7 +188,7 @@ export default function AdminEditPyqPackagePage({
         actions={
           <div className="flex items-center gap-2">
             <Link
-              href={`/teacher/pyq/packages/${packageId}/papers`}
+              href={`/admin/pyq-packages/${packageId}/papers`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

@@ -655,6 +655,7 @@ export const liveClassAttendanceService = {
     classId: string,
   ): Promise<(AttendanceRecord & { studentName?: string })[]> {
     try {
+      // 1. Fetch existing attendance records
       const { data, error } = await supabase
         .from('attendance')
         .select(`
@@ -666,12 +667,12 @@ export const liveClassAttendanceService = {
         .eq('class_id', classId)
         .order('updated_at', { ascending: false });
 
-      if (error || !data) {
+      if (error) {
         console.error('[Attendance] Failed to fetch class attendance:', error?.message);
         return [];
       }
 
-      return (data as any[]).map((row: any) => ({
+      const existingRecords: (AttendanceRecord & { studentName?: string })[] = (data ?? []).map((row: any) => ({
         attendanceId: row.attendance_id,
         classId: row.class_id,
         studentId: row.student_id,
@@ -688,6 +689,62 @@ export const liveClassAttendanceService = {
         updatedAt: row.updated_at,
         studentName: row.student_details?.profiles?.name ?? 'Unknown',
       }));
+
+      const existingStudentIds = new Set(existingRecords.map((r) => r.studentId));
+
+      // 2. Fetch enrolled students for this class via batch_subject_live_classes -> batch_subjects -> batch_students
+      const { data: bsLinks } = await supabase
+        .from('batch_subject_live_classes')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner(batch_id)
+        `)
+        .eq('class_id', classId);
+
+      const batchIds = [...new Set((bsLinks ?? []).map((l: any) => {
+        const bs = l.batch_subjects;
+        return Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+      }).filter(Boolean))];
+
+      if (batchIds.length > 0) {
+        const { data: batchStudents } = await supabase
+          .from('batch_students')
+          .select(`
+            student_id,
+            student_details!inner(
+              institute_id,
+              profiles!inner(name)
+            )
+          `)
+          .in('batch_id', batchIds);
+
+        const nowIso = new Date().toISOString();
+        for (const bs of batchStudents ?? []) {
+          if (!existingStudentIds.has(bs.student_id)) {
+            existingStudentIds.add(bs.student_id);
+            const sd = (bs as any).student_details;
+            existingRecords.push({
+              attendanceId: `synthetic-${bs.student_id}`,
+              classId,
+              studentId: bs.student_id,
+              instituteId: sd?.institute_id ?? '',
+              joinedAt: null,
+              leftAt: null,
+              durationSeconds: 0,
+              attendanceStatus: 'absent',
+              joinCount: 0,
+              isManualOverride: false,
+              overrideBy: null,
+              overrideReason: null,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              studentName: sd?.profiles?.name ?? 'Unknown',
+            });
+          }
+        }
+      }
+
+      return existingRecords.sort((a, b) => (a.studentName ?? '').localeCompare(b.studentName ?? ''));
     } catch (err) {
       console.error('[Attendance] getClassAttendance error:', err);
       return [];

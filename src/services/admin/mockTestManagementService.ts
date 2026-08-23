@@ -83,8 +83,10 @@ export interface MockTestListItem {
   streamName: string | null;
   subjectId: string | null;
   subjectName: string | null;
-  teacherId: string;
+  teacherId: string | null;
   teacherName: string | null;
+  createdBy?: string | null;
+  creatorName?: string | null;
   instituteId: string;
   attemptLimit: number | null;
   shuffleQuestions: boolean;
@@ -229,6 +231,10 @@ function mapMockTestTransitionAction(
 
 /** Maps a raw Supabase row (mock_tests JOIN streams JOIN subjects) to MockTestListItem. */
 function toMockTestListItem(row: any): MockTestListItem {
+  const teacherName =
+    row.teacher_details?.profiles?.name ??
+    (row.creator?.name ? `${row.creator.name} (Admin)` : null);
+
   return {
     testId: row.test_id,
     title: row.title,
@@ -243,8 +249,10 @@ function toMockTestListItem(row: any): MockTestListItem {
     streamName: row.streams?.name ?? null,
     subjectId: row.subject_id ?? null,
     subjectName: row.subjects?.name ?? null,
-    teacherId: row.teacher_id,
-    teacherName: row.teacher_details?.profiles?.name ?? null,
+    teacherId: row.teacher_id ?? null,
+    teacherName,
+    createdBy: row.created_by ?? null,
+    creatorName: row.creator?.name ?? null,
     instituteId: row.institute_id,
     attemptLimit: row.attempt_limit ?? null,
     shuffleQuestions: row.shuffle_questions,
@@ -277,7 +285,8 @@ export const mockTestManagementService = {
         let q = supabase
           .from('mock_tests')
           .select('test_id', { count: 'exact', head: true })
-          .eq('status', status);
+          .eq('status', status)
+          .is('deleted_at', null);
         if (instituteId) {
           q = q.eq('institute_id', instituteId);
         }
@@ -339,6 +348,11 @@ export const mockTestManagementService = {
             profiles!inner (
               name
             )
+          ),
+          creator:profiles!fk_mock_tests_created_by (
+            profile_id,
+            name,
+            role
           )
         `,
           { count: 'exact' },
@@ -434,6 +448,11 @@ export const mockTestManagementService = {
             profiles!inner (
               name
             )
+          ),
+          creator:profiles!fk_mock_tests_created_by (
+            profile_id,
+            name,
+            role
           )
         `,
         )
@@ -762,6 +781,11 @@ export const mockTestManagementService = {
             profiles!inner (
               name
             )
+          ),
+          creator:profiles!fk_mock_tests_created_by (
+            profile_id,
+            name,
+            role
           )
         `,
         )
@@ -771,7 +795,27 @@ export const mockTestManagementService = {
         return { success: false, error: extractErrorMessage(insertErr) };
       }
 
-      return { success: true, data: toMockTestListItem(inserted) };
+      const item = toMockTestListItem(inserted);
+
+      // Audit log
+      await auditService.logCreate({
+        resourceType: 'mock_tests',
+        resourceId: item.testId,
+        newValue: {
+          title: item.title,
+          testType: item.testType,
+          durationMin: item.durationMin,
+          totalMarks: item.totalMarks,
+          status: item.status,
+        },
+        metadata: {
+          duplicatedFrom: testId,
+          originalTitle: original.title,
+          newTitle: item.title,
+        },
+      });
+
+      return { success: true, data: item };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
     }
@@ -958,6 +1002,11 @@ export const mockTestManagementService = {
             profiles!inner (
               name
             )
+          ),
+          creator:profiles!fk_mock_tests_created_by (
+            profile_id,
+            name,
+            role
           )
         `,
         )
@@ -985,6 +1034,11 @@ export const mockTestManagementService = {
             profiles!inner (
               name
             )
+          ),
+          creator:profiles!fk_mock_tests_created_by (
+            profile_id,
+            name,
+            role
           )
         `,
         )

@@ -33,6 +33,7 @@ import {
   getPerformanceTrends,
   getLeaderboard,
   getInsights,
+  getStudentBucketDrilldown,
 } from '@/services/analytics/teacherAnalyticsService';
 import type { AnalyticsFilters } from '@/types/analytics-extended';
 import type {
@@ -45,6 +46,8 @@ import type {
   TeacherPerformanceTrends,
   TeacherLeaderboard,
   TeacherInsights,
+  StudentBucketDrilldownParams,
+  StudentBucketDrilldownResult,
 } from '@/types/analytics-extended';
 
 // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -224,5 +227,29 @@ export function useTeacherInsights(
     },
     enabled: !!instituteId,
     staleTime: 120_000,
+  });
+}
+
+// ─── Student Bucket Drilldown ───────────────────────────────────────────────
+
+export function useStudentBucketDrilldown(
+  instituteId: string | undefined | null,
+  params: StudentBucketDrilldownParams | null,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<StudentBucketDrilldownResult>({
+    queryKey: teacherAnalyticsKeys.students.drilldown(instituteId ?? '', params),
+    queryFn: async () => {
+      if (!instituteId || !params) {
+        return { items: [], totalCount: 0, page: 1, pageSize: 10, totalPages: 1 };
+      }
+      const result = await getStudentBucketDrilldown(instituteId, params);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch student drilldown data');
+      }
+      return result.data!;
+    },
+    enabled: (options?.enabled ?? true) && !!instituteId && !!params,
+    staleTime: 60_000,
   });
 }

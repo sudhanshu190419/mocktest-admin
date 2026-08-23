@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useState, useCallback, useMemo, use } from 'react';
 import Link from 'next/link';
 import { usePyqPackage } from '@/hooks/pyq/usePyqPackages';
@@ -28,6 +29,7 @@ export default function PyqManageQuestionsPage({
 }: {
   params: Promise<{ id: string; paperId: string }>;
 }) {
+  const { user } = useAuth();
   const { id: packageId, paperId } = use(params);
 
   const { data: pkg, isLoading: pkgLoading } = usePyqPackage(packageId);
@@ -132,6 +134,15 @@ export default function PyqManageQuestionsPage({
     );
   }, [paperId, removeMapping]);
 
+    if (user?.role === 'teacher') {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
+        <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
+        <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">Teachers do not have permission to manage PYQ packages or papers.</p>
+      </div>
+    );
+  }
+
   // Loading state
   const isLoading = pkgLoading || paperLoading || assignedLoading;
   if (isLoading) {
@@ -151,7 +162,7 @@ export default function PyqManageQuestionsPage({
     return (
       <div className="py-12 text-center">
         <p className="text-gray-500">Paper not found.</p>
-        <Link href={`/teacher/pyq/packages/${packageId}/papers`} className="mt-2 inline-block text-sm text-blue-600 hover:underline">
+        <Link href={`/admin/pyq-packages/${packageId}/papers`} className="mt-2 inline-block text-sm text-blue-600 hover:underline">
           Back to Papers
         </Link>
       </div>
@@ -164,16 +175,16 @@ export default function PyqManageQuestionsPage({
         title={`${paper.title} — Manage Questions`}
         description={`${assignedMappings?.length ?? 0} question(s) assigned`}
         breadcrumbs={[
-          { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
-          { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
-          { label: paper.title, href: `/teacher/pyq/packages/${packageId}/papers/${paperId}/edit` },
+          { label: 'PYQ Packages', href: '/admin/pyq-packages' },
+          { label: pkg.name, href: `/admin/pyq-packages/${packageId}/papers` },
+          { label: 'Papers', href: `/admin/pyq-packages/${packageId}/papers` },
+          { label: paper.title, href: `/admin/pyq-packages/${packageId}/papers/${paperId}/edit` },
           { label: 'Questions' },
         ]}
         actions={
           <div className="flex items-center gap-2">
             <Link
-              href={`/teacher/pyq/packages/${packageId}/papers/${paperId}/edit`}
+              href={`/admin/pyq-packages/${packageId}/papers/${paperId}/edit`}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
             >
               Back to Paper
@@ -215,7 +226,7 @@ export default function PyqManageQuestionsPage({
               {mockData ? (
                 <>
                   <Link
-                    href={`/teacher/mock-tests/${mockData.mockTest.testId}/edit`}
+                    href={`/admin/mock-tests/${mockData.mockTest.testId}`}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
                   >
                     View Mock Test

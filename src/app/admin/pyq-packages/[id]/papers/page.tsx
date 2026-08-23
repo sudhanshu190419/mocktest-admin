@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,7 +20,12 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import type { PyqPaper } from '@/types/pyq';
 
-export default function PyqPaperListPage({ params }: { params: Promise<{ id: string }> }) {
+export default function PyqPaperListPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { user } = useAuth();
   const router = useRouter();
   const { id: packageId } = use(params);
 
@@ -115,13 +121,13 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
       render: (p) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <Link
-            href={`/teacher/pyq/packages/${packageId}/papers/${p.paperId}/edit`}
+            href={`/admin/pyq-packages/${packageId}/papers/${p.paperId}/edit`}
             className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
           >
             Edit
           </Link>
           <Link
-            href={`/teacher/pyq/packages/${packageId}/papers/${p.paperId}/questions`}
+            href={`/admin/pyq-packages/${packageId}/papers/${p.paperId}/questions`}
             className="rounded px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
           >
             Questions
@@ -195,6 +201,15 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
     }
   })();
 
+    if (user?.role === 'teacher') {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
+        <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
+        <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">Teachers do not have permission to manage PYQ packages or papers.</p>
+      </div>
+    );
+  }
+
   // Loading state
   if (pkgLoading) {
     return (
@@ -210,7 +225,7 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center">
         <p className="text-sm text-rose-600">Package not found.</p>
-        <Link href="/teacher/pyq/packages" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
+        <Link href="/admin/pyq-packages" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
           Back to Packages
         </Link>
       </div>
@@ -223,13 +238,13 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
         title="My Papers"
         description={`${totalCount} paper${totalCount !== 1 ? 's' : ''} created by you in "${pkg.name}"`}
         breadcrumbs={[
-          { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
+          { label: 'PYQ Packages', href: '/admin/pyq-packages' },
+          { label: pkg.name, href: `/admin/pyq-packages/${packageId}/papers` },
           { label: 'My Papers' },
         ]}
         actions={
           <Link
-            href={`/teacher/pyq/packages/${packageId}/papers/create`}
+            href={`/admin/pyq-packages/${packageId}/papers/create`}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -295,7 +310,7 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
         columns={columns}
         data={papers}
         keyExtractor={(p) => p.paperId}
-        onRowClick={(p) => router.push(`/teacher/pyq/packages/${packageId}/papers/${p.paperId}/edit`)}
+        onRowClick={(p) => router.push(`/admin/pyq-packages/${packageId}/papers/${p.paperId}/edit`)}
         isLoading={isLoading}
         sortable
         page={page}
@@ -308,7 +323,7 @@ export default function PyqPaperListPage({ params }: { params: Promise<{ id: str
             description={search ? 'Try a different search term.' : 'Create your first paper in this package to get started.'}
             action={
               <Link
-                href={`/teacher/pyq/packages/${packageId}/papers/create`}
+                href={`/admin/pyq-packages/${packageId}/papers/create`}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Create Paper

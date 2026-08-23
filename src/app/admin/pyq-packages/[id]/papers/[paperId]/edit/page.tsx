@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useState, useCallback, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -45,6 +46,7 @@ export default function EditPyqPaperPage({
 }: {
   params: Promise<{ id: string; paperId: string }>;
 }) {
+  const { user } = useAuth();
   const router = useRouter();
   const { id: packageId, paperId } = use(params);
 
@@ -65,9 +67,7 @@ export default function EditPyqPaperPage({
 
   // PDF upload state — for replacing existing PDFs
   const [questionPdf, setQuestionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
-  const [solutionPdf, setSolutionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
   const questionInputRef = useRef<HTMLInputElement>(null);
-  const solutionInputRef = useRef<HTMLInputElement>(null);
 
   // Populate form from fetched paper
   useEffect(() => {
@@ -83,34 +83,23 @@ export default function EditPyqPaperPage({
   }, [paper, formData]);
 
   const handleFileSelect = useCallback(
-    (type: 'question' | 'solution', file: File | null) => {
+    (file: File | null) => {
       if (!file) return;
       if (file.type !== 'application/pdf') {
         const errorState: PdfUploadState = { file: null, status: 'error', progress: 0, error: 'Only PDF files are accepted.' };
-        if (type === 'question') setQuestionPdf(errorState);
-        else setSolutionPdf(errorState);
+        setQuestionPdf(errorState);
         return;
       }
       const state: PdfUploadState = { file, status: 'idle', progress: 0, error: null };
-      if (type === 'question') {
-        setQuestionPdf(state);
-        setErrors((prev) => ({ ...prev, questionPdf: '' }));
-      } else {
-        setSolutionPdf(state);
-        setErrors((prev) => ({ ...prev, solutionPdf: '' }));
-      }
+      setQuestionPdf(state);
+      setErrors((prev) => ({ ...prev, questionPdf: '' }));
     },
     [],
   );
 
-  const handleRemoveFile = useCallback((type: 'question' | 'solution') => {
-    if (type === 'question') {
-      setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
-      if (questionInputRef.current) questionInputRef.current.value = '';
-    } else {
-      setSolutionPdf({ file: null, status: 'idle', progress: 0, error: null });
-      if (solutionInputRef.current) solutionInputRef.current.value = '';
-    }
+  const handleRemoveFile = useCallback(() => {
+    setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
+    if (questionInputRef.current) questionInputRef.current.value = '';
   }, []);
 
   const handleChange = useCallback(
@@ -166,12 +155,9 @@ export default function EditPyqPaperPage({
         durationMin: formData.durationMin ? parseInt(formData.durationMin) : null,
       };
 
-      // Attach PDF file replacements if selected
+      // Attach PDF file replacement if selected
       if (questionPdf.file) {
         payload.questionPdfFile = questionPdf.file;
-      }
-      if (solutionPdf.file) {
-        payload.solutionPdfFile = solutionPdf.file;
       }
 
       updatePaper.mutate(
@@ -179,7 +165,6 @@ export default function EditPyqPaperPage({
         {
           onSuccess: () => {
             setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
-            setSolutionPdf({ file: null, status: 'idle', progress: 0, error: null });
             setSuccessMessage('Paper saved successfully.');
             setTimeout(() => setSuccessMessage(''), 3000);
           },
@@ -189,7 +174,7 @@ export default function EditPyqPaperPage({
         },
       );
     },
-    [formData, validate, updatePaper, paperId, questionPdf.file, solutionPdf.file],
+    [formData, validate, updatePaper, paperId, questionPdf.file],
   );
 
   const handlePublishToggle = () => {
@@ -213,7 +198,7 @@ export default function EditPyqPaperPage({
       { paperId, packageId },
       {
         onSuccess: () => {
-          router.push(`/teacher/pyq/packages/${packageId}/papers`);
+          router.push(`/admin/pyq-packages/${packageId}/papers`);
         },
         onError: (error) => {
           setErrors({ form: error.message });
@@ -247,7 +232,16 @@ export default function EditPyqPaperPage({
 
     // Show existing file info when no replacement is selected
     if (hasExisting && !isReplaceMode) {
-      return (
+      if (user?.role === 'teacher') {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
+        <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
+        <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">Teachers do not have permission to manage PYQ packages or papers.</p>
+      </div>
+    );
+  }
+
+  return (
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
           <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-950/10">
@@ -375,8 +369,8 @@ export default function EditPyqPaperPage({
           title="Paper Not Found"
           description="The requested PYQ paper could not be found."
           breadcrumbs={[
-            { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-            { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
+            { label: 'PYQ Packages', href: '/admin/pyq-packages' },
+            { label: 'Papers', href: `/admin/pyq-packages/${packageId}/papers` },
             { label: 'Edit Paper' },
           ]}
         />
@@ -385,7 +379,7 @@ export default function EditPyqPaperPage({
             Paper &ldquo;{paperId}&rdquo; does not exist or has been deleted.
           </p>
           <Link
-            href={`/teacher/pyq/packages/${packageId}/papers`}
+            href={`/admin/pyq-packages/${packageId}/papers`}
             className="mt-3 inline-block rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white hover:bg-rose-700"
           >
             Back to Papers
@@ -401,15 +395,15 @@ export default function EditPyqPaperPage({
         title={paper.title}
         description="Edit PYQ paper details and configuration"
         breadcrumbs={[
-          { label: 'PYQ Packages', href: '/teacher/pyq/packages' },
-          { label: pkg.name, href: `/teacher/pyq/packages/${packageId}/papers` },
-          { label: 'Papers', href: `/teacher/pyq/packages/${packageId}/papers` },
+          { label: 'PYQ Packages', href: '/admin/pyq-packages' },
+          { label: pkg.name, href: `/admin/pyq-packages/${packageId}/papers` },
+          { label: 'Papers', href: `/admin/pyq-packages/${packageId}/papers` },
           { label: paper.title },
         ]}
         actions={
           <div className="flex items-center gap-2">
             <Link
-              href={`/teacher/pyq/packages/${packageId}/papers/${paperId}/questions`}
+              href={`/admin/pyq-packages/${packageId}/papers/${paperId}/questions`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-gray-900 dark:text-blue-400 dark:hover:bg-blue-950/30"
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -531,7 +525,7 @@ export default function EditPyqPaperPage({
                 )}
               </div>
               <Link
-                href={`/teacher/pyq/packages/${packageId}/papers/${paperId}/questions`}
+                href={`/admin/pyq-packages/${packageId}/papers/${paperId}/questions`}
                 className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
               >
                 {mockData ? 'Manage Mock' : 'Set Up Mock'}
@@ -542,10 +536,9 @@ export default function EditPyqPaperPage({
 
         {/* PDF Files */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">PDF Files</h2>
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Question Paper PDF</h2>
           <p className="mb-4 text-xs text-gray-500">
-            Upload the question paper PDF and solution PDF. Both are required.
-            To replace an existing PDF, select a new file — the system will
+            To replace the existing question paper PDF, select a new file — the system will
             automatically update the storage path on save.
           </p>
           <div className="space-y-6">
@@ -553,19 +546,10 @@ export default function EditPyqPaperPage({
               label="Question Paper PDF"
               state={questionPdf}
               existingPath={paper.pdfStoragePath}
-              onFile={(f) => handleFileSelect('question', f)}
-              onRemove={() => handleRemoveFile('question')}
+              onFile={handleFileSelect}
+              onRemove={handleRemoveFile}
               inputRef={questionInputRef}
               error={errors.questionPdf}
-            />
-            <PdfUploadSection
-              label="Solution PDF"
-              state={solutionPdf}
-              existingPath={paper.solutionPdfStoragePath}
-              onFile={(f) => handleFileSelect('solution', f)}
-              onRemove={() => handleRemoveFile('solution')}
-              inputRef={solutionInputRef}
-              error={errors.solutionPdf}
             />
           </div>
         </section>
@@ -612,7 +596,7 @@ export default function EditPyqPaperPage({
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href={`/teacher/pyq/packages/${packageId}/papers`}
+              href={`/admin/pyq-packages/${packageId}/papers`}
               className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
             >
               Cancel

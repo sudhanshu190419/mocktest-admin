@@ -4,7 +4,7 @@ import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { getPostLoginDestination } from '@/lib/auth/routing';
-import FacultyDashboard from '@/components/dashboard/FacultyDashboard';
+import { LoginView } from '@/views/LoginView';
 import { CircleNotch } from '@phosphor-icons/react';
 
 /**
@@ -38,7 +38,7 @@ export default function Home() {
         router.replace(destination);
       }
     }
-    // If no teacherProfile (not logged in), FacultyDashboard handles login UI
+    // If no teacherProfile (not logged in), LoginView handles login UI
   }, [teacherProfile, loading, router, redirected]);
 
   // Show loading splash while auth or redirect is pending
@@ -55,7 +55,6 @@ export default function Home() {
     );
   }
 
-  // No authenticated profile — render the login / landing view
-  // (FacultyDashboard handles the full login + registration UI flow)
-  return <FacultyDashboard />;
+  // No authenticated profile — render the clean login / registration UI
+  return <LoginView />;
 }
