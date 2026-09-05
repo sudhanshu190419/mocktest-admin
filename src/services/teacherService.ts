@@ -20,7 +20,65 @@ export const teacherService = {
    * Groups by batch and subject. Returns an array shaped like AcademicBatch[]
    * for backward compatibility with existing consumers.
    */
-  async getAssignedBatches(teacherId: string): Promise<AcademicBatch[]> {
+  /**
+   * Fetch all batch-subject assignments for a teacher.
+   * Returns batch details, subject details, and batch_subject_id.
+   */
+  async getAssignedBatchSubjects(teacherId: string): Promise<Array<{
+    batchSubjectId: string;
+    batchId: string;
+    batchName: string;
+    batchCode: string;
+    subjectId: string;
+    subjectName: string;
+    subjectCode?: string;
+  }>> {
+    try {
+      const { data, error } = await supabase
+        .from('batch_subject_teachers')
+        .select(`
+          batch_subject_id,
+          batch_subjects!inner (
+            batch_subject_id,
+            batch_id,
+            subject_id,
+            batches!inner (
+              batch_id,
+              name,
+              batch_code
+            ),
+            subjects!inner (
+              subject_id,
+              name,
+              code
+            )
+          )
+        `)
+        .eq('teacher_id', teacherId);
+
+      if (error || !data) return [];
+
+      return (data as any[]).map((item) => {
+        const bs = item.batch_subjects || {};
+        const batch = bs.batches || {};
+        const subject = bs.subjects || {};
+        return {
+          batchSubjectId: bs.batch_subject_id || item.batch_subject_id,
+          batchId: batch.batch_id,
+          batchName: batch.name || 'General Batch',
+          batchCode: batch.batch_code || '',
+          subjectId: subject.subject_id,
+          subjectName: subject.name || 'Subject',
+          subjectCode: subject.code || '',
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching assigned batch subjects:', err);
+      return [];
+    }
+  },
+
+    async getAssignedBatches(teacherId: string): Promise<AcademicBatch[]> {
     try {
       const allottedKey = `EDTECH_ALLOTTED_BATCHES_${teacherId}`;
       const localAllotmentsStr = localStorage.getItem(allottedKey);

@@ -249,9 +249,66 @@ export interface BatchReleaseResult {
   updatedCount: number;
 }
 
+/**
+ * Summary of a mock test represented in accessible results.
+ */
+export interface AccessibleResultTest {
+  testId: string;
+  title: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Public API
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch all unique mock tests that have accessible results for the current caller.
+ * Resolves test titles via get_evaluation_test_titles RPC so titles for admin-
+ * or peer-authored tests are visible without altering mock_tests RLS.
+ */
+export async function getAccessibleResultTests(): Promise<ApiResponse<AccessibleResultTest[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('mock_results')
+      .select('test_id');
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    const testIdSet = new Set<string>();
+    for (const row of data ?? []) {
+      if (row.test_id) {
+        testIdSet.add(row.test_id);
+      }
+    }
+
+    const testIdList = Array.from(testIdSet);
+    if (testIdList.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const { data: testTitles, error: rpcError } = await supabase.rpc('get_evaluation_test_titles', {
+      p_test_ids: testIdList,
+    });
+
+    const titleMap = new Map<string, string>();
+    if (testTitles && !rpcError) {
+      for (const t of testTitles as { test_id: string; title: string }[]) {
+        titleMap.set(t.test_id, t.title);
+      }
+    }
+
+    const resultTests: AccessibleResultTest[] = testIdList.map((testId) => ({
+      testId,
+      title: titleMap.get(testId) || 'Unknown Test',
+    })).sort((a, b) => a.title.localeCompare(b.title));
+
+    return { success: true, data: resultTests };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
 
 /**
  * Fetch a result by its attempt ID (1:1 relationship).

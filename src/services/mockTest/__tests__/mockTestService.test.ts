@@ -1,3 +1,6 @@
+vi.mock('../../admin/approvalGuard', () => ({
+  canApproveAcademicResources: vi.fn().mockResolvedValue(true),
+}));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockFrom, mockAuditLog, mockGetUser } = vi.hoisted(() => ({

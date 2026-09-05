@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -15,19 +15,46 @@ export default function StudentDashboardPage() {
   const { teacherProfile } = useAuth();
   const teacherId = teacherProfile?.id ?? '';
 
-  const { data: batches, isLoading: batchesLoading } = useQuery({
-    queryKey: ['teacher', 'batches', teacherId],
-    queryFn: () => teacherService.getAssignedBatches(teacherId),
+  const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
+
+  // Fetch teacher's assigned batch subjects
+  const { data: assignedBatchSubjects, isLoading: assignmentsLoading } = useQuery({
+    queryKey: ['teacher', 'assigned-batch-subjects', teacherId],
+    queryFn: () => teacherService.getAssignedBatchSubjects(teacherId),
     enabled: !!teacherId,
   });
 
-  const batchIds = useMemo(() => batches?.map((b) => b.id) ?? [], [batches]);
+  // Extract unique batches
+  const batches = useMemo(() => {
+    if (!assignedBatchSubjects) return [];
+    const map = new Map<string, { id: string; name: string; code: string }>();
+    assignedBatchSubjects.forEach((item) => {
+      if (!map.has(item.batchId)) {
+        map.set(item.batchId, {
+          id: item.batchId,
+          name: item.batchName,
+          code: item.batchCode,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [assignedBatchSubjects]);
 
+  // Determine which batch IDs to query
+  const targetBatchIds = useMemo(() => {
+    if (!assignedBatchSubjects || assignedBatchSubjects.length === 0) return [];
+    if (selectedBatchId !== 'all') {
+      return [selectedBatchId];
+    }
+    return batches.map((b) => b.id);
+  }, [assignedBatchSubjects, selectedBatchId, batches]);
+
+  // Fetch student roster for target batch IDs
   const { data: allStudents, isLoading: studentsLoading } = useQuery({
-    queryKey: ['teacher', 'students', ...batchIds],
+    queryKey: ['teacher', 'students', ...targetBatchIds],
     queryFn: async () => {
       const results: StudentRosterItem[] = [];
-      for (const id of batchIds) {
+      for (const id of targetBatchIds) {
         try {
           const roster = await teacherService.getStudentRoster(id);
           results.push(...roster);
@@ -35,7 +62,7 @@ export default function StudentDashboardPage() {
           // skip failed batch rosters
         }
       }
-      // Deduplicate by student ID
+      // Deduplicate students who belong to multiple assigned batches
       const seen = new Set<string>();
       return results.filter((s) => {
         if (seen.has(s.id)) return false;
@@ -43,10 +70,10 @@ export default function StudentDashboardPage() {
         return true;
       });
     },
-    enabled: batchIds.length > 0,
+    enabled: targetBatchIds.length > 0,
   });
 
-  const isLoading = batchesLoading || studentsLoading;
+  const isLoading = assignmentsLoading || (targetBatchIds.length > 0 && studentsLoading);
   const students = allStudents ?? [];
 
   const stats = useMemo(() => {
@@ -54,7 +81,6 @@ export default function StudentDashboardPage() {
     const active = students.filter((s) => s.status === 'Present Live' || s.status === 'Watched Recording').length;
     const inactive = total - active;
 
-    // Parse avgScore percentages
     const scores = students
       .map((s) => parseFloat(s.avgScore?.replace('%', '') ?? '0'))
       .filter((s) => !isNaN(s));
@@ -62,7 +88,6 @@ export default function StudentDashboardPage() {
       ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
       : '0';
 
-    // Attendance
     const attendance = students
       .map((s) => parseFloat(s.attendanceRate?.replace('%', '') ?? '0'))
       .filter((a) => !isNaN(a));
@@ -70,10 +95,10 @@ export default function StudentDashboardPage() {
       ? (attendance.reduce((a, b) => a + b, 0) / attendance.length).toFixed(1)
       : '0';
 
-    const batchCount = batches?.length ?? 0;
+    const batchCount = targetBatchIds.length;
 
     return { total, active, inactive, avgScore, avgAttendance, batchCount };
-  }, [students, batches]);
+  }, [students, targetBatchIds]);
 
   const recentStudents = useMemo(() => {
     return students.slice(0, 8);
@@ -113,9 +138,9 @@ export default function StudentDashboardPage() {
       border: 'border-purple-200 dark:border-purple-800',
     },
     {
-      label: 'Batches',
+      label: 'Filtered Batches',
       value: stats.batchCount,
-      subtext: 'assigned to you',
+      subtext: 'active selection',
       color: 'text-indigo-600',
       bg: 'bg-indigo-50 dark:bg-indigo-900/20',
       border: 'border-indigo-200 dark:border-indigo-800',
@@ -143,16 +168,58 @@ export default function StudentDashboardPage() {
     <div>
       <PageHeader
         title="Students"
-        description={`Manage your ${stats.total} students across ${stats.batchCount} batches`}
+        description={`Manage your ${stats.total} students across ${batches.length} assigned batches`}
         actions={
           <Link
             href="/teacher/students/list"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 shadow-sm transition-colors"
           >
             View All Students
           </Link>
         }
       />
+
+      {/* Batch Filter Bar */}
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Batch Dropdown */}
+          <div className="min-w-[200px] flex-1 sm:flex-initial">
+            <label htmlFor="batch-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Batch
+            </label>
+            <select
+              id="batch-select"
+              value={selectedBatchId}
+              onChange={(e) => {
+                setSelectedBatchId(e.target.value);
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="all">All Batches ({batches.length})</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} {b.code ? `(${b.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter Reset Button if filter active */}
+          {selectedBatchId !== 'all' && (
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBatchId('all');
+                }}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Clear Filter
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Stats Cards */}
       {isLoading ? (
@@ -182,10 +249,17 @@ export default function StudentDashboardPage() {
         </div>
       )}
 
-      {/* Recent Students */}
+      {/* Filtered Students Roster */}
       <div className="mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent Students</h2>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              {selectedBatchId !== 'all' ? 'Filtered Students' : 'Recent Students'}
+            </h2>
+            <p className="text-xs text-gray-500">
+              Showing {students.length} student{students.length === 1 ? '' : 's'} matching active filters
+            </p>
+          </div>
           <Link
             href="/teacher/students/list"
             className="text-xs font-medium text-blue-600 hover:text-blue-700"
@@ -200,10 +274,14 @@ export default function StudentDashboardPage() {
               <Skeleton key={i} className="h-14 w-full" />
             ))}
           </div>
-        ) : recentStudents.length === 0 ? (
+        ) : students.length === 0 ? (
           <EmptyState
             title="No students found"
-            description="Students will appear here once they are assigned to your batches."
+            description={
+              selectedBatchId !== 'all'
+                ? 'No students found matching the selected Batch filter.'
+                : 'Students will appear here once they are assigned to your batches.'
+            }
           />
         ) : (
           <div className="space-y-2">

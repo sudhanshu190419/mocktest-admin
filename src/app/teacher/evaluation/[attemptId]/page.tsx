@@ -21,14 +21,10 @@ export default function AttemptEvaluationPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
 
-  // Sort answers: pending first, then evaluated
+  // Maintain stable question order matching mock-test sequence (from query)
   const sortedAnswers = useMemo(() => {
     if (!answers) return [];
-    return [...answers].sort((a, b) => {
-      const aPending = a.evaluationStatus !== 'manual_evaluated' ? 0 : 1;
-      const bPending = b.evaluationStatus !== 'manual_evaluated' ? 0 : 1;
-      return aPending - bPending;
-    });
+    return answers;
   }, [answers]);
 
   const evaluatedCount = useMemo(
@@ -119,6 +115,7 @@ export default function AttemptEvaluationPage() {
             evaluated={evaluatedCount}
             total={sortedAnswers.length}
             currentQuestionIndex={currentQuestionIndex}
+            items={sortedAnswers}
           />
 
           {/* Current Question */}

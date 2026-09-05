@@ -15,16 +15,12 @@ import { updatePassword } from './authService';
 import { extractErrorMessage } from '@/utils/supabase';
 import { resolveTeacherIdentity } from './teacherIdentity';
 import type { ApiResponse } from '@/types/academic';
-import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-} from '@/types/profile';
 import type {
   TeacherProfileData,
   BasicInfo,
   ProfessionalInfo,
   ContactInfo,
   ActivityEvent,
-  NotificationPreferences,
 } from '@/types/profile';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -71,26 +67,21 @@ export async function getFullTeacherProfile(
       return { success: false, error: extractErrorMessage(detailsError) };
     }
 
-    // 3. Fetch teacher_specializations with subject names
-    const { data: specializations } = await supabase
-      .from('teacher_specializations')
-      .select('*, subjects(name)')
-      .eq('teacher_id', teacherId);
-
-    // 4. Fetch assigned batch subjects (via batch_subject_teachers)
+    // 3. Fetch assigned batch subjects (via batch_subject_teachers)
     const { data: batchSubjects } = await supabase
       .from('batch_subject_teachers')
       .select(`
         batch_subject_id,
         batch_subjects!inner(
           batch_id,
+          subject_id,
           batches!inner(name, stream_id),
-          subjects!inner(name)
+          subjects!inner(subject_id, name)
         )
       `)
-      .eq('teacher_id', teacherId);
+      .eq('teacher_id', resolvedTeacherId);
 
-    // 5. Fetch institute name if instituteId provided
+    // 4. Fetch institute name if instituteId provided
     let instituteName: string | undefined;
     if (instituteId) {
       const { data: institute } = await supabase
@@ -101,11 +92,16 @@ export async function getFullTeacherProfile(
       instituteName = institute?.name;
     }
 
-    const subjects = specializations?.map((s: any) => s.subjects?.name ?? 'Unknown') ?? [];
-    // Deduplicate by batch_id from batch_subject_teachers
+    // Deduplicate subjects by subject_id from batch_subject_teachers
+    const subjectMap = new Map<string, string>();
+    // Deduplicate batches by batch_id from batch_subject_teachers
     const batchMap = new Map<string, { batchId: string; batchName: string; streamName?: string }>();
+
     (batchSubjects ?? []).forEach((item: any) => {
       const bs = item.batch_subjects;
+      if (bs?.subjects?.subject_id && !subjectMap.has(bs.subjects.subject_id)) {
+        subjectMap.set(bs.subjects.subject_id, bs.subjects.name ?? 'Unknown Subject');
+      }
       if (bs?.batch_id && !batchMap.has(bs.batch_id)) {
         batchMap.set(bs.batch_id, {
           batchId: bs.batch_id,
@@ -114,6 +110,8 @@ export async function getFullTeacherProfile(
         });
       }
     });
+
+    const subjects = Array.from(subjectMap.values());
     const batches = Array.from(batchMap.values()).map((b) => ({
       ...b,
       studentCount: 0,
@@ -427,40 +425,6 @@ export async function getTeacherActivity(
     events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     return { success: true, data: events.slice(0, 100) };
-  } catch (err) {
-    return { success: false, error: extractErrorMessage(err) };
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Notification Preferences
-// ═══════════════════════════════════════════════════════════════════════════
-
-const NOTIFICATION_PREFS_KEY = 'EDTECH_NOTIFICATION_PREFS';
-
-export function getNotificationPreferences(): NotificationPreferences {
-  if (typeof window === 'undefined') {
-    return DEFAULT_NOTIFICATION_PREFERENCES;
-  }
-  try {
-    const stored = localStorage.getItem(NOTIFICATION_PREFS_KEY);
-    if (stored) {
-      return { ...DEFAULT_NOTIFICATION_PREFERENCES, ...JSON.parse(stored) };
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return DEFAULT_NOTIFICATION_PREFERENCES;
-}
-
-export function saveNotificationPreferences(
-  prefs: NotificationPreferences,
-): ApiResponse<null> {
-  try {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
-    }
-    return { success: true, data: null };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }

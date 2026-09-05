@@ -380,8 +380,6 @@ export default function TeacherDashboardPage() {
                 { label: 'Create Mock Test', href: '/teacher/mock-tests/create', icon: '📝', color: 'bg-emerald-600' },
                 { label: 'View Students', href: '/teacher/students', icon: '👥', color: 'bg-purple-600' },
                 { label: 'Release Results', href: '/teacher/results/list', icon: '📊', color: 'bg-amber-600' },
-                { label: 'Create Live Class', href: '/teacher/live-classes', icon: '📺', color: 'bg-rose-600' },
-                { label: 'Upload Content', href: '/teacher/content', icon: '📁', color: 'bg-cyan-600' },
               ].map((action) => (
                 <Link
                   key={action.label}

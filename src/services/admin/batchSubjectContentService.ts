@@ -29,6 +29,8 @@ import { supabase } from '@/config/supabase';
 import { extractErrorMessage, validateUUID } from '@/utils/supabase';
 import type { ApiResponse } from '@/types/academic';
 import { auditService } from '@/services/audit/auditService';
+import { canApproveAcademicResources, approvalPermissionDenied } from './approvalGuard';
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -394,6 +396,11 @@ export const batchSubjectContentService = {
   ): Promise<ApiResponse<{ assigned: number }>> {
     try {
       validateUUID(batchSubjectId, 'batchSubjectId');
+
+      const isAdmin = await canApproveAcademicResources();
+      if (!isAdmin) {
+        return approvalPermissionDenied();
+      }
 
       if (!contentIds.length) {
         return { success: false, error: 'No content IDs provided.' };

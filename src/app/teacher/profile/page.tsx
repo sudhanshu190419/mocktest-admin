@@ -229,7 +229,6 @@ export default function ProfilePage() {
               {[
                 { label: 'Activity Log', href: '/teacher/profile/activity', icon: '📋' },
                 { label: 'Security Settings', href: '/teacher/profile/security', icon: '🔒' },
-                { label: 'Notification Preferences', href: '/teacher/profile/preferences', icon: '⚙️' },
               ].map((link) => (
                 <button
                   key={link.href}

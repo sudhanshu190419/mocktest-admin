@@ -4,11 +4,13 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePendingEvaluations } from '@/hooks/teacher/useEvaluation';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { SearchBar } from '@/components/ui/SearchBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
 
 interface AttemptGroup {
   attemptId: string;
+  testId: string;
   studentName: string;
   testTitle: string;
   totalPending: number;
@@ -19,16 +21,21 @@ export default function EvaluationDashboardPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
+  // Filter states
+  const [search, setSearch] = useState('');
+  const [selectedTestId, setSelectedTestId] = useState<string>('all');
+
   const { data, isLoading, error } = usePendingEvaluations({ page, pageSize });
 
   // Group pending items by attemptId
-  const attemptGroups = useMemo(() => {
+  const allAttemptGroups = useMemo(() => {
     if (!data?.data) return [];
     const groups: Record<string, AttemptGroup> = {};
     for (const item of data.data) {
       if (!groups[item.attemptId]) {
         groups[item.attemptId] = {
           attemptId: item.attemptId,
+          testId: item.testId,
           studentName: item.studentName ?? 'Unknown Student',
           testTitle: item.testTitle,
           totalPending: 0,
@@ -40,8 +47,41 @@ export default function EvaluationDashboardPage() {
     return Object.values(groups);
   }, [data]);
 
+  // Extract unique tests for filter dropdown
+  const uniqueTests = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of allAttemptGroups) {
+      if (item.testId && !map.has(item.testId)) {
+        map.set(item.testId, item.testTitle);
+      }
+    }
+    return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
+  }, [allAttemptGroups]);
+
+  // Apply filters (search + test)
+  const filteredGroups = useMemo(() => {
+    let result = allAttemptGroups;
+
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter(
+        (g) =>
+          g.studentName.toLowerCase().includes(q) ||
+          g.testTitle.toLowerCase().includes(q),
+      );
+    }
+
+    if (selectedTestId !== 'all') {
+      result = result.filter((g) => g.testId === selectedTestId);
+    }
+
+    return result;
+  }, [allAttemptGroups, search, selectedTestId]);
+
   const totalCount = data?.count ?? 0;
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  const hasActiveFilters = search.trim() !== '' || selectedTestId !== 'all';
 
   return (
     <div>
@@ -49,6 +89,49 @@ export default function EvaluationDashboardPage() {
         title="Subjective Evaluation"
         description="Evaluate pending subjective answers from student submissions"
       />
+
+      {/* Filters Bar */}
+      {!isLoading && allAttemptGroups.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <div className="min-w-[220px] flex-1">
+            <SearchBar
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+              }}
+              placeholder="Search by student name or test title..."
+            />
+          </div>
+
+          <div className="min-w-[180px]">
+            <select
+              value={selectedTestId}
+              onChange={(e) => setSelectedTestId(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="all">All Tests ({uniqueTests.length})</option>
+              {uniqueTests.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setSelectedTestId('all');
+              }}
+              className="rounded-lg border border-gray-200 bg-gray-50 px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -69,7 +152,7 @@ export default function EvaluationDashboardPage() {
             {error.message}
           </p>
         </div>
-      ) : attemptGroups.length === 0 ? (
+      ) : allAttemptGroups.length === 0 ? (
         <EmptyState
           icon={
             <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -79,15 +162,19 @@ export default function EvaluationDashboardPage() {
           title="No pending evaluations"
           description="There are no pending subjective answers to evaluate right now."
         />
+      ) : filteredGroups.length === 0 ? (
+        <EmptyState
+          title="No matching evaluations"
+          description="Try adjusting your search or test filter."
+        />
       ) : (
         <>
           <div className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-            {totalCount} pending question{totalCount !== 1 ? 's' : ''} across{' '}
-            {attemptGroups.length} attempt{attemptGroups.length !== 1 ? 's' : ''}
+            Showing {filteredGroups.length} of {allAttemptGroups.length} attempt{allAttemptGroups.length !== 1 ? 's' : ''} ({totalCount} total pending question{totalCount !== 1 ? 's' : ''})
           </div>
 
           <div className="space-y-3">
-            {attemptGroups.map((group) => (
+            {filteredGroups.map((group) => (
               <Link
                 key={group.attemptId}
                 href={`/teacher/evaluation/${group.attemptId}`}

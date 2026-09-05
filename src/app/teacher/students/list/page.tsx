@@ -25,18 +25,37 @@ export default function StudentListPage() {
   const [batchFilter, setBatchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  // Fetch teacher's batches
-  const { data: batches, isLoading: batchesLoading } = useQuery({
-    queryKey: ['teacher', 'batches', teacherId],
-    queryFn: () => teacherService.getAssignedBatches(teacherId),
+  // Fetch teacher's assigned batch subjects
+  const { data: assignedBatchSubjects, isLoading: assignmentsLoading } = useQuery({
+    queryKey: ['teacher', 'assigned-batch-subjects', teacherId],
+    queryFn: () => teacherService.getAssignedBatchSubjects(teacherId),
     enabled: !!teacherId,
   });
 
-  // Fetch student rosters — either a specific batch or all batches
+  // Extract unique batches
+  const batches = useMemo(() => {
+    if (!assignedBatchSubjects) return [];
+    const map = new Map<string, { id: string; name: string; code: string }>();
+    assignedBatchSubjects.forEach((item) => {
+      if (!map.has(item.batchId)) {
+        map.set(item.batchId, {
+          id: item.batchId,
+          name: item.batchName,
+          code: item.batchCode,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [assignedBatchSubjects]);
+
+  // Determine which batch IDs to query
   const fetchBatchIds = useMemo(() => {
-    if (batchFilter) return [batchFilter];
-    return batches?.map((b) => b.id) ?? [];
-  }, [batchFilter, batches]);
+    if (!assignedBatchSubjects || assignedBatchSubjects.length === 0) return [];
+    if (batchFilter) {
+      return [batchFilter];
+    }
+    return batches.map((b) => b.id);
+  }, [assignedBatchSubjects, batchFilter, batches]);
 
   const { data: allStudents, isLoading: studentsLoading } = useQuery({
     queryKey: ['teacher', 'students', ...fetchBatchIds],
@@ -50,7 +69,7 @@ export default function StudentListPage() {
           // Skip failed batch rosters
         }
       }
-      // Deduplicate by student ID
+      // Deduplicate students who belong to multiple assigned batches
       const seen = new Set<string>();
       return results.filter((s) => {
         if (seen.has(s.id)) return false;
@@ -61,7 +80,7 @@ export default function StudentListPage() {
     enabled: fetchBatchIds.length > 0,
   });
 
-  const isLoading = batchesLoading || studentsLoading;
+  const isLoading = assignmentsLoading || (fetchBatchIds.length > 0 && studentsLoading);
   const students = allStudents ?? [];
 
   // Apply client-side filters
@@ -97,7 +116,6 @@ export default function StudentListPage() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Constants for rendering
   const STATUS_COLORS: Record<string, string> = {
     'Present Live': 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400',
     'Watched Recording': 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400',
@@ -236,10 +254,10 @@ export default function StudentListPage() {
           }}
           className="min-w-[150px] rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         >
-          <option value="">All Batches</option>
+          <option value="">All Batches ({batches.length})</option>
           {batches?.map((b) => (
             <option key={b.id} value={b.id}>
-              {b.name}
+              {b.name} {b.code ? `(${b.code})` : ''}
             </option>
           ))}
         </select>
@@ -259,36 +277,33 @@ export default function StudentListPage() {
       </div>
 
       {/* Table */}
-      <DataTable<StudentRosterItem>
-        columns={columns}
-        data={paginated}
-        keyExtractor={(s) => s.id}
-        onRowClick={(s) => router.push(`/teacher/students/${s.id}`)}
-        isLoading={false}
-        sortable
-        page={page}
-        pageSize={PAGE_SIZE}
-        totalCount={totalCount}
-        onPageChange={setPage}
-        emptyState={
-          isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="No students found"
-              description={
-                search
-                  ? `No students matching "${search}"`
-                  : 'No students are assigned to your batches yet.'
-              }
-            />
-          )
-        }
-      />
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : paginated.length === 0 ? (
+        <EmptyState
+          title="No students found"
+          description={
+            search || batchFilter || statusFilter
+              ? 'Try adjusting your search or filters.'
+              : 'No students assigned yet.'
+          }
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={paginated}
+          keyExtractor={(s) => s.id}
+          onRowClick={(s) => router.push(`/teacher/students/${s.id}`)}
+          page={page}
+          pageSize={PAGE_SIZE}
+          totalCount={totalCount}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

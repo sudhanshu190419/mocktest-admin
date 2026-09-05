@@ -30,9 +30,6 @@ export default function EditProfilePage() {
     specialization: '',
     department: '',
     designation: '',
-    linkedIn: '',
-    website: '',
-    portfolio: '',
   });
 
   const fetchProfile = useCallback(async () => {
@@ -52,9 +49,6 @@ export default function EditProfilePage() {
         specialization: professionalInfo.specialization === 'General' ? '' : professionalInfo.specialization,
         department: professionalInfo.department === 'Not specified' ? '' : professionalInfo.department,
         designation: professionalInfo.designation === 'Faculty' ? '' : professionalInfo.designation,
-        linkedIn: contactInfo.linkedIn ?? '',
-        website: contactInfo.website ?? '',
-        portfolio: contactInfo.portfolio ?? '',
       });
     } else {
       setError(result.error ?? 'Failed to load profile.');
@@ -223,28 +217,6 @@ export default function EditProfilePage() {
               className={inputClass}
               placeholder="Tell your students about yourself, your teaching philosophy, and areas of expertise..."
             />
-          </div>
-        </div>
-
-        {/* Social Links (Future-ready) */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <div className="mb-5 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Social Links</h3>
-            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">Future Ready</span>
-          </div>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-            <div>
-              <label className={labelClass} htmlFor="linkedIn">LinkedIn Profile</label>
-              <input id="linkedIn" type="url" value={form.linkedIn} onChange={(e) => handleChange('linkedIn', e.target.value)} className={inputClass} placeholder="https://linkedin.com/in/..." />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="website">Website</label>
-              <input id="website" type="url" value={form.website} onChange={(e) => handleChange('website', e.target.value)} className={inputClass} placeholder="https://..." />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="portfolio">Portfolio</label>
-              <input id="portfolio" type="url" value={form.portfolio} onChange={(e) => handleChange('portfolio', e.target.value)} className={inputClass} placeholder="https://..." />
-            </div>
           </div>
         </div>
 

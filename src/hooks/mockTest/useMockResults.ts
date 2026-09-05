@@ -33,6 +33,7 @@ import {
   getMockTestResults,
   getInstituteResults,
   getResults,
+  getAccessibleResultTests,
   releaseResult,
   hideResult,
   deleteResult,
@@ -50,6 +51,7 @@ import type {
 import type {
   BatchReleaseResult,
   MockTestReleaseStatus,
+  AccessibleResultTest,
 } from '../../services/mockTest/mockResultService';
 
 // ─── Queries ────────────────────────────────────────────────────────────────
@@ -116,6 +118,7 @@ export function useStudentResults(
     queryKey: mockTestKeys.results.list(
       { ...filters, studentId: studentId ?? undefined } as MockResultFilters,
       sort,
+      pagination,
     ),
     queryFn: async () => {
       const result = await getStudentResults(studentId!, filters, sort, pagination);
@@ -148,6 +151,7 @@ export function useMockTestResults(
     queryKey: mockTestKeys.results.list(
       { ...filters, testId: testId ?? undefined } as MockResultFilters,
       sort,
+      pagination,
     ),
     queryFn: async () => {
       const result = await getMockTestResults(testId!, filters, sort, pagination);
@@ -180,6 +184,7 @@ export function useInstituteResults(
     queryKey: mockTestKeys.results.list(
       { ...filters, instituteId: instituteId ?? undefined } as MockResultFilters,
       sort,
+      pagination,
     ),
     queryFn: async () => {
       const result = await getInstituteResults(instituteId!, filters, sort, pagination);
@@ -207,7 +212,7 @@ export function useResults(
   enabled?: boolean,
 ) {
   return useQuery<PaginatedResponse<MockResult>>({
-    queryKey: mockTestKeys.results.list(filters, sort),
+    queryKey: mockTestKeys.results.list(filters, sort, pagination),
     queryFn: async () => {
       const result = await getResults(filters, sort, pagination);
       if (!result.success) {
@@ -243,6 +248,22 @@ export function useMockTestReleaseStatus(testId: string | undefined | null) {
     // Refetch periodically so release status stays current if another
     // admin releases results while this page is open.
     refetchInterval: 30_000,
+  });
+}
+
+/**
+ * Fetch all unique mock tests that have accessible results for the current user.
+ */
+export function useAccessibleResultTests() {
+  return useQuery<AccessibleResultTest[]>({
+    queryKey: [...mockTestKeys.all, 'accessibleResultTests'] as const,
+    queryFn: async () => {
+      const result = await getAccessibleResultTests();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch accessible result tests.');
+      }
+      return result.data!;
+    },
   });
 }
 

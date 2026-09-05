@@ -4,12 +4,14 @@ interface EvaluationProgressProps {
   evaluated: number;
   total: number;
   currentQuestionIndex?: number;
+  items?: Array<{ evaluationStatus?: string | null }>;
 }
 
 export function EvaluationProgress({
   evaluated,
   total,
   currentQuestionIndex,
+  items,
 }: EvaluationProgressProps) {
   const percentage = total > 0 ? (evaluated / total) * 100 : 0;
   const isComplete = evaluated === total && total > 0;
@@ -43,7 +45,9 @@ export function EvaluationProgress({
       {total > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {Array.from({ length: total }).map((_, i) => {
-            const isEvaluated = i < evaluated;
+            const isEvaluated = items
+              ? items[i]?.evaluationStatus === 'manual_evaluated'
+              : i < evaluated;
             const isCurrent = currentQuestionIndex === i;
             return (
               <span

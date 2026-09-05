@@ -60,7 +60,7 @@ describe('doubt notification mapping (Phase 7E)', () => {
 
   it('routes Teacher reference types to correct Teacher-scoped routes', () => {
     expect(buildActionUrl('mock_test', 'mt-1', 'teacher')).toBe('/teacher/mock-tests/mt-1');
-    expect(buildActionUrl('content', 'c-1', 'teacher')).toBe('/teacher/content/c-1');
+    expect(buildActionUrl('content', 'c-1', 'teacher')).toBe('/admin/content/review/c-1');
     expect(buildActionUrl('student_doubt', 'd-1', 'teacher')).toBe('/teacher/doubts/d-1');
     expect(buildActionUrl('live_class', 'lc-1', 'teacher')).toBe('/teacher/timetable');
     expect(buildActionUrl('question', 'q-1', 'teacher')).toBe('/teacher/questions/q-1');

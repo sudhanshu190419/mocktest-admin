@@ -269,7 +269,8 @@ export const mockTestKeys = {
     list: (
       filters?: MockResultFilters,
       sort?: MockResultSortOptions,
-    ) => [...mockTestKeys.results.lists(), filters, sort] as const,
+      pagination?: PaginationParams,
+    ) => [...mockTestKeys.results.lists(), filters, sort, pagination] as const,
 
     /** Key for every result detail query. */
     details: () => [...mockTestKeys.results.all(), 'detail'] as const,

@@ -1,7 +1,5 @@
-'use client';
-
-import { ScheduledClassesView } from '@/views/ScheduledClassesView';
+import { redirect } from 'next/navigation';
 
 export default function TeacherLiveClassesPage() {
-  return <ScheduledClassesView />;
+  redirect('/teacher/timetable');
 }

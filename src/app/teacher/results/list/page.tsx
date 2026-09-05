@@ -3,8 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useResults, useReleaseResult, useHideResult } from '@/hooks/mockTest/useMockResults';
-import { useMockTests } from '@/hooks/mockTest/useMockTests';
+import { useResults, useReleaseResult, useHideResult, useAccessibleResultTests } from '@/hooks/mockTest/useMockResults';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,8 +20,8 @@ export default function ResultsListPage() {
   const [testFilter, setTestFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const { data: testsData } = useMockTests({}, { sortBy: 'title', sortDirection: 'asc' }, { page: 1, pageSize: 200 });
-  const tests = testsData?.data ?? [];
+  const { data: testsData } = useAccessibleResultTests();
+  const tests = testsData ?? [];
 
   const filters: any = {};
   if (testFilter) filters.testId = testFilter;

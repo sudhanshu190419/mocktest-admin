@@ -538,28 +538,15 @@ export async function createContent(
     let initialStatus: LifecycleStatus = 'draft';
     let publishedAt: string | null = null;
 
-    // Check if the authenticated user is an authorized Super Admin or Academic Admin
+    // Restrict content creation to Super Admin and Academic Admin only
     const isAdmin = await canApproveAcademicResources();
-    const resolved = await resolveCurrentTeacherId();
-
-    if (isAdmin) {
-      // Super Admin / Academic Admin: directly approved & published
-      // Admin-created content uses teacher_id = NULL and created_by = authenticated admin
-      resolvedTeacherId = null;
-      initialStatus = 'approved';
-      publishedAt = nowIso;
-    } else {
-      // Ordinary teacher: must have an active teacher profile and starts in draft
-      if (!resolved) {
-        return {
-          success: false,
-          error: 'No teacher profile exists for the authenticated user.',
-        };
-      }
-      resolvedTeacherId = resolved.teacherId;
-      initialStatus = 'draft';
-      publishedAt = null;
+    if (!isAdmin) {
+      return approvalPermissionDenied();
     }
+
+    resolvedTeacherId = null;
+    initialStatus = 'approved';
+    publishedAt = nowIso;
 
     // ── 2. Upload file ──────────────────────────────────────────────────
     const uploadResult = await storageUploadFile({
@@ -674,6 +661,11 @@ export async function updateContent(
 ): Promise<ApiResponse<Content>> {
   try {
     validateUUID(contentId, 'contentId');
+
+    const isAdmin = await canApproveAcademicResources();
+    if (!isAdmin) {
+      return approvalPermissionDenied();
+    }
 
     // ── Fetch existing content ─────────────────────────────────────────
     const existing = await getContentById(contentId);
@@ -798,6 +790,11 @@ export async function updateContent(
 export async function deleteContent(contentId: string, reason?: string): Promise<ApiResponse<void>> {
   try {
     validateUUID(contentId, 'contentId');
+
+    const isAdmin = await canApproveAcademicResources();
+    if (!isAdmin) {
+      return approvalPermissionDenied();
+    }
 
     // ── Fetch existing content (existence check + audit metadata) ───────
     const existing = await getContentById(contentId);

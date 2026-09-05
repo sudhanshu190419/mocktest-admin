@@ -389,6 +389,30 @@ export async function getPendingEvaluations(
 
     // Resolve student names and test titles
     const items: PendingEvaluationItem[] = [];
+    const testIdSet = new Set<string>();
+
+    for (const row of data ?? []) {
+      const attempt = row.mock_attempts as any;
+      if (attempt?.test_id) {
+        testIdSet.add(attempt.test_id);
+      }
+    }
+
+    const testIdList = Array.from(testIdSet);
+
+    // Fetch test titles via secure evaluation-specific RPC
+    const testTitleMap = new Map<string, string>();
+    if (testIdList.length > 0) {
+      const { data: testTitles } = await supabase.rpc('get_evaluation_test_titles', {
+        p_test_ids: testIdList,
+      });
+
+      if (testTitles) {
+        for (const t of testTitles as { test_id: string; title: string }[]) {
+          testTitleMap.set(t.test_id, t.title);
+        }
+      }
+    }
 
     for (const row of data ?? []) {
       const attempt = row.mock_attempts as any;
@@ -400,24 +424,16 @@ export async function getPendingEvaluations(
       if (attempt?.student_id) {
         const { data: student } = await supabase
           .from('student_details')
-          .select('profiles!inner(full_name)')
+          .select('profiles!inner(name)')
           .eq('student_id', attempt.student_id)
           .single();
         if (student) {
-          studentName = (student as any).profiles?.full_name ?? null;
+          studentName = (student as any).profiles?.name ?? null;
         }
       }
 
-      // Fetch test title
-      let testTitle = 'Unknown Test';
-      if (attempt?.test_id) {
-        const { data: test } = await supabase
-          .from('mock_tests')
-          .select('title')
-          .eq('test_id', attempt.test_id)
-          .single();
-        if (test) testTitle = test.title;
-      }
+      // Fetch test title from RPC map
+      const testTitle = (attempt?.test_id ? testTitleMap.get(attempt.test_id) : null) || 'Unknown Test';
 
       items.push({
         answerId: row.answer_id,
@@ -466,6 +482,12 @@ export async function getAttemptSubjectiveAnswers(
   try {
     const user = await resolveCurrentUser();
     if (!user.success) return { success: false, error: user.error };
+
+    const isSuperOrAcademicAdmin = await isAdminUser(user.userId);
+    let teacherId: string | null = null;
+    if (!isSuperOrAcademicAdmin) {
+      teacherId = await resolveTeacherId(user.userId);
+    }
 
     validateUUID(attemptId, 'attemptId');
 
@@ -516,21 +538,25 @@ export async function getAttemptSubjectiveAnswers(
     if (attempt.student_id) {
       const { data: student } = await supabase
         .from('student_details')
-        .select('profiles!inner(full_name)')
+        .select('profiles!inner(name)')
         .eq('student_id', attempt.student_id)
         .single();
       if (student) {
-        studentName = (student as any).profiles?.full_name ?? null;
+        studentName = (student as any).profiles?.name ?? null;
       }
     }
 
+    // Fetch test title via secure evaluation-specific RPC
     let testTitle = 'Unknown Test';
-    const { data: test } = await supabase
-      .from('mock_tests')
-      .select('title')
-      .eq('test_id', attempt.test_id)
-      .single();
-    if (test) testTitle = test.title;
+    if (attempt.test_id) {
+      const { data: testTitles } = await supabase.rpc('get_evaluation_test_titles', {
+        p_test_ids: [attempt.test_id],
+      });
+
+      if (testTitles && (testTitles as any[]).length > 0) {
+        testTitle = (testTitles as any[])[0].title || 'Unknown Test';
+      }
+    }
 
     const items: PendingEvaluationItem[] = (data ?? []).map((row) => {
       const question = row.questions as any;

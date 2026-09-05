@@ -250,6 +250,17 @@ export async function getMockTests(
   pagination?: PaginationParams,
 ): Promise<ApiResponse<PaginatedResponse<MockTest>>> {
   try {
+    // ── Enforce teacher ownership isolation ────────────────────────────
+    const isAcademicOrSuperAdmin = await canApproveAcademicResources();
+    let effectiveCreatedBy = filters?.createdBy;
+
+    if (!isAcademicOrSuperAdmin) {
+      const resolved = await resolveCurrentTeacherId();
+      if (resolved) {
+        effectiveCreatedBy = resolved.teacherId;
+      }
+    }
+
     // ── Build query ────────────────────────────────────────────────────
     let query = supabase
       .from('mock_tests')
@@ -281,9 +292,9 @@ export async function getMockTests(
       query = query.eq('status', filters.status);
     }
 
-    if (filters?.createdBy) {
-      validateUUID(filters.createdBy, 'createdBy');
-      query = query.eq('teacher_id', filters.createdBy);
+    if (effectiveCreatedBy) {
+      validateUUID(effectiveCreatedBy, 'createdBy');
+      query = query.eq('teacher_id', effectiveCreatedBy);
     }
 
     if (filters?.search) {
@@ -343,6 +354,16 @@ export async function getMockTestById(testId: string): Promise<ApiResponse<MockT
       .eq('test_id', testId)
       .is('deleted_at', null)
       .single<DbMockTest>();
+
+    if (data) {
+      const isAcademicOrSuperAdmin = await canApproveAcademicResources();
+      if (!isAcademicOrSuperAdmin) {
+        const resolved = await resolveCurrentTeacherId();
+        if (resolved && data.teacher_id && data.teacher_id !== resolved.teacherId) {
+          return { success: false, error: 'Access denied: You can only view your own mock tests.' };
+        }
+      }
+    }
 
     if (error) {
       // PGRST116 = "The result contains 0 rows" — test not found
@@ -585,6 +606,14 @@ export async function updateMockTest(
       return { success: false, error: existingTestCheck.error ?? `Mock test not found: ${testId}` };
     }
     const previousTest = existingTestCheck.data;
+
+    const isAcademicOrSuperAdmin = await canApproveAcademicResources();
+    if (!isAcademicOrSuperAdmin) {
+      const resolved = await resolveCurrentTeacherId();
+      if (resolved && previousTest.teacherId && previousTest.teacherId !== resolved.teacherId) {
+        return { success: false, error: 'Access denied: You can only edit your own mock tests.' };
+      }
+    }
 
     // ── Build update payload (only provided fields) ────────────────────
     const dbRecord: Record<string, unknown> = {};

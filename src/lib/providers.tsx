@@ -13,12 +13,13 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Provider as ReduxProvider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeStore } from '../store';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
+import { initializeTheme } from '@/services/settings/settingsService';
 
 // ─── React Query Configuration ──────────────────────────────────────────────
 
@@ -72,6 +73,10 @@ interface ProvidersProps {
 export default function Providers({ children }: ProvidersProps) {
   const [store] = useState(makeStore);
   const queryClient = getQueryClient();
+
+  useEffect(() => {
+    initializeTheme();
+  }, []);
 
   return (
     <ReduxProvider store={store}>

@@ -1,5 +1,7 @@
 'use client';
 
+import { resolveTeacherIdentity } from '@/services/teacherIdentity';
+
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -42,10 +44,10 @@ export default function TeacherSubjectsPage() {
       try {
         setLoading(true);
 
-        // Get the teacher's ID
-        const { data: myTeacherId, error: tidError } = await supabase.rpc('get_my_teacher_id');
-        if (tidError || !myTeacherId) {
-          console.error('No teacher ID found:', tidError);
+        // Resolve teacher identity
+        const identity = await resolveTeacherIdentity();
+        const myTeacherId = identity?.teacherId;
+        if (!myTeacherId) {
           setLoading(false);
           return;
         }
@@ -165,7 +167,7 @@ export default function TeacherSubjectsPage() {
           description="You haven't been assigned to teach any subjects yet. Contact your admin to get assigned."
           action={
             <Link
-              href="/teacher/content"
+              href="/teacher/subjects"
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Go to My Content

@@ -8,8 +8,6 @@ import { cn } from '@/lib/utils';
 const settingsTabs = [
   { label: 'General', href: '/teacher/settings', icon: '⚙️' },
   { label: 'Appearance', href: '/teacher/settings?tab=appearance', icon: '🎨' },
-  { label: 'Privacy', href: '/teacher/settings?tab=privacy', icon: '🔐' },
-  { label: 'Advanced', href: '/teacher/settings?tab=advanced', icon: '🛠️' },
 ];
 
 function SettingsNav() {

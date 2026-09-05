@@ -114,48 +114,17 @@ export default function SecurityPage() {
       </div>
 
       {/* Security Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SecurityCard
-          title="Two-Factor Authentication"
-          status="disabled"
-          description="Add an extra layer of security to your account."
-          action={{
-            label: 'Enable (Coming Soon)',
-            onClick: () => {},
-            variant: 'secondary',
-            disabled: true,
-          }}
-        />
-
+      <div className="grid grid-cols-1 gap-4">
         <SecurityCard
           title="Active Sessions"
           status="warning"
-          description="Sessions are managed server-side. Device tracking is not yet available."
+          description="Sessions are managed server-side. Sign out from all devices if you suspect unauthorized access."
           action={{
             label: 'Logout All Devices',
             onClick: () => setShowLogoutConfirm(true),
             variant: 'danger',
           }}
         />
-      </div>
-
-      {/* Future-ready Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-          <div className="mb-2 flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-500 dark:text-gray-400">Recent Devices</h4>
-            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">TODO</span>
-          </div>
-          <p className="text-xs text-gray-400">Device tracking will be available once the backend session management is implemented.</p>
-        </div>
-
-        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-          <div className="mb-2 flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-500 dark:text-gray-400">Download Account Data</h4>
-            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">TODO</span>
-          </div>
-          <p className="text-xs text-gray-400">Account data export will be available in a future release.</p>
-        </div>
       </div>
 
       <ConfirmDialog

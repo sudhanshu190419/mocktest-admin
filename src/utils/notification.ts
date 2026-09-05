@@ -343,7 +343,7 @@ export function buildActionUrl(
     case 'mock_test':
       return `/teacher/mock-tests/${referenceId}`;
     case 'content':
-      return `/teacher/content/${referenceId}`;
+      return `/admin/content/review/${referenceId}`;
     case 'student_doubt':
     case 'doubt':
       return `/teacher/doubts/${referenceId}`;

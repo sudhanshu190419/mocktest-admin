@@ -8,7 +8,6 @@ const profileTabs = [
   { label: 'Profile', href: '/teacher/profile', icon: '👤' },
   { label: 'Activity', href: '/teacher/profile/activity', icon: '📋' },
   { label: 'Security', href: '/teacher/profile/security', icon: '🔒' },
-  { label: 'Preferences', href: '/teacher/profile/preferences', icon: '⚙️' },
 ];
 
 export default function ProfileLayout({
