@@ -72,7 +72,7 @@ export function getPostLoginDestination(
   //   - student: Routing is not part of this phase.
   // Fall back to root for both.
   if (role === 'user' || role === 'student') {
-    return '/';
+    return '/student/overview';
   }
 
   // ── Unknown role ─────────────────────────────────────────────────────────

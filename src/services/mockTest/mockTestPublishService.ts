@@ -569,10 +569,12 @@ async function buildQuestionSnapshot(
 export async function generateQuestionSnapshots(
   testId: string,
 ): Promise<ApiResponse<{ message: string }>> {
+  console.log('%c[generateQuestionSnapshots] 📸 START testId=' + testId, 'color: #3b82f6; font-weight: bold;');
+  const snapStart = performance.now();
   try {
     validateUUID(testId, 'testId');
 
-    // ── 1. Get all assignments for this test ───────────────────────────
+    // ── 1. Get all assignments for this test ──────────────────────────────
     const assignmentsResult = await getMockTestQuestions(testId, 'orderSequence', 'asc');
     if (!assignmentsResult.success || !assignmentsResult.data) {
       return {
@@ -589,8 +591,27 @@ export async function generateQuestionSnapshots(
       };
     }
 
-    // ── 2. Get all referenced questions ────────────────────────────────
-    const questionIds = assignments.map((a) => a.questionId);
+    // ── 2. Identify pending assignments that actually need snapshot generation ──
+    const pendingAssignments = assignments.filter((a) => !a.questionSnapshot);
+    const existingCount = assignments.length - pendingAssignments.length;
+    console.log(
+      `[generateQuestionSnapshots] 📊 Total assignments: ${assignments.length} | Already snapshotted: ${existingCount} | Pending generation: ${pendingAssignments.length}`
+    );
+
+    // If all questions already have valid frozen snapshots, we can safely return immediately!
+    if (pendingAssignments.length === 0) {
+      const elapsed = (performance.now() - snapStart).toFixed(1);
+      console.log(`%c[generateQuestionSnapshots] ⚡ Reused all ${existingCount} existing snapshots in ${elapsed}ms`, 'color: #10b981; font-weight: bold;');
+      return {
+        success: true,
+        data: {
+          message: `Successfully preserved ${existingCount} existing snapshot(s) for test ${testId}.`,
+        },
+      };
+    }
+
+    // ── 3. Fetch referenced questions only for pending assignments ────────
+    const questionIds = Array.from(new Set(pendingAssignments.map((a) => a.questionId)));
     const questionsResult = await getQuestions(
       { ids: questionIds },
       undefined,
@@ -610,56 +631,188 @@ export async function generateQuestionSnapshots(
       questionMap.set(q.questionId, q);
     }
 
-    // ── 3. Build a snapshot for each assignment and persist ────────────
-    let snapshotCount = 0;
-    const errors: string[] = [];
+    // ── 4. Bulk batch-fetch all child entities (options, explanations, images) ──
+    const [optionsRes, explanationsRes, questionImagesRes] = await Promise.all([
+      supabase
+        .from('question_options')
+        .select('*')
+        .in('question_id', questionIds)
+        .order('order_sequence', { ascending: true }),
+      supabase
+        .from('question_explanations')
+        .select('*')
+        .in('question_id', questionIds),
+      supabase
+        .from('question_images')
+        .select('*')
+        .in('question_id', questionIds)
+        .order('order_sequence', { ascending: true }),
+    ]);
 
-    for (const assignment of assignments) {
-      const question = questionMap.get(assignment.questionId);
-      if (!question) {
-        errors.push(`Question ${assignment.questionId} not found in question bank.`);
-        continue;
-      }
+    const allOptions = optionsRes.data ?? [];
+    const allExplanations = explanationsRes.data ?? [];
+    const allQuestionImages = questionImagesRes.data ?? [];
 
-      const snapshotResult = await buildQuestionSnapshot(question);
-      if (!snapshotResult.success || !snapshotResult.data) {
-        errors.push(
-          `Failed to build snapshot for question ${assignment.questionId}: ${snapshotResult.error ?? 'Unknown error'}`,
-        );
-        continue;
-      }
-
-      const snapshot = snapshotResult.data;
-
-      // ── 4. UPDATE the mock_test_questions row with the snapshot ──────
-      const { error: updateError } = await supabase
-        .from('mock_test_questions')
-        .update({ question_snapshot: snapshot as unknown })
-        .eq('test_id', testId)
-        .eq('question_id', assignment.questionId);
-
-      if (updateError) {
-        errors.push(
-          `Failed to persist snapshot for question ${assignment.questionId}: ${extractErrorMessage(updateError)}`,
-        );
-        continue;
-      }
-
-      snapshotCount++;
+    // Batch-fetch option images for all options in one query
+    const allOptionIds = allOptions.map((opt: { option_id: string }) => opt.option_id);
+    let allOptionImages: any[] = [];
+    if (allOptionIds.length > 0) {
+      const { data: optImgData } = await supabase
+        .from('question_option_images')
+        .select('*')
+        .in('option_id', allOptionIds)
+        .order('display_order', { ascending: true });
+      allOptionImages = optImgData ?? [];
     }
 
-    // ── 5. Report results ──────────────────────────────────────────────
+    // ── 5. Index fetched entities into in-memory lookup maps ──────────────
+    const optionImagesByOptionId = new Map<string, QuestionSnapshotOptionImage[]>();
+    for (const img of allOptionImages) {
+      const list = optionImagesByOptionId.get(img.option_id) || [];
+      list.push({
+        storageBucket: img.storage_bucket,
+        storagePath: img.storage_path,
+        altText: img.alt_text ?? null,
+        displayOrder: img.display_order,
+        imageProfile: img.image_profile ?? 'simple_diagram',
+        width: img.width ?? null,
+        height: img.height ?? null,
+        sizeBytes: img.size_bytes ?? null,
+        mimeType: img.mime_type ?? null,
+      });
+      optionImagesByOptionId.set(img.option_id, list);
+    }
+
+    const optionsByQuestionId = new Map<string, QuestionSnapshotOption[]>();
+    for (const opt of allOptions) {
+      const list = optionsByQuestionId.get(opt.question_id) || [];
+      list.push({
+        optionId: opt.option_id,
+        optionText: opt.option_text,
+        isCorrect: opt.is_correct,
+        orderSequence: opt.order_sequence,
+        images: optionImagesByOptionId.get(opt.option_id) || [],
+      });
+      optionsByQuestionId.set(opt.question_id, list);
+    }
+
+    const explanationByQuestionId = new Map<string, any>();
+    for (const exp of allExplanations) {
+      explanationByQuestionId.set(exp.question_id, exp);
+    }
+
+    const questionImagesByQuestionId = new Map<string, QuestionSnapshotImage[]>();
+    for (const img of allQuestionImages) {
+      const list = questionImagesByQuestionId.get(img.question_id) || [];
+      list.push({
+        storageBucket: img.storage_bucket,
+        storagePath: img.storage_path,
+        imageRole: img.image_role,
+        altText: img.alt_text ?? null,
+        orderSequence: img.order_sequence,
+        imageProfile: img.image_profile ?? 'simple_diagram',
+        width: img.width ?? null,
+        height: img.height ?? null,
+        sizeBytes: img.size_bytes ?? null,
+        mimeType: img.mime_type ?? null,
+      });
+      questionImagesByQuestionId.set(img.question_id, list);
+    }
+
+    // ── 6. Assemble snapshots in memory & persist with controlled concurrency ──
+    let newlyGeneratedCount = 0;
+    const errors: string[] = [];
+    const CHUNK_SIZE = 5; // Parallel write batch size
+
+    for (let i = 0; i < pendingAssignments.length; i += CHUNK_SIZE) {
+      const chunk = pendingAssignments.slice(i, i + CHUNK_SIZE);
+
+      await Promise.all(
+        chunk.map(async (assignment) => {
+          const question = questionMap.get(assignment.questionId);
+          if (!question) {
+            errors.push(`Question ${assignment.questionId} not found in question bank.`);
+            return;
+          }
+
+          const snapshotOptions = optionsByQuestionId.get(assignment.questionId) || [];
+          const expl = explanationByQuestionId.get(assignment.questionId);
+          const snapshotImages = questionImagesByQuestionId.get(assignment.questionId) || [];
+
+          const snapshot: QuestionSnapshot = {
+            snapshotVersion: SNAPSHOT_VERSION,
+            questionId: question.questionId,
+            questionText: question.questionText,
+            questionType: question.questionType,
+            difficulty: question.difficulty,
+            subjectId: question.subjectId,
+            chapterId: question.chapterId,
+            marks: question.marks,
+            negativeMarks: question.negativeMarks,
+            options: snapshotOptions,
+            correctNumericalAnswer: expl?.correct_numerical_answer ?? null,
+            numericalTolerance: expl?.numerical_tolerance ?? null,
+            correctTextAnswer: expl?.correct_text_answer ?? null,
+            explanationText: expl?.explanation_text ?? null,
+            explanationVideoUrl: expl?.explanation_video_url ?? null,
+            images: snapshotImages,
+          };
+
+          // Persist snapshot with retry on transient timeout
+          let persistSuccess = false;
+          let lastErrMessage = '';
+
+          for (let attempt = 0; attempt <= 2; attempt++) {
+            const { error: updateError } = await supabase
+              .from('mock_test_questions')
+              .update({ question_snapshot: snapshot as unknown })
+              .eq('test_id', testId)
+              .eq('question_id', assignment.questionId);
+
+            if (!updateError) {
+              persistSuccess = true;
+              break;
+            }
+
+            lastErrMessage = extractErrorMessage(updateError);
+            if (attempt < 2 && (lastErrMessage.includes('timeout') || updateError.code === '57014')) {
+              console.warn(
+                `[generateQuestionSnapshots] ⚠️ Retry ${attempt + 1}/2 on statement timeout for question ${assignment.questionId}...`
+              );
+              await new Promise((res) => setTimeout(res, 250 * (attempt + 1)));
+            }
+          }
+
+          if (!persistSuccess) {
+            errors.push(`Failed to persist snapshot for question ${assignment.questionId}: ${lastErrMessage}`);
+            return;
+          }
+
+          newlyGeneratedCount++;
+        }),
+      );
+    }
+
+    // ── 7. Report results ─────────────────────────────────────────────────
+    const elapsed = (performance.now() - snapStart).toFixed(1);
+
     if (errors.length > 0) {
+      console.error(`[generateQuestionSnapshots] ❌ Completed with ${errors.length} error(s) in ${elapsed}ms`, errors);
       return {
         success: false,
         error: `Snapshot generation completed with ${errors.length} error(s):\n${errors.join('\n')}`,
       };
     }
 
+    console.log(
+      `%c[generateQuestionSnapshots] ✅ Successfully generated ${newlyGeneratedCount} new snapshot(s) (${existingCount} existing) in ${elapsed}ms`,
+      'color: #10b981; font-weight: bold;'
+    );
+
     return {
       success: true,
       data: {
-        message: `Successfully generated ${snapshotCount} question snapshot(s) for test ${testId}.`,
+        message: `Successfully generated ${newlyGeneratedCount} new snapshot(s) (${existingCount} preserved) for test ${testId}.`,
       },
     };
   } catch (err) {
@@ -691,9 +844,13 @@ export async function generateQuestionSnapshots(
 export async function publishMockTestWorkflow(
   testId: string,
 ): Promise<ApiResponse<PublishSummary>> {
+  console.log('%c[publishMockTestWorkflow] 🚀 START: testId=' + testId, 'color: #06b6d4; font-weight: bold;');
+  const t0 = performance.now();
   try {
     // ── Step 1: Validate ───────────────────────────────────────────────
+    console.log('[publishMockTestWorkflow] 📋 Step 1: Running validateMockTestReady...');
     const validationResult = await validateMockTestReady(testId);
+    console.log('[publishMockTestWorkflow] 📋 Step 1 Validation result:', validationResult);
 
     if (!validationResult.success || !validationResult.data) {
       return {
@@ -715,7 +872,9 @@ export async function publishMockTestWorkflow(
     const questionCount = report.details.questionCount;
 
     // ── Step 2: Generate snapshots ─────────────────────────────────────
+    console.log('[publishMockTestWorkflow] 📸 Step 2: Generating question snapshots...');
     const snapshotResult = await generateQuestionSnapshots(testId);
+    console.log('[publishMockTestWorkflow] 📸 Step 2 Snapshot result:', snapshotResult);
     if (!snapshotResult.success) {
       return {
         success: false,
@@ -727,6 +886,7 @@ export async function publishMockTestWorkflow(
     // Belt-and-suspenders: even if snapshot generation reported success,
     // we re-check the database so NO test can reach 'published' with any
     // NULL question_snapshot row.
+    console.log('[publishMockTestWorkflow] 🔍 Step 2b: Verifying no NULL snapshots remain in DB...');
     const { count: missingSnapshots, error: verifyErr } = await supabase
       .from('mock_test_questions')
       .select('*', { count: 'exact', head: true })
@@ -752,6 +912,7 @@ export async function publishMockTestWorkflow(
     // ── Step 3: Publish via mockTestService (guarded flip) ─────────────
     // Restore (archived → published) preserves the original published_at so
     // the audit trail of the first publication survives.
+    console.log('[publishMockTestWorkflow] 🏷️ Step 3: Executing status flip via publishMockTest (previousStatus=' + previousStatus + ')...');
     const publishResult =
       previousStatus === 'archived'
         ? await publishMockTest(testId, {

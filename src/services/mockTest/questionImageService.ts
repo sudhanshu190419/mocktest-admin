@@ -65,6 +65,11 @@ interface DbQuestionImage {
   alt_text: string | null;
   order_sequence: number;
   created_at: string;
+  image_profile?: string;
+  width?: number | null;
+  height?: number | null;
+  size_bytes?: number | null;
+  mime_type?: string | null;
 }
 
 // ─── Input Types ────────────────────────────────────────────────────────────
@@ -85,6 +90,16 @@ export interface UploadQuestionImageParams {
   altText?: string | null;
   /** 1-indexed display order. Defaults to next available sequence. */
   orderSequence?: number;
+  /** Optimization profile ('simple_diagram' | 'detailed_image'). */
+  imageProfile?: string;
+  /** Pixel width after optimization. */
+  width?: number | null;
+  /** Pixel height after optimization. */
+  height?: number | null;
+  /** Byte size of file. */
+  sizeBytes?: number | null;
+  /** MIME type (e.g. 'image/webp'). */
+  mimeType?: string | null;
   /** Optional upload progress callback. */
   onProgress?: (loaded: number, total: number) => void;
 }
@@ -184,6 +199,11 @@ function mapQuestionImage(db: DbQuestionImage): QuestionImage {
     altText: db.alt_text,
     orderSequence: db.order_sequence,
     createdAt: db.created_at,
+    imageProfile: db.image_profile ?? 'simple_diagram',
+    width: db.width ?? null,
+    height: db.height ?? null,
+    sizeBytes: db.size_bytes ?? null,
+    mimeType: db.mime_type ?? null,
   };
 }
 
@@ -372,6 +392,11 @@ export async function uploadQuestionImage(
       image_role: imageRole,
       alt_text: altText ?? null,
       order_sequence: finalOrderSequence,
+      image_profile: params.imageProfile ?? 'simple_diagram',
+      width: params.width ?? null,
+      height: params.height ?? null,
+      size_bytes: params.sizeBytes ?? (file instanceof Blob || (typeof File !== 'undefined' && file instanceof File) ? file.size : null),
+      mime_type: params.mimeType ?? (file instanceof Blob || (typeof File !== 'undefined' && file instanceof File) ? file.type : 'image/webp'),
     };
 
     const { data: dbData, error: dbError } = await supabase

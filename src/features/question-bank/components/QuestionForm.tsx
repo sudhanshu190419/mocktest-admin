@@ -4,15 +4,12 @@ import { useState, useCallback, useEffect } from 'react';
 import { Select } from '@/components/ui/Select';
 import { OptionEditor } from './OptionEditor';
 import { ExplanationEditor } from './ExplanationEditor';
-import { ImageUploader } from './ImageUploader';
+import { ImageUploader, ImageItem } from './ImageUploader';
+import { Option, type OptionImageEntry } from './OptionEditor';
+import { ImageProfile, optimizeImage } from '@/utils/imageOptimizer';
 import type { QuestionType, DifficultyLevel, QuestionStatus } from '@/types/mockTest';
 
-export interface OptionImageEntry {
-  id: string;
-  file?: File;
-  preview: string;
-  altText: string;
-}
+export type { OptionImageEntry };
 
 export interface FormOption {
   id: string;
@@ -39,13 +36,7 @@ export interface QuestionFormData {
   correctNumericalAnswer: string;
   numericalTolerance: string;
   correctTextAnswer: string;
-  images: Array<{
-    id: string;
-    file?: File;
-    preview: string;
-    imageRole: string;
-    altText: string;
-  }>;
+  images: ImageItem[];
 }
 
 interface AcademicOption {
@@ -387,15 +378,29 @@ export function QuestionForm({
       {/* Images */}
       <ImageUploader
         images={data.images}
-        onAdd={(files) => {
-          const newImages = Array.from(files).map((file, i) => ({
-            id: `img-${Date.now()}-${i}`,
-            file,
-            preview: URL.createObjectURL(file),
-            imageRole: 'question' as const,
-            altText: '',
-          }));
-          handleFieldChange('images', [...data.images, ...newImages]);
+        onAdd={async (files) => {
+          const rawFiles = Array.from(files);
+          const optimizedEntries: ImageItem[] = await Promise.all(
+            rawFiles.map(async (rawFile, i) => {
+              const optResult = await optimizeImage(rawFile, 'simple_diagram');
+              return {
+                id: `img-${Date.now()}-${i}`,
+                file: optResult.file,
+                rawFile,
+                preview: optResult.previewUrl,
+                imageRole: 'question',
+                altText: '',
+                imageProfile: 'simple_diagram',
+                originalSizeBytes: optResult.originalSizeBytes,
+                optimizedSizeBytes: optResult.optimizedSizeBytes,
+                width: optResult.width,
+                height: optResult.height,
+                mimeType: optResult.mimeType,
+                savingsPercent: optResult.savingsPercent,
+              };
+            }),
+          );
+          handleFieldChange('images', [...data.images, ...optimizedEntries]);
         }}
         onRemove={(id) => {
           const img = data.images.find((i) => i.id === id);
@@ -406,6 +411,34 @@ export function QuestionForm({
           handleFieldChange(
             'images',
             data.images.map((i) => (i.id === id ? { ...i, imageRole: role } : i)),
+          );
+        }}
+        onProfileChange={async (id, profile) => {
+          const target = data.images.find((i) => i.id === id);
+          if (!target) return;
+          const sourceFile = target.rawFile || target.file;
+          if (!sourceFile) return;
+
+          const optResult = await optimizeImage(sourceFile, profile);
+          URL.revokeObjectURL(target.preview);
+
+          handleFieldChange(
+            'images',
+            data.images.map((i) => {
+              if (i.id !== id) return i;
+              return {
+                ...i,
+                file: optResult.file,
+                preview: optResult.previewUrl,
+                imageProfile: profile,
+                originalSizeBytes: optResult.originalSizeBytes,
+                optimizedSizeBytes: optResult.optimizedSizeBytes,
+                width: optResult.width,
+                height: optResult.height,
+                mimeType: optResult.mimeType,
+                savingsPercent: optResult.savingsPercent,
+              };
+            }),
           );
         }}
         onAltTextChange={(id, altText) => {

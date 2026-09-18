@@ -539,9 +539,11 @@ export const mockTestManagementService = {
     testId: string,
     newStatus: MockTestStatus,
   ): Promise<ApiResponse<null>> {
+    console.log('%c[mockTestManagementService.updateStatus] 🚀 START testId=' + testId + ' targetStatus=' + newStatus, 'color: #8b5cf6; font-weight: bold;');
     try {
       // ── Authorization: only super/academic admins may publish ──────────
       if (!(await canApproveAcademicResources())) {
+        console.error('[mockTestManagementService.updateStatus] ❌ Permission denied');
         return approvalPermissionDenied();
       }
 
@@ -592,18 +594,14 @@ export const mockTestManagementService = {
       // 3. Build update payload
       const dbUpdate: Record<string, unknown> = { status: newStatus };
 
-      // Set published_at when publishing (pending_approval → published or draft → published)
-      if (newStatus === 'published' && current.status !== 'published') {
-        dbUpdate.published_at = new Date().toISOString();
-      }
-
-      // For unpublish (published → draft): clear published_at
-      if (newStatus === 'draft' && current.status === 'published') {
+      // Set/preserve published_at to strictly satisfy check constraint ck_mock_tests_published_at:
+      // published/archived -> published_at IS NOT NULL
+      // draft/pending_approval -> published_at IS NULL
+      if (newStatus === 'published' || newStatus === 'archived') {
+        dbUpdate.published_at = current.published_at || new Date().toISOString();
+      } else if (newStatus === 'draft' || newStatus === 'pending_approval') {
         dbUpdate.published_at = null;
       }
-
-      // For archive (published → archived): preserve published_at for audit trail
-      // For restore (archived → published): preserve existing published_at
 
       const { error } = await supabase
         .from('mock_tests')
@@ -683,18 +681,27 @@ export const mockTestManagementService = {
    * original published_at is preserved. Authorization + audit are kept.
    */
   async restore(testId: string): Promise<ApiResponse<null>> {
+    console.log('%c[mockTestManagementService.restore] 🚀 START testId=' + testId, 'color: #f59e0b; font-weight: bold;');
+    const startTime = performance.now();
+
     // ── Authorization: only super/academic admins may restore ──────────
+    console.log('[mockTestManagementService.restore] Checking admin approval permission...');
     if (!(await canApproveAcademicResources())) {
+      console.error('[mockTestManagementService.restore] ❌ Permission denied for user');
       return approvalPermissionDenied();
     }
 
     validateUUID(testId, 'testId');
 
+    console.log('[mockTestManagementService.restore] Invoking publishMockTestWorkflow for testId=' + testId + '...');
     const result = await publishMockTestWorkflow(testId);
+    console.log('[mockTestManagementService.restore] publishMockTestWorkflow result:', result);
     if (!result.success || !result.data) {
+      console.error('[mockTestManagementService.restore] ❌ Workflow returned error:', result.error);
       return { success: false, error: result.error ?? 'Failed to restore mock test.' };
     }
 
+    console.log('[mockTestManagementService.restore] Logging audit event for restore...');
     // ── Audit: restore action (archived → published) ───────────────────
     await auditService.log({
       action: mapMockTestTransitionAction('archived', 'published'),

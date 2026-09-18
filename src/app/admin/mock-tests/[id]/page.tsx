@@ -271,6 +271,7 @@ export default function MockTestDetailPage() {
 
   // ── Action Executor ─────────────────────────────────────────────────
   const executeAction = useCallback(async (action: 'publish' | 'archive' | 'restore' | 'duplicate' | 'delete' | 'releaseResults' | 'unreleaseResults') => {
+    console.log('%c[AdminMockTestDetailPage:executeAction] 🚀 START action=' + action + ' mockTestId=' + mockTestId, 'color: #8b5cf6; font-weight: bold;');
     setActionError(null);
     setActionSuccess(null);
     setActionLoading(true);
@@ -294,7 +295,9 @@ export default function MockTestDetailPage() {
           break;
         }
         case 'restore': {
+          console.log('[AdminMockTestDetailPage:executeAction] Awaiting restoreMutation.mutateAsync(' + mockTestId + ')...');
           const result = await restoreMutation.mutateAsync(mockTestId);
+          console.log('[AdminMockTestDetailPage:executeAction] restoreMutation returned:', result);
           if (!result.success) {
             setActionError(result.error ?? 'Failed to restore mock test.');
             return;

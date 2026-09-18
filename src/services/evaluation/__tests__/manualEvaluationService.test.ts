@@ -8,12 +8,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
+const mockRpc = vi.fn();
 
 vi.mock('@/config/supabase', () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: mockFrom,
-    rpc: vi.fn(),
+    rpc: mockRpc,
   },
 }));
 
@@ -63,8 +64,9 @@ describe('manualEvaluationService', () => {
   it('rejects unauthenticated users for evaluateSubjectiveAnswer', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'no session' } });
     const { evaluateSubjectiveAnswer } = await import('../manualEvaluationService');
+    mockRpc.mockResolvedValue({ data: { success: false, error: 'Authentication required.' }, error: null });
     const result = await evaluateSubjectiveAnswer({
-      answerId: '11111111-1111-1111-1111-111111111111',
+      answerId: '11111111-1111-4111-8111-111111111111',
       awardedMarks: 5,
     });
     expect(result.success).toBe(false);
@@ -73,9 +75,10 @@ describe('manualEvaluationService', () => {
 
   it('rejects unauthenticated users for finalizeSubjectiveEvaluation', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'no session' } });
+    mockRpc.mockResolvedValue({ data: { success: false, error: 'Authentication required.' }, error: null });
     const { finalizeSubjectiveEvaluation } = await import('../manualEvaluationService');
     const result = await finalizeSubjectiveEvaluation({
-      attemptId: '33333333-3333-3333-3333-333333333333',
+      attemptId: '33333333-3333-4333-8333-333333333333',
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain('Authentication required');

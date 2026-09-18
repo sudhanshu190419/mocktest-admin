@@ -39,6 +39,7 @@ import {
   getStudentWeakChapters,
   getStudentStrongChapters,
   getStudentScoreTrend,
+  getStudentAttemptedTestList,
 } from '../../services/analytics/analyticsService';
 import type {
   StudentAnalytics,
@@ -53,6 +54,7 @@ import type {
   StudentDashboardSummary,
   ChapterPerformanceSummary,
   ScoreTrendPoint,
+  AttemptedTestOption,
 } from '../../types/analytics';
 
 // ─── Student Analytics ──────────────────────────────────────────────────────
@@ -188,17 +190,21 @@ export function useDashboardAnalytics() {
  * @param studentId - UUID of the student (kept for API compatibility; RPC
  *                    ignores this and resolves from auth session).
  */
-export function useSubjectAnalytics(studentId: string | undefined | null) {
+export function useSubjectAnalytics(
+  studentId?: string | undefined | null,
+  testId?: string | null,
+) {
+  const resolvedId = studentId || 'self';
   return useQuery<SubjectAnalytics>({
-    queryKey: analyticsKeys.student.subject(studentId ?? ''),
+    queryKey: [...analyticsKeys.student.subject(resolvedId), testId ?? 'all'] as const,
     queryFn: async () => {
-      const result = await getSubjectAnalytics(studentId!);
+      const result = await getSubjectAnalytics(resolvedId, testId || undefined);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to fetch subject analytics.');
       }
       return result.data!;
     },
-    enabled: !!studentId,
+    enabled: studentId === undefined ? true : !!studentId,
     staleTime: 60_000,
   });
 }
@@ -220,17 +226,21 @@ export function useSubjectAnalytics(studentId: string | undefined | null) {
  * @param studentId - UUID of the student (kept for API compatibility; RPC
  *                    ignores this and resolves from auth session).
  */
-export function useChapterAnalytics(studentId: string | undefined | null) {
+export function useChapterAnalytics(
+  studentId?: string | undefined | null,
+  subjectId?: string | null,
+) {
+  const resolvedId = studentId || 'self';
   return useQuery<ChapterAnalytics>({
-    queryKey: analyticsKeys.student.chapter(studentId ?? ''),
+    queryKey: [...analyticsKeys.student.chapter(resolvedId), subjectId ?? 'all'] as const,
     queryFn: async () => {
-      const result = await getChapterAnalytics(studentId!);
+      const result = await getChapterAnalytics(resolvedId, subjectId || undefined);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to fetch chapter analytics.');
       }
       return result.data!;
     },
-    enabled: !!studentId,
+    enabled: studentId === undefined ? true : !!studentId,
     staleTime: 60_000,
   });
 }
@@ -381,5 +391,27 @@ export function useRecentActivity(
     },
     enabled: !!studentId,
     staleTime: 30_000,
+  });
+}
+
+// ─── Student Attempted Tests ────────────────────────────────────────────────
+
+/**
+ * Fetch list of distinct completed mock tests the student has attempted.
+ * Used for populating analytics test-selector dropdowns.
+ */
+export function useStudentAttemptedTests(enabled: boolean = true) {
+  return useQuery<AttemptedTestOption[]>({
+    queryKey: analyticsKeys.attemptedTests.list(),
+    queryFn: async () => {
+      const result = await getStudentAttemptedTestList();
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch attempted tests.');
+      }
+      return result.data!;
+    },
+    enabled,
+    staleTime: 60_000,
+    retry: 1,
   });
 }

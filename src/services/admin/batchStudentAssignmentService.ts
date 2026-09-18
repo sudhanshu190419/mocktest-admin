@@ -227,10 +227,37 @@ export const batchStudentAssignmentService = {
 
       // Search filter
       if (search?.trim()) {
-        const term = `%${search.trim()}%`;
-        query = query.or(
-          `name.ilike.${term},student_details.enrollment_no.ilike.${term}`,
-        );
+        const cleanTerm = search.trim().replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (cleanTerm) {
+          const term = `%${cleanTerm}%`;
+
+          // 1. Find profile_ids where student_details.enrollment_no matches the search term
+          const { data: matchedDetails, error: matchErr } = await supabase
+            .from('student_details')
+            .select('profile_id')
+            .eq('institute_id', batch.institute_id)
+            .ilike('enrollment_no', term);
+
+          if (matchErr) {
+            return { success: false, error: extractErrorMessage(matchErr) };
+          }
+
+          const matchedProfileIds = Array.from(
+            new Set(
+              (matchedDetails ?? [])
+                .map((r: any) => r.profile_id)
+                .filter(Boolean),
+            ),
+          );
+
+          if (matchedProfileIds.length > 0) {
+            query = query.or(
+              `name.ilike.${term},profile_id.in.(${matchedProfileIds.join(',')})`,
+            );
+          } else {
+            query = query.ilike('name', term);
+          }
+        }
       }
 
       query = query.order('name', { ascending: true });

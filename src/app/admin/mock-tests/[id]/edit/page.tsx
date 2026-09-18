@@ -6,11 +6,13 @@ import Link from 'next/link';
 import {
   useMockTest,
   useUpdateMockTest,
-  useDeleteMockTest,
+} from '@/hooks/mockTest/useMockTests';
+import {
   usePublishMockTest,
   useArchiveMockTest,
   useRestoreMockTest,
-} from '@/hooks/mockTest/useMockTests';
+  useDeleteMockTest,
+} from '@/hooks/admin/useMockTestManagement';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -151,26 +153,55 @@ export default function AdminEditMockTestPage({ params }: { params: Promise<{ id
     [formData, validate, updateMockTest, testId],
   );
 
-  const handleConfirmAction = useCallback(() => {
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const handleConfirmAction = useCallback(async () => {
     if (!confirmAction) return;
-    switch (confirmAction) {
-      case 'submit':
-        updateMockTest.mutate({ id: testId, input: { status: 'pending_approval' } });
-        break;
-      case 'publish':
-        publishTest.mutate(testId);
-        break;
-      case 'archive':
-        archiveTest.mutate(testId);
-        break;
-      case 'restore':
-        restoreTest.mutate(testId);
-        break;
-      case 'delete':
-        deleteMockTest.mutate(testId, { onSuccess: () => router.push('/admin/mock-tests') });
-        break;
+    console.log('%c[AdminMockTestEditPage:handleConfirmAction] 🚀 START action=' + confirmAction + ' testId=' + testId, 'color: #8b5cf6; font-weight: bold;');
+    setActionLoading(true);
+    setSuccessBanner(null);
+    setErrors({});
+
+    try {
+      switch (confirmAction) {
+        case 'submit':
+          await updateMockTest.mutateAsync({ id: testId, input: { status: 'pending_approval' } });
+          setSuccessBanner('Mock test submitted for approval.');
+          break;
+        case 'publish': {
+          const res = await publishTest.mutateAsync(testId);
+          if (!res.success) throw new Error(res.error ?? 'Failed to publish mock test.');
+          setSuccessBanner('Mock test published successfully.');
+          break;
+        }
+        case 'archive': {
+          const res = await archiveTest.mutateAsync(testId);
+          if (!res.success) throw new Error(res.error ?? 'Failed to archive mock test.');
+          setSuccessBanner('Mock test archived successfully.');
+          break;
+        }
+        case 'restore': {
+          console.log('[AdminMockTestEditPage:handleConfirmAction] Awaiting restoreTest.mutateAsync(' + testId + ')...');
+          const res = await restoreTest.mutateAsync(testId);
+          console.log('[AdminMockTestEditPage:handleConfirmAction] restoreTest returned:', res);
+          if (!res.success) throw new Error(res.error ?? 'Failed to restore mock test.');
+          setSuccessBanner('Mock test restored successfully.');
+          break;
+        }
+        case 'delete': {
+          const res = await deleteMockTest.mutateAsync(testId);
+          if (!res.success) throw new Error(res.error ?? 'Failed to delete mock test.');
+          router.push('/admin/mock-tests');
+          return;
+        }
+      }
+      setConfirmAction(null);
+    } catch (err: any) {
+      setErrors({ form: err?.message ?? 'An unexpected error occurred.' });
+      setConfirmAction(null);
+    } finally {
+      setActionLoading(false);
     }
-    setConfirmAction(null);
   }, [confirmAction, testId, updateMockTest, publishTest, archiveTest, restoreTest, deleteMockTest, router]);
 
   if (isLoading) {
@@ -543,8 +574,9 @@ export default function AdminEditMockTestPage({ params }: { params: Promise<{ id
 
       <ConfirmDialog
         open={!!confirmAction}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { if (!actionLoading) setConfirmAction(null); }}
         onConfirm={handleConfirmAction}
+        loading={actionLoading}
         title={
           confirmAction === 'publish'
             ? 'Publish Mock Test'

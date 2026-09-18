@@ -241,6 +241,7 @@ export default function MockTestManagementPage() {
     action: 'publish' | 'archive' | 'restore' | 'duplicate' | 'delete',
     test?: MockTestListItem | null,
   ) => {
+    console.log('%c[AdminMockTestsPage:executeAction] 🚀 START action=' + action + ' testId=' + test?.testId + ' title="' + test?.title + '"', 'color: #8b5cf6; font-weight: bold;');
     setActionError(null);
     setActionSuccess(null);
     setActionLoading(true);
@@ -255,7 +256,9 @@ export default function MockTestManagementPage() {
           result = await archiveMutation.mutateAsync(test!.testId);
           break;
         case 'restore':
+          console.log('[AdminMockTestsPage:executeAction] Awaiting restoreMutation.mutateAsync(' + test!.testId + ')...');
           result = await restoreMutation.mutateAsync(test!.testId);
+          console.log('[AdminMockTestsPage:executeAction] restoreMutation returned:', result);
           break;
         case 'duplicate':
           result = await duplicateMutation.mutateAsync(test!.testId);
@@ -266,10 +269,12 @@ export default function MockTestManagementPage() {
       }
 
       if (!result.success) {
+        console.error('[AdminMockTestsPage:executeAction] ❌ Action ' + action + ' failed:', result.error);
         setActionError(result.error ?? 'Action failed. Please try again.');
         setActionLoading(false);
         return;
       }
+      console.log('%c[AdminMockTestsPage:executeAction] ✅ Action ' + action + ' succeeded!', 'color: #10b981; font-weight: bold;');
 
       setActionSuccess(`Mock test ${action === 'publish' ? 'published' : action === 'archive' ? 'archived' : action === 'restore' ? 'restored' : action === 'duplicate' ? 'duplicated' : 'deleted'} successfully`);
     } catch (err: any) {

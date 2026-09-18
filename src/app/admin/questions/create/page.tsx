@@ -160,6 +160,11 @@ export default function AdminCreateQuestionPage() {
             images: (o.images ?? []).map((img) => ({
               file: img.file!,
               altText: img.altText || null,
+              imageProfile: img.imageProfile,
+              width: img.width,
+              height: img.height,
+              sizeBytes: img.optimizedSizeBytes || img.file?.size,
+              mimeType: img.mimeType || img.file?.type,
             })),
           }))
       : undefined;
@@ -183,6 +188,11 @@ export default function AdminCreateQuestionPage() {
               imageRole: img.imageRole,
               altText: img.altText || null,
               displayOrder: index + 1,
+              imageProfile: img.imageProfile,
+              width: img.width,
+              height: img.height,
+              sizeBytes: img.optimizedSizeBytes || img.file?.size,
+              mimeType: img.mimeType || img.file?.type,
             }))
           : undefined,
         explanationText: formData.explanationText?.trim() || null,

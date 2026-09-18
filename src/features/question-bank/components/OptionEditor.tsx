@@ -3,15 +3,29 @@
 import { useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { QuestionType } from '@/types/mockTest';
+import {
+  ImageProfile,
+  formatBytes,
+  optimizeImage,
+} from '@/utils/imageOptimizer';
 
-interface OptionImageEntry {
+export interface OptionImageEntry {
   id: string;
   file?: File;
+  rawFile?: File;
   preview: string;
   altText: string;
+  imageProfile?: ImageProfile;
+  originalSizeBytes?: number;
+  optimizedSizeBytes?: number;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  savingsPercent?: number;
+  isOptimizing?: boolean;
 }
 
-interface Option {
+export interface Option {
   id: string;
   optionText: string;
   isCorrect: boolean;
@@ -25,6 +39,8 @@ interface OptionEditorProps {
   onChange: (options: Option[]) => void;
   error?: string;
 }
+
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 export function OptionEditor({ options, questionType, onChange, error }: OptionEditorProps) {
   const isSingleCorrect = questionType === 'mcq' || questionType === 'true_false';
@@ -61,7 +77,7 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
     onChange(filtered);
   };
 
-  const updateOption = (id: string, field: keyof Option, value: any) => {
+  const updateOption = <K extends keyof Option>(id: string, field: K, value: Option[K]) => {
     const updated = options.map((o) => {
       if (o.id !== id) return { ...o, images: o.images ?? [] };
 
@@ -84,22 +100,35 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
     }
   };
 
-  // ── Image handlers ──────────────────────────────────────────────────────
+  // ─── Image handlers ─────────────────────────────────────────────
 
   const handleOptionImageUpload = useCallback(
-    (optionId: string, files: FileList) => {
-      const newImages: OptionImageEntry[] = Array.from(files).map((file, i) => ({
-        id: `opt-img-${Date.now()}-${i}`,
-        file,
-        preview: URL.createObjectURL(file),
-        altText: '',
-      }));
+    async (optionId: string, files: FileList) => {
+      const rawFiles = Array.from(files);
+      const optimizedEntries: OptionImageEntry[] = await Promise.all(
+        rawFiles.map(async (rawFile, i) => {
+          const optResult = await optimizeImage(rawFile, 'simple_diagram');
+          return {
+            id: `opt-img-${Date.now()}-${i}`,
+            file: optResult.file,
+            rawFile,
+            preview: optResult.previewUrl,
+            altText: '',
+            imageProfile: 'simple_diagram',
+            originalSizeBytes: optResult.originalSizeBytes,
+            optimizedSizeBytes: optResult.optimizedSizeBytes,
+            width: optResult.width,
+            height: optResult.height,
+            mimeType: optResult.mimeType,
+            savingsPercent: optResult.savingsPercent,
+          };
+        }),
+      );
 
       const updated = options.map((o) => {
         if (o.id !== optionId) return { ...o, images: o.images ?? [] };
-        return { ...o, images: [...(o.images ?? []), ...newImages] };
+        return { ...o, images: [...(o.images ?? []), ...optimizedEntries] };
       });
-
       onChange(updated);
     },
     [options, onChange],
@@ -107,31 +136,69 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
 
   const handleRemoveOptionImage = useCallback(
     (optionId: string, imageId: string) => {
-      const option = options.find((o) => o.id === optionId);
-      const image = (option?.images ?? []).find((i) => i.id === imageId);
-      if (image) {
-        URL.revokeObjectURL(image.preview);
-      }
-
       const updated = options.map((o) => {
         if (o.id !== optionId) return { ...o, images: o.images ?? [] };
-        return { ...o, images: (o.images ?? []).filter((i) => i.id !== imageId) };
+        const removed = (o.images ?? []).find((img) => img.id === imageId);
+        if (removed) {
+          URL.revokeObjectURL(removed.preview);
+        }
+        return {
+          ...o,
+          images: (o.images ?? []).filter((img) => img.id !== imageId),
+        };
       });
-
       onChange(updated);
     },
     [options, onChange],
   );
 
-  const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const handleOptionImageProfileChange = useCallback(
+    async (optionId: string, imageId: string, profile: ImageProfile) => {
+      const targetOption = options.find((o) => o.id === optionId);
+      const targetImg = targetOption?.images?.find((img) => img.id === imageId);
+      if (!targetImg) return;
+
+      const sourceFile = targetImg.rawFile || targetImg.file;
+      if (!sourceFile) return;
+
+      const optResult = await optimizeImage(sourceFile, profile);
+      URL.revokeObjectURL(targetImg.preview);
+
+      const updated = options.map((o) => {
+        if (o.id !== optionId) return { ...o, images: o.images ?? [] };
+        return {
+          ...o,
+          images: (o.images ?? []).map((img) => {
+            if (img.id !== imageId) return img;
+            return {
+              ...img,
+              file: optResult.file,
+              preview: optResult.previewUrl,
+              imageProfile: profile,
+              originalSizeBytes: optResult.originalSizeBytes,
+              optimizedSizeBytes: optResult.optimizedSizeBytes,
+              width: optResult.width,
+              height: optResult.height,
+              mimeType: optResult.mimeType,
+              savingsPercent: optResult.savingsPercent,
+            };
+          }),
+        };
+      });
+      onChange(updated);
+    },
+    [options, onChange],
+  );
+
+  const labels = OPTION_LABELS.slice(0, options.length);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Options
-          {questionType === 'mcq' && (
-            <span className="ml-1.5 text-[11px] text-gray-400">(Select one correct answer)</span>
+          Options ({options.length})
+          {isSingleCorrect && questionType !== 'true_false' && (
+            <span className="ml-1.5 text-[11px] text-gray-400">(Select the correct answer)</span>
           )}
           {questionType === 'msq' && (
             <span className="ml-1.5 text-[11px] text-gray-400">(Select all correct answers)</span>
@@ -155,7 +222,7 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
                 : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
             )}
           >
-            {/* ── Option header row: label, textarea, toggles ───────────── */}
+            {/* Option header row */}
             <div className="flex items-start gap-3">
               {/* Label */}
               <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
@@ -206,27 +273,28 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
                   </svg>
                 </button>
               )}
-            </div>              {/* ── Option images section ───────────────────────────── */}
+            </div>
+
+            {/* Option images section */}
             <div className="ml-10 mt-2 space-y-2">
               {/* Image preview grid */}
               {(option.images ?? []).length > 0 && (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {(option.images ?? []).map((img) => (
                     <div
                       key={img.id}
-                      className="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-600"
+                      className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800"
                     >
-                      <img
-                        src={img.preview}
-                        alt={img.altText || 'Option image'}
-                        className="h-16 w-full object-cover"
-                      />
-                      {/* Dark overlay with remove button — visible on hover */}
-                      <div className="absolute inset-0 flex items-start justify-end bg-black/40 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="relative flex h-24 w-full items-center justify-center p-1">
+                        <img
+                          src={img.preview}
+                          alt={img.altText || 'Option image'}
+                          className="max-h-full max-w-full object-contain"
+                        />
                         <button
                           type="button"
                           onClick={() => handleRemoveOptionImage(option.id, img.id)}
-                          className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500/90 text-white shadow hover:bg-red-600"
                           title="Remove image"
                         >
                           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -234,9 +302,35 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
                           </svg>
                         </button>
                       </div>
-                      {/* Filename */}
-                      <div className="truncate px-1 py-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                        {img.file?.name ?? 'Image'}
+
+                      {/* Size & Profile stats badge */}
+                      <div className="border-t border-gray-200 bg-white p-1.5 dark:border-gray-700 dark:bg-gray-900">
+                        <div className="flex items-center justify-between text-[9px] text-gray-500 dark:text-gray-400">
+                          <span>
+                            {img.originalSizeBytes && img.optimizedSizeBytes
+                              ? `${formatBytes(img.optimizedSizeBytes)}`
+                              : 'WebP'}
+                          </span>
+                          {img.savingsPercent !== undefined && img.savingsPercent > 0 && (
+                            <span className="font-semibold text-emerald-500">
+                              -${img.savingsPercent}%
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={img.imageProfile || 'simple_diagram'}
+                          onChange={(e) =>
+                            handleOptionImageProfileChange(
+                              option.id,
+                              img.id,
+                              e.target.value as ImageProfile,
+                            )
+                          }
+                          className="mt-1 w-full rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-[9px] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                        >
+                          <option value="simple_diagram">Simple Diagram</option>
+                          <option value="detailed_image">Detailed Image</option>
+                        </select>
                       </div>
                     </div>
                   ))}
@@ -248,15 +342,15 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
                 <button
                   type="button"
                   onClick={() => fileInputRefs.current[option.id]?.click()}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-2.5 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:hover:border-gray-500"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-2.5 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:border-blue-500 hover:text-blue-600 dark:border-gray-600 dark:hover:border-blue-400 dark:hover:text-blue-400"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                   </svg>
-                  Upload Image
+                  Upload Option Image
                 </button>
                 <span className="text-[10px] text-gray-400">
-                  jpg, jpeg, png, svg, webp (max 10 MB)
+                  Auto-optimized
                 </span>
                 <input
                   ref={setFileInputRef(option.id)}
@@ -266,7 +360,7 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
                   onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
                       handleOptionImageUpload(option.id, e.target.files);
-                      e.target.value = ''; // Allow re-selecting the same files
+                      e.target.value = '';
                     }
                   }}
                   className="hidden"

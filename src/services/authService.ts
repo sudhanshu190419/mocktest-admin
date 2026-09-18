@@ -186,7 +186,7 @@ function buildUserProfile(
     role: profile?.role ?? 'student',
     accountStatus: profile?.account_status ?? 'approved',
     instituteId: profile?.institute_id ?? null,
-    phone: profile?.phone ?? authUser.phone ?? null,
+    phone: authUser.phone ?? profile?.phone ?? null,
     avatarUrl: profile?.avatar_url ?? null,
     createdAt: authUser.created_at ?? new Date().toISOString(),
     adminRoles,

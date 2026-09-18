@@ -149,6 +149,7 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
 
   const handleConfirmAction = useCallback(() => {
     if (!confirmAction) return;
+    console.log('%c[TeacherMockTestEditPage:handleConfirmAction] 🚀 START action=' + confirmAction + ' testId=' + testId, 'color: #8b5cf6; font-weight: bold;');
     switch (confirmAction) {
       case 'submit':
         updateMockTest.mutate({ id: testId, input: { status: 'pending_approval' } });
@@ -160,7 +161,16 @@ export default function EditMockTestPage({ params }: { params: Promise<{ id: str
         archiveTest.mutate(testId);
         break;
       case 'restore':
-        restoreTest.mutate(testId);
+        console.log('[TeacherMockTestEditPage:handleConfirmAction] Calling restoreTest.mutate(' + testId + ')...');
+        restoreTest.mutate(testId, {
+          onSuccess: (data) => {
+            console.log('[TeacherMockTestEditPage] ✅ restoreTest.mutate SUCCESS:', data);
+          },
+          onError: (err) => {
+            console.error('[TeacherMockTestEditPage] ❌ restoreTest.mutate ERROR:', err);
+            setErrors({ form: err.message });
+          },
+        });
         break;
       case 'delete':
         deleteMockTest.mutate(testId, { onSuccess: () => router.push('/teacher/mock-tests') });

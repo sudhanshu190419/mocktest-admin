@@ -899,6 +899,7 @@ export async function archiveMockTest(testId: string): Promise<ApiResponse<MockT
  * }
  */
 export async function restoreMockTest(testId: string): Promise<ApiResponse<MockTest>> {
+  console.log('%c[mockTestService.restoreMockTest] 🚀 START testId=' + testId + ' (transitioning to draft)', 'color: #f59e0b; font-weight: bold;');
   return transitionStatus(testId, 'draft');
 }
 
@@ -922,6 +923,7 @@ async function transitionStatus(
   newStatus: MockTestStatus,
   options?: { preservePublishedAt?: boolean; totalMarks?: number },
 ): Promise<ApiResponse<MockTest>> {
+  console.log('%c[mockTestService.transitionStatus] 🚀 START testId=' + testId + ' -> ' + newStatus, 'color: #8b5cf6; font-weight: bold;', options);
   try {
     validateUUID(testId, 'testId');
 
@@ -982,17 +984,17 @@ async function transitionStatus(
       dbUpdate.total_marks = options.totalMarks;
     }
 
-    // Set published_at when publishing (pending_approval → published).
-    // Preserved when re-publishing an archived test (restore) so the
-    // original publish timestamp / audit trail survives.
-    if (newStatus === 'published' && !options?.preservePublishedAt) {
-      dbUpdate.published_at = new Date().toISOString();
-    }
-
-    // Clear published_at only on rejection (pending_approval → draft).
-    // Preserve the published_at audit trail when archiving (published → archived)
-    // so the test's publish history is retained.
-    if (newStatus === 'draft' && existing.data.status === 'pending_approval') {
+    // Set/preserve published_at to strictly satisfy check constraint ck_mock_tests_published_at:
+    // published/archived -> published_at IS NOT NULL
+    // draft/pending_approval -> published_at IS NULL
+    if (newStatus === 'published') {
+      dbUpdate.published_at =
+        options?.preservePublishedAt && existing.data.publishedAt
+          ? existing.data.publishedAt
+          : (existing.data.publishedAt || new Date().toISOString());
+    } else if (newStatus === 'archived') {
+      dbUpdate.published_at = existing.data.publishedAt || new Date().toISOString();
+    } else if (newStatus === 'draft' || newStatus === 'pending_approval') {
       dbUpdate.published_at = null;
     }
 

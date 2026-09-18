@@ -548,6 +548,11 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
             imageRole: imageEntry.imageRole,
             altText: imageEntry.altText,
             orderSequence: imageEntry.displayOrder ?? i + 1,
+            imageProfile: imageEntry.imageProfile,
+            width: imageEntry.width,
+            height: imageEntry.height,
+            sizeBytes: imageEntry.sizeBytes,
+            mimeType: imageEntry.mimeType,
           });
 
           if (!imgResult.success || !imgResult.data) {
@@ -587,6 +592,11 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
                 file: imageEntry.file,
                 altText: imageEntry.altText,
                 displayOrder: imageEntry.displayOrder,
+                imageProfile: imageEntry.imageProfile,
+                width: imageEntry.width,
+                height: imageEntry.height,
+                sizeBytes: imageEntry.sizeBytes,
+                mimeType: imageEntry.mimeType,
               });
 
               if (!imgResult.success || !imgResult.data) {
@@ -598,7 +608,7 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
           }
         }
       }
-    } catch (optError: any) {
+    } catch (optError: unknown) {
       // ── Full rollback: delete everything created so far ────────────────
       // The goal is to leave the database as if the request never happened.
 
@@ -644,7 +654,7 @@ export async function createQuestion(input: CreateQuestionInput): Promise<ApiRes
 
       return {
         success: false,
-        error: `Question created but image setup failed: ${optError.message}`,
+        error: `Question created but image setup failed: ${extractErrorMessage(optError)}`,
       };
     }
 
@@ -1038,7 +1048,7 @@ export async function getQuestion(questionId: string): Promise<ApiResponse<Quest
 
     // ── 3. Fetch option images for all options in a single query ────────
     const optionIds = options.map((o) => o.optionId);
-    let imageMap = new Map<string, Array<{
+    const imageMap = new Map<string, Array<{
       optionImageId: string;
       storageBucket: string;
       storagePath: string;
@@ -1205,7 +1215,7 @@ export async function duplicateQuestion(questionId: string): Promise<ApiResponse
           duplicatedImageIds.push(insertedImage.option_image_id);
         }
       }
-    } catch (dupError: any) {
+    } catch (dupError: unknown) {
       // ── Rollback: clean up duplicated images and options ──────────────
       for (const imgId of duplicatedImageIds) {
         try {
@@ -1224,7 +1234,7 @@ export async function duplicateQuestion(questionId: string): Promise<ApiResponse
 
       return {
         success: false,
-        error: `Question duplicated but option setup failed: ${dupError.message}`,
+        error: `Question duplicated but option setup failed: ${extractErrorMessage(dupError)}`,
       };
     }
 

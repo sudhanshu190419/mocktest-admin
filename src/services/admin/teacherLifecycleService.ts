@@ -35,7 +35,9 @@
  * @module services/admin/teacherLifecycleService
  */
 
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
+import { adminRoleService } from './adminRoleService';
 import { extractErrorMessage } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
@@ -88,6 +90,31 @@ export interface TeacherDetail extends TeacherListItem {
 }
 
 /** Statistics for the teacher management dashboard. */
+
+export interface CreateTeacherInput {
+  fullName: string;
+  phone: string;
+  password: string;
+  email?: string;
+  facultyId: string;
+  department: string;
+  designation?: string;
+}
+
+export interface CreateTeacherResult {
+  teacherId: string;
+  profileId: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  facultyId: string;
+  department: string;
+  designation: string;
+  role: 'teacher';
+  accountStatus: AccountStatus;
+  instituteId: string;
+}
+
 export interface TeacherStats {
   /** Count of teachers grouped by department (top 10 by count). */
   byDepartment: { department: string; count: number }[];
@@ -129,6 +156,25 @@ const SORT_FIELD_MAP: Record<string, string> = {
 // ═══════════════════════════════════════════════════════════════════════════
 //  Helpers
 // ═══════════════════════════════════════════════════════════════════════════
+
+
+/**
+ * Extract a user-friendly error message from a `supabase.functions.invoke`
+ * failure.
+ */
+async function extractFunctionsErrorMessage(error: unknown): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = (await error.context.json()) as { error?: string };
+      if (body?.error) {
+        return body.error;
+      }
+    } catch {
+      // Body was not JSON — fall through to the raw message.
+    }
+  }
+  return extractErrorMessage(error);
+}
 
 function mapSortField(sortBy?: TeacherListSortOptions['sortBy']): string {
   return SORT_FIELD_MAP[sortBy ?? 'createdAt'] ?? 'created_at';
@@ -687,6 +733,143 @@ export const teacherLifecycleService = {
       return {
         success: true,
         data: { byDepartment, byStatus, newestTeachers },
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  11. Create Teacher (auth user + profile + teacher_details)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new teacher account in one logical workflow, executed securely
+   * by the `teacher-identity-create` edge function.
+   *
+   * Super admin only. Academic admin and Finance admin are rejected.
+   *
+   * @param input - fullName, phone, password, email, facultyId, department, designation.
+   */
+  async createTeacher(input: CreateTeacherInput): Promise<ApiResponse<CreateTeacherResult>> {
+    try {
+      // ── Validation ────────────────────────────────────────────────────
+      if (!input.fullName?.trim()) {
+        return { success: false, error: 'Full name is required.' };
+      }
+
+      if (!input.phone?.trim()) {
+        return { success: false, error: 'Phone number is required.' };
+      }
+      const phoneRegex = /^\+[1-9]\d{6,14}$/;
+      if (!phoneRegex.test(input.phone.trim())) {
+        return {
+          success: false,
+          error: 'Please enter a valid phone number with country code (e.g. +919876543210).',
+        };
+      }
+
+      if (!input.password || input.password.length < 6) {
+        return { success: false, error: 'Password must be at least 6 characters.' };
+      }
+
+      if (input.email?.trim() && !/^\S+@\S+\.\S+$/.test(input.email.trim())) {
+        return { success: false, error: 'Please enter a valid email address.' };
+      }
+
+      if (!input.facultyId?.trim()) {
+        return { success: false, error: 'Faculty ID is required.' };
+      }
+
+      if (!input.department?.trim()) {
+        return { success: false, error: 'Department is required.' };
+      }
+
+      // ── Authorization pre-check (edge function re-verifies) ───────────
+      if (!(await adminRoleService.isSuperAdmin())) {
+        return {
+          success: false,
+          error: 'Only a super admin can create teacher accounts.',
+        };
+      }
+
+      // ── Invoke the secure Teacher Identity edge function ──────────────
+      const { data, error } = await supabase.functions.invoke(
+        'teacher-identity-create',
+        {
+          body: {
+            fullName: input.fullName.trim(),
+            email: input.email?.trim() || undefined,
+            phone: input.phone.trim(),
+            password: input.password,
+            facultyId: input.facultyId.trim(),
+            department: input.department.trim(),
+            designation: input.designation?.trim() || 'Faculty',
+          },
+        },
+      );
+
+      if (error) {
+        return { success: false, error: await extractFunctionsErrorMessage(error) };
+      }
+
+      const result = data as {
+        success: boolean;
+        teacherId?: string;
+        profileId?: string;
+        fullName?: string;
+        phone?: string;
+        email?: string | null;
+        facultyId?: string;
+        department?: string;
+        designation?: string;
+        role?: 'teacher';
+        accountStatus?: AccountStatus;
+        instituteId?: string;
+        error?: string;
+      } | null;
+
+      if (!result?.success || !result.teacherId || !result.profileId) {
+        return {
+          success: false,
+          error: result?.error ?? 'Failed to create teacher account. Please try again.',
+        };
+      }
+
+      // ── Audit: teacher account created ────────────────────────────────
+      await auditService.logCreate(
+        {
+          resourceType: 'profiles',
+          resourceId: result.profileId,
+          metadata: {
+            fullName: input.fullName.trim(),
+            phone: input.phone.trim(),
+            email: input.email?.trim() ?? null,
+            facultyId: result.facultyId ?? input.facultyId.trim(),
+            department: result.department ?? input.department.trim(),
+            designation: result.designation ?? input.designation?.trim() ?? 'Faculty',
+            role: 'teacher',
+            accountStatus: result.accountStatus ?? 'approved',
+          },
+        },
+        { strict: true },
+      );
+
+      return {
+        success: true,
+        data: {
+          teacherId: result.teacherId,
+          profileId: result.profileId,
+          fullName: result.fullName ?? input.fullName.trim(),
+          phone: result.phone ?? input.phone.trim(),
+          email: result.email ?? input.email?.trim() ?? null,
+          facultyId: result.facultyId ?? input.facultyId.trim(),
+          department: result.department ?? input.department.trim(),
+          designation: result.designation ?? input.designation?.trim() ?? 'Faculty',
+          role: 'teacher',
+          accountStatus: result.accountStatus ?? 'approved',
+          instituteId: result.instituteId ?? '',
+        },
       };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };

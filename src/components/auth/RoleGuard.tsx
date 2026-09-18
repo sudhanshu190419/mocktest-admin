@@ -80,10 +80,47 @@ export default function RoleGuard({
   allowedAccountStatuses,
   children,
 }: RoleGuardProps) {
-  const { teacherProfile, loading, deviceStatus } = useAuth();
+  const { teacherProfile, loading, deviceStatus, retryAuth } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [redirected, setRedirected] = React.useState(false);
+  const [loadTimedOut, setLoadTimedOut] = React.useState(false);
+  const [isRetrying, setIsRetrying] = React.useState(false);
+
+  const deviceChecking = teacherProfile?.role === 'admin' && deviceStatus === 'checking';
+  const deviceRoute = getDeviceStatusRoute(deviceStatus);
+  const onDeviceScreen = deviceRoute !== null && pathname === deviceRoute;
+
+  // Defensive timeout: if auth loading persists >8s, transition to recovery UI
+  React.useEffect(() => {
+    if (!loading && !deviceChecking) {
+      setLoadTimedOut(false);
+      setIsRetrying(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (loading || deviceChecking) {
+        setLoadTimedOut(true);
+      }
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [loading, deviceChecking]);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    setLoadTimedOut(false);
+    try {
+      if (retryAuth) {
+        await retryAuth();
+      }
+    } catch (err) {
+      console.warn('[RoleGuard] Retry failed:', err);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   React.useEffect(() => {
     // TEMP DEBUG: redirect-decision logging (remove after diagnosis)
@@ -187,16 +224,52 @@ export default function RoleGuard({
     redirected,
   ]);
 
+  // ── Recovery UI (Timeout exceeded >8s) ─────────────────────────────────
+  if (loadTimedOut && !onDeviceScreen && (loading || deviceChecking)) {
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-navy-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-sm w-full text-center bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-2xl">
+          <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <CircleNotch size={24} className={isRetrying ? 'animate-spin' : ''} />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-slate-100 font-display">
+              Authentication Taking Longer Than Expected
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              We're having trouble connecting to the authentication service. This may be due to a slow connection or temporary service delay.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full pt-2">
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-bold text-xs tracking-wide uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isRetrying ? (
+                <>
+                  <CircleNotch size={14} className="animate-spin" />
+                  <span>Retrying...</span>
+                </>
+              ) : (
+                <span>Retry Connection</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.replace('/')}
+              className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition-all"
+            >
+              Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Loading / device-checking state ───────────────────────────────────
-  // A 'checking' device status means the trusted-device challenge is still
-  // resolving — hold the spinner instead of flashing protected content.
-  // Trusted-device screens: once the URL is already one of the device status
-  // pages, never block rendering with the redirect/loading overlay — render
-  // children so the device page (pending / rejected / revoked / expired) can
-  // display.
-  const deviceChecking = teacherProfile?.role === 'admin' && deviceStatus === 'checking';
-  const deviceRoute = getDeviceStatusRoute(deviceStatus);
-  const onDeviceScreen = deviceRoute !== null && pathname === deviceRoute;
   if ((loading || redirected || deviceChecking) && !onDeviceScreen) {
     console.log('[SPINNER]', {
       component: 'RoleGuard',

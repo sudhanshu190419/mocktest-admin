@@ -233,9 +233,27 @@ export function useRestoreMockTest() {
   const invalidate = useInvalidateMockTestManagement();
 
   return useMutation({
-    mutationFn: (testId: string) => mockTestManagementService.restore(testId),
-    onSuccess: async () => {
+    mutationFn: async (testId: string) => {
+      console.log('%c[useRestoreMockTest:HOOK] 🚀 mutateAsync called with testId=' + testId, 'color: #ec4899; font-weight: bold;');
+      const start = performance.now();
+      try {
+        const res = await mockTestManagementService.restore(testId);
+        const elapsed = (performance.now() - start).toFixed(1);
+        console.log('%c[useRestoreMockTest:HOOK] ✅ Completed in ' + elapsed + 'ms, result:', 'color: #10b981; font-weight: bold;', res);
+        return res;
+      } catch (err) {
+        const elapsed = (performance.now() - start).toFixed(1);
+        console.error('[useRestoreMockTest:HOOK] ❌ Threw exception after ' + elapsed + 'ms:', err);
+        throw err;
+      }
+    },
+    onSuccess: async (data) => {
+      console.log('[useRestoreMockTest:HOOK] onSuccess callback - invalidating cache queries...');
       await invalidate();
+      console.log('[useRestoreMockTest:HOOK] onSuccess cache invalidation complete.');
+    },
+    onError: (err) => {
+      console.error('[useRestoreMockTest:HOOK] onError callback:', err);
     },
   });
 }

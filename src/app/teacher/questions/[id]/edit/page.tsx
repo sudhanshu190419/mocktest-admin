@@ -342,6 +342,11 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
               file: img.file,
               imageRole: img.imageRole,
               altText: img.altText || null,
+              imageProfile: img.imageProfile,
+              width: img.width,
+              height: img.height,
+              sizeBytes: img.optimizedSizeBytes || img.file?.size,
+              mimeType: img.mimeType || img.file?.type,
             });
             if (!result.success) {
               throw new Error(`Failed to upload stem image: ${result.error}`);
@@ -385,6 +390,11 @@ export default function EditQuestionPage({ params }: { params: Promise<{ id: str
                   instituteId: question.instituteId,
                   file: img.file,
                   altText: img.altText || null,
+                  imageProfile: img.imageProfile,
+                  width: img.width,
+                  height: img.height,
+                  sizeBytes: img.optimizedSizeBytes || img.file?.size,
+                  mimeType: img.mimeType || img.file?.type,
                 });
                 if (!result.success) {
                   throw new Error(`Failed to upload option image: ${result.error}`);

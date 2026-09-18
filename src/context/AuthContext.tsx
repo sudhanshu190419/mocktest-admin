@@ -29,13 +29,7 @@ interface AuthContextType {
   teacherProfile: TeacherProfile | null;
   instituteId: string | null;
   loading: boolean;
-  needsOtpVerification: boolean;
-  pendingPhone: string | null;
   signIn: (phone: string, pass: string) => Promise<{ error: string | null }>;
-  registerTeacher: (phone: string, pass: string, facultyId: string, fullName: string, department: string) => Promise<{ error: string | null }>;
-  verifyRegistrationOtp: (token: string) => Promise<{ error: string | null }>;
-  resendRegistrationOtp: () => Promise<{ error: string | null }>;
-  cancelOtpVerification: () => void;
   signOut: () => Promise<void>;
   updateSpecialization: (specialization: string) => void;
   completeOnboarding: (onboardingData: { qualification: string; institution: string; year: string; accountHolder: string; bankName: string; accountNumber: string; ifscCode: string; }) => Promise<void>;
@@ -46,6 +40,28 @@ interface AuthContextType {
   deviceInfo: DeviceInfo | null;
   refreshDeviceStatus: () => Promise<void>;
   requestNewDeviceApproval: () => Promise<void>;
+
+  // ── Resilience API ─────────────────────────────────────────────────
+  retryAuth: () => Promise<void>;
+}
+
+const AUTH_INIT_TIMEOUT_MS = 5000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timeoutId);
+      return res;
+    }),
+    timeoutPromise,
+  ]);
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -81,6 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // verification. Reset on sign-out so a new login re-evaluates the device.
   const deviceEvaluatedRef = useRef<string | null>(null);
 
+  // Resilience generation counter & in-flight initialization guard
+  const initRequestIdRef = useRef<number>(0);
+  const initInFlightRef = useRef<Promise<void> | null>(null);
+
   // ═══════════════════════════════════════════════════════════════════════
   //  TEMPORARY DEVICE DEBUG LOGGING — remove after diagnosis
   // ═══════════════════════════════════════════════════════════════════════
@@ -90,16 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[TD-state] deviceStatus =', deviceStatus, '| deviceInfo =', deviceInfo);
   }, [deviceStatus, deviceInfo]);
 
-  // OTP Verification State
-  const [needsOtpVerification, setNeedsOtpVerification] = useState(false);
-  const [pendingPhone, setPendingPhone] = useState<string | null>(null);
-  const [pendingRegistration, setPendingRegistration] = useState<{
-    phone: string;
-    password: string;
-    facultyId: string;
-    fullName: string;
-    department: string;
-  } | null>(null);
+
 
   // ─── Error Extraction ────────────────────────────────────────────────
 
@@ -596,190 +607,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: null };
   };
 
-  const registerTeacher = async (
-    phone: string,
-    pass: string,
-    facultyId: string,
-    fullName: string,
-    department: string
-  ): Promise<{ error: string | null }> => {
-    setLoading(true);
-    try {
-      let result;
-      try {
-        result = await supabase.auth.signUp({
-          phone,
-          password: pass,
-          options: {
-            data: {
-              full_name: fullName,
-              role: 'teacher',
-              faculty_id: facultyId,
-              department: department
-            }
-          }
-        });
-      } catch (signUpNetErr: any) {
-        setLoading(false);
-        return { error: 'Network error. Please check your connection and try again.' };
-      }
-
-      const { data, error } = result;
-
-      if (error) {
-        const errorMsg = extractErrorMessage(error);
-        console.error('Registration failed:', errorMsg, error);
-        setLoading(false);
-        return { error: errorMsg };
-      }
-
-      // SignUp succeeded — store pending data for OTP verification
-      // Don't insert teacher_details yet; wait for OTP verification
-      setPendingRegistration({ phone, password: pass, facultyId, fullName, department });
-      setPendingPhone(phone);
-      setNeedsOtpVerification(true);
-      
-      setLoading(false);
-      return { error: null };
-    } catch (err: any) {
-      setLoading(false);
-      return { error: extractErrorMessage(err) };
-    }
-  };
-
-  /**
-   * Verify the SMS OTP to complete registration.
-   * After verification, inserts the teacher_details record and loads the profile.
-   */
-  const verifyRegistrationOtp = async (token: string): Promise<{ error: string | null }> => {
-    if (!pendingRegistration) {
-      return { error: 'No pending registration found. Please register again.' };
-    }
-
-    const { phone, password, facultyId, fullName, department } = pendingRegistration;
-
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone,
-        token,
-        type: 'sms',
-      });
-
-      if (error) {
-        setLoading(false);
-        return { error: extractErrorMessage(error) };
-      }
-
-      if (!data.user) {
-        setLoading(false);
-        return { error: 'Verification succeeded but no user data was returned.' };
-      }
-
-      // OTP verified — now insert teacher_details
-      // Store faculty_id, department, and designation in their dedicated
-      // columns.  specialization is left NULL for its actual purpose
-      // (subject expertise, not organisational department).
-      console.log('[verifyRegistrationOtp] Entering teacher_details INSERT block');
-      const insertPayload = {
-        profile_id: data.user.id,
-        faculty_id: facultyId,
-        department: department,
-        designation: 'Senior Faculty Mentor',
-        qualification: 'Not specified'
-      };
-      console.log('[verifyRegistrationOtp] Payload:', JSON.stringify(insertPayload, null, 2));
-
-      let insertResult;
-      try {
-        insertResult = await supabase
-          .from('teacher_details')
-          .insert(insertPayload);
-        console.log('[verifyRegistrationOtp] Supabase response:', JSON.stringify(insertResult, null, 2));
-
-        if (insertResult.error) {
-          console.error('[verifyRegistrationOtp] ❌ Postgrest error on INSERT:', {
-            message: insertResult.error.message,
-            details: insertResult.error.details,
-            hint: insertResult.error.hint,
-            code: insertResult.error.code
-          });
-        } else {
-          console.log('[verifyRegistrationOtp] ✅ teacher_details INSERT succeeded');
-        }
-      } catch (dbErr: any) {
-        console.error('[verifyRegistrationOtp] ❌ Network/exception error on INSERT:', {
-          name: dbErr.name,
-          message: dbErr.message,
-          stack: dbErr.stack,
-          cause: dbErr.cause
-        });
-      }
-
-      // Set the session and load profile
-      setSession(data.session ?? null);
-      setUser(data.user);
-
-      await loadTeacherProfileDetails(data.user.id);
-
-      // Audit login
-      if (data.user?.id) {
-        await auditService.logLogin({
-          resourceType: 'profiles',
-          resourceId: data.user.id,
-          metadata: { method: 'sms_otp', phone },
-        });
-      }
-
-      // Clear pending state
-      setNeedsOtpVerification(false);
-      setPendingPhone(null);
-      setPendingRegistration(null);
-      setLoading(false);
-      return { error: null };
-    } catch (err: any) {
-      setLoading(false);
-      return { error: extractErrorMessage(err) };
-    }
-  };
-
-  /**
-   * Resend the SMS OTP.
-   */
-  const resendRegistrationOtp = async (): Promise<{ error: string | null }> => {
-    if (!pendingPhone) {
-      return { error: 'No phone number found. Please register again.' };
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: pendingPhone,
-        options: { shouldCreateUser: false },
-      });
-
-      if (error) {
-        setLoading(false);
-        return { error: extractErrorMessage(error) };
-      }
-
-      setLoading(false);
-      return { error: null };
-    } catch (err: any) {
-      setLoading(false);
-      return { error: extractErrorMessage(err) };
-    }
-  };
-
-  /**
-   * Cancel OTP verification and go back to registration.
-   */
-  const cancelOtpVerification = () => {
-    setNeedsOtpVerification(false);
-    setPendingPhone(null);
-    setPendingRegistration(null);
-  };
-
   const signOut = async () => {
     setLoading(true);
     if (user?.id) {
@@ -881,30 +708,110 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        setSession(data.session);
-        setUser(data.session.user);
-        await loadTeacherProfileDetails(data.session.user.id);
-      }
-      setLoading(false);
-    };
+  const initializeAuth = async (): Promise<void> => {
+    if (initInFlightRef.current) {
+      return initInFlightRef.current;
+    }
 
-    initAuth();
+    const currentRequestId = ++initRequestIdRef.current;
+    setLoading(true);
+
+    const initPromise = (async () => {
+      try {
+        const sessionResult = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_INIT_TIMEOUT_MS,
+          'Auth session initialization timed out'
+        );
+
+        if (initRequestIdRef.current !== currentRequestId) return;
+
+        const currentSession = sessionResult.data?.session ?? null;
+        if (currentSession) {
+          setSession(currentSession);
+          setUser(currentSession.user);
+          try {
+            await withTimeout(
+              loadTeacherProfileDetails(currentSession.user.id),
+              AUTH_INIT_TIMEOUT_MS,
+              'Profile load timed out'
+            );
+          } catch (profileErr) {
+            console.warn('[AuthContext] Profile load timed out or failed:', profileErr);
+            if (initRequestIdRef.current === currentRequestId) {
+              setTeacherProfile((prev) => prev || {
+                ...EMPTY_TEACHER,
+                id: currentSession.user.id,
+                role: 'teacher',
+                accountStatus: 'approved',
+              });
+              setDeviceStatus('bypass');
+            }
+          }
+        } else {
+          if (initRequestIdRef.current === currentRequestId) {
+            setSession(null);
+            setUser(null);
+            setTeacherProfile(null);
+          }
+        }
+      } catch (err) {
+        console.warn('[AuthContext] Auth initialization failed or timed out:', err);
+        if (initRequestIdRef.current === currentRequestId) {
+          setSession(null);
+          setUser(null);
+          setTeacherProfile(null);
+          setDeviceStatus('bypass');
+        }
+      } finally {
+        if (initRequestIdRef.current === currentRequestId) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    initInFlightRef.current = initPromise;
+    try {
+      await initPromise;
+    } finally {
+      initInFlightRef.current = null;
+    }
+  };
+
+  const retryAuth = async (): Promise<void> => {
+    await initializeAuth();
+  };
+
+  useEffect(() => {
+    initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (newSession) {
-        setSession(newSession);
-        setUser(newSession.user);
-        await loadTeacherProfileDetails(newSession.user.id);
-      } else {
-        setSession(null);
-        setUser(null);
-        setTeacherProfile(null);
+      const currentRequestId = ++initRequestIdRef.current;
+      try {
+        if (newSession) {
+          setSession(newSession);
+          setUser(newSession.user);
+          await withTimeout(
+            loadTeacherProfileDetails(newSession.user.id),
+            AUTH_INIT_TIMEOUT_MS,
+            'Profile load timed out on auth state change'
+          ).catch((e) => {
+            console.warn('[AuthContext] onAuthStateChange profile load failed:', e);
+          });
+        } else {
+          setSession(null);
+          setUser(null);
+          setTeacherProfile(null);
+          setDeviceStatus('bypass');
+          setDeviceInfo(null);
+        }
+      } catch (err) {
+        console.warn('[AuthContext] onAuthStateChange handler error:', err);
+      } finally {
+        if (initRequestIdRef.current === currentRequestId) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
     return () => {
@@ -919,13 +826,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       teacherProfile,
       instituteId,
       loading,
-      needsOtpVerification,
-      pendingPhone,
       signIn,
-      registerTeacher,
-      verifyRegistrationOtp,
-      resendRegistrationOtp,
-      cancelOtpVerification,
       signOut,
       updateSpecialization,
       completeOnboarding,
@@ -934,6 +835,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deviceInfo,
       refreshDeviceStatus,
       requestNewDeviceApproval,
+      retryAuth,
     }}>
       {children}
     </AuthContext.Provider>

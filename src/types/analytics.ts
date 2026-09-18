@@ -108,6 +108,8 @@ export interface ChapterPerformanceSummary {
   wrong: number;
   /** Number of skipped questions. */
   skipped: number;
+  /** Number of answered subjective questions in this chapter. */
+  subjectiveCount?: number;
   /** Accuracy percentage. Null if no answered questions. */
   accuracy: number | null;
   /** Total score in this chapter. */
@@ -454,6 +456,8 @@ export interface StudentDashboardSummary {
   bestScore: number;
   /** Overall accuracy (correct / (correct + wrong)). Null if no answered questions. */
   overallAccuracy: number | null;
+  /** Average percentage across all attempts. */
+  averagePercentage?: number | null;
   /** Most recently released result. Null if no results are released yet. */
   latestResult: LatestResult | null;
   /** An in-progress attempt the student can resume. Null if none exists. */
@@ -523,4 +527,18 @@ export interface ChapterAnalytics {
   totalQuestionsAttempted: number;
   /** Overall accuracy across all chapters. */
   overallAccuracy: number | null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Attempted Test Filter Option
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Attempted test item for analytics test-specific filtering.
+ */
+export interface AttemptedTestOption {
+  testId: string;
+  testName: string;
+  attemptedOn?: string;
+  attemptId?: string;
 }

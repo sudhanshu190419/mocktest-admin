@@ -14,7 +14,9 @@ import {
   useBulkRejectTeachers,
   useBulkSuspendTeachers,
   useBulkActivateTeachers,
+  useCreateTeacher,
 } from '@/hooks/admin/useTeacherLifecycle';
+import { usePermissions } from '@/hooks/admin/usePermissions';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -35,6 +37,7 @@ import {
   CheckCircle,
   XCircle,
   CircleNotch,
+  UserPlus,
 } from '@phosphor-icons/react';
 import { teacherLifecycleService, type TeacherListItem } from '@/services/admin/teacherLifecycleService';
 import type { AccountStatus } from '@/types/auth';
@@ -68,6 +71,15 @@ const DEPARTMENT_OPTIONS = [
   { value: 'Pure & Applied Mathematics', label: 'Mathematics' },
   { value: 'Biological Sciences (NEET)', label: 'Biology' },
   { value: 'Computer Science & AI', label: 'Computer Science' },
+  { value: 'General Science', label: 'General Science' },
+];
+
+const FORM_DEPARTMENT_OPTIONS = [
+  { value: 'Physics & Applied Mechanics', label: 'Physics & Applied Mechanics' },
+  { value: 'Organic & Physical Chemistry', label: 'Organic & Physical Chemistry' },
+  { value: 'Pure & Applied Mathematics', label: 'Pure & Applied Mathematics' },
+  { value: 'Biological Sciences (NEET)', label: 'Biological Sciences (NEET)' },
+  { value: 'Computer Science & AI', label: 'Computer Science & AI' },
   { value: 'General Science', label: 'General Science' },
 ];
 
@@ -144,6 +156,9 @@ function SummaryCardsSkeleton() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function TeacherManagementPage() {
+  // ── Permissions ───────────────────────────────────────────────────────
+  const { isSuperAdmin } = usePermissions();
+
   // ── Filter State ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -174,6 +189,19 @@ export default function TeacherManagementPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // ── Create Teacher State ─────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    fullName: '',
+    phone: '',
+    password: '',
+    email: '',
+    facultyId: '',
+    department: '',
+    designation: '',
+  });
+  const [createFormError, setCreateFormError] = useState<string | null>(null);
 
   // Clear feedback after timeout
   const clearFeedback = useCallback(() => {
@@ -221,366 +249,510 @@ export default function TeacherManagementPage() {
   const bulkRejectMutation = useBulkRejectTeachers();
   const bulkSuspendMutation = useBulkSuspendTeachers();
   const bulkActivateMutation = useBulkActivateTeachers();
+  const createTeacherMutation = useCreateTeacher();
 
-  // ── Action Executor ─────────────────────────────────────────────────
-  const executeAction = useCallback(async (
-    action: 'approve' | 'reject' | 'suspend' | 'activate' | 'deactivate',
-    teacher?: TeacherListItem | null,
-    bulk?: boolean,
-  ) => {
-    setActionError(null);
-    setActionSuccess(null);
-    setActionLoading(true);
+  // ── Create Teacher Submission ────────────────────────────────────────
+  const handleCreateSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setCreateFormError(null);
+
+    if (!createForm.fullName.trim()) {
+      setCreateFormError('Full name is required.');
+      return;
+    }
+    if (!createForm.phone.trim()) {
+      setCreateFormError('Phone number is required.');
+      return;
+    }
+    const phoneRegex = /^\+[1-9]\d{6,14}$/;
+    if (!phoneRegex.test(createForm.phone.trim())) {
+      setCreateFormError('Please enter a valid phone number with country code (e.g. +919876543210).');
+      return;
+    }
+    if (!createForm.password || createForm.password.length < 6) {
+      setCreateFormError('Password must be at least 6 characters.');
+      return;
+    }
+    if (createForm.email.trim() && !/^\S+@\S+\.\S+$/.test(createForm.email.trim())) {
+      setCreateFormError('Please enter a valid email address.');
+      return;
+    }
+    if (!createForm.facultyId.trim()) {
+      setCreateFormError('Faculty ID is required.');
+      return;
+    }
+    if (!createForm.department.trim()) {
+      setCreateFormError('Department is required.');
+      return;
+    }
 
     try {
-      if (bulk) {
-        const profileIds = Array.from(selectedIds);
+      const res = await createTeacherMutation.mutateAsync({
+        fullName: createForm.fullName.trim(),
+        phone: createForm.phone.trim(),
+        password: createForm.password,
+        email: createForm.email.trim() || undefined,
+        facultyId: createForm.facultyId.trim(),
+        department: createForm.department.trim(),
+        designation: createForm.designation.trim() || 'Faculty',
+      });
 
-        // Use existing bulk mutations for supported statuses,
-        // call service directly for deactivate (no dedicated hook)
-        let result;
-        switch (action) {
-          case 'approve':
-            result = await bulkApproveMutation.mutateAsync(profileIds);
-            break;
-          case 'reject':
-            result = await bulkRejectMutation.mutateAsync(profileIds);
-            break;
-          case 'suspend':
-            result = await bulkSuspendMutation.mutateAsync(profileIds);
-            break;
-          case 'activate':
-            result = await bulkActivateMutation.mutateAsync(profileIds);
-            break;
-          default:
-            // deactivate — call service directly (no dedicated hook per user's
-            // instruction to use ONLY the explicitly listed hooks)
-            result = await teacherLifecycleService.bulkUpdateStatus(profileIds, 'inactive');
-            break;
-        }
+      if (!res.success) {
+        setCreateFormError(res.error ?? 'Failed to create teacher account.');
+        return;
+      }
 
-        if (!result.success) {
-          setActionError(result.error ?? 'Action failed. Please try again.');
-          return;
-        }
-        const count = profileIds.length;
-        setActionSuccess(`${count} teacher${count > 1 ? 's' : ''} ${action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : action === 'suspend' ? 'suspended' : action === 'activate' ? 'activated' : 'deactivated'} successfully`);
-        setSelectedIds(new Set());
+      setActionSuccess(`Teacher ${res.data?.fullName || createForm.fullName.trim()} created successfully.`);
+      setActionError(null);
+      clearFeedback();
+      setCreateOpen(false);
+      setCreateForm({
+        fullName: '',
+        phone: '',
+        password: '',
+        email: '',
+        facultyId: '',
+        department: '',
+        designation: '',
+      });
+      setCreateFormError(null);
+    } catch (err: any) {
+      setCreateFormError(err?.message || 'An unexpected error occurred.');
+    }
+  };
+
+  // ── Action Handlers ──────────────────────────────────────────────────
+  const executeSingleAction = async (
+    type: 'approve' | 'reject' | 'suspend' | 'activate' | 'deactivate',
+    teacher: TeacherListItem,
+  ) => {
+    setActionLoading(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      let result;
+      switch (type) {
+        case 'approve':
+          result = await approveMutation.mutateAsync(teacher.profileId);
+          break;
+        case 'reject':
+          result = await rejectMutation.mutateAsync(teacher.profileId);
+          break;
+        case 'suspend':
+          result = await suspendMutation.mutateAsync(teacher.profileId);
+          break;
+        case 'activate':
+          result = await activateMutation.mutateAsync(teacher.profileId);
+          break;
+        case 'deactivate':
+          result = await deactivateMutation.mutateAsync(teacher.profileId);
+          break;
+      }
+
+      if (result && !result.success) {
+        setActionError(result.error ?? `Failed to ${type} teacher.`);
       } else {
-        const singleMutation = action === 'approve'
-          ? approveMutation
-          : action === 'reject'
-            ? rejectMutation
-            : action === 'suspend'
-              ? suspendMutation
-              : action === 'activate'
-                ? activateMutation
-                : deactivateMutation;
-        const result = await singleMutation.mutateAsync(teacher!.profileId);
-        if (!result.success) {
-          setActionError(result.error ?? 'Action failed. Please try again.');
-          return;
-        }
-        setActionSuccess(`${teacher!.name} ${action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : action === 'suspend' ? 'suspended' : action === 'activate' ? 'activated' : 'deactivated'} successfully`);
+        const actionLabels: Record<string, string> = {
+          approve: 'approved',
+          reject: 'rejected',
+          suspend: 'suspended',
+          activate: 'activated',
+          deactivate: 'deactivated',
+        };
+        setActionSuccess(`Teacher "${teacher.name}" ${actionLabels[type] ?? 'updated'} successfully.`);
       }
     } catch (err: any) {
-      setActionError(err?.message ?? 'An unexpected error occurred.');
+      setActionError(err?.message ?? `An error occurred while attempting to ${type} teacher.`);
     } finally {
       setActionLoading(false);
       setConfirmAction(null);
       clearFeedback();
     }
-  }, [
-    selectedIds,
-    approveMutation,
-    rejectMutation,
-    suspendMutation,
-    activateMutation,
-    deactivateMutation,
-    bulkApproveMutation,
-    bulkRejectMutation,
-    bulkSuspendMutation,
-    bulkActivateMutation,
-    clearFeedback,
-  ]);
+  };
 
-  const handleConfirm = useCallback(() => {
-    if (!confirmAction) return;
-    executeAction(confirmAction.type, confirmAction.teacher, confirmAction.bulk);
-  }, [confirmAction, executeAction]);
+  const executeBulkAction = async (type: 'approve' | 'reject' | 'suspend' | 'activate') => {
+    if (selectedIds.size === 0) return;
 
-  // Determine which bulk actions are available based on selected items
-  const bulkActionOptions = useMemo(() => {
-    if (selectedIds.size === 0 || !teacherList?.data) return null;
+    setActionLoading(true);
+    setActionError(null);
+    setActionSuccess(null);
 
-    let hasPending = false;
-    let hasApproved = false;
-    let hasSuspended = false;
-    let hasInactive = false;
-    let hasRejected = false;
+    const ids = Array.from(selectedIds);
 
-    for (const t of teacherList.data) {
-      if (!selectedIds.has(t.profileId)) continue;
-      switch (t.accountStatus) {
-        case 'pending': hasPending = true; break;
-        case 'approved': hasApproved = true; break;
-        case 'suspended': hasSuspended = true; break;
-        case 'inactive': hasInactive = true; break;
-        case 'rejected': hasRejected = true; break;
+    try {
+      let result;
+      switch (type) {
+        case 'approve':
+          result = await bulkApproveMutation.mutateAsync(ids);
+          break;
+        case 'reject':
+          result = await bulkRejectMutation.mutateAsync(ids);
+          break;
+        case 'suspend':
+          result = await bulkSuspendMutation.mutateAsync(ids);
+          break;
+        case 'activate':
+          result = await bulkActivateMutation.mutateAsync(ids);
+          break;
       }
-    }
 
-    // Only show bulk actions if ALL selected items have the same status
-    const totalFlags = [hasPending, hasApproved, hasSuspended, hasInactive, hasRejected].filter(Boolean).length;
-    if (totalFlags !== 1) return null;
+      if (result && !result.success) {
+        setActionError(result.error ?? `Bulk ${type} operation failed.`);
+      } else {
+        const actionLabels: Record<string, string> = {
+          approve: 'approved',
+          reject: 'rejected',
+          suspend: 'suspended',
+          activate: 'activated',
+        };
+        setActionSuccess(`${ids.length} teachers ${actionLabels[type] ?? 'updated'} successfully.`);
+        setSelectedIds(new Set());
+      }
+    } catch (err: any) {
+      setActionError(err?.message ?? `An error occurred during bulk ${type}.`);
+    } finally {
+      setActionLoading(false);
+      setConfirmAction(null);
+      clearFeedback();
+    }
+  };
 
-    if (hasPending) {
-      return [
-        { type: 'approve' as const, label: 'Approve Selected', variant: 'emerald' as const },
-        { type: 'reject' as const, label: 'Reject Selected', variant: 'rose' as const },
-      ];
-    }
-    if (hasApproved) {
-      return [
-        { type: 'suspend' as const, label: 'Suspend Selected', variant: 'indigo' as const },
-        { type: 'deactivate' as const, label: 'Deactivate Selected', variant: 'gray' as const },
-      ];
-    }
-    if (hasSuspended || hasInactive) {
-      return [
-        { type: 'activate' as const, label: 'Activate Selected', variant: 'emerald' as const },
-      ];
-    }
-    return null;
-  }, [selectedIds, teacherList?.data]);
+  const handleConfirm = () => {
+    if (!confirmAction) return;
 
-  // ── Confirm Dialog Configuration ─────────────────────────────────────
+    if (confirmAction.bulk) {
+      executeBulkAction(confirmAction.type as 'approve' | 'reject' | 'suspend' | 'activate');
+    } else if (confirmAction.teacher) {
+      executeSingleAction(confirmAction.type, confirmAction.teacher);
+    }
+  };
+
+  // ── Confirmation Dialog Config ───────────────────────────────────────
   const confirmDialogConfig = useMemo(() => {
     if (!confirmAction) return null;
+
     const { type, teacher, bulk } = confirmAction;
-    const name = teacher?.name ?? 'this teacher';
     const count = bulk ? selectedIds.size : 1;
-    const label = bulk ? `${count} selected teacher${count > 1 ? 's' : ''}` : name;
+    const name = teacher ? teacher.name : `${count} teachers`;
 
     switch (type) {
       case 'approve':
         return {
-          title: bulk ? `Approve ${count} Teachers` : 'Approve Teacher',
-          message: `Are you sure you want to approve ${label}? They will gain immediate access to the teacher dashboard.`,
-          confirmLabel: bulk ? `Approve ${count} Teachers` : 'Approve Teacher',
+          title: bulk ? `Approve ${count} Teachers?` : `Approve ${name}?`,
+          message: bulk
+            ? `Are you sure you want to approve ${count} selected teachers? They will be granted full access to the portal.`
+            : `Are you sure you want to approve ${name}? They will be able to log in and access faculty features.`,
+          confirmLabel: 'Approve',
           variant: 'default' as const,
         };
       case 'reject':
         return {
-          title: bulk ? `Reject ${count} Teachers` : 'Reject Teacher',
-          message: `Are you sure you want to reject ${label}? They will be notified and cannot access the teacher dashboard.`,
-          confirmLabel: bulk ? `Reject ${count} Teachers` : 'Reject Teacher',
+          title: bulk ? `Reject ${count} Teachers?` : `Reject ${name}?`,
+          message: bulk
+            ? `Are you sure you want to reject ${count} selected teachers? Their accounts will be marked as rejected.`
+            : `Are you sure you want to reject ${name}? They will not be able to access the portal.`,
+          confirmLabel: 'Reject',
           variant: 'danger' as const,
         };
       case 'suspend':
         return {
-          title: bulk ? `Suspend ${count} Teachers` : 'Suspend Teacher',
-          message: `Are you sure you want to suspend ${label}? They will lose access until reactivated.`,
-          confirmLabel: bulk ? `Suspend ${count} Teachers` : 'Suspend Teacher',
-          variant: 'warning' as const,
-        };
-      case 'deactivate':
-        return {
-          title: bulk ? `Deactivate ${count} Teachers` : 'Deactivate Teacher',
-          message: `Are you sure you want to deactivate ${label}? Their profile will be set to inactive.`,
-          confirmLabel: bulk ? `Deactivate ${count} Teachers` : 'Deactivate Teacher',
-          variant: 'warning' as const,
+          title: bulk ? `Suspend ${count} Teachers?` : `Suspend ${name}?`,
+          message: bulk
+            ? `Are you sure you want to suspend ${count} selected teachers? Their access will be temporarily revoked.`
+            : `Are you sure you want to suspend ${name}? They will temporarily lose access to the portal.`,
+          confirmLabel: 'Suspend',
+          variant: 'danger' as const,
         };
       case 'activate':
         return {
-          title: bulk ? `Activate ${count} Teachers` : 'Activate Teacher',
-          message: `Are you sure you want to activate ${label}? They will regain access to the teacher dashboard.`,
-          confirmLabel: bulk ? `Activate ${count} Teachers` : 'Activate Teacher',
+          title: bulk ? `Activate ${count} Teachers?` : `Activate ${name}?`,
+          message: bulk
+            ? `Are you sure you want to activate ${count} selected teachers? Their full access will be restored.`
+            : `Are you sure you want to activate ${name}? Their portal access will be restored.`,
+          confirmLabel: 'Activate',
           variant: 'default' as const,
+        };
+      case 'deactivate':
+        return {
+          title: `Deactivate ${name}?`,
+          message: `Are you sure you want to deactivate ${name}? Their account will be set to inactive.`,
+          confirmLabel: 'Deactivate',
+          variant: 'danger' as const,
         };
       default:
         return null;
     }
   }, [confirmAction, selectedIds.size]);
 
-  // ── Summary Cards ────────────────────────────────────────────────────
-  const summaryCards = useMemo(() => {
-    if (!counts) return [];
-    return [
-      { label: 'Total Teachers', value: counts.total, color: 'blue' as const, icon: <Users size={20} weight="duotone" /> },
-      { label: 'Pending', value: counts.pending, color: 'amber' as const, icon: STATUS_ICON_MAP.pending },
-      { label: 'Approved', value: counts.approved, color: 'emerald' as const, icon: STATUS_ICON_MAP.approved },
-      { label: 'Rejected', value: counts.rejected, color: 'rose' as const, icon: STATUS_ICON_MAP.rejected },
-      { label: 'Suspended', value: counts.suspended, color: 'indigo' as const, icon: STATUS_ICON_MAP.suspended },
-      { label: 'Inactive', value: counts.inactive, color: 'gray' as const, icon: STATUS_ICON_MAP.inactive },
-    ];
-  }, [counts]);
-
   // ── Table Columns ────────────────────────────────────────────────────
-  // Define outside component to avoid re-creation, but needs access to actions
-  const columns: Column<TeacherListItem>[] = useMemo(() => [
-    {
-      key: 'avatar',
-      header: '',
-      className: 'w-10',
-      render: (item) => (
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-bold text-white">
-          {getInitials(item.name)}
-        </div>
-      ),
-    },
-    {
-      key: 'name',
-      header: 'Name',
-      sortable: true,
-      render: (item) => (
-        <div>
-          <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
-          {item.email && (
-            <p className="text-[11px] text-gray-400">{item.email}</p>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'teacherId',
-      header: 'Faculty ID',
-      className: 'text-xs text-gray-500',
-      render: (item) => (
-        <span className="font-mono text-xs">{item.teacherId ? item.teacherId.slice(0, 8) : '—'}</span>
-      ),
-    },
-    {
-      key: 'department',
-      header: 'Department',
-      sortable: true,
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.department ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'accountStatus',
-      header: 'Status',
-      sortable: true,
-      render: (item) => (
-        <StatusBadge status={item.accountStatus} showDot={true} />
-      ),
-    },
-    {
-      key: 'createdAt',
-      header: 'Joined',
-      sortable: true,
-      render: (item) => (
-        <div className="text-xs text-gray-500">
-          <p>{formatDate(item.createdAt)}</p>
-          <p className="text-[10px] text-gray-400">{formatTimeAgo(item.createdAt)}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      className: 'w-32 text-right',
-      render: (_item) => (
-        <div className="flex items-center justify-end gap-1">
-          {/* View — navigates to detail page */}
-          <Link
-            href={`/admin/teachers/${_item.profileId}`}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20"
-          >
-            View
-          </Link>
+  const columns: Column<TeacherListItem>[] = useMemo(
+    () => [
+      {
+        key: 'name',
+        header: 'Teacher',
+        render: (item) => (
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+              {getInitials(item.name)}
+            </div>
+            <div className="min-w-0">
+              <Link
+                href={`/admin/teachers/${item.profileId}`}
+                className="font-medium text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+              >
+                {item.name}
+              </Link>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {item.email || item.phone || 'No contact info'}
+              </div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: 'department',
+        header: 'Department',
+        render: (item) => (
+          <div className="text-sm text-gray-700 dark:text-gray-300">
+            {item.department || '—'}
+            {item.designation && (
+              <span className="block text-xs text-gray-400 dark:text-gray-500">
+                {item.designation}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'accountStatus',
+        header: 'Status',
+        render: (item) => (
+          <StatusBadge status={item.accountStatus} />
+        ),
+      },
+      {
+        key: 'createdAt',
+        header: 'Registered',
+        render: (item) => (
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            <span>{formatDate(item.createdAt)}</span>
+            <span className="block text-xs text-gray-400 dark:text-gray-500">
+              {formatTimeAgo(item.createdAt)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: 'actions',
+        header: 'Actions',
+        align: 'right',
+        render: (item) => {
+          const { accountStatus } = item;
 
-          {/* Action buttons with loading indicators */}
-          {_item.accountStatus === 'pending' && (
-            <>
-              <button
-                type="button"
-                onClick={() => setConfirmAction({ type: 'approve', teacher: _item })}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:hover:bg-emerald-900/20"
-              >
-                {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'approve' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmAction({ type: 'reject', teacher: _item })}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/20"
-              >
-                {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'reject' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Reject
-              </button>
-            </>
-          )}
-          {_item.accountStatus === 'approved' && (
-            <>
-              <button
-                type="button"
-                onClick={() => setConfirmAction({ type: 'suspend', teacher: _item })}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:opacity-40 dark:hover:bg-orange-900/20"
-              >
-                {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'suspend' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Suspend
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmAction({ type: 'deactivate', teacher: _item })}
-                disabled={actionLoading}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:hover:bg-gray-800/30"
-              >
-                {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'deactivate' ? (
-                  <CircleNotch size={10} className="animate-spin" />
-                ) : null}
-                Deactivate
-              </button>
-            </>
-          )}
-          {(_item.accountStatus === 'suspended' || _item.accountStatus === 'inactive') && (
-            <button
-              type="button"
-              onClick={() => setConfirmAction({ type: 'activate', teacher: _item })}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:hover:bg-emerald-900/20"
-            >
-              {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'activate' ? (
-                <CircleNotch size={10} className="animate-spin" />
-              ) : null}
-              Activate
-            </button>
-          )}
-          {_item.accountStatus === 'rejected' && (
-            <button
-              type="button"
-              onClick={() => setConfirmAction({ type: 'approve', teacher: _item })}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:hover:bg-emerald-900/20"
-            >
-              {actionLoading && confirmAction?.teacher?.profileId === _item.profileId && confirmAction?.type === 'approve' ? (
-                <CircleNotch size={10} className="animate-spin" />
-              ) : null}
-              Approve
-            </button>
-          )}
-        </div>
-      ),
-    },
-  ], []);
+          return (
+            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+              {accountStatus === 'pending' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'approve',
+                        teacher: item,
+                        status: 'approved',
+                      })
+                    }
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-40 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                    title="Approve registration"
+                  >
+                    <UserCheck size={14} weight="bold" />
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'reject',
+                        teacher: item,
+                        status: 'rejected',
+                      })
+                    }
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50"
+                    title="Reject registration"
+                  >
+                    <UserMinus size={14} weight="bold" />
+                    Reject
+                  </button>
+                </>
+              )}
 
-  // ═════════════════════════════════════════════════════════════════════
-  //  Render
-  // ═════════════════════════════════════════════════════════════════════
+              {accountStatus === 'approved' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'suspend',
+                        teacher: item,
+                        status: 'suspended',
+                      })
+                    }
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-40 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                    title="Suspend account"
+                  >
+                    <Prohibit size={14} weight="bold" />
+                    Suspend
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'deactivate',
+                        teacher: item,
+                        status: 'inactive',
+                      })
+                    }
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-40 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    title="Deactivate account"
+                  >
+                    <Power size={14} weight="bold" />
+                    Deactivate
+                  </button>
+                </>
+              )}
 
+              {accountStatus === 'suspended' && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfirmAction({
+                      type: 'activate',
+                      teacher: item,
+                      status: 'approved',
+                    })
+                  }
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-40 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                  title="Reactivate account"
+                >
+                  <UserCheck size={14} weight="bold" />
+                  Reactivate
+                </button>
+              )}
+
+              {accountStatus === 'inactive' && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfirmAction({
+                      type: 'activate',
+                      teacher: item,
+                      status: 'approved',
+                    })
+                  }
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-40 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                  title="Re-enable account"
+                >
+                  <Power size={14} weight="bold" />
+                  Activate
+                </button>
+              )}
+
+              {accountStatus === 'rejected' && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfirmAction({
+                      type: 'activate',
+                      teacher: item,
+                      status: 'approved',
+                    })
+                  }
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-40 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                  title="Reconsider & approve"
+                >
+                  <UserCheck size={14} weight="bold" />
+                  Approve
+                </button>
+              )}
+
+              <Link
+                href={`/admin/teachers/${item.profileId}`}
+                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                View
+              </Link>
+            </div>
+          );
+        },
+      },
+    ],
+    [actionLoading],
+  );
+
+  // ── Summary Cards Data ───────────────────────────────────────────────
+  const summaryCards = useMemo(
+    () => [
+      {
+        label: 'Total Teachers',
+        value: counts?.total ?? 0,
+        icon: <Users size={20} weight="duotone" />,
+        color: 'gray' as const,
+      },
+      {
+        label: 'Pending Approval',
+        value: counts?.pending ?? 0,
+        icon: <Clock size={20} weight="duotone" />,
+        color: 'amber' as const,
+      },
+      {
+        label: 'Approved',
+        value: counts?.approved ?? 0,
+        icon: <UserCheck size={20} weight="duotone" />,
+        color: 'emerald' as const,
+      },
+      {
+        label: 'Suspended',
+        value: counts?.suspended ?? 0,
+        icon: <Prohibit size={20} weight="duotone" />,
+        color: 'indigo' as const,
+      },
+      {
+        label: 'Inactive',
+        value: counts?.inactive ?? 0,
+        icon: <Power size={20} weight="duotone" />,
+        color: 'gray' as const,
+      },
+      {
+        label: 'Rejected',
+        value: counts?.rejected ?? 0,
+        icon: <UserMinus size={20} weight="duotone" />,
+        color: 'rose' as const,
+      },
+    ],
+    [counts],
+  );
+
+  // ── Bulk Actions Available for Current Selection ─────────────────────
+  const bulkActionOptions = useMemo(() => {
+    if (selectedIds.size === 0) return null;
+
+    return [
+      { type: 'approve' as const, label: 'Approve Selected', variant: 'emerald' },
+      { type: 'reject' as const, label: 'Reject Selected', variant: 'rose' },
+      { type: 'suspend' as const, label: 'Suspend Selected', variant: 'indigo' },
+      { type: 'activate' as const, label: 'Activate Selected', variant: 'emerald' },
+    ];
+  }, [selectedIds.size]);
+
+  // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* ════════════════════════════════════════════════════════════════
@@ -588,51 +760,51 @@ export default function TeacherManagementPage() {
          ════════════════════════════════════════════════════════════════ */}
       <PageHeader
         title="Teacher Management"
-        description="Manage teachers across their complete lifecycle."
+        description="Review teacher registrations, manage approvals, and oversee faculty access."
         breadcrumbs={[
           { label: 'Admin', href: '/admin' },
-          { label: 'Teacher Management' },
+          { label: 'Teachers' },
         ]}
         actions={
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <ArrowsClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
-        }
-      />
-
-      {/* ════════════════════════════════════════════════════════════════
-          Error State
-         ════════════════════════════════════════════════════════════════ */}
-      {isError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-800 dark:bg-red-900/20">
           <div className="flex items-center gap-3">
-            <svg className="h-5 w-5 flex-shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-red-800 dark:text-red-300">
-                Failed to load teacher data
-              </p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-              </p>
-            </div>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateForm({
+                    fullName: '',
+                    phone: '',
+                    password: '',
+                    email: '',
+                    facultyId: '',
+                    department: '',
+                    designation: '',
+                  });
+                  setCreateFormError(null);
+                  setCreateOpen(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-500"
+              >
+                <UserPlus size={16} weight="bold" />
+                Add Teacher
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRefresh}
-              className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              title="Refresh teacher list"
             >
-              Retry
+              <ArrowsClockwise
+                size={16}
+                className={isLoading ? 'animate-spin' : ''}
+              />
+              Refresh
             </button>
           </div>
-        </div>
-      )}
+        }
+      />
 
       {/* ════════════════════════════════════════════════════════════════
           Summary Cards
@@ -801,6 +973,171 @@ export default function TeacherManagementPage() {
           variant={confirmDialogConfig.variant}
           loading={actionLoading}
         />
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          Create Teacher Modal (Super Admin Only)
+         ════════════════════════════════════════════════════════════════ */}
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
+              if (!createTeacherMutation.isPending) setCreateOpen(false);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+          >
+            <div className="pb-3 border-b border-gray-100 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Add Teacher
+              </h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Creates the authentication account, profile, and teacher details with approved access in one step. The teacher can log in immediately.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateSubmit} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={createForm.fullName}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, fullName: e.target.value }))}
+                  placeholder="e.g. Dr. Ramesh Gupta"
+                  disabled={createTeacherMutation.isPending}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Phone (with country code) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={createForm.phone}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
+                    placeholder="+919876543210"
+                    disabled={createTeacherMutation.isPending}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Email (optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="ramesh@institute.com"
+                    disabled={createTeacherMutation.isPending}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  Password (min 6 characters) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="••••••••"
+                  disabled={createTeacherMutation.isPending}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Faculty ID *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={createForm.facultyId}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, facultyId: e.target.value }))}
+                    placeholder="e.g. FAC-PHY-001"
+                    disabled={createTeacherMutation.isPending}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Designation (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.designation}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, designation: e.target.value }))}
+                    placeholder="e.g. Senior Faculty"
+                    disabled={createTeacherMutation.isPending}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  Department *
+                </label>
+                <Select
+                  value={createForm.department}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, department: v }))}
+                  options={FORM_DEPARTMENT_OPTIONS}
+                  placeholder="Select department"
+                  className="w-full"
+                />
+              </div>
+
+              {createFormError && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                  <XCircle size={16} className="mt-0.5 flex-shrink-0 text-red-600" weight="fill" />
+                  <p className="text-xs font-medium text-red-700 dark:text-red-300">{createFormError}</p>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(false)}
+                  disabled={createTeacherMutation.isPending}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createTeacherMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {createTeacherMutation.isPending ? (
+                    <CircleNotch size={14} className="animate-spin" />
+                  ) : (
+                    <UserPlus size={14} weight="bold" />
+                  )}
+                  {createTeacherMutation.isPending ? 'Creating...' : 'Create Teacher'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

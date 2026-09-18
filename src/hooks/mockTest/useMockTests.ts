@@ -231,13 +231,19 @@ export function useRestoreMockTest() {
 
   return useMutation<MockTest, Error, string>({
     mutationFn: async (id) => {
+      console.log('%c[useRestoreMockTest:TEACHER_HOOK] 🚀 mutateAsync called with id=' + id, 'color: #ec4899; font-weight: bold;');
+      const start = performance.now();
       const result = await restoreMockTest(id);
+      const elapsed = (performance.now() - start).toFixed(1);
+      console.log('%c[useRestoreMockTest:TEACHER_HOOK] Result received in ' + elapsed + 'ms:', 'color: #10b981; font-weight: bold;', result);
       if (!result.success) {
+        console.error('[useRestoreMockTest:TEACHER_HOOK] ❌ Error:', result.error);
         throw new Error(result.error ?? 'Failed to restore mock test.');
       }
       return result.data!;
     },
     onSuccess: (_data, id) => {
+      console.log('[useRestoreMockTest:TEACHER_HOOK] onSuccess: invalidating queries...');
       queryClient.invalidateQueries({ queryKey: mockTestKeys.mockTests.detail(id) });
       queryClient.invalidateQueries({ queryKey: mockTestKeys.mockTests.lists() });
     },

@@ -49,6 +49,7 @@ import type {
   LatestResult,
   ContinuePracticeAttempt,
   ScoreTrendPoint,
+  AttemptedTestOption,
 } from '../../types/analytics';
 
 // ─── Row types for raw Supabase queries ────────────────────────────────────
@@ -108,6 +109,7 @@ interface RpcChapterItem {
   correct_count: number;
   wrong_count: number;
   skipped_count: number;
+  subjective_count?: number;
   accuracy: number | null;
   total_score: number;
   max_score: number;
@@ -170,6 +172,7 @@ function mapRpcChapterToSummary(item: RpcChapterItem): ChapterPerformanceSummary
     correct: item.correct_count,
     wrong: item.wrong_count,
     skipped: item.skipped_count,
+    subjectiveCount: item.subjective_count ?? 0,
     accuracy: item.accuracy,
     score: item.total_score,
     maxScore: item.max_score,
@@ -198,14 +201,17 @@ function mapRpcScoreTrendToPoint(item: RpcScoreTrendItem): ScoreTrendPoint {
 }
 
 /**
- * Call a no-parameter RPC, handle errors, and return the parsed JSON array.
+ * Call a Subject/Chapter RPC, handle errors, and return the parsed JSON array.
  * Returns null on error (caller handles the ApiResponse).
  */
 async function callSubjectChapterRpc<T>(
   rpcName: string,
+  params?: Record<string, unknown>,
 ): Promise<{ data: T[] | null; error: string | null }> {
   try {
-    const { data, error } = await supabase.rpc(rpcName);
+    const { data, error } = params
+      ? await supabase.rpc(rpcName, params)
+      : await supabase.rpc(rpcName);
 
     if (error) {
       return { data: null, error: extractErrorMessage(error) };
@@ -262,6 +268,7 @@ function mapChapterSummary(cb: ChapterBreakdownItem): ChapterPerformanceSummary 
     correct: cb.correct,
     wrong: cb.wrong,
     skipped: cb.skipped,
+    subjectiveCount: 0,
     accuracy: computeAccuracy(cb.correct, cb.wrong),
     score: cb.score,
     maxScore: cb.maxScore,
@@ -1088,16 +1095,20 @@ async function computeDifficultyAnalysis(
  * server-side aggregation. The public API shape is unchanged.
  *
  * @param studentId - UUID of the student (unused — RPC resolves from auth).
+ * @param testId    - Optional mock test UUID to scope metrics to a single test.
  */
 export async function getSubjectAnalytics(
-  studentId: string,
+  studentId?: string,
+  testId?: string | null,
 ): Promise<ApiResponse<SubjectAnalytics>> {
   try {
     console.group('ANALYTICS');
-    console.log('Request: getSubjectAnalytics', { studentId });
+    console.log('Request: getSubjectAnalytics', { studentId, testId });
 
+    const rpcParams = testId ? { p_test_id: testId } : undefined;
     const { data: rpcItems, error } = await callSubjectChapterRpc<RpcSubjectItem>(
       'get_student_subject_analytics',
+      rpcParams,
     );
 
     if (error) {
@@ -1137,16 +1148,20 @@ export async function getSubjectAnalytics(
  * server-side aggregation. The public API shape is unchanged.
  *
  * @param studentId - UUID of the student (unused — RPC resolves from auth).
+ * @param subjectId - Optional subject UUID to scope metrics to a single subject.
  */
 export async function getChapterAnalytics(
-  studentId: string,
+  studentId?: string,
+  subjectId?: string | null,
 ): Promise<ApiResponse<ChapterAnalytics>> {
   try {
     console.group('ANALYTICS');
-    console.log('Request: getChapterAnalytics', { studentId });
+    console.log('Request: getChapterAnalytics', { studentId, subjectId });
 
+    const rpcParams = subjectId ? { p_subject_id: subjectId } : undefined;
     const { data: rpcItems, error } = await callSubjectChapterRpc<RpcChapterItem>(
       'get_student_chapter_analytics',
+      rpcParams,
     );
 
     if (error) {
@@ -1396,6 +1411,7 @@ interface RpcDashboardSummary {
   average_score: number;
   best_score: number;
   overall_accuracy: number | null;
+  average_percentage?: number | null;
   latest_result: {
     result_id: string;
     attempt_id: string;
@@ -1457,6 +1473,7 @@ export async function getStudentDashboardSummary(): Promise<ApiResponse<StudentD
       averageScore: rpcData.average_score,
       bestScore: rpcData.best_score,
       overallAccuracy: rpcData.overall_accuracy,
+      averagePercentage: rpcData.average_percentage ?? null,
       latestResult: rpcData.latest_result
         ? {
             resultId: rpcData.latest_result.result_id,
@@ -1623,3 +1640,80 @@ export async function getDashboardAnalytics(): Promise<ApiResponse<DashboardAnal
     return { success: false, error: extractErrorMessage(err) };
   }
 }
+
+/**
+ * Fetch distinct attempted mock tests for the authenticated student.
+ * Scoped to completed ('submitted', 'timed_out') attempts.
+ *
+ * Used to populate the test-filtering dropdown in the analytics dashboard.
+ */
+export async function getStudentAttemptedTestList(): Promise<
+  ApiResponse<AttemptedTestOption[]>
+> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const profileId = sessionData?.session?.user?.id;
+    if (!profileId) {
+      return { success: true, data: [] };
+    }
+
+    const { data: studentData } = await supabase
+      .from('student_details')
+      .select('student_id')
+      .eq('profile_id', profileId)
+      .maybeSingle<{ student_id: string }>();
+
+    if (!studentData?.student_id) {
+      return { success: true, data: [] };
+    }
+
+    const { data, error } = await supabase
+      .from('mock_attempts')
+      .select(`
+        attempt_id,
+        test_id,
+        submitted_at,
+        created_at,
+        mock_tests (
+          test_id,
+          title
+        )
+      `)
+      .eq('student_id', studentData.student_id)
+      .in('status', ['submitted', 'timed_out'])
+      .order('submitted_at', { ascending: false });
+
+    if (error) {
+      console.log('[ANALYTICS SERVICE] getStudentAttemptedTestList failure:', error);
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    if (!data || data.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Deduplicate by test_id, preserving newest attempt first
+    const seen = new Set<string>();
+    const tests: AttemptedTestOption[] = [];
+
+    for (const row of data as any[]) {
+      const testId = row.test_id;
+      if (!testId || seen.has(testId)) continue;
+      seen.add(testId);
+
+      const testTitle = (row.mock_tests as any)?.title || 'Untitled Test';
+      tests.push({
+        testId,
+        testName: testTitle,
+        attemptedOn: row.submitted_at ?? row.created_at,
+        attemptId: row.attempt_id,
+      });
+    }
+
+    return { success: true, data: tests };
+  } catch (err) {
+    console.log('[ANALYTICS SERVICE] getStudentAttemptedTestList exception:', err);
+    return { success: false, error: extractErrorMessage(err) };
+  }
+}
+

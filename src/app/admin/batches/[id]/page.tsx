@@ -277,6 +277,9 @@ export default function BatchDetailPage() {
   const {
     data: availableStudents,
     isLoading: availableLoading,
+    isError: isAvailableError,
+    error: availableError,
+    refetch: refetchAvailable,
   } = useAvailableStudents(batchId, debouncedSearch || undefined);
 
   // ── Auth Context ─────────────────────────────────────────────────────
@@ -1048,15 +1051,36 @@ export default function BatchDetailPage() {
                   selectedIds={selectedAvailableIds}
                   onSelectionChange={setSelectedAvailableIds}
                   emptyState={
-                    <EmptyState
-                      icon={<UserCircle size={28} weight="thin" />}
-                      title={debouncedSearch ? 'No matching students' : 'No students available'}
-                      description={
-                        debouncedSearch
-                          ? 'Try a different search term.'
-                          : 'All eligible students are already assigned to this batch.'
-                      }
-                    />
+                    isAvailableError ? (
+                      <EmptyState
+                        icon={<XCircle size={28} weight="duotone" className="text-red-500" />}
+                        title="Failed to load students"
+                        description={
+                          availableError instanceof Error
+                            ? availableError.message
+                            : 'An error occurred while loading available students.'
+                        }
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => refetchAvailable()}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+                          >
+                            Retry
+                          </button>
+                        }
+                      />
+                    ) : (
+                      <EmptyState
+                        icon={<UserCircle size={28} weight="thin" />}
+                        title={debouncedSearch ? 'No matching students' : 'No students available'}
+                        description={
+                          debouncedSearch
+                            ? 'Try a different search term.'
+                            : 'All eligible students are already assigned to this batch.'
+                        }
+                      />
+                    )
                   }
                   className="min-h-[200px]"
                 />

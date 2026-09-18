@@ -33,12 +33,22 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (!open) return;
+    console.log(`%c[ConfirmDialog:OPEN] "${title}" (loading=${loading})`, 'color: #3b82f6; font-weight: bold;');
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        console.log(`[ConfirmDialog:ESCAPE] "${title}"`);
+        onClose();
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [open, onClose, title, loading]);
+
+  useEffect(() => {
+    if (open) {
+      console.log(`[ConfirmDialog:STATE] "${title}" loading=${loading}`);
+    }
+  }, [open, title, loading]);
 
   if (!open) return null;
 
@@ -51,12 +61,22 @@ export function ConfirmDialog({
       'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500',
   };
 
+  const handleConfirmClick = () => {
+    console.log(`%c[ConfirmDialog:CONFIRM_CLICKED] "${title}" (loading=${loading})`, 'color: #10b981; font-weight: bold;');
+    onConfirm();
+  };
+
+  const handleCloseClick = () => {
+    console.log(`[ConfirmDialog:CANCEL_CLICKED] "${title}"`);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleCloseClick}
       />
       {/* Dialog */}
       <div
@@ -83,7 +103,7 @@ export function ConfirmDialog({
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseClick}
             disabled={loading}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
           >
@@ -91,7 +111,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={handleConfirmClick}
             disabled={loading}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50',

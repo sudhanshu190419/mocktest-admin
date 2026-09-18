@@ -29,7 +29,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from './queryKeys';
 import { teacherLifecycleService } from '@/services/admin/teacherLifecycleService';
-import type { TeacherListFilters, TeacherListSortOptions } from '@/services/admin/teacherLifecycleService';
+import type { TeacherListFilters, TeacherListSortOptions, CreateTeacherInput } from '@/services/admin/teacherLifecycleService';
 import type { PaginationParams } from '@/types/academic';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -272,6 +272,21 @@ export function useBulkActivateTeachers() {
 
   return useMutation({
     mutationFn: (profileIds: string[]) => teacherLifecycleService.bulkActivate(profileIds),
+    onSuccess: async () => {
+      await invalidate();
+    },
+  });
+}
+
+/**
+ * Create a new teacher account (auth user + profile + approved teacher_details).
+ * Super Admin only.
+ */
+export function useCreateTeacher() {
+  const invalidate = useInvalidateTeacherLifecycle();
+
+  return useMutation({
+    mutationFn: (input: CreateTeacherInput) => teacherLifecycleService.createTeacher(input),
     onSuccess: async () => {
       await invalidate();
     },

@@ -125,7 +125,7 @@ function mapExplanation(db: DbQuestionExplanation): QuestionExplanation {
  */
 export async function getQuestionExplanation(
   questionId: string,
-): Promise<ApiResponse<QuestionExplanation>> {
+): Promise<ApiResponse<QuestionExplanation | null>> {
   try {
     validateUUID(questionId, 'questionId');
 
@@ -133,20 +133,13 @@ export async function getQuestionExplanation(
       .from('question_explanations')
       .select('*')
       .eq('question_id', questionId)
-      .single<DbQuestionExplanation>();
+      .maybeSingle<DbQuestionExplanation>();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return {
-          success: false,
-          error: `No explanation found for question: ${questionId}. Add an explanation before publishing.`,
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapExplanation(data) };
+    return { success: true, data: data ? mapExplanation(data) : null };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -165,7 +158,7 @@ export async function getQuestionExplanation(
  */
 export async function getQuestionExplanationById(
   explanationId: string,
-): Promise<ApiResponse<QuestionExplanation>> {
+): Promise<ApiResponse<QuestionExplanation | null>> {
   try {
     validateUUID(explanationId, 'explanationId');
 
@@ -173,20 +166,13 @@ export async function getQuestionExplanationById(
       .from('question_explanations')
       .select('*')
       .eq('explanation_id', explanationId)
-      .single<DbQuestionExplanation>();
+      .maybeSingle<DbQuestionExplanation>();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return {
-          success: false,
-          error: `Question explanation not found: ${explanationId}`,
-        };
-      }
-
       return { success: false, error: extractErrorMessage(error) };
     }
 
-    return { success: true, data: mapExplanation(data) };
+    return { success: true, data: data ? mapExplanation(data) : null };
   } catch (err) {
     return { success: false, error: extractErrorMessage(err) };
   }
@@ -334,7 +320,9 @@ export async function updateQuestionExplanation(
 
     // ── If nothing to update, return current ────────────────────────────
     if (Object.keys(dbRecord).length === 0) {
-      return getQuestionExplanationById(explanationId);
+      const cur = await getQuestionExplanationById(explanationId);
+      if (!cur.success || !cur.data) return { success: false, error: cur.error || 'Explanation not found' };
+      return { success: true, data: cur.data };
     }
 
     // ── Update ─────────────────────────────────────────────────────────

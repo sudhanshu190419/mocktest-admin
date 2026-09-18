@@ -77,6 +77,11 @@ export const analyticsKeys = {
     list: () => [...analyticsKeys.strongChapters.all(), 'list'] as const,
   },
 
+  attemptedTests: {
+    all: () => [...analyticsKeys.all, 'attemptedTests'] as const,
+    list: () => [...analyticsKeys.attemptedTests.all(), 'list'] as const,
+  },
+
   scoreTrend: {
     all: () => [...analyticsKeys.all, 'scoreTrend'] as const,
     list: () => [...analyticsKeys.scoreTrend.all(), 'list'] as const,

@@ -75,25 +75,119 @@ export interface FinalizeInput {
   attemptId: string;
 }
 
+// ─── Diagnostic Timing Instrumentation ─────────────────────────────────────
+
+interface EvalDiagnosticTracker {
+  correlationId: string;
+  attemptId?: string;
+  questionId?: string;
+  opCount: number;
+  totalStart: number;
+}
+
+type MeasureOpFn = <T>(opName: string, opFn: () => PromiseLike<T>) => Promise<T>;
+
+const defaultRunner: MeasureOpFn = async <T>(_opName: string, opFn: () => PromiseLike<T>): Promise<T> => {
+  return await opFn();
+};
+
+function createEvalDiagnosticTracker(answerId: string): {
+  tracker: EvalDiagnosticTracker;
+  measureOp: MeasureOpFn;
+  logStart: () => void;
+  logComplete: () => void;
+  logFailed: (err: unknown) => void;
+  setContext: (attemptId: string, questionId: string) => void;
+} {
+  const correlationId = `EVAL-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const tracker: EvalDiagnosticTracker = {
+    correlationId,
+    opCount: 0,
+    totalStart: Date.now(),
+  };
+
+  const logStart = () => {
+    console.log(`[EVAL][START] correlationId=${tracker.correlationId} answerId=${answerId} timestamp=${new Date().toISOString()}`);
+  };
+
+  const setContext = (attemptId: string, questionId: string) => {
+    tracker.attemptId = attemptId;
+    tracker.questionId = questionId;
+  };
+
+  const measureOp: MeasureOpFn = async <T>(opName: string, opFn: () => PromiseLike<T>): Promise<T> => {
+    tracker.opCount++;
+    const stepStart = Date.now();
+    const contextInfo = `correlationId=${tracker.correlationId} attemptId=${tracker.attemptId || 'pending'} questionId=${tracker.questionId || 'pending'}`;
+
+    console.log(`[EVAL][STEP_START] ${contextInfo} operationName=${opName} timestamp=${new Date().toISOString()}`);
+
+    const slowTimer = setTimeout(() => {
+      console.warn(`[EVAL][SLOW] ${contextInfo} operationName=${opName} elapsed=${Date.now() - stepStart}ms (>5s)`);
+    }, 5000);
+
+    const verySlowTimer = setTimeout(() => {
+      console.error(`[EVAL][VERY_SLOW] ${contextInfo} operationName=${opName} elapsed=${Date.now() - stepStart}ms (>15s)`);
+    }, 15000);
+
+    try {
+      const result = await opFn();
+      const durationMs = Date.now() - stepStart;
+      console.log(`[EVAL][STEP_SUCCESS] ${contextInfo} operationName=${opName} durationMs=${durationMs}`);
+      return result;
+    } catch (err: any) {
+      const durationMs = Date.now() - stepStart;
+      const errorCode = err?.code || err?.status || 'UNKNOWN';
+      const errorMessage = err?.message || String(err);
+      console.error(`[EVAL][STEP_ERROR] ${contextInfo} operationName=${opName} durationMs=${durationMs} errorCode=${errorCode} errorMessage=${errorMessage}`);
+      throw err;
+    } finally {
+      clearTimeout(slowTimer);
+      clearTimeout(verySlowTimer);
+    }
+  };
+
+  const logComplete = () => {
+    const totalDurationMs = Date.now() - tracker.totalStart;
+    const contextInfo = `correlationId=${tracker.correlationId} attemptId=${tracker.attemptId || 'unknown'} questionId=${tracker.questionId || 'unknown'}`;
+    console.log(`[EVAL][COMPLETE] ${contextInfo} totalDurationMs=${totalDurationMs} totalSupabaseOperations=${tracker.opCount}`);
+  };
+
+  const logFailed = (err: unknown) => {
+    const totalDurationMs = Date.now() - tracker.totalStart;
+    const errorCode = (err as any)?.code || (err as any)?.status || 'UNKNOWN';
+    const errorMessage = extractErrorMessage(err);
+    const contextInfo = `correlationId=${tracker.correlationId} attemptId=${tracker.attemptId || 'unknown'} questionId=${tracker.questionId || 'unknown'}`;
+    console.error(`[EVAL][FAILED] ${contextInfo} totalDurationMs=${totalDurationMs} errorCode=${errorCode} errorMessage=${errorMessage}`);
+  };
+
+  return { tracker, measureOp, logStart, logComplete, logFailed, setContext };
+}
+
 // ─── Authorization Helpers ────────────────────────────────────────────────
 
 /**
  * Resolve the current authenticated user and their role.
  */
-async function resolveCurrentUser(): Promise<
+async function resolveCurrentUser(measureOp?: MeasureOpFn): Promise<
   | { success: true; userId: string; role: string }
   | { success: false; error: string }
 > {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const runner = measureOp || defaultRunner;
+  const { data: userData, error: userError } = await runner('auth.getUser', () =>
+    supabase.auth.getUser()
+  );
   if (userError || !userData?.user) {
     return { success: false, error: 'Authentication required.' };
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('profile_id', userData.user.id)
-    .single<UserProfile>();
+  const { data: profile } = await runner('profiles.select', () =>
+    supabase
+      .from('profiles')
+      .select('role')
+      .eq('profile_id', userData.user.id)
+      .single<UserProfile>()
+  );
 
   if (!profile) {
     return { success: false, error: 'User profile not found.' };
@@ -109,12 +203,15 @@ async function resolveCurrentUser(): Promise<
  * The granular admin roles (super_admin, academic_admin, finance_admin)
  * are stored in the admin_roles table (Migration 074).
  */
-async function isAdminUser(userId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('admin_roles')
-    .select('admin_role')
-    .eq('profile_id', userId)
-    .in('admin_role', ['super_admin', 'academic_admin']);
+async function isAdminUser(userId: string, measureOp?: MeasureOpFn): Promise<boolean> {
+  const runner = measureOp || defaultRunner;
+  const { data } = await runner('admin_roles.select', () =>
+    supabase
+      .from('admin_roles')
+      .select('admin_role')
+      .eq('profile_id', userId)
+      .in('admin_role', ['super_admin', 'academic_admin'])
+  );
 
   return (data ?? []).length > 0;
 }
@@ -124,12 +221,16 @@ async function isAdminUser(userId: string): Promise<boolean> {
  */
 async function resolveTeacherId(
   profileId: string,
+  measureOp?: MeasureOpFn,
 ): Promise<string | null> {
-  const { data } = await supabase
-    .from('teacher_details')
-    .select('teacher_id')
-    .eq('profile_id', profileId)
-    .single<TeacherDetails>();
+  const runner = measureOp || defaultRunner;
+  const { data } = await runner('teacher_details.select', () =>
+    supabase
+      .from('teacher_details')
+      .select('teacher_id')
+      .eq('profile_id', profileId)
+      .single<TeacherDetails>()
+  );
 
   return data?.teacher_id ?? null;
 }
@@ -141,18 +242,22 @@ async function resolveTeacherId(
 async function verifyTeacherAuthorization(
   teacherId: string,
   answerId: string,
+  measureOp?: MeasureOpFn,
 ): Promise<boolean> {
-  const { data } = await supabase
-    .from('mock_answers')
-    .select(`
-      question_id,
-      attempt_id,
-      mock_attempts!inner(
-        student_id
-      )
-    `)
-    .eq('answer_id', answerId)
-    .single();
+  const runner = measureOp || defaultRunner;
+  const { data } = await runner('mock_answers.select_auth_context', () =>
+    supabase
+      .from('mock_answers')
+      .select(`
+        question_id,
+        attempt_id,
+        mock_attempts!inner(
+          student_id
+        )
+      `)
+      .eq('answer_id', answerId)
+      .single()
+  );
 
   if (!data) return false;
 
@@ -164,32 +269,36 @@ async function verifyTeacherAuthorization(
 
   // Check: teacher is assigned to a batch_subject where this student is enrolled
   // AND the question belongs to the subject they teach
-  // NOTE: A teacher may have multiple batch_subject assignments, so we check ALL.
-  const { data: authAssignments } = await supabase
-    .from('batch_subject_teachers')
-    .select(`
-      batch_subject_id,
-      batch_subjects!inner(
-        batch_id,
-        subject_id
-      )
-    `)
-    .eq('teacher_id', teacherId);
+  const { data: authAssignments } = await runner('batch_subject_teachers.select', () =>
+    supabase
+      .from('batch_subject_teachers')
+      .select(`
+        batch_subject_id,
+        batch_subjects!inner(
+          batch_id,
+          subject_id
+        )
+      `)
+      .eq('teacher_id', teacherId)
+  );
 
   if (!authAssignments || authAssignments.length === 0) return false;
 
   // Verify question exists and is subjective
-  const { data: question } = await supabase
-    .from('questions')
-    .select('subject_id, question_type')
-    .eq('question_id', questionId)
-    .single();
+  const { data: question } = await runner('questions.select', () =>
+    supabase
+      .from('questions')
+      .select('subject_id, question_type')
+      .eq('question_id', questionId)
+      .single()
+  );
 
   if (!question) return false;
   if (question.question_type !== 'subjective') return false;
 
   // Check if ANY of the teacher's assignments cover this student + subject
-  for (const assignment of authAssignments) {
+  for (let i = 0; i < authAssignments.length; i++) {
+    const assignment = authAssignments[i];
     const bs = assignment as any;
     const batchId = bs?.batch_subjects?.batch_id;
     const subjectId = bs?.batch_subjects?.subject_id;
@@ -198,12 +307,14 @@ async function verifyTeacherAuthorization(
     if (subjectId !== question.subject_id) continue;
 
     // Verify student is in this batch
-    const { data: batchStudent } = await supabase
-      .from('batch_students')
-      .select('student_id')
-      .eq('batch_id', batchId)
-      .eq('student_id', studentId)
-      .maybeSingle();
+    const { data: batchStudent } = await runner(`batch_students.select[${i + 1}]`, () =>
+      supabase
+        .from('batch_students')
+        .select('student_id')
+        .eq('batch_id', batchId)
+        .eq('student_id', studentId)
+        .maybeSingle()
+    );
 
     if (batchStudent) return true;
   }
@@ -597,504 +708,64 @@ export async function getAttemptSubjectiveAnswers(
 export async function evaluateSubjectiveAnswer(
   input: EvaluationInput,
 ): Promise<ApiResponse<{ answerId: string }>> {
-  try {
-    // ── 1. Authenticate ────────────────────────────────────────────────
-    const user = await resolveCurrentUser();
-    if (!user.success) return { success: false, error: user.error };
+  const diag = createEvalDiagnosticTracker(input.answerId);
+  diag.logStart();
 
+  try {
     validateUUID(input.answerId, 'answerId');
 
-    // ── 2. Load the answer ─────────────────────────────────────────────
-    const { data: answer, error: answerError } = await supabase
-      .from('mock_answers')
-      .select(`
-        answer_id,
-        attempt_id,
-        question_id,
-        evaluation_status,
-        awarded_marks,
-        evaluator_feedback,
-        mock_attempts!inner(
-          attempt_id,
-          student_id,
-          test_id,
-          status
-        ),
-        questions!inner(
-          question_id,
-          question_type,
-          marks
-        )
-      `)
-      .eq('answer_id', input.answerId)
-      .single();
+    const result = await diag.measureOp('rpc.evaluate_subjective_answer', async () => {
+      const { data, error } = await supabase.rpc('evaluate_subjective_answer', {
+        p_answer_id: input.answerId,
+        p_awarded_marks: input.awardedMarks,
+        p_feedback: input.feedback ?? null,
+      });
 
-    if (answerError || !answer) {
-      return { success: false, error: 'Answer not found.' };
-    }
-
-    const attempt = answer.mock_attempts as any;
-    const question = answer.questions as any;
-
-    // ── 3. Validate it's a subjective question ─────────────────────────
-    if (question.question_type !== 'subjective') {
-      return { success: false, error: 'This question is not subjective and cannot be manually evaluated.' };
-    }
-
-    // ── 4. Validate marks ──────────────────────────────────────────────
-    if (typeof input.awardedMarks !== 'number' || !Number.isFinite(input.awardedMarks)) {
-      return { success: false, error: 'Awarded marks must be a valid number.' };
-    }
-    if (input.awardedMarks < 0) {
-      return { success: false, error: 'Awarded marks cannot be negative.' };
-    }
-    if (input.awardedMarks > question.marks) {
-      return { success: false, error: `Awarded marks (${input.awardedMarks}) cannot exceed question maximum (${question.marks}).` };
-    }
-
-    // ── 5. Check attempt not finalized ─────────────────────────────────
-    if (attempt.status === 'submitted' || attempt.status === 'timed_out') {
-      // Check if result is already released
-      const { data: result } = await supabase
-        .from('mock_results')
-        .select('is_released')
-        .eq('attempt_id', attempt.attempt_id)
-        .single();
-
-      if (result?.is_released) {
-        return { success: false, error: 'This attempt has been finalized and released. Evaluation cannot be modified.' };
-      }
-    }
-
-    // ── 6. Authorize ───────────────────────────────────────────────────
-    const isSuperOrAcademicAdmin = await isAdminUser(user.userId);
-
-    if (!isSuperOrAcademicAdmin) {
-      const teacherId = await resolveTeacherId(user.userId);
-      if (!teacherId) {
-        return { success: false, error: 'Teacher profile not found.' };
+      if (error) {
+        throw error;
       }
 
-      const authorized = await verifyTeacherAuthorization(teacherId, input.answerId);
-      if (!authorized) {
-        return { success: false, error: 'You are not authorized to evaluate this student\'s answer.' };
-      }
-    }
-
-    // ── 7. Save evaluation ─────────────────────────────────────────────
-    const previousMarks = answer.awarded_marks;
-    const previousFeedback = answer.evaluator_feedback;
-
-    const { error: updateError } = await supabase
-      .from('mock_answers')
-      .update({
-        evaluation_status: 'manual_evaluated',
-        awarded_marks: input.awardedMarks,
-        evaluated_by: user.userId,
-        evaluated_at: new Date().toISOString(),
-        evaluator_feedback: input.feedback ?? null,
-      })
-      .eq('answer_id', input.answerId);
-
-    if (updateError) {
-      return { success: false, error: `Failed to save evaluation: ${extractErrorMessage(updateError)}` };
-    }
-
-    // ── 8. Audit log ───────────────────────────────────────────────────
-    await auditService.log({
-      action: 'subjective_evaluation_saved',
-      resourceType: 'mock_answers',
-      resourceId: input.answerId,
-      oldValue: { awardedMarks: previousMarks, feedback: previousFeedback },
-      newValue: { awardedMarks: input.awardedMarks, feedback: input.feedback },
-      metadata: {
-        attemptId: attempt.attempt_id,
-        questionId: question.question_id,
-        studentId: attempt.student_id,
-        testId: attempt.test_id,
-      },
+      return data as { success: boolean; data?: { answerId: string }; error?: string };
     });
 
-    return { success: true, data: { answerId: input.answerId } };
+    if (!result?.success) {
+      const errorMsg = result?.error || 'Failed to save evaluation.';
+      diag.logFailed(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    diag.logComplete();
+    return { success: true, data: { answerId: result.data?.answerId || input.answerId } };
   } catch (err) {
+    diag.logFailed(err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }
 
-/**
- * Finalize subjective evaluation for an attempt.
- *
- * Verifies all subjective answers are evaluated, recalculates the final
- * score (objective + subjective), updates mock_results, and marks the
- * result as released.
- */
 export async function finalizeSubjectiveEvaluation(
   input: FinalizeInput,
 ): Promise<ApiResponse<{ resultId: string }>> {
-  console.error('[FINALIZE_TRACE] ENTERED finalizeSubjectiveEvaluation', {
-    attemptId: input.attemptId,
-  });
-
   try {
-    // ── 1. Authenticate ────────────────────────────────────────────────
-    const user = await resolveCurrentUser();
-    if (!user.success) return { success: false, error: user.error };
-
     validateUUID(input.attemptId, 'attemptId');
 
-    const isSuperOrAcademicAdmin = await isAdminUser(user.userId);
-    let teacherId: string | null = null;
-
-    if (!isSuperOrAcademicAdmin) {
-      teacherId = await resolveTeacherId(user.userId);
-      if (!teacherId) {
-        return { success: false, error: 'Teacher profile not found.' };
-      }
-    }
-
-    console.group('[SUBJ_FINALIZE_DEBUG] finalizeSubjectiveEvaluation() Flow');
-    console.log('[SUBJ_FINALIZE_DEBUG] START_AUTH', {
-      attemptId: input.attemptId,
-      authUserId: user.userId,
-      role: user.role,
-      isSuperOrAcademicAdmin,
-      resolvedTeacherId: teacherId,
+    const { data, error } = await supabase.rpc('finalize_subjective_evaluation', {
+      p_attempt_id: input.attemptId,
     });
 
-    // ── 2. Load attempt ────────────────────────────────────────────────
-    const { data: attempt, error: attemptError } = await supabase
-      .from('mock_attempts')
-      .select('attempt_id, student_id, test_id, institute_id, status')
-      .eq('attempt_id', input.attemptId)
-      .single();
-
-    if (attemptError || !attempt) {
-      console.warn('[SUBJ_FINALIZE_DEBUG] Attempt not found:', attemptError);
-      console.groupEnd();
-      return { success: false, error: 'Attempt not found.' };
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
     }
 
-    // ── 3. Authorize ───────────────────────────────────────────────────
-    if (!isSuperOrAcademicAdmin && teacherId) {
-      // 1. Get all batches this student is enrolled in
-      const { data: studentBatches, error: sbError } = await supabase
-        .from('batch_students')
-        .select('batch_id')
-        .eq('student_id', attempt.student_id);
-
-      const studentBatchIds = (studentBatches ?? []).map((sb) => sb.batch_id);
-
-      // 2. Get all batch subjects assigned to this teacher
-      const { data: teacherAssignments, error: bstError } = await supabase
-        .from('batch_subject_teachers')
-        .select(`
-          batch_subject_id,
-          batch_subjects!inner(
-            batch_id,
-            subject_id
-          )
-        `)
-        .eq('teacher_id', teacherId);
-
-      const assignedBatchIds = (teacherAssignments ?? []).map(
-        (ta: any) => ta.batch_subjects?.batch_id,
-      ).filter(Boolean);
-
-      const isAuthorized = studentBatchIds.some((batchId) =>
-        assignedBatchIds.includes(batchId),
-      );
-
-      console.log('[FINALIZE_ASSIGNMENT_DEBUG]', {
-        teacherId,
-        attemptId: input.attemptId,
-        studentId: attempt.student_id,
-        studentBatchIds,
-        teacherAssignmentCount: teacherAssignments?.length ?? 0,
-        assignedBatchIds,
-        isAuthorized,
-        error: sbError || bstError,
-      });
-
-      if (!isAuthorized) {
-        console.warn('[SUBJ_FINALIZE_DEBUG] Teacher not authorized for student in attempt:', attempt.attempt_id);
-        console.groupEnd();
-        return { success: false, error: 'You are not authorized to finalize this evaluation.' };
-      }
+    const res = data as { success: boolean; data?: { resultId: string; totalScore?: number; maxScore?: number; percentage?: number }; error?: string };
+    if (!res || !res.success) {
+      return { success: false, error: res?.error || 'Failed to finalize subjective evaluation.' };
     }
 
-    // ── 4. Load all answers for this attempt ───────────────────────────
-    const { data: answers, error: answersError } = await supabase
-      .from('mock_answers')
-      .select(`
-        answer_id,
-        question_id,
-        marks_awarded,
-        awarded_marks,
-        evaluation_status,
-        questions!inner(
-          question_type,
-          marks
-        )
-      `)
-      .eq('attempt_id', input.attemptId);
-
-    if (answersError || !answers) {
-      console.warn('[SUBJ_FINALIZE_DEBUG] Failed to load answers:', answersError);
-      console.groupEnd();
-      return { success: false, error: 'Failed to load answers.' };
-    }
-
-    // ── 5. Check all subjective answers are evaluated ──────────────────
-    const subjectiveAnswers = answers.filter(
-      (a) => (a.questions as any).question_type === 'subjective',
-    );
-
-    if (subjectiveAnswers.length === 0) {
-      console.warn('[SUBJ_FINALIZE_DEBUG] No subjective questions found in attempt');
-      console.groupEnd();
-      return { success: false, error: 'This attempt contains no subjective questions.' };
-    }
-
-    const pendingAnswers = subjectiveAnswers.filter(
-      (a) => a.evaluation_status !== 'manual_evaluated',
-    );
-
-    console.log('[SUBJ_FINALIZE_DEBUG] ANSWERS_FETCH', {
-      answerCount: answers.length,
-      subjectiveAnswerCount: subjectiveAnswers.length,
-      pendingAnswerCount: pendingAnswers.length,
-      evaluatedAnswerCount: subjectiveAnswers.length - pendingAnswers.length,
-      answersSummary: subjectiveAnswers.map((a: any) => ({
-        answerId: a.answer_id,
-        questionId: a.question_id,
-        evaluationStatus: a.evaluation_status,
-        awardedMarks: a.awarded_marks,
-        marksAwarded: a.marks_awarded,
-        maxMarks: (a.questions as any)?.marks,
-      })),
-    });
-
-    if (pendingAnswers.length > 0) {
-      console.warn('[SUBJ_FINALIZE_DEBUG] Subjective answers still pending:', pendingAnswers.length);
-      console.groupEnd();
-      return {
-        success: false,
-        error: `${pendingAnswers.length} subjective answer(s) still pending evaluation.`,
-      };
-    }
-
-    // ── 6. Load existing result (created at submission time) ──────────
-    console.log('[SUBJ_FINALIZE_DEBUG] BEFORE_RESULT_SELECT', { attemptId: input.attemptId });
-
-    const { data: existingResult, error: selectResultError } = await supabase
-      .from('mock_results')
-      .select('result_id, total_score, max_score, percentage, is_released')
-      .eq('attempt_id', input.attemptId)
-      .maybeSingle();
-
-    console.log('[SUBJ_FINALIZE_DEBUG] AFTER_RESULT_SELECT', {
-      found: Boolean(existingResult),
-      resultId: existingResult?.result_id ?? null,
-      existingTotalScore: existingResult?.total_score ?? null,
-      existingMaxScore: existingResult?.max_score ?? null,
-      existingPercentage: existingResult?.percentage ?? null,
-      selectErrorCode: selectResultError?.code ?? null,
-      selectErrorMessage: selectResultError?.message ?? null,
-      status: existingResult ? 'RESULT_SELECT_ALLOWED' : 'RESULT_SELECT_BLOCKED',
-    });
-
-    // ── 7. Calculate final score ───────────────────────────────────────
-    let objectiveScore = 0;
-    let subjectiveScore = 0;
-    let maxScore = 0;
-    let correctCount = 0;
-    let wrongCount = 0;
-    let skippedCount = 0;
-
-    for (const answer of answers) {
-      const question = answer.questions as any;
-      maxScore += question.marks;
-
-      if (question.question_type === 'subjective') {
-        // Use awarded_marks from manual evaluation
-        subjectiveScore += answer.awarded_marks ?? 0;
-      } else {
-        // Use existing auto-evaluated marks
-        objectiveScore += answer.marks_awarded ?? 0;
-
-        if (answer.marks_awarded !== null) {
-          if (answer.marks_awarded > 0) {
-            correctCount++;
-          } else if (answer.marks_awarded < 0) {
-            wrongCount++;
-          } else {
-            skippedCount++;
-          }
-        } else {
-          skippedCount++;
-        }
-      }
-    }
-
-    const totalScore = objectiveScore + subjectiveScore;
-    const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
-
-    console.log('[SUBJ_FINALIZE_DEBUG] SCORE_CALCULATION', {
-      objectiveScore,
-      subjectiveScore,
-      totalScore,
-      maxScore,
-      percentage,
-      correctCount,
-      wrongCount,
-      skippedCount,
-    });
-
-    // ── 8. Update or insert mock_results ───────────────────────────────
-    if (existingResult) {
-      console.log('[SUBJ_FINALIZE_DEBUG] RESULT_UPDATE_PAYLOAD', {
-        resultId: existingResult.result_id,
-        total_score: totalScore,
-        percentage,
-        correct_count: correctCount,
-        wrong_count: wrongCount,
-        skipped_count: skippedCount,
-        is_released: false,
-      });
-
-      // Diagnostic update
-      const { data: updateData, error: updateError } = await supabase
-        .from('mock_results')
-        .update({
-          total_score: totalScore,
-          percentage,
-          correct_count: correctCount,
-          wrong_count: wrongCount,
-          skipped_count: skippedCount,
-        })
-        .eq('result_id', existingResult.result_id)
-        .select();
-
-      console.log('[SUBJ_FINALIZE_DEBUG] RESULT_UPDATE_RESPONSE', {
-        updateError: updateError?.code ?? null,
-        updateMessage: updateError?.message ?? null,
-        updateDetails: (updateError as any)?.details ?? null,
-        updateHint: (updateError as any)?.hint ?? null,
-        returnedDataCount: updateData?.length ?? 0,
-        returnedData: updateData ?? null,
-      });
-
-      if (updateError) {
-        console.groupEnd();
-        return { success: false, error: `Failed to update result: ${extractErrorMessage(updateError)}` };
-      }
-
-      // Diagnostic post-update verification select
-      const { data: verifyRow, error: verifyError } = await supabase
-        .from('mock_results')
-        .select('result_id, total_score, max_score, percentage, is_released, released_at')
-        .eq('result_id', existingResult.result_id)
-        .maybeSingle();
-
-      console.log('[SUBJ_FINALIZE_DEBUG] POST_UPDATE_VERIFY', {
-        found: Boolean(verifyRow),
-        totalScore: verifyRow?.total_score ?? null,
-        maxScore: verifyRow?.max_score ?? null,
-        percentage: verifyRow?.percentage ?? null,
-        isReleased: verifyRow?.is_released ?? null,
-        releasedAt: verifyRow?.released_at ?? null,
-        errorCode: verifyError?.code ?? null,
-        errorMessage: verifyError?.message ?? null,
-      });
-
-      // ── 9. Audit log ───────────────────────────────────────────────
-      await auditService.log({
-        action: 'subjective_evaluation_finalized',
-        resourceType: 'mock_results',
-        resourceId: existingResult.result_id,
-        metadata: {
-          attemptId: input.attemptId,
-          studentId: attempt.student_id,
-          testId: attempt.test_id,
-          objectiveScore,
-          subjectiveScore,
-          totalScore,
-          maxScore,
-          subjectiveCount: subjectiveAnswers.length,
-        },
-      });
-
-      console.log('[SUBJ_FINALIZE_DEBUG] FINAL_RESULT', {
-        success: true,
-        attemptId: input.attemptId,
-        resultId: existingResult.result_id,
-        totalScore,
-        maxScore,
-        percentage,
-        error: null,
-      });
-      console.groupEnd();
-
-      return { success: true, data: { resultId: existingResult.result_id } };
-    } else {
-      console.warn('[SUBJ_FINALIZE_DEBUG] FALLBACK_TO_INSERT_BRANCH', { attemptId: input.attemptId });
-
-      // Create new result (shouldn't normally happen — result is created during submission)
-      const { data: newResult, error: insertError } = await supabase
-        .from('mock_results')
-        .insert({
-          attempt_id: input.attemptId,
-          test_id: attempt.test_id,
-          student_id: attempt.student_id,
-          institute_id: attempt.institute_id,
-          total_score: totalScore,
-          max_score: maxScore,
-          percentage,
-          correct_count: correctCount,
-          wrong_count: wrongCount,
-          skipped_count: skippedCount,
-          total_time_seconds: 0,
-          avg_time_per_question: 0,
-        })
-        .select('result_id')
-        .single();
-
-      if (insertError) {
-        console.groupEnd();
-        return { success: false, error: `Failed to create result: ${extractErrorMessage(insertError)}` };
-      }
-
-      await auditService.log({
-        action: 'subjective_evaluation_finalized',
-        resourceType: 'mock_results',
-        resourceId: newResult.result_id,
-        metadata: {
-          attemptId: input.attemptId,
-          studentId: attempt.student_id,
-          testId: attempt.test_id,
-          objectiveScore,
-          subjectiveScore,
-          totalScore,
-          maxScore,
-          subjectiveCount: subjectiveAnswers.length,
-        },
-      });
-
-      console.log('[SUBJ_FINALIZE_DEBUG] FINAL_RESULT (INSERT)', {
-        success: true,
-        attemptId: input.attemptId,
-        resultId: newResult.result_id,
-        totalScore,
-        maxScore,
-        percentage,
-        error: null,
-      });
-      console.groupEnd();
-
-      return { success: true, data: { resultId: newResult.result_id } };
-    }
+    return {
+      success: true,
+      data: { resultId: res.data?.resultId || '' },
+    };
   } catch (err) {
-    console.error('[SUBJ_FINALIZE_DEBUG] CATCH_ERROR', err);
     return { success: false, error: extractErrorMessage(err) };
   }
 }

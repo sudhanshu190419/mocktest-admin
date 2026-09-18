@@ -74,14 +74,14 @@ export interface UpsertExplanationParams {
  * const { data: explanation, isLoading } = useQuestionExplanation(questionId);
  */
 export function useQuestionExplanation(questionId: string | undefined | null) {
-  return useQuery<QuestionExplanation>({
+  return useQuery<QuestionExplanation | null>({
     queryKey: questionKeys.explanations.list(questionId ?? undefined),
     queryFn: async () => {
       const result = await getQuestionExplanation(questionId!);
       if (!result.success) {
         throw new Error(result.error ?? 'Failed to fetch question explanation.');
       }
-      return result.data!;
+      return result.data ?? null;
     },
     enabled: !!questionId,
   });

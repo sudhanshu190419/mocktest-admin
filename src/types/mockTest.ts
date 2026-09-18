@@ -134,6 +134,16 @@ export interface QuestionSnapshotImage {
   altText: string | null;
   /** 1-indexed display order within the question. */
   orderSequence: number;
+  /** Optimization profile. */
+  imageProfile?: string;
+  /** Pixel width. */
+  width?: number | null;
+  /** Pixel height. */
+  height?: number | null;
+  /** Byte size. */
+  sizeBytes?: number | null;
+  /** MIME type. */
+  mimeType?: string | null;
 }
 
 /**
@@ -151,6 +161,16 @@ export interface QuestionSnapshotOptionImage {
   altText: string | null;
   /** 1-indexed display order within the option. */
   displayOrder: number;
+  /** Optimization profile. */
+  imageProfile?: string;
+  /** Pixel width. */
+  width?: number | null;
+  /** Pixel height. */
+  height?: number | null;
+  /** Byte size. */
+  sizeBytes?: number | null;
+  /** MIME type. */
+  mimeType?: string | null;
 }
 
 /**
@@ -514,6 +534,16 @@ export interface CreateQuestionImageEntry {
   altText?: string | null;
   /** 1-indexed display order within the question. */
   displayOrder?: number;
+  /** Optimization profile ('simple_diagram' | 'detailed_image'). */
+  imageProfile?: string;
+  /** Pixel width after optimization. */
+  width?: number | null;
+  /** Pixel height after optimization. */
+  height?: number | null;
+  /** Byte size of optimized file. */
+  sizeBytes?: number | null;
+  /** MIME type (e.g. 'image/webp'). */
+  mimeType?: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -658,6 +688,16 @@ export interface CreateOptionImageEntry {
   altText?: string | null;
   /** 1-indexed display order. Defaults to next available sequence. */
   displayOrder?: number;
+  /** Optimization profile ('simple_diagram' | 'detailed_image'). */
+  imageProfile?: string;
+  /** Pixel width after optimization. */
+  width?: number | null;
+  /** Pixel height after optimization. */
+  height?: number | null;
+  /** Byte size of optimized file. */
+  sizeBytes?: number | null;
+  /** MIME type (e.g. 'image/webp'). */
+  mimeType?: string | null;
 }
 
 /**
@@ -893,6 +933,16 @@ export interface QuestionImage {
   orderSequence: number;
   /** UTC timestamp of row creation. */
   createdAt: string;
+  /** Optimization profile: 'simple_diagram' | 'detailed_image' */
+  imageProfile?: string;
+  /** Pixel width of optimized asset */
+  width?: number | null;
+  /** Pixel height of optimized asset */
+  height?: number | null;
+  /** File size in bytes */
+  sizeBytes?: number | null;
+  /** MIME type (e.g. 'image/webp') */
+  mimeType?: string | null;
 }
 
 /**

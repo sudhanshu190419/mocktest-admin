@@ -66,6 +66,16 @@ export interface OptionImage {
   createdAt: string;
   /** UTC timestamp of last modification. */
   updatedAt: string;
+  /** Optimization profile. */
+  imageProfile?: string;
+  /** Pixel width. */
+  width?: number | null;
+  /** Pixel height. */
+  height?: number | null;
+  /** Byte size of file. */
+  sizeBytes?: number | null;
+  /** MIME type. */
+  mimeType?: string | null;
 }
 
 /**
@@ -84,6 +94,16 @@ export interface UploadOptionImageInput {
   altText?: string | null;
   /** 1-indexed display order. Defaults to next available sequence. */
   displayOrder?: number;
+  /** Optimization profile ('simple_diagram' | 'detailed_image'). */
+  imageProfile?: string;
+  /** Pixel width after optimization. */
+  width?: number | null;
+  /** Pixel height after optimization. */
+  height?: number | null;
+  /** Byte size of file. */
+  sizeBytes?: number | null;
+  /** MIME type (e.g. 'image/webp'). */
+  mimeType?: string | null;
   /** Optional upload progress callback. */
   onProgress?: (loaded: number, total: number) => void;
 }
@@ -134,6 +154,11 @@ interface DbOptionImage {
   display_order: number;
   created_at: string;
   updated_at: string;
+  image_profile?: string;
+  width?: number | null;
+  height?: number | null;
+  size_bytes?: number | null;
+  mime_type?: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -236,6 +261,11 @@ function mapOptionImage(db: DbOptionImage): OptionImage {
     displayOrder: db.display_order,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
+    imageProfile: db.image_profile ?? 'simple_diagram',
+    width: db.width ?? null,
+    height: db.height ?? null,
+    sizeBytes: db.size_bytes ?? null,
+    mimeType: db.mime_type ?? null,
   };
 }
 
@@ -418,6 +448,11 @@ export async function uploadOptionImage(
       storage_path: storagePath,
       alt_text: altText ?? null,
       display_order: finalDisplayOrder,
+      image_profile: input.imageProfile ?? 'simple_diagram',
+      width: input.width ?? null,
+      height: input.height ?? null,
+      size_bytes: input.sizeBytes ?? (file instanceof Blob || (typeof File !== 'undefined' && file instanceof File) ? file.size : null),
+      mime_type: input.mimeType ?? (file instanceof Blob || (typeof File !== 'undefined' && file instanceof File) ? file.type : 'image/webp'),
     };
 
     const { data: dbData, error: dbError } = await supabase
