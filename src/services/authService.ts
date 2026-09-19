@@ -224,12 +224,16 @@ export async function signUp(
 
     const { phone, password, name } = input;
 
+    const instituteId = process.env.NEXT_PUBLIC_INSTITUTE_ID || 'e97ebfd2-ca4d-4637-a583-1078568f1b2f';
+
     const { data: authData, error: authError } = await supabase.auth.signUp({
       phone,
       password,
       options: {
         data: {
           full_name: name,
+          institute_id: instituteId,
+          role: 'student',
         },
       },
     });
@@ -334,10 +338,18 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
     }
 
     const { phone, password } = input;
+    const trimmedPhone = phone.trim();
+    const formattedPhone = trimmedPhone.startsWith('+')
+      ? trimmedPhone
+      : trimmedPhone.length === 10
+      ? `+91${trimmedPhone}`
+      : trimmedPhone.startsWith('91') && trimmedPhone.length === 12
+      ? `+${trimmedPhone}`
+      : trimmedPhone;
 
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
-        phone,
+        phone: formattedPhone,
         password,
       });
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import {
   WarningCircle,
   ArrowsClockwise,
@@ -103,7 +104,14 @@ export default function StudentRecordingsHubPage() {
   }, []);
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="store-container space-y-7 pb-12">
+      {/* Breadcrumbs */}
+      <nav className="store-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/student/overview">Student Hub</Link>
+        <span aria-hidden="true">/</span>
+        <span>Recorded Classes</span>
+      </nav>
+
       {/* Header & Controls Section */}
       <StudentRecordingsHeader
         totalCount={hubData?.totalCount ?? 0}
@@ -129,7 +137,7 @@ export default function StudentRecordingsHubPage() {
 
       {/* Error State Banner */}
       {error && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-3xl bg-rose-50 border border-rose-200 text-rose-800 shadow-xs">
+        <div className="student-card border-rose-200 bg-rose-50/70 text-rose-800 flex flex-col sm:flex-row items-center justify-between gap-4 p-5">
           <div className="flex items-center gap-3">
             <WarningCircle size={24} weight="fill" className="text-rose-600 flex-shrink-0" />
             <div>
@@ -152,13 +160,10 @@ export default function StudentRecordingsHubPage() {
       {loading ? (
         <StudentRecordingsSkeleton />
       ) : !error && hubData && hubData.totalCount === 0 ? (
-        /* Zero recordings in total */
         <StudentRecordingsEmptyState isFiltered={false} />
       ) : !error && filteredRecordings.length === 0 ? (
-        /* Filters produced zero matches */
         <StudentRecordingsEmptyState isFiltered={true} onResetFilters={handleResetFilters} />
       ) : (
-        /* Recording Cards Grid */
         <StudentRecordingsGrid recordings={filteredRecordings} />
       )}
     </div>

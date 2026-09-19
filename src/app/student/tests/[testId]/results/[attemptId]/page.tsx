@@ -118,8 +118,17 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   if (!resultData) return null;
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto flex flex-col gap-6">
+    <div className="store-container space-y-7 pb-16">
+      {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
+      <nav className="store-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/student/overview">Student Hub</Link>
+        <span aria-hidden="true">/</span>
+        <Link href="/student/results">Results</Link>
+        <span aria-hidden="true">/</span>
+        <span>{resultData.testTitle}</span>
+      </nav>
+
+      <div className="flex flex-col gap-6">
         {/* 1. Result Hero */}
         <ResultHero
           testTitle={resultData.testTitle}

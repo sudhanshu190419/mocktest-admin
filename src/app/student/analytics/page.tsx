@@ -1097,19 +1097,17 @@ export default function StudentAnalyticsPage() {
   }, [refetchSummary, refetchTrend, refetchSubject, refetchAttemptedTests, refetchChapter, refetchWeak, refetchStrong]);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="store-container space-y-8 pb-12">
       {/* ── Top Header ────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <Link
-            href="/student/overview"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-2 transition-colors"
-          >
-            <ArrowLeft size={14} weight="bold" />
-            <span>Back to Dashboard</span>
-          </Link>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Performance Analytics</h1>
-          <p className="text-xs text-slate-500 mt-1 max-w-xl leading-relaxed">
+          <nav className="store-breadcrumb" aria-label="Breadcrumb">
+            <Link href="/student/overview">Student Hub</Link>
+            <span aria-hidden="true">/</span>
+            <span>Performance Analytics</span>
+          </nav>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Performance Analytics</h1>
+          <p className="student-hero-lead">
             Track your mock test accuracy, score trajectories, and identify targeted syllabus areas to improve.
           </p>
         </div>

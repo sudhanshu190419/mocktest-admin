@@ -36,6 +36,41 @@
   --shadow-inner-refract: inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
   --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.04);
 
+  /* ── Marketing & Storefront Tokens (from website) ── */
+  --color-page: #f0f9ff;
+  --color-page-tint: #e0f2fe;
+  --color-border: #bae6fd;
+  --color-divider: #e0f2fe;
+
+  --color-brand: #0284c7;
+  --color-brand-hover: #0369a1;
+  --color-brand-soft: #e0f2fe;
+
+  --color-accent: #f59e0b;
+  --color-accent-soft: #fef3c7;
+
+  --color-ink: #0f172a;
+  --color-ink-secondary: #475569;
+  --color-ink-muted: #94a3b8;
+  --color-ink-inverse: #ffffff;
+
+  --color-success: #059669;
+  --color-error: #dc2626;
+  --color-warning: #f59e0b;
+  --color-tint-green: #e6f4ea;
+  --color-tint-red: #fce8e6;
+  --color-tint-amber: #fef7e0;
+
+  --font-display: var(--font-jakarta), var(--font-inter), system-ui, sans-serif;
+
+  --radius-field: 12px;
+  --radius-card: 16px;
+  --radius-hero: 24px;
+  --radius-pill: 999px;
+
+  --shadow-pop: 0 4px 8px rgba(2, 132, 199, 0.1), 0 12px 28px rgba(2, 132, 199, 0.12);
+  --shadow-sheet: 0 8px 16px rgba(2, 132, 199, 0.14), 0 24px 48px rgba(2, 132, 199, 0.16);
+
   --animate-fadeIn: fadeIn 0.5s ease-out;
 
   @keyframes fadeIn {

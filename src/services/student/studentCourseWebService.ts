@@ -567,8 +567,9 @@ export async function fetchStudentEnrolledCourses(
     // 5. Batched query: get all content IDs associated with enrolled batches & subjects
     const { data: batchSubjectRows } = await supabase
       .from('batch_subjects')
-      .select('batch_subject_id, batch_id')
-      .in('batch_id', allAssignedBatchIds.length > 0 ? allAssignedBatchIds : batchIds);
+      .select('batch_subject_id, batch_id, subject_id, subjects:subject_id (name, code)')
+      .in('batch_id', allAssignedBatchIds.length > 0 ? allAssignedBatchIds : batchIds)
+      .eq('is_active', true);
 
     const batchSubjectIds = (batchSubjectRows || []).map((bs: any) => bs.batch_subject_id);
     const batchToCourseMap = new Map<string, string>();
@@ -576,6 +577,32 @@ export async function fetchStudentEnrolledCourses(
       if (row.batch_id && row.course_id) {
         batchToCourseMap.set(row.batch_id, row.course_id);
       }
+    });
+
+    // Group fallback subjects by batch_id
+    const batchToSubjectsListMap = new Map<string, SubjectBadgeSummary[]>();
+    (batchSubjectRows || []).forEach((bs: any) => {
+      const bId = bs.batch_id;
+      if (!batchToSubjectsListMap.has(bId)) {
+        batchToSubjectsListMap.set(bId, []);
+      }
+      const s = Array.isArray(bs.subjects) ? bs.subjects[0] : bs.subjects;
+      const sName = s?.name || 'Subject';
+      batchToSubjectsListMap.get(bId)!.push({
+        subjectId: bs.subject_id,
+        batchSubjectId: bs.batch_subject_id,
+        subjectName: sName,
+        code: s?.code || '',
+        emoji: getSubjectEmoji(sName),
+        color: getSubjectColor(sName),
+        teacherName: null,
+        videoCount: 0,
+        pdfCount: 0,
+        notesCount: 0,
+        assignmentCount: 0,
+        totalContentCount: 0,
+        mockTestsCount: 0,
+      });
     });
 
     let completedSet = new Set<string>();
@@ -613,6 +640,7 @@ export async function fetchStudentEnrolledCourses(
     const courses: EnrolledCourseCardItem[] = rawEnrolled.map((c) => {
       const cid = c.course_id;
       const batchInfo = courseBatchMap.get(cid) || {};
+      const targetBatchId = c.batch_id || batchInfo?.batch_id || '';
       const summaryItems: any[] = contentSummaryMap[cid] || [];
 
       let totalLectures = 0;
@@ -621,39 +649,45 @@ export async function fetchStudentEnrolledCourses(
       let totalAssignments = 0;
       let totalMockTests = 0;
 
-      const subjects: SubjectBadgeSummary[] = summaryItems.map((item) => {
-        const counts = item.contentCountsByType || {};
-        const vCount = counts.video || 0;
-        const pCount = counts.pdf || 0;
-        const nCount = counts.notes || 0;
-        const aCount = counts.assignment || 0;
-        const mTests = Array.isArray(item.mockTests) ? item.mockTests.length : 0;
-        const totalC = vCount + pCount + nCount + aCount;
+      let subjects: SubjectBadgeSummary[] = [];
 
-        totalLectures += vCount;
-        totalPdfs += pCount;
-        totalNotes += nCount;
-        totalAssignments += aCount;
-        totalMockTests += mTests;
+      if (summaryItems.length > 0) {
+        subjects = summaryItems.map((item) => {
+          const counts = item.contentCountsByType || {};
+          const vCount = counts.video || 0;
+          const pCount = counts.pdf || 0;
+          const nCount = counts.notes || 0;
+          const aCount = counts.assignment || 0;
+          const mTests = Array.isArray(item.mockTests) ? item.mockTests.length : 0;
+          const totalC = vCount + pCount + nCount + aCount;
 
-        const sName = item.subjectName || 'Subject';
+          totalLectures += vCount;
+          totalPdfs += pCount;
+          totalNotes += nCount;
+          totalAssignments += aCount;
+          totalMockTests += mTests;
 
-        return {
-          subjectId: item.subjectId,
-          batchSubjectId: item.batchSubjectId,
-          subjectName: sName,
-          code: item.subjectCode || '',
-          emoji: getSubjectEmoji(sName),
-          color: getSubjectColor(sName),
-          teacherName: item.teacherName || null,
-          videoCount: vCount,
-          pdfCount: pCount,
-          notesCount: nCount,
-          assignmentCount: aCount,
-          totalContentCount: totalC,
-          mockTestsCount: mTests,
-        };
-      });
+          const sName = item.subjectName || 'Subject';
+
+          return {
+            subjectId: item.subjectId,
+            batchSubjectId: item.batchSubjectId,
+            subjectName: sName,
+            code: item.subjectCode || '',
+            emoji: getSubjectEmoji(sName),
+            color: getSubjectColor(sName),
+            teacherName: item.teacherName || null,
+            videoCount: vCount,
+            pdfCount: pCount,
+            notesCount: nCount,
+            assignmentCount: aCount,
+            totalContentCount: totalC,
+            mockTestsCount: mTests,
+          };
+        });
+      } else if (targetBatchId && batchToSubjectsListMap.has(targetBatchId)) {
+        subjects = batchToSubjectsListMap.get(targetBatchId) || [];
+      }
 
       const firstSub = subjects[0];
       const courseContentIds = courseContentIdsMap.get(cid) || [];
@@ -674,10 +708,10 @@ export async function fetchStudentEnrolledCourses(
       return {
         courseId: cid,
         title: c.title || 'Course',
-        description: c.description || null,
+        description: c.description || c.short_description || null,
         thumbnailUrl: c.thumbnail_url || null,
         category: c.category || batchInfo?.streams?.name || 'Academic Course',
-        batchId: c.batch_id || batchInfo?.batch_id || '',
+        batchId: targetBatchId,
         batchName: c.batch_name || batchInfo?.name || 'Primary Batch',
         batchCode: batchInfo?.batch_code || '',
         academicYear: batchInfo?.academic_year || '',
@@ -722,15 +756,16 @@ export async function fetchCourseDetailWorkspace(
         course_id,
         title,
         description,
-        thumbnail_url,
-        category,
+        thumbnail_bucket,
+        thumbnail_path,
         stream_id,
         streams:stream_id (name)
       `)
       .eq('course_id', courseId)
-      .single();
+      .maybeSingle();
 
     if (cErr || !courseRow) {
+      console.warn('[studentCourseWebService] fetchCourseDetailWorkspace error:', cErr);
       return { data: null, error: 'Course not found or inaccessible' };
     }
 
@@ -973,8 +1008,8 @@ export async function fetchCourseDetailWorkspace(
           courseId,
           title: courseRow.title || 'Course Details',
           description: courseRow.description || null,
-          category: courseRow.category || streamName,
-          thumbnailUrl: courseRow.thumbnail_url || null,
+          category: streamName,
+          thumbnailUrl: null,
           streamName,
           batchId,
           batchName,
@@ -1089,9 +1124,18 @@ export async function fetchSubjectLearningWorkspace(
     // 3. Fetch Course Info
     const { data: courseRow } = await supabase
       .from('courses')
-      .select('course_id, title, category')
+      .select(`
+        course_id,
+        title,
+        stream_id,
+        streams:stream_id (name)
+      `)
       .eq('course_id', courseId)
-      .single();
+      .maybeSingle();
+
+    const courseStream = Array.isArray(courseRow?.streams)
+      ? (courseRow.streams[0] as any)?.name
+      : (courseRow?.streams as any)?.name;
 
     // 4. Resolve Student ID
     const studentId = await resolveCurrentStudentId(userId);
@@ -1271,7 +1315,7 @@ export async function fetchSubjectLearningWorkspace(
         course: {
           courseId,
           title: courseRow?.title || 'Course',
-          category: courseRow?.category || 'Academic Track',
+          category: courseStream || 'Academic Track',
         },
         sections,
         allItems,

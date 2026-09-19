@@ -177,7 +177,18 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="store-container space-y-7 pb-16">
+      {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
+      <nav className="store-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/student/overview">Student Hub</Link>
+        <span aria-hidden="true">/</span>
+        <Link href="/student/results">Results</Link>
+        <span aria-hidden="true">/</span>
+        <Link href={`/student/tests/${testId}/results/${attemptId}`}>{reviewData.test.title}</Link>
+        <span aria-hidden="true">/</span>
+        <span>Solutions & Review</span>
+      </nav>
+
       {/* 1. Header with Filters */}
       <ReviewHeader
         testTitle={reviewData.test.title}
@@ -199,7 +210,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
       />
 
       {/* 2. Main Body: Split Pane (Questions on Left, Navigator on Right) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: Detailed Question View (8 cols) */}
         <div className="lg:col-span-8 flex flex-col gap-6 min-w-0">
           {activeQuestion ? (
@@ -230,7 +241,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
             }}
           />
         </aside>
-      </main>
+      </div>
 
       {/* 3. Mobile Navigator Matrix (Bottom of page on mobile) */}
       <div className="lg:hidden max-w-7xl w-full mx-auto px-4 pb-6">

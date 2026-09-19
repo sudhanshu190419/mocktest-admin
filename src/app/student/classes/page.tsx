@@ -7,24 +7,17 @@ import {
   Calendar,
   Clock,
   BookOpen,
-  User,
-  GraduationCap,
   MagnifyingGlass,
-  Funnel,
   ArrowsClockwise,
-  ArrowLeft,
   CheckCircle,
   WarningCircle,
-  Sparkle,
   FilmReel
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
 import {
   fetchStudentLiveClassesHubData,
   filterStudentLiveClasses,
-  type StudentLiveClassItem,
   type StudentLiveClassesData,
-  type StudentLiveClassStatus,
 } from '@/services/student/studentLiveClassWebService';
 import { LiveNowHeroCard } from '@/components/student/classes/LiveNowHeroCard';
 import { StudentLiveClassCard } from '@/components/student/classes/StudentLiveClassCard';
@@ -116,37 +109,32 @@ export default function StudentLiveClassesHubPage() {
   const primaryLiveClass = data?.liveNow?.[0] || null;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* ─── Top Header ─── */}
+    <div className="store-container space-y-7 pb-16">
+      {/* ─── Breadcrumb & Top Header ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <Link
-            href="/student/overview"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-1.5 transition-colors"
-          >
-            <ArrowLeft size={14} weight="bold" />
-            <span>Back to Dashboard</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          <nav className="store-breadcrumb" aria-label="Breadcrumb">
+            <Link href="/student/overview">Student Hub</Link>
+            <span aria-hidden="true">/</span>
+            <span>Live Classes</span>
+          </nav>
+          <div className="flex items-center gap-3 mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               Live Classes Hub
             </h1>
             {data?.summary && data.summary.totalLive > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-extrabold uppercase">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
-                </span>
+              <span className="student-pill student-pill-apricot text-rose-700 bg-rose-50 border border-rose-200">
+                <span className="student-live-dot bg-rose-500" />
                 <span>{data.summary.totalLive} Live</span>
               </span>
             )}
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl leading-relaxed">
-            Attend live lectures, interact with faculty in real-time, and access recorded archives.
+          <p className="student-hero-lead">
+            Attend live interactive lectures, interact with faculty in real-time, and access recorded archives.
           </p>
         </div>
 
-        {/* Action button */}
+        {/* Action buttons */}
         <div className="flex items-center gap-2.5">
           <Link
             href="/student/recordings"
@@ -160,7 +148,7 @@ export default function StudentLiveClassesHubPage() {
             type="button"
             onClick={() => loadData(true)}
             disabled={loading || refreshing}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold transition-colors disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-60 shadow-xs"
             title="Refresh schedule"
           >
             <ArrowsClockwise
@@ -178,7 +166,7 @@ export default function StudentLiveClassesHubPage() {
 
       {/* ─── Error State ─── */}
       {!loading && error && (
-        <div className="p-8 rounded-3xl bg-rose-50 border border-rose-100 text-center max-w-xl mx-auto my-8 space-y-3">
+        <div className="student-card border-rose-100 bg-rose-50/60 p-8 text-center max-w-xl mx-auto my-8 space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
             <WarningCircle size={24} weight="bold" />
           </div>
@@ -201,53 +189,45 @@ export default function StudentLiveClassesHubPage() {
       {!loading && !error && data && (
         <div className="space-y-6">
           {/* 1. KPI Stats Metric Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1.5">
-                <span>Live Now</span>
+          <div className="student-kpi-grid">
+            <div className="student-kpi-card">
+              <div className="student-kpi-top">
+                <span className="student-kpi-label">Live Now</span>
                 <Broadcast
-                  size={16}
+                  size={18}
                   weight={data.summary.totalLive > 0 ? 'fill' : 'regular'}
                   className={data.summary.totalLive > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}
                 />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{data.summary.totalLive}</span>
-                <span className="text-[11px] text-slate-400 font-medium">ongoing</span>
-              </div>
+              <div className="student-kpi-value tabular-nums">{data.summary.totalLive}</div>
+              <p className="student-kpi-sub">ongoing lectures</p>
             </div>
 
-            <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1.5">
-                <span>Upcoming</span>
-                <Clock size={16} weight="bold" className="text-sky-500" />
+            <div className="student-kpi-card">
+              <div className="student-kpi-top">
+                <span className="student-kpi-label">Upcoming</span>
+                <Clock size={18} weight="bold" style={{ color: 'var(--color-store-blue)' }} />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{data.summary.totalUpcoming}</span>
-                <span className="text-[11px] text-slate-400 font-medium">scheduled</span>
-              </div>
+              <div className="student-kpi-value tabular-nums">{data.summary.totalUpcoming}</div>
+              <p className="student-kpi-sub">scheduled</p>
             </div>
 
-            <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1.5">
-                <span>Completed</span>
-                <CheckCircle size={16} weight="bold" className="text-emerald-500" />
+            <div className="student-kpi-card">
+              <div className="student-kpi-top">
+                <span className="student-kpi-label">Completed</span>
+                <CheckCircle size={18} weight="bold" style={{ color: 'var(--color-store-green)' }} />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{data.summary.totalCompleted}</span>
-                <span className="text-[11px] text-slate-400 font-medium">archived</span>
-              </div>
+              <div className="student-kpi-value tabular-nums">{data.summary.totalCompleted}</div>
+              <p className="student-kpi-sub">archived</p>
             </div>
 
-            <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1.5">
-                <span>Active Subjects</span>
-                <BookOpen size={16} weight="bold" className="text-indigo-500" />
+            <div className="student-kpi-card">
+              <div className="student-kpi-top">
+                <span className="student-kpi-label">Active Subjects</span>
+                <BookOpen size={18} weight="bold" style={{ color: 'var(--color-store-violet)' }} />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{data.summary.totalSubjects}</span>
-                <span className="text-[11px] text-slate-400 font-medium">enrolled</span>
-              </div>
+              <div className="student-kpi-value tabular-nums">{data.summary.totalSubjects}</div>
+              <p className="student-kpi-sub">enrolled</p>
             </div>
           </div>
 
@@ -271,48 +251,32 @@ export default function StudentLiveClassesHubPage() {
           <div className="space-y-4 pt-2">
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               {/* Tab navigation pills */}
-              <div className="inline-flex p-1 bg-slate-100 rounded-2xl self-start">
+              <div className="student-filter-strip mb-0 pb-0">
                 <button
                   type="button"
                   onClick={() => setActiveTab('live_upcoming')}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'live_upcoming'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`student-filter-btn ${activeTab === 'live_upcoming' ? 'active' : ''}`}
                 >
-                  <Calendar size={14} weight={activeTab === 'live_upcoming' ? 'bold' : 'regular'} />
-                  <span>Live & Upcoming</span>
-                  <span
-                    className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      activeTab === 'live_upcoming'
-                        ? 'bg-sky-100 text-sky-700'
-                        : 'bg-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {data.liveNow.length + data.upcoming.length}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar size={14} weight={activeTab === 'live_upcoming' ? 'bold' : 'regular'} />
+                    <span>Live & Upcoming</span>
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+                      {data.liveNow.length + data.upcoming.length}
+                    </span>
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setActiveTab('past')}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'past'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`student-filter-btn ${activeTab === 'past' ? 'active' : ''}`}
                 >
-                  <Clock size={14} weight={activeTab === 'past' ? 'bold' : 'regular'} />
-                  <span>Past Classes</span>
-                  <span
-                    className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      activeTab === 'past'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {data.completed.length}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock size={14} weight={activeTab === 'past' ? 'bold' : 'regular'} />
+                    <span>Past Classes</span>
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+                      {data.completed.length}
+                    </span>
                   </span>
                 </button>
               </div>
@@ -331,7 +295,7 @@ export default function StudentLiveClassesHubPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search by title, teacher, topic..."
-                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-store-blue transition-all"
                   />
                 </div>
 
@@ -340,7 +304,7 @@ export default function StudentLiveClassesHubPage() {
                   <select
                     value={selectedSubject}
                     onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-store-blue"
                   >
                     <option value="all">All Subjects</option>
                     {data.subjects.map((sub) => (
@@ -356,7 +320,7 @@ export default function StudentLiveClassesHubPage() {
                   <select
                     value={selectedBatch}
                     onChange={(e) => setSelectedBatch(e.target.value)}
-                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-store-blue"
                   >
                     <option value="all">All Batches</option>
                     {data.batches.map((batch) => (
@@ -386,18 +350,19 @@ export default function StudentLiveClassesHubPage() {
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold">Showing results for:</span>
                 {searchQuery && (
-                  <span className="px-2 py-0.5 rounded-md bg-slate-100 font-medium">"{searchQuery}"</span>
+                  <span className="student-pill student-pill-sky">"{searchQuery}"</span>
                 )}
                 {selectedSubject !== 'all' && (
-                  <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 font-medium">Subject: {selectedSubject}</span>
+                  <span className="student-pill student-pill-mint">Subject: {selectedSubject}</span>
                 )}
                 {selectedBatch !== 'all' && (
-                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-medium">Batch: {selectedBatch}</span>
+                  <span className="student-pill student-pill-lilac">Batch: {selectedBatch}</span>
                 )}
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="text-sky-600 hover:underline font-bold ml-1"
+                  className="text-xs font-bold hover:underline ml-1"
+                  style={{ color: 'var(--color-store-blue)' }}
                 >
                   Clear all
                 </button>
@@ -407,7 +372,6 @@ export default function StudentLiveClassesHubPage() {
 
           {/* 4. Classes Grid / Empty states */}
           <div>
-            {/* If filtered list has items */}
             {filteredClasses.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {filteredClasses.map((item) => (
@@ -415,13 +379,10 @@ export default function StudentLiveClassesHubPage() {
                 ))}
               </div>
             ) : hasActiveFilters ? (
-              /* If no items match filters */
               <StudentClassesEmptyState type="no-results" onResetFilters={handleResetFilters} />
             ) : activeTab === 'live_upcoming' ? (
-              /* If active tab is live_upcoming and no items exist */
               <StudentClassesEmptyState type="no-upcoming" />
             ) : (
-              /* If active tab is past and no items exist */
               <StudentClassesEmptyState type="no-past" />
             )}
           </div>

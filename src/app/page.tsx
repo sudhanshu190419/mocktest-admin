@@ -4,18 +4,14 @@ import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { getPostLoginDestination } from '@/lib/auth/routing';
-import { LoginView } from '@/views/LoginView';
+import { MarketingHomeView } from '@/components/marketing/MarketingHomeView';
 import { CircleNotch } from '@phosphor-icons/react';
 
 /**
- * Home page — root redirector.
- *
- * After auth initialises, redirects the user to the correct destination
- * based on their role and account_status.  While loading a minimal splash
- * is shown to prevent a flash of the wrong content.
- *
- * Once redirected, the target page (e.g. /teacher, /admin, /pending-approval)
- * is the stable entry point for that role/status combination.
+ * Home page — multi-state root:
+ * - Unauthenticated visitors see the public marketing storefront.
+ * - Logged-in students see the student home variation (hero + personalized workspace & catalog).
+ * - Admin and Teacher roles are redirected to their management portals.
  */
 export default function Home() {
   const { teacherProfile, loading } = useAuth();
@@ -23,38 +19,35 @@ export default function Home() {
   const [redirected, setRedirected] = React.useState(false);
 
   React.useEffect(() => {
-    // Wait for auth to finish loading
     if (loading || redirected) return;
 
-    if (teacherProfile) {
+    // Only redirect admin and teacher users to their backend management dashboards
+    if (teacherProfile && (teacherProfile.role === 'admin' || teacherProfile.role === 'teacher')) {
       const destination = getPostLoginDestination(
         teacherProfile.role,
         teacherProfile.accountStatus,
       );
 
-      // Only redirect if the destination is different from current path
       if (destination !== '/') {
         setRedirected(true);
         router.replace(destination);
       }
     }
-    // If no teacherProfile (not logged in), LoginView handles login UI
   }, [teacherProfile, loading, router, redirected]);
 
-  // Show loading splash while auth or redirect is pending
-  if (loading || redirected) {
+  if (redirected && teacherProfile && (teacherProfile.role === 'admin' || teacherProfile.role === 'teacher')) {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-navy-900 to-slate-900 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <CircleNotch size={32} className="animate-spin text-amber-400" />
-          <p className="text-sm text-slate-400 font-mono">
-            {loading ? 'Verifying credentials...' : 'Redirecting...'}
+      <div className="min-h-screen w-full bg-[#f3f8fc] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <CircleNotch size={28} className="animate-spin text-blue-600" />
+          <p className="text-xs font-semibold text-slate-500 font-display">
+            Redirecting to management portal...
           </p>
         </div>
       </div>
     );
   }
 
-  // No authenticated profile — render the clean login / registration UI
-  return <LoginView />;
+  return <MarketingHomeView />;
 }
+

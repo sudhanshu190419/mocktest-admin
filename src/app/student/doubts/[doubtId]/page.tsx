@@ -27,9 +27,9 @@ import {
   useResolveDoubt,
   useReopenDoubt,
 } from '@/hooks/doubt/useDoubt';
-import { DoubtAcademicContext } from '@/components/teacher/doubts/DoubtAcademicContext';
-import { DoubtAttachmentView } from '@/components/teacher/doubts/DoubtAttachmentView';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { StudentDoubtAcademicContext } from '@/components/student/doubts/StudentDoubtAcademicContext';
+import { StudentDoubtAttachmentView } from '@/components/student/doubts/StudentDoubtAttachmentView';
+import { StudentConfirmDialog } from '@/components/student/StudentConfirmDialog';
 import { getSubjectColor, getSubjectEmoji } from '@/services/student/studentCourseWebService';
 import { doubtErrorMessage } from '@/utils/doubtErrors';
 import type { DoubtReply, DoubtStatus, DoubtResourceType } from '@/types/doubt';
@@ -263,19 +263,19 @@ export default function StudentDoubtThreadPage() {
   const resourceBadge = getResourceBadge(doubt.relatedResourceType);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="store-container space-y-7 pb-16">
       {/* ── Top Header & Navigation Bar ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <Link
-            href="/student/doubts"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-2 transition-colors"
-          >
-            <ArrowLeft size={14} weight="bold" />
-            <span>Back to My Doubts</span>
-          </Link>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
+          <nav className="store-breadcrumb" aria-label="Breadcrumb">
+            <Link href="/student/overview">Student Hub</Link>
+            <span aria-hidden="true">/</span>
+            <Link href="/student/doubts">My Doubts</Link>
+            <span aria-hidden="true">/</span>
+            <span>Doubt Thread</span>
+          </nav>
+          <div className="flex items-center gap-2.5 flex-wrap mt-1">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Doubt Resolution Thread
             </h1>
             <span
@@ -390,7 +390,7 @@ export default function StudentDoubtThreadPage() {
                 </p>
                 <div className="flex flex-wrap gap-2.5">
                   {attachments.map((att) => (
-                    <DoubtAttachmentView key={att.attachmentId} attachment={att} />
+                    <StudentDoubtAttachmentView key={att.attachmentId} attachment={att} />
                   ))}
                 </div>
               </div>
@@ -515,7 +515,7 @@ export default function StudentDoubtThreadPage() {
                       {reply.attachments && reply.attachments.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
                           {reply.attachments.map((att) => (
-                            <DoubtAttachmentView key={att.attachmentId} attachment={att} compact />
+                            <StudentDoubtAttachmentView key={att.attachmentId} attachment={att} compact />
                           ))}
                         </div>
                       )}
@@ -585,7 +585,7 @@ export default function StudentDoubtThreadPage() {
         <div className="space-y-4">
           {/* Academic Context Card */}
           <div className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs">
-            <DoubtAcademicContext doubt={doubt} />
+            <StudentDoubtAcademicContext doubt={doubt} />
           </div>
 
           {/* Assigned Faculty Card */}
@@ -623,7 +623,7 @@ export default function StudentDoubtThreadPage() {
 
       {/* ── Confirmation Dialogs ─────────────────────────────────────── */}
       {/* 1. Resolve Doubt Dialog */}
-      <ConfirmDialog
+      <StudentConfirmDialog
         open={resolveDialogOpen}
         onClose={() => setResolveDialogOpen(false)}
         onConfirm={handleResolveConfirm}
@@ -635,7 +635,7 @@ export default function StudentDoubtThreadPage() {
       />
 
       {/* 2. Reopen Doubt Dialog */}
-      <ConfirmDialog
+      <StudentConfirmDialog
         open={reopenDialogOpen}
         onClose={() => setReopenDialogOpen(false)}
         onConfirm={handleReopenConfirm}
@@ -647,7 +647,7 @@ export default function StudentDoubtThreadPage() {
       />
 
       {/* 3. Accept Solution Dialog */}
-      <ConfirmDialog
+      <StudentConfirmDialog
         open={Boolean(acceptTargetReplyId)}
         onClose={() => setAcceptTargetReplyId(null)}
         onConfirm={handleAcceptConfirm}

@@ -573,10 +573,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (phone: string, pass: string): Promise<{ error: string | null }> => {
     setLoading(true);
 
+    const trimmedPhone = phone.trim();
+    const formattedPhone = trimmedPhone.startsWith('+')
+      ? trimmedPhone
+      : trimmedPhone.length === 10
+      ? `+91${trimmedPhone}`
+      : trimmedPhone.startsWith('91') && trimmedPhone.length === 12
+      ? `+${trimmedPhone}`
+      : trimmedPhone;
+
     let result: { data: any; error: any };
     try {
       result = await supabase.auth.signInWithPassword({
-        phone,
+        phone: formattedPhone,
         password: pass,
       });
     } catch (netError: any) {

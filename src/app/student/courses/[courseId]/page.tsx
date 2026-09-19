@@ -1,34 +1,17 @@
 'use client';
 
-/**
- * Student Course Details / Syllabus Overview Page
- * (/student/courses/[courseId])
- *
- * Displays course syllabus, subject tracks, content breakdown, and mock tests.
- *
- * @module app/student/courses/[courseId]/page
- */
-
 import React, { useEffect, useState } from 'react';
-import {
-  useParams,
-  useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  CaretRight,
   ArrowLeft,
   GraduationCap,
-  BookOpen,
-  VideoCamera,
-  FileText,
   Exam,
   User,
   Clock,
   PlayCircle,
-  CheckCircle,
   Warning,
   ArrowsClockwise,
-  Sparkle
 } from '@phosphor-icons/react';
 import {
   fetchCourseDetailWorkspace,
@@ -37,7 +20,6 @@ import {
 
 export default function StudentCourseDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const courseId = params?.courseId as string;
 
   const [data, setData] = useState<CourseDetailWorkspaceData | null>(null);
@@ -68,13 +50,13 @@ export default function StudentCourseDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-pulse">
+      <div className="store-container space-y-6 animate-pulse">
         <div className="h-6 w-48 rounded bg-slate-200" />
-        <div className="h-48 rounded-2xl bg-slate-200" />
+        <div className="student-hero-banner h-48 bg-white/70" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="h-64 rounded-2xl bg-slate-200" />
-          <div className="h-64 rounded-2xl bg-slate-200" />
-          <div className="h-64 rounded-2xl bg-slate-200" />
+          <div className="student-card h-64" />
+          <div className="student-card h-64" />
+          <div className="student-card h-64" />
         </div>
       </div>
     );
@@ -82,63 +64,66 @@ export default function StudentCourseDetailPage() {
 
   if (error || !data) {
     return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
-          <Warning className="h-6 w-6" />
-        </div>
-        <h3 className="mt-3 text-base font-bold text-slate-900">Access Restricted or Course Not Found</h3>
-        <p className="mt-1 text-xs text-slate-600 max-w-sm mx-auto">
-          {error || 'You do not have active enrollment access to this course syllabus.'}
-        </p>
-        <div className="mt-5 flex justify-center gap-3">
-          <button
-            onClick={loadData}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-          >
-            <ArrowsClockwise className="h-3.5 w-3.5" />
-            Retry
-          </button>
-          <Link
-            href="/student/courses"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to My Courses
-          </Link>
+      <div className="store-container">
+        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-8 text-center max-w-lg mx-auto my-12">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
+            <Warning className="h-6 w-6" />
+          </div>
+          <h3 className="mt-3 text-base font-bold text-slate-900">Access Restricted or Course Not Found</h3>
+          <p className="mt-1 text-xs text-slate-600 max-w-sm mx-auto">
+            {error || 'You do not have active enrollment access to this course syllabus.'}
+          </p>
+          <div className="mt-5 flex justify-center gap-3">
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              <ArrowsClockwise className="h-3.5 w-3.5" />
+              Retry
+            </button>
+            <Link
+              href="/student/courses"
+              className="inline-flex items-center gap-1.5 rounded-xl text-white px-4 py-2 text-xs font-bold hover:opacity-90"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to My Courses
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  const { course, subjects, assignedMockTests, totalContentCount, completedContentCount } = data;
+  const { course, subjects, assignedMockTests } = data;
 
   return (
-    <div className="space-y-6">
+    <div className="store-container space-y-7 pb-12">
       {/* ── Breadcrumbs & Back Navigation ────────────────────────────────────── */}
-      <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-        <Link href="/student/courses" className="hover:text-sky-600">
-          My Courses
-        </Link>
-        <CaretRight className="h-3 w-3" />
-        <span className="text-slate-800 font-semibold">{course.title}</span>
-      </div>
+      <nav className="store-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/student/courses">My Courses</Link>
+        <span aria-hidden="true">/</span>
+        <span>{course.title}</span>
+      </nav>
 
       {/* ── Top Hero Card ───────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-700 via-sky-600 to-indigo-700 p-6 md:p-8 text-white shadow-sm">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <section className="student-hero-banner">
+        <div className="student-hero-header">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold backdrop-blur-md">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="student-pill student-pill-sky">
                 <GraduationCap className="h-3.5 w-3.5" />
                 {course.category}
               </span>
-              <span className="inline-flex items-center rounded-full bg-sky-950/40 px-3 py-1 text-xs font-medium">
+              <span className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                 {course.batchName} {course.batchCode ? `· ${course.batchCode}` : ''}
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">{course.title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+              {course.title}
+            </h1>
             {course.description && (
-              <p className="text-xs md:text-sm text-sky-100 leading-relaxed max-w-xl">
+              <p className="student-hero-lead">
                 {course.description}
               </p>
             )}
@@ -146,26 +131,23 @@ export default function StudentCourseDetailPage() {
 
           {/* Quick Metrics Badge */}
           <div className="grid grid-cols-2 gap-3 shrink-0">
-            <div className="rounded-xl bg-white/10 p-3.5 backdrop-blur-md text-center border border-white/10 min-w-[100px]">
-              <p className="text-xs text-sky-200">Completion</p>
-              <p className="text-lg font-bold">{course.progress}%</p>
+            <div className="student-card p-3.5 text-center min-w-[110px]" style={{ background: 'var(--color-store-sky)' }}>
+              <p className="text-[11px] font-bold text-slate-500 uppercase">Progress</p>
+              <p className="text-xl font-black tabular-nums" style={{ color: 'var(--color-store-blue)' }}>{course.progress}%</p>
             </div>
-            <div className="rounded-xl bg-white/10 p-3.5 backdrop-blur-md text-center border border-white/10 min-w-[100px]">
-              <p className="text-xs text-sky-200">Subjects</p>
-              <p className="text-lg font-bold">{subjects.length}</p>
+            <div className="student-card p-3.5 text-center min-w-[110px]" style={{ background: 'var(--color-store-mint)' }}>
+              <p className="text-[11px] font-bold text-slate-500 uppercase">Subjects</p>
+              <p className="text-xl font-black tabular-nums" style={{ color: 'var(--color-store-green)' }}>{subjects.length}</p>
             </div>
           </div>
         </div>
-
-        {/* Decorative blur */}
-        <div className="absolute right-0 top-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-      </div>
+      </section>
 
       {/* ── Section 1: Subject Learning Tracks ──────────────────────────────── */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+      <section className="space-y-4">
+        <div className="student-section-header">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Enrolled Subject Modules</h2>
+            <h2>Enrolled Subject Modules</h2>
             <p className="text-xs text-slate-500">
               Select a subject track to enter the learning workspace, watch lectures, and download notes.
             </p>
@@ -174,7 +156,7 @@ export default function StudentCourseDetailPage() {
         </div>
 
         {subjects.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <div className="student-card text-center p-8">
             <p className="text-sm font-semibold text-slate-600">No subject tracks assigned yet.</p>
           </div>
         ) : (
@@ -182,19 +164,19 @@ export default function StudentCourseDetailPage() {
             {subjects.map((sub) => (
               <div
                 key={sub.batchSubjectId || sub.subjectId}
-                className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-sky-300 hover:shadow-md transition-all"
+                className="student-card group flex flex-col justify-between hover:-translate-y-1 transition-all"
               >
                 <div>
                   {/* Top: Emoji + Subject Name */}
                   <div className="flex items-center gap-3">
                     <div
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl shadow-sm"
+                      className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl shadow-xs"
                       style={{ backgroundColor: `${sub.color}15` }}
                     >
                       {sub.emoji}
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
+                      <h3 className="text-base font-bold text-slate-900 group-hover:text-store-blue transition-colors">
                         {sub.subjectName}
                       </h3>
                       {sub.code && (
@@ -204,7 +186,7 @@ export default function StudentCourseDetailPage() {
                   </div>
 
                   {/* Teacher Info */}
-                  <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-2.5 text-xs text-slate-600">
+                  <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-2.5 text-xs text-slate-600 border border-slate-100">
                     <User className="h-3.5 w-3.5 text-slate-400" />
                     <span className="truncate">
                       Faculty: <strong className="text-slate-800">{sub.teacherName || 'Assigned Department'}</strong>
@@ -213,16 +195,16 @@ export default function StudentCourseDetailPage() {
 
                   {/* Content Breakdown Metrics */}
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-sky-50 p-2">
-                      <p className="text-xs font-bold text-sky-700">{sub.videoCount}</p>
+                    <div className="rounded-xl p-2" style={{ background: 'var(--color-store-sky)' }}>
+                      <p className="text-xs font-bold tabular-nums" style={{ color: 'var(--color-store-blue)' }}>{sub.videoCount}</p>
                       <p className="text-[10px] text-slate-500">Lectures</p>
                     </div>
-                    <div className="rounded-lg bg-emerald-50 p-2">
-                      <p className="text-xs font-bold text-emerald-700">{sub.pdfCount + sub.notesCount}</p>
-                      <p className="text-[10px] text-slate-500">Notes & PDFs</p>
+                    <div className="rounded-xl p-2" style={{ background: 'var(--color-store-mint)' }}>
+                      <p className="text-xs font-bold tabular-nums" style={{ color: 'var(--color-store-green)' }}>{sub.pdfCount + sub.notesCount}</p>
+                      <p className="text-[10px] text-slate-500">Notes/PDFs</p>
                     </div>
-                    <div className="rounded-lg bg-indigo-50 p-2">
-                      <p className="text-xs font-bold text-indigo-700">{sub.mockTestsCount}</p>
+                    <div className="rounded-xl p-2" style={{ background: 'var(--color-store-lilac)' }}>
+                      <p className="text-xs font-bold tabular-nums" style={{ color: 'var(--color-store-violet)' }}>{sub.mockTestsCount}</p>
                       <p className="text-[10px] text-slate-500">Tests</p>
                     </div>
                   </div>
@@ -232,7 +214,8 @@ export default function StudentCourseDetailPage() {
                 <div className="mt-6 border-t border-slate-100 pt-4">
                   <Link
                     href={`/student/courses/${course.courseId}/subjects/${sub.batchSubjectId || sub.subjectId}`}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-sky-700 active:scale-[0.98] transition-all"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl text-white px-4 py-2.5 text-xs font-bold shadow-xs hover:opacity-95 transition-all"
+                    style={{ backgroundColor: 'var(--color-store-blue)' }}
                   >
                     <PlayCircle className="h-4 w-4" />
                     Open Subject Workspace
@@ -242,21 +225,22 @@ export default function StudentCourseDetailPage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {/* ── Section 2: Assigned Course Mock Tests ───────────────────────────── */}
       {assignedMockTests && assignedMockTests.length > 0 && (
-        <div className="space-y-4 pt-4 border-t border-slate-200">
-          <div className="flex items-center justify-between">
+        <section className="space-y-4 pt-4 border-t border-slate-200">
+          <div className="student-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Assigned Mock Assessments</h2>
+              <h2>Assigned Mock Assessments</h2>
               <p className="text-xs text-slate-500">
                 Official course tests mapped to your enrolled batch.
               </p>
             </div>
             <Link
               href="/student/tests"
-              className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline"
+              className="text-xs font-bold hover:underline"
+              style={{ color: 'var(--color-store-blue)' }}
             >
               View All Tests ({assignedMockTests.length}) →
             </Link>
@@ -268,22 +252,18 @@ export default function StudentCourseDetailPage() {
               const isAvailable = test.status === 'available';
 
               let badgeText = isAvailable ? '● Ready to Attempt' : test.status;
-              let badgeClass = isAvailable
-                ? 'bg-emerald-100 text-emerald-800'
-                : test.status === 'upcoming'
-                ? 'bg-amber-100 text-amber-800'
-                : 'bg-slate-100 text-slate-600';
+              let badgePillClass = 'student-pill-sky';
 
               if (attempt) {
                 if (attempt.attemptState === 'in_progress') {
                   badgeText = '● In Progress (Resume)';
-                  badgeClass = 'bg-sky-100 text-sky-800';
+                  badgePillClass = 'student-pill-sand';
                 } else if (attempt.attemptState === 'limit_reached') {
                   badgeText = 'Attempts Exhausted';
-                  badgeClass = 'bg-slate-100 text-slate-600';
+                  badgePillClass = 'student-pill-apricot';
                 } else if (attempt.attemptState === 'submitted') {
                   badgeText = '● Attempted / Submitted';
-                  badgeClass = 'bg-emerald-100 text-emerald-800';
+                  badgePillClass = 'student-pill-mint';
                 }
               }
 
@@ -293,14 +273,14 @@ export default function StudentCourseDetailPage() {
               return (
                 <div
                   key={test.testId}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-indigo-300 transition-all"
+                  className="student-card flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-100">
+                      <span className="student-pill student-pill-lilac">
                         {test.subjectName || 'Course Assessment'}
                       </span>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badgeClass}`}>
+                      <span className={`student-pill ${badgePillClass}`}>
                         {badgeText}
                       </span>
                     </div>
@@ -317,7 +297,7 @@ export default function StudentCourseDetailPage() {
                       </span>
                       <span>·</span>
                       <span className="flex items-center gap-1">
-                        <Exam className="h-3.5 w-3.5 text-indigo-500" />
+                        <Exam className="h-3.5 w-3.5" style={{ color: 'var(--color-store-blue)' }} />
                         {test.totalMarks !== null ? `${test.totalMarks} marks` : 'Configured'}
                       </span>
                       <span>·</span>
@@ -328,7 +308,8 @@ export default function StudentCourseDetailPage() {
                   <div className="mt-4 flex items-center justify-end border-t border-slate-100 pt-3">
                     <a
                       href={actionHref}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-700"
+                      className="inline-flex items-center gap-1 text-xs font-bold hover:underline"
+                      style={{ color: 'var(--color-store-blue)' }}
                     >
                       {actionLabel}
                     </a>
@@ -337,7 +318,7 @@ export default function StudentCourseDetailPage() {
               );
             })}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

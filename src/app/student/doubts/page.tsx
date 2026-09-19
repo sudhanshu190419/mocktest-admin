@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   ChatCircleDots,
   Plus,
@@ -170,16 +171,23 @@ function StudentDoubtsHubContent() {
   const isFiltered = activeTab !== 'all' || debouncedSearch.trim() !== '' || selectedSubjectId !== '';
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="store-container space-y-7 pb-12">
       {/* ─── Header & Top Actions ─────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <ChatCircleDots size={28} weight="duotone" className="text-sky-600" />
-            <span>My Doubts</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Get your academic questions resolved by assigned subject teachers
+          <nav className="store-breadcrumb" aria-label="Breadcrumb">
+            <Link href="/student/overview">Student Hub</Link>
+            <span aria-hidden="true">/</span>
+            <span>Doubts & Support</span>
+          </nav>
+          <div className="flex items-center gap-2.5 mt-1">
+            <ChatCircleDots size={28} weight="duotone" style={{ color: 'var(--color-store-blue)' }} />
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              My Academic Doubts
+            </h1>
+          </div>
+          <p className="student-hero-lead">
+            Get your academic questions resolved by assigned subject faculty with step-by-step verified explanations.
           </p>
         </div>
 
@@ -188,16 +196,17 @@ function StudentDoubtsHubContent() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-50 shadow-2xs"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-xs"
             title="Refresh doubts"
           >
-            <ArrowsClockwise size={18} className={isFetching ? 'animate-spin text-sky-600' : ''} />
+            <ArrowsClockwise size={18} className={isFetching ? 'animate-spin text-store-blue' : ''} />
           </button>
 
           <button
             type="button"
             onClick={handleOpenAskModal}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-xs hover:opacity-90 transition-all"
+            style={{ backgroundColor: 'var(--color-store-blue)' }}
           >
             <Plus size={18} weight="bold" />
             <span>Ask a Doubt</span>
@@ -217,9 +226,9 @@ function StudentDoubtsHubContent() {
       />
 
       {/* ─── Filters & Search Toolbar ─────────────────────────────────────── */}
-      <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-4">
+      <div className="student-card space-y-4">
         {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        <div className="student-filter-strip mb-0 pb-0">
           {[
             { id: 'all', label: 'All Doubts' },
             { id: 'open', label: 'Open' },
@@ -232,11 +241,7 @@ function StudentDoubtsHubContent() {
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id as StatusTab)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  active
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
+                className={`student-filter-btn ${active ? 'active' : ''}`}
               >
                 {tab.label}
               </button>
@@ -258,7 +263,7 @@ function StudentDoubtsHubContent() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search doubts by question title, topic or description..."
-              className="w-full h-10 pl-9 pr-8 rounded-xl bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-sky-500 focus:bg-white transition-all font-sans"
+              className="w-full h-10 pl-9 pr-8 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-store-blue focus:bg-white transition-all"
             />
             {searchInput && (
               <button
@@ -280,7 +285,7 @@ function StudentDoubtsHubContent() {
                   setSelectedSubjectId(e.target.value);
                   setPage(1);
                 }}
-                className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-700 outline-none focus:border-sky-500 focus:bg-white transition-all"
+                className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 outline-none focus:border-store-blue focus:bg-white transition-all"
               >
                 <option value="">All Subjects</option>
                 {availableSubjects.map((sub) => (
@@ -312,23 +317,12 @@ function StudentDoubtsHubContent() {
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="animate-pulse rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="h-5 w-24 bg-slate-100 rounded-lg" />
-                <div className="h-5 w-16 bg-slate-100 rounded-full" />
-              </div>
-              <div className="h-5 w-3/4 bg-slate-100 rounded-md" />
-              <div className="h-4 w-full bg-slate-100 rounded-md" />
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                <div className="h-4 w-20 bg-slate-100 rounded-md" />
-                <div className="h-4 w-16 bg-slate-100 rounded-md" />
-              </div>
-            </div>
+              className="student-card animate-pulse space-y-3 h-36"
+            />
           ))}
         </div>
       ) : isError ? (
-        <div className="p-6 rounded-2xl bg-rose-50 border border-rose-200 text-center space-y-3">
+        <div className="student-card border-rose-200 bg-rose-50 p-6 text-center space-y-3">
           <div className="inline-flex p-2.5 rounded-full bg-rose-100 text-rose-600">
             <WarningCircle size={24} weight="duotone" />
           </div>
@@ -348,8 +342,7 @@ function StudentDoubtsHubContent() {
         </div>
       ) : doubts.length === 0 ? (
         isFiltered ? (
-          /* Filtered Empty State */
-          <div className="p-10 rounded-2xl bg-white border border-slate-200/80 text-center space-y-3 shadow-xs">
+          <div className="student-card text-center p-10 space-y-3">
             <div className="inline-flex p-3 rounded-2xl bg-slate-100 text-slate-400">
               <Funnel size={28} weight="duotone" />
             </div>
@@ -362,15 +355,15 @@ function StudentDoubtsHubContent() {
             <button
               type="button"
               onClick={handleResetFilters}
-              className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors"
+              className="px-4 py-2 rounded-xl text-white text-xs font-bold shadow-xs transition-colors"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
             >
               Clear All Filters
             </button>
           </div>
         ) : (
-          /* Zero Doubts Overall Empty State */
-          <div className="p-12 sm:p-16 rounded-3xl bg-white border border-sky-100 text-center space-y-4 shadow-xs max-w-lg mx-auto">
-            <div className="inline-flex p-4 rounded-3xl bg-sky-50 text-sky-600 border border-sky-100">
+          <div className="student-card text-center p-12 sm:p-16 space-y-4 max-w-lg mx-auto">
+            <div className="inline-flex p-4 rounded-3xl" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
               <ChatCircleDots size={36} weight="duotone" />
             </div>
             <div>
@@ -384,7 +377,8 @@ function StudentDoubtsHubContent() {
             <button
               type="button"
               onClick={handleOpenAskModal}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-xs hover:opacity-90 transition-all"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
             >
               <Plus size={16} weight="bold" />
               <span>Ask Your First Doubt</span>
@@ -392,7 +386,6 @@ function StudentDoubtsHubContent() {
           </div>
         )
       ) : (
-        /* ─── Grid of Doubt Cards ─────────────────────────────────────────── */
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {doubts.map((doubt: StudentDoubt) => (
@@ -400,15 +393,15 @@ function StudentDoubtsHubContent() {
             ))}
           </div>
 
-          {/* ─── Pagination ─────────────────────────────────────────────────── */}
+          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200/80">
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
               <p className="text-xs font-medium text-slate-500">
-                Showing <span className="font-bold text-slate-800">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
-                <span className="font-bold text-slate-800">
+                Showing <span className="font-bold text-slate-800 tabular-nums">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
+                <span className="font-bold text-slate-800 tabular-nums">
                   {Math.min(page * PAGE_SIZE, paginatedData?.count ?? 0)}
                 </span>{' '}
-                of <span className="font-bold text-slate-800">{paginatedData?.count ?? 0}</span> doubts
+                of <span className="font-bold text-slate-800 tabular-nums">{paginatedData?.count ?? 0}</span> doubts
               </p>
 
               <div className="flex items-center gap-2">
@@ -422,7 +415,7 @@ function StudentDoubtsHubContent() {
                   <span>Prev</span>
                 </button>
 
-                <span className="px-2 text-xs font-bold text-slate-700">
+                <span className="px-2 text-xs font-bold text-slate-700 tabular-nums">
                   {page} / {totalPages}
                 </span>
 
@@ -441,7 +434,7 @@ function StudentDoubtsHubContent() {
         </div>
       )}
 
-      {/* ─── Ask a Doubt Modal ──────────────────────────────────────────────── */}
+      {/* Ask a Doubt Modal */}
       <StudentAskDoubtModal
         isOpen={isAskModalOpen}
         onClose={handleCloseAskModal}
@@ -455,7 +448,7 @@ export default function StudentDoubtsHubPage() {
   return (
     <Suspense
       fallback={
-        <div className="space-y-6 pb-12 animate-pulse">
+        <div className="store-container space-y-6 pb-12 animate-pulse">
           <div className="h-8 w-64 bg-slate-200 rounded-lg" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (

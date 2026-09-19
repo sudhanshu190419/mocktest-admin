@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * Student "My Test Results" Dedicated Hub Page
- *
- * Route: /student/results
- *
- * Reuses authoritative assessment services and results from `mock_results`:
- *   - Direct listing of all submitted and evaluated mock test results
- *   - Overall performance summary bar (Tests Evaluated, Avg Score, Avg Accuracy)
- *   - Search and subject filter controls
- *   - One-click navigation to full scorecard (/student/tests/[testId]/results/[attemptId])
- *     and question-by-question review (/student/tests/[testId]/results/[attemptId]/review)
- *
- * @module app/student/results/page
- */
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -25,7 +10,6 @@ import {
   CheckCircle,
   Clock,
   WarningCircle,
-  ArrowLeft,
   XCircle,
   BookOpen,
   ArrowRight,
@@ -88,12 +72,10 @@ export default function StudentMyTestResultsPage() {
   // Filtered & Searched Results
   const filteredResults = useMemo(() => {
     return completedTests.filter((test) => {
-      // 1. Subject Filter
       if (selectedSubject !== 'all' && test.subjectName !== selectedSubject) {
         return false;
       }
 
-      // 2. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTitle = test.title.toLowerCase().includes(q);
@@ -135,7 +117,6 @@ export default function StudentMyTestResultsPage() {
     };
   }, [completedTests]);
 
-  // Helper: Format Date
   const formatResultDate = (isoStr?: string | null) => {
     if (!isoStr) return null;
     try {
@@ -150,7 +131,6 @@ export default function StudentMyTestResultsPage() {
     }
   };
 
-  // Helper: Format Test Type Label
   const formatTestType = (type: string) => {
     switch (type.toLowerCase()) {
       case 'chapter_test':
@@ -168,56 +148,49 @@ export default function StudentMyTestResultsPage() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 pb-12">
+    <div className="store-container space-y-7 pb-12">
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <Link
-            href="/student/overview"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-2 transition-colors"
-          >
-            <ArrowLeft size={14} weight="bold" />
-            <span>Back to Dashboard</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm">
-              <Trophy className="h-5 w-5" weight="bold" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                My Test Results
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Review your evaluated scorecards, section analytics, and step-by-step verified solutions
-              </p>
-            </div>
+          <nav className="store-breadcrumb" aria-label="Breadcrumb">
+            <Link href="/student/overview">Student Hub</Link>
+            <span aria-hidden="true">/</span>
+            <span>Test Results</span>
+          </nav>
+          <div className="flex items-center gap-3 mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              My Test Results
+            </h1>
           </div>
+          <p className="student-hero-lead">
+            Review your evaluated scorecards, section analytics, and step-by-step verified solutions.
+          </p>
         </div>
 
         {/* Real Summary Metrics Bar */}
         {completedTests.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 shadow-xs">
-              <CheckCircle className="h-4 w-4 text-emerald-600" weight="bold" />
+            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]">
+              <CheckCircle className="h-4 w-4" style={{ color: 'var(--color-store-green)' }} weight="bold" />
               <div>
-                <p className="text-[10px] font-medium text-slate-400">Evaluated Tests</p>
-                <p className="text-sm font-extrabold text-slate-900">{aggregateMetrics.totalTests}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Evaluated</p>
+                <p className="text-sm font-extrabold text-slate-900 tabular-nums">{aggregateMetrics.totalTests}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50/70 px-3.5 py-2 shadow-xs">
-              <Sparkle className="h-4 w-4 text-sky-600" weight="bold" />
+            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sky)' }}>
+              <Sparkle className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
               <div>
-                <p className="text-[10px] font-medium text-sky-700">Average Score</p>
-                <p className="text-sm font-extrabold text-sky-950">{aggregateMetrics.avgPercentage}%</p>
+                <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-blue-dark)' }}>Avg Score</p>
+                <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-ink)' }}>{aggregateMetrics.avgPercentage}%</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-2 shadow-xs">
-              <Target className="h-4 w-4 text-indigo-600" weight="bold" />
+            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-lilac)' }}>
+              <Target className="h-4 w-4" style={{ color: 'var(--color-store-violet)' }} weight="bold" />
               <div>
-                <p className="text-[10px] font-medium text-indigo-700">Average Accuracy</p>
-                <p className="text-sm font-extrabold text-indigo-950">{aggregateMetrics.avgAccuracy}%</p>
+                <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-violet)' }}>Accuracy</p>
+                <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-violet)' }}>{aggregateMetrics.avgAccuracy}%</p>
               </div>
             </div>
           </div>
@@ -227,7 +200,7 @@ export default function StudentMyTestResultsPage() {
       {/* Filter & Search Bar Row */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-          <span className="rounded-lg bg-slate-900 text-white px-2.5 py-1 text-xs">
+          <span className="student-pill student-pill-sky">
             {filteredResults.length} {filteredResults.length === 1 ? 'Result' : 'Results'}
           </span>
           <span className="text-slate-400 font-normal">Available for review</span>
@@ -241,7 +214,7 @@ export default function StudentMyTestResultsPage() {
               placeholder="Search by test title or subject..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 transition-all"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:border-store-blue focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
@@ -257,7 +230,7 @@ export default function StudentMyTestResultsPage() {
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs font-medium text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              className="rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs font-medium text-slate-700 focus:border-store-blue focus:outline-none"
             >
               <option value="all">All Subjects</option>
               {availableSubjects.map((s) => (
@@ -276,21 +249,12 @@ export default function StudentMyTestResultsPage() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs animate-pulse space-y-4"
-            >
-              <div className="flex justify-between">
-                <div className="h-5 w-28 bg-slate-200 rounded-full" />
-                <div className="h-5 w-20 bg-slate-200 rounded-full" />
-              </div>
-              <div className="h-6 w-3/4 bg-slate-200 rounded-lg mt-2" />
-              <div className="h-4 w-1/2 bg-slate-100 rounded-md" />
-              <div className="h-24 bg-slate-100 rounded-xl mt-4" />
-              <div className="h-10 bg-slate-200 rounded-xl mt-4" />
-            </div>
+              className="student-card animate-pulse space-y-4 h-64"
+            />
           ))}
         </div>
       ) : error ? (
-        <div className="p-8 sm:p-12 rounded-3xl bg-rose-50/50 border border-rose-200 text-center max-w-xl mx-auto my-8 space-y-4">
+        <div className="student-card border-rose-200 bg-rose-50/50 p-8 text-center max-w-xl mx-auto my-8 space-y-4">
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mx-auto">
             <WarningCircle size={24} weight="bold" />
           </div>
@@ -305,8 +269,8 @@ export default function StudentMyTestResultsPage() {
           </button>
         </div>
       ) : filteredResults.length === 0 ? (
-        <div className="p-8 sm:p-12 rounded-3xl bg-white border border-slate-200 shadow-xs text-center max-w-xl mx-auto my-8 space-y-4">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-indigo-50 text-indigo-600 mx-auto">
+        <div className="student-card text-center p-8 sm:p-12 max-w-xl mx-auto my-8 space-y-4">
+          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl mx-auto" style={{ background: 'var(--color-store-lilac)', color: 'var(--color-store-violet)' }}>
             <Trophy size={28} weight="duotone" />
           </div>
 
@@ -335,7 +299,8 @@ export default function StudentMyTestResultsPage() {
           ) : (
             <Link
               href="/student/tests"
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-colors shadow-sm"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
             >
               <Exam size={16} weight="bold" />
               <span>Browse Assigned Mock Tests</span>
@@ -353,18 +318,18 @@ export default function StudentMyTestResultsPage() {
             return (
               <div
                 key={test.testId}
-                className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
+                className="student-card group flex flex-col justify-between hover:-translate-y-0.5 transition-all duration-200"
               >
                 <div>
                   {/* Top Badges Row */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                        <Exam className="h-3.5 w-3.5 text-indigo-600" />
+                      <span className="student-pill student-pill-sky">
+                        <Exam className="h-3.5 w-3.5" />
                         {formatTestType(test.testType)}
                       </span>
                       {test.subjectName && (
-                        <span className="inline-flex items-center rounded-lg bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-100">
+                        <span className="student-pill student-pill-mint">
                           {test.subjectName}
                         </span>
                       )}
@@ -382,7 +347,7 @@ export default function StudentMyTestResultsPage() {
                   <div className="mt-3.5">
                     <Link
                       href={resultUrl}
-                      className="text-base sm:text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors"
+                      className="text-base sm:text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-store-blue transition-colors"
                     >
                       {test.title}
                     </Link>
@@ -394,26 +359,26 @@ export default function StudentMyTestResultsPage() {
                   </div>
 
                   {/* Performance Result Scorecard Box */}
-                  <div className="mt-4 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 to-white p-3.5">
+                  <div className="mt-4 rounded-xl border border-emerald-100 p-3.5" style={{ background: 'linear-gradient(135deg, var(--color-store-mint) 0%, var(--color-store-white) 80%)' }}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-store-green)' }}>
                           Total Score
                         </p>
                         <div className="mt-0.5 flex items-baseline gap-1.5">
-                          <span className="text-xl font-extrabold text-emerald-950">
+                          <span className="text-xl font-extrabold tabular-nums" style={{ color: 'var(--color-store-green)' }}>
                             {res.totalScore}
                           </span>
                           <span className="text-xs font-medium text-slate-500">
                             / {res.maxScore} marks
                           </span>
-                          <span className="ml-2 inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                          <span className="student-pill student-pill-mint ml-2">
                             {res.percentage}%
                           </span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="text-xs font-bold text-slate-700 block">
+                        <span className="text-xs font-bold text-slate-700 block tabular-nums">
                           {res.accuracy}% Accuracy
                         </span>
                         <p className="text-[10px] text-slate-400 mt-0.5">
@@ -425,19 +390,19 @@ export default function StudentMyTestResultsPage() {
 
                   {/* 3-Column Question Breakdown Grid */}
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-xl bg-emerald-50/60 border border-emerald-100 p-2">
-                      <p className="text-[10px] font-bold text-emerald-700">Correct</p>
-                      <p className="text-xs font-extrabold text-emerald-900 mt-0.5">+{res.correctCount}</p>
+                    <div className="rounded-xl p-2" style={{ background: 'var(--color-store-mint)' }}>
+                      <p className="text-[10px] font-bold" style={{ color: 'var(--color-store-green)' }}>Correct</p>
+                      <p className="text-xs font-extrabold mt-0.5 tabular-nums" style={{ color: 'var(--color-store-green)' }}>+{res.correctCount}</p>
                     </div>
 
-                    <div className="rounded-xl bg-rose-50/60 border border-rose-100 p-2">
+                    <div className="rounded-xl bg-rose-50 border border-rose-100 p-2">
                       <p className="text-[10px] font-bold text-rose-700">Incorrect</p>
-                      <p className="text-xs font-extrabold text-rose-900 mt-0.5">-{res.wrongCount}</p>
+                      <p className="text-xs font-extrabold text-rose-900 mt-0.5 tabular-nums">-{res.wrongCount}</p>
                     </div>
 
                     <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">
                       <p className="text-[10px] font-bold text-slate-500">Skipped</p>
-                      <p className="text-xs font-extrabold text-slate-700 mt-0.5">{res.skippedCount}</p>
+                      <p className="text-xs font-extrabold text-slate-700 mt-0.5 tabular-nums">{res.skippedCount}</p>
                     </div>
                   </div>
                 </div>
@@ -446,7 +411,8 @@ export default function StudentMyTestResultsPage() {
                 <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
                   <Link
                     href={resultUrl}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-[0.98] transition-all"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl text-white px-4 py-2.5 text-xs font-bold shadow-xs hover:opacity-95 transition-all"
+                    style={{ backgroundColor: 'var(--color-store-blue)' }}
                   >
                     <CheckCircle className="h-3.5 w-3.5" weight="bold" />
                     <span>View Scorecard</span>
@@ -454,9 +420,9 @@ export default function StudentMyTestResultsPage() {
 
                   <Link
                     href={reviewUrl}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                   >
-                    <BookOpen className="h-3.5 w-3.5 text-indigo-600" weight="bold" />
+                    <BookOpen className="h-3.5 w-3.5" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
                     <span>Solutions</span>
                     <ArrowRight className="h-3 w-3 text-slate-400" />
                   </Link>

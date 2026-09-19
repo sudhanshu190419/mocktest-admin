@@ -1,24 +1,15 @@
 'use client';
 
-/**
- * Student My Courses Page (/student/courses)
- *
- * Lists all purchased/enrolled courses for the logged-in student.
- * Uses real bootstrap and get_courses_content_summary data.
- *
- * @module app/student/courses/page
- */
-
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   BookOpen,
   MagnifyingGlass,
-  GraduationCap,
   Sparkle,
   ArrowsClockwise,
   Warning,
-  CaretRight
+  CaretRight,
+  ArrowSquareOut
 } from '@phosphor-icons/react';
 import {
   fetchStudentEnrolledCourses,
@@ -82,48 +73,58 @@ export default function StudentCoursesPage() {
   }, [courses, searchQuery, selectedCategory]);
 
   return (
-    <div className="space-y-6">
+    <div className="store-container space-y-7 pb-12">
       {/* ── Breadcrumb & Top Bar ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <Link href="/student/overview" className="hover:text-sky-600 transition-colors">
-            Student Portal
-          </Link>
-          <CaretRight className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-slate-900">My Courses</span>
-        </div>
+        <nav className="store-breadcrumb" aria-label="Breadcrumb">
+          <Link href="/">MakeMeTopper</Link>
+          <span aria-hidden="true">/</span>
+          <Link href="/student/overview">Student Hub</Link>
+          <span aria-hidden="true">/</span>
+          <span>My Courses</span>
+        </nav>
 
         <button
           onClick={loadCourses}
           disabled={isLoading}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-xs"
         >
           <ArrowsClockwise className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
-      {/* ── Page Header Banner ──────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-sky-700 to-indigo-700 p-6 sm:p-8 text-white shadow-sm">
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md">
-            <GraduationCap className="h-3.5 w-3.5 text-sky-200" />
-            <span>Enrolled Academic Portal</span>
+      {/* ── Page Header Banner (Design A) ─────────────── */}
+      <section className="student-hero-banner">
+        <div className="student-hero-header">
+          <div className="max-w-2xl space-y-2">
+            <div className="student-pill student-pill-sky">
+              <Sparkle className="h-3.5 w-3.5" />
+              <span>Enrolled Learning Programs</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+              My Enrolled Courses & Batches
+            </h1>
+            <p className="student-hero-lead">
+              Access your course curriculum, video lectures, revision PDFs, and assigned mock test series.
+            </p>
           </div>
-          <h1 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight">
-            My Enrolled Courses & Batches
-          </h1>
-          <p className="mt-2 text-sm text-sky-100/90 leading-relaxed">
-            Access your course curriculum, video lectures, revision PDFs, and assigned mock test series.
-          </p>
-        </div>
 
-        {/* Decorative background glow */}
-        <div className="absolute right-0 top-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-      </div>
+          <div className="student-hero-actions">
+            <Link
+              href="/courses"
+              className="inline-flex items-center gap-2 rounded-xl text-white px-4 py-2.5 text-xs font-bold hover:opacity-90 transition-colors shadow-xs"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
+            >
+              <span>Explore All Courses</span>
+              <ArrowSquareOut size={15} />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {/* ── Search & Category Filter Bar ───────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
         {/* Search Input */}
         <div className="relative flex-1">
           <MagnifyingGlass className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -132,7 +133,7 @@ export default function StudentCoursesPage() {
             placeholder="Search enrolled courses, batches, or subjects..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-4 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100 transition-all"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-4 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
           />
         </div>
 
@@ -140,11 +141,7 @@ export default function StudentCoursesPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-colors ${
-              selectedCategory === 'all'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+            className={`student-filter-btn ${selectedCategory === 'all' ? 'active' : ''}`}
           >
             All Courses ({courses.length})
           </button>
@@ -152,11 +149,7 @@ export default function StudentCoursesPage() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-colors ${
-                selectedCategory === cat
-                  ? 'bg-sky-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              className={`student-filter-btn ${selectedCategory === cat ? 'active' : ''}`}
             >
               {cat}
             </button>
@@ -171,22 +164,13 @@ export default function StudentCoursesPage() {
           {[1, 2, 3].map((n) => (
             <div
               key={n}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm animate-pulse space-y-4"
-            >
-              <div className="flex justify-between">
-                <div className="h-5 w-24 rounded-full bg-slate-200" />
-                <div className="h-5 w-20 rounded-md bg-slate-200" />
-              </div>
-              <div className="h-6 w-3/4 rounded bg-slate-200" />
-              <div className="h-14 rounded-xl bg-slate-100" />
-              <div className="h-8 rounded bg-slate-100" />
-              <div className="h-10 rounded-xl bg-slate-200" />
-            </div>
+              className="student-card animate-pulse space-y-4 h-72"
+            />
           ))}
         </div>
       ) : error ? (
         /* Error State */
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-8 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
             <Warning className="h-6 w-6" />
           </div>
@@ -194,7 +178,7 @@ export default function StudentCoursesPage() {
           <p className="mt-1 text-xs text-slate-600 max-w-sm mx-auto">{error}</p>
           <button
             onClick={loadCourses}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition-colors"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition-colors shadow-xs"
           >
             <ArrowsClockwise className="h-3.5 w-3.5" />
             Try Again
@@ -202,29 +186,35 @@ export default function StudentCoursesPage() {
         </div>
       ) : filteredCourses.length === 0 ? (
         /* Empty State */
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+        <div className="student-card text-center p-12">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
             <BookOpen className="h-8 w-8" />
           </div>
-          <h3 className="mt-4 text-lg font-bold text-slate-900">
+          <h3 className="mt-4 text-lg font-extrabold text-slate-900">
             {searchQuery ? 'No courses match your search' : 'No Enrolled Courses Found'}
           </h3>
           <p className="mt-1.5 text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
             {searchQuery
               ? 'Try adjusting your search terms or selecting a different category filter.'
-              : 'You are not currently enrolled in any courses. Please check back once your academic administrator assigns your batch.'}
+              : 'You have not enrolled in any courses yet. Explore our targeted programs designed for NEET, JEE, and foundation prep.'}
           </p>
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('all');
-              }}
-              className="mt-4 text-xs font-bold text-sky-600 hover:text-sky-700 underline"
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/courses"
+              className="inline-flex items-center gap-2 rounded-xl text-white px-5 py-2.5 text-xs font-bold hover:opacity-90 transition-colors shadow-xs"
+              style={{ backgroundColor: 'var(--color-store-blue)' }}
             >
-              Clear filters
-            </button>
-          )}
+              <span>Explore Course Catalog</span>
+              <ArrowSquareOut size={15} />
+            </Link>
+            <Link
+              href="/pyq"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <span>View PYQ Store</span>
+            </Link>
+          </div>
         </div>
       ) : (
         /* Courses Grid */

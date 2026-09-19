@@ -205,8 +205,17 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
 
   // ── Normal Ready State ─────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-neutral-50/50 dark:bg-neutral-950 py-6 sm:py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="store-container space-y-7 pb-12">
+      {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
+      <nav className="store-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/student/overview">Student Hub</Link>
+        <span aria-hidden="true">/</span>
+        <Link href="/student/recordings">Recorded Classes</Link>
+        <span aria-hidden="true">/</span>
+        <span>{recording.title}</span>
+      </nav>
+
+      <div className="space-y-8">
         {/* ── Video Player Component ─────────────────────────────────── */}
         <section aria-label="Class Video Player">
           <StudentRecordingPlayer

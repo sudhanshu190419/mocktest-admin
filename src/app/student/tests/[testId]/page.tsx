@@ -213,18 +213,18 @@ export default function StudentTestInstructionsPage() {
     : 'No negative marking';
 
   return (
-    <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto pb-16">
+    <div className="store-container space-y-7 pb-16">
       {/* Top Header & Breadcrumb */}
       <div>
-        <Link
-          href="/student/tests"
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-3 transition-colors"
-        >
-          <ArrowLeft size={14} weight="bold" />
-          <span>Back to Mock Tests Hub</span>
-        </Link>
+        <nav className="store-breadcrumb" aria-label="Breadcrumb">
+          <Link href="/student/overview">Student Hub</Link>
+          <span aria-hidden="true">/</span>
+          <Link href="/student/tests">Mock Tests</Link>
+          <span aria-hidden="true">/</span>
+          <span>{test.title}</span>
+        </nav>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 border border-indigo-100">

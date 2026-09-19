@@ -35,7 +35,7 @@ import {
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
-export type StudentTestFilterTab = 'all' | 'assigned' | 'in_progress' | 'completed' | 'upcoming';
+export type StudentTestFilterTab = 'all' | 'assigned' | 'pyq' | 'in_progress' | 'completed' | 'upcoming';
 
 export interface DirtyAnswerItem {
   answerId?: string;
@@ -227,9 +227,9 @@ export async function fetchStudentTestResults(
 // ─── Main Hub Query ─────────────────────────────────────────────────────────
 
 /**
- * Fetches all mock tests assigned to the authenticated student across all enrolled batches.
- * Fully respects access control by deriving test assignments only from the student's active batches.
- * Executes batched, bounded queries to eliminate N+1 performance bottlenecks.
+ * Fetches all mock tests assigned to the authenticated student across all enrolled batches
+ * AND all purchased Previous Year Question (PYQ) packages and papers.
+ * Fully respects access control and executes batched, bounded queries to eliminate N+1 performance bottlenecks.
  */
 export async function fetchStudentAssignedMockTests(
   userId?: string
@@ -238,8 +238,10 @@ export async function fetchStudentAssignedMockTests(
     // 1. Resolve student ID
     const studentId = await resolveCurrentStudentId(userId);
 
-    // 2. Discover all active batch IDs and enrolled course IDs
+    // 2. Discover active batch IDs and active PYQ purchases
     let batchIds: string[] = [];
+    let purchasedPackageIds: string[] = [];
+    const pyqPackageNameMap = new Map<string, string>();
 
     if (studentId) {
       // Source A: Active batch enrollments
@@ -277,40 +279,44 @@ export async function fetchStudentAssignedMockTests(
           }
         }
       }
-    }
 
-    // Deduplicate batch IDs
-    batchIds = Array.from(new Set(batchIds.filter(isUuidString)));
-
-    // If student has no active batches, return empty list
-    if (batchIds.length === 0) {
-      return {
-        tests: [],
-        summary: { total: 0, available: 0, inProgress: 0, completed: 0, upcoming: 0 },
-        error: null,
-      };
-    }
-
-    // 3. Resolve all batch_subjects associated with these batches
-    const { data: batchSubjectRows, error: bsErr } = await supabase
-      .from('batch_subjects')
-      .select(`
-        batch_subject_id,
-        batch_id,
-        subject_id,
-        subjects:subject_id (name, code),
-        batches:batch_id (
-          name,
-          batch_code,
-          course_batches (
-            courses (course_id, title)
+      // Source C: Active PYQ package purchases
+      const { data: pyqPurchaseRows, error: pyqErr } = await supabase
+        .from('student_pyq_purchases')
+        .select(`
+          package_id,
+          purchased_at,
+          pyq_packages (
+            package_id,
+            name
           )
-        )
-      `)
-      .in('batch_id', batchIds)
-      .eq('is_active', true);
+        `)
+        .eq('student_id', studentId)
+        .eq('is_active', true);
 
-    if (bsErr || !batchSubjectRows || batchSubjectRows.length === 0) {
+      if (pyqErr) {
+        console.warn('[studentTestWebService] student_pyq_purchases query warning:', pyqErr);
+      }
+
+      if (pyqPurchaseRows && pyqPurchaseRows.length > 0) {
+        pyqPurchaseRows.forEach((r: any) => {
+          if (r.package_id) {
+            purchasedPackageIds.push(r.package_id);
+            const pkg = Array.isArray(r.pyq_packages) ? r.pyq_packages[0] : r.pyq_packages;
+            if (pkg?.name) {
+              pyqPackageNameMap.set(r.package_id, pkg.name);
+            }
+          }
+        });
+      }
+    }
+
+    // Deduplicate IDs
+    batchIds = Array.from(new Set(batchIds.filter(isUuidString)));
+    purchasedPackageIds = Array.from(new Set(purchasedPackageIds.filter(isUuidString)));
+
+    // If student has no active batches AND no purchased PYQ packages, return empty list
+    if (batchIds.length === 0 && purchasedPackageIds.length === 0) {
       return {
         tests: [],
         summary: { total: 0, available: 0, inProgress: 0, completed: 0, upcoming: 0 },
@@ -318,90 +324,208 @@ export async function fetchStudentAssignedMockTests(
       };
     }
 
-    const batchSubjectIds = batchSubjectRows.map((bs: any) => bs.batch_subject_id);
-
-    // Build context lookup maps
-    const subjectNameMap = new Map<string, string>();
-    const courseTitleMap = new Map<string, { courseId: string; title: string }>();
-    const batchNameMap = new Map<string, string>();
-
-    batchSubjectRows.forEach((bs: any) => {
-      const s = Array.isArray(bs.subjects) ? bs.subjects[0] : bs.subjects;
-      const b = Array.isArray(bs.batches) ? bs.batches[0] : bs.batches;
-      if (s?.name) {
-        subjectNameMap.set(bs.batch_subject_id, s.name);
-      }
-      if (b?.name) {
-        batchNameMap.set(bs.batch_subject_id, b.name);
-      }
-      const cb = b?.course_batches?.[0];
-      const c = Array.isArray(cb?.courses) ? cb?.courses[0] : cb?.courses;
-      if (c?.course_id && c?.title) {
-        courseTitleMap.set(bs.batch_subject_id, { courseId: c.course_id, title: c.title });
-      }
-    });
-
-    // 4. Fetch all assigned mock tests for these batch subjects
-    const { data: testAssignmentRows, error: taErr } = await supabase
-      .from('batch_subject_mock_tests')
-      .select(`
-        assignment_id,
-        test_id,
-        assigned_at,
-        available_from,
-        available_until,
-        attempt_limit,
-        batch_subject_id,
-        mock_tests:test_id (
-          test_id,
-          title,
-          description,
-          test_type,
-          subject_id,
-          duration_min,
-          total_marks,
-          passing_marks,
-          negative_marking,
-          status,
-          created_at
-        )
-      `)
-      .in('batch_subject_id', batchSubjectIds)
-      .order('assigned_at', { ascending: false });
-
-    if (taErr) {
-      console.error('[studentTestWebService] batch_subject_mock_tests query error:', taErr);
-      return {
-        tests: [],
-        summary: { total: 0, available: 0, inProgress: 0, completed: 0, upcoming: 0 },
-        error: 'Failed to retrieve assigned mock tests',
-      };
-    }
-
-    if (!testAssignmentRows || testAssignmentRows.length === 0) {
-      return {
-        tests: [],
-        summary: { total: 0, available: 0, inProgress: 0, completed: 0, upcoming: 0 },
-        error: null,
-      };
-    }
-
-    // Deduplicate by test_id while aggregating metadata
     const uniqueTestIds: string[] = [];
     const attemptLimitMap = new Map<string, number | null>();
     const rawTestMap = new Map<string, any>();
 
-    testAssignmentRows.forEach((row: any) => {
-      const mt = Array.isArray(row.mock_tests) ? row.mock_tests[0] : row.mock_tests;
-      const tid = mt?.test_id || row.test_id;
-      if (!tid) return;
+    // ─── 3. Process Batch Assigned Tests ────────────────────────────────────
+    if (batchIds.length > 0) {
+      const { data: batchSubjectRows, error: bsErr } = await supabase
+        .from('batch_subjects')
+        .select(`
+          batch_subject_id,
+          batch_id,
+          subject_id,
+          subjects:subject_id (name, code),
+          batches:batch_id (
+            name,
+            batch_code,
+            course_batches (
+              courses (course_id, title)
+            )
+          )
+        `)
+        .in('batch_id', batchIds)
+        .eq('is_active', true);
 
-      if (!rawTestMap.has(tid)) {
-        uniqueTestIds.push(tid);
-        attemptLimitMap.set(tid, row.attempt_limit ?? null);
-        rawTestMap.set(tid, { row, mt });
+      if (!bsErr && batchSubjectRows && batchSubjectRows.length > 0) {
+        const batchSubjectIds = batchSubjectRows.map((bs: any) => bs.batch_subject_id);
+
+        const subjectNameMap = new Map<string, string>();
+        const courseTitleMap = new Map<string, { courseId: string; title: string }>();
+        const batchNameMap = new Map<string, string>();
+
+        batchSubjectRows.forEach((bs: any) => {
+          const s = Array.isArray(bs.subjects) ? bs.subjects[0] : bs.subjects;
+          const b = Array.isArray(bs.batches) ? bs.batches[0] : bs.batches;
+          if (s?.name) {
+            subjectNameMap.set(bs.batch_subject_id, s.name);
+          }
+          if (b?.name) {
+            batchNameMap.set(bs.batch_subject_id, b.name);
+          }
+          const cb = b?.course_batches?.[0];
+          const c = Array.isArray(cb?.courses) ? cb?.courses[0] : cb?.courses;
+          if (c?.course_id && c?.title) {
+            courseTitleMap.set(bs.batch_subject_id, { courseId: c.course_id, title: c.title });
+          }
+        });
+
+        const { data: testAssignmentRows, error: taErr } = await supabase
+          .from('batch_subject_mock_tests')
+          .select(`
+            assignment_id,
+            test_id,
+            assigned_at,
+            available_from,
+            available_until,
+            attempt_limit,
+            batch_subject_id,
+            mock_tests:test_id (
+              test_id,
+              title,
+              description,
+              test_type,
+              subject_id,
+              duration_min,
+              total_marks,
+              passing_marks,
+              negative_marking,
+              status,
+              created_at
+            )
+          `)
+          .in('batch_subject_id', batchSubjectIds)
+          .order('assigned_at', { ascending: false });
+
+        if (!taErr && testAssignmentRows) {
+          testAssignmentRows.forEach((row: any) => {
+            const mt = Array.isArray(row.mock_tests) ? row.mock_tests[0] : row.mock_tests;
+            const tid = mt?.test_id || row.test_id;
+            if (!tid) return;
+
+            if (!rawTestMap.has(tid)) {
+              uniqueTestIds.push(tid);
+              attemptLimitMap.set(tid, row.attempt_limit ?? null);
+              const bsId = row.batch_subject_id;
+              rawTestMap.set(tid, {
+                row,
+                mt,
+                isPyq: false,
+                subjectName: subjectNameMap.get(bsId) || null,
+                courseTitle: courseTitleMap.get(bsId)?.title || null,
+                courseId: courseTitleMap.get(bsId)?.courseId || null,
+                batchName: batchNameMap.get(bsId) || null,
+              });
+            }
+          });
+        }
       }
-    });
+    }
+
+    // ─── 4. Process Purchased PYQ Papers & Mock Tests ───────────────────────
+    if (purchasedPackageIds.length > 0) {
+      try {
+        const { data: pyqPaperRows, error: ppErr } = await supabase
+          .from('pyq_papers')
+          .select(`
+            paper_id,
+            package_id,
+            title,
+            exam_year,
+            exam_session,
+            total_questions,
+            total_marks,
+            duration_min,
+            is_published,
+            created_at
+          `)
+          .in('package_id', purchasedPackageIds)
+          .eq('is_published', true);
+
+        if (!ppErr && pyqPaperRows && pyqPaperRows.length > 0) {
+          const paperIds = pyqPaperRows.map((p: any) => p.paper_id).filter(isUuidString);
+          const paperMap = new Map<string, any>(pyqPaperRows.map((p: any) => [p.paper_id, p]));
+
+          if (paperIds.length > 0) {
+            const { data: mappingRows, error: mapErr } = await supabase
+              .from('pyq_mock_mappings')
+              .select(`
+                mapping_id,
+                paper_id,
+                test_id,
+                mock_tests:test_id (
+                  test_id,
+                  title,
+                  description,
+                  test_type,
+                  subject_id,
+                  duration_min,
+                  total_marks,
+                  passing_marks,
+                  negative_marking,
+                  status,
+                  created_at
+                )
+              `)
+              .in('paper_id', paperIds);
+
+            if (!mapErr && mappingRows) {
+              mappingRows.forEach((mRow: any) => {
+                const mt = Array.isArray(mRow.mock_tests) ? mRow.mock_tests[0] : mRow.mock_tests;
+                const tid = mt?.test_id || mRow.test_id;
+                if (!tid) return;
+
+                const paper = paperMap.get(mRow.paper_id);
+                const packageName = paper?.package_id ? (pyqPackageNameMap.get(paper.package_id) || 'PYQ Archive') : 'PYQ Archive';
+
+                if (!rawTestMap.has(tid)) {
+                  uniqueTestIds.push(tid);
+                  attemptLimitMap.set(tid, null); // Unlimited practice for lifetime PYQ access
+                  rawTestMap.set(tid, {
+                    row: {
+                      assignment_id: mRow.mapping_id,
+                      test_id: tid,
+                      attempt_limit: null,
+                      available_from: null,
+                      available_until: null,
+                      assigned_at: paper?.created_at || null,
+                    },
+                    mt: mt || {
+                      test_id: tid,
+                      title: paper?.title || 'Previous Year Exam Paper',
+                      description: `Official Past Paper (${paper?.exam_year || ''})`,
+                      test_type: 'pyq_paper',
+                      duration_min: paper?.duration_min ?? 180,
+                      total_marks: paper?.total_marks ?? null,
+                      passing_marks: null,
+                      negative_marking: 1,
+                      status: 'published',
+                    },
+                    isPyq: true,
+                    subjectName: paper?.title || 'PYQ Paper',
+                    courseTitle: packageName,
+                    courseId: paper?.package_id || null,
+                    batchName: packageName,
+                    paperMetadata: paper,
+                  });
+                }
+              });
+            }
+          }
+        }
+      } catch (pyqEx) {
+        console.warn('[studentTestWebService] Error resolving PYQ mock mappings:', pyqEx);
+      }
+    }
+
+    if (uniqueTestIds.length === 0) {
+      return {
+        tests: [],
+        summary: { total: 0, available: 0, inProgress: 0, completed: 0, upcoming: 0 },
+        error: null,
+      };
+    }
 
     // 5. Run parallel batched queries for Question Counts, Attempts, and Results
     const [questionCountMap, attemptSummaryMap, resultsMap] = await Promise.all([
@@ -418,14 +542,12 @@ export async function fetchStudentAssignedMockTests(
     let availableCount = 0;
 
     uniqueTestIds.forEach((tId) => {
-      const { row, mt } = rawTestMap.get(tId);
-      const bsId = row.batch_subject_id;
-      const subjectName = subjectNameMap.get(bsId) || null;
-      const courseInfo = courseTitleMap.get(bsId) || null;
-      const batchName = batchNameMap.get(bsId) || null;
+      const entry = rawTestMap.get(tId);
+      if (!entry) return;
+      const { row, mt, isPyq, subjectName, courseTitle, courseId, batchName, paperMetadata } = entry;
 
-      const availability = getMockTestAvailability(row.available_from, row.available_until);
-      const questionCount = questionCountMap.get(tId) ?? 0;
+      const availability = isPyq ? 'available' : getMockTestAvailability(row.available_from, row.available_until);
+      const questionCount = questionCountMap.get(tId) ?? (paperMetadata?.total_questions || 0);
       const attemptSummary = attemptSummaryMap.get(tId) || {
         attemptsUsed: 0,
         attemptsRemaining: row.attempt_limit ?? null,
@@ -457,16 +579,16 @@ export async function fetchStudentAssignedMockTests(
       tests.push({
         testId: tId,
         assignmentId: row.assignment_id,
-        title: mt?.title || 'Mock Assessment Test',
-        description: mt?.description || null,
-        testType: mt?.test_type || 'mock_test',
+        title: mt?.title || paperMetadata?.title || 'Mock Assessment Test',
+        description: mt?.description || (isPyq ? `Official Past Exam Paper (${paperMetadata?.exam_year || ''})` : null),
+        testType: isPyq ? 'pyq_paper' : (mt?.test_type || 'mock_test'),
         subjectId: mt?.subject_id || null,
         subjectName,
-        courseId: courseInfo?.courseId || null,
-        courseTitle: courseInfo?.title || null,
+        courseId: courseId || null,
+        courseTitle: courseTitle || null,
         batchName,
-        durationMin: mt?.duration_min ?? null,
-        totalMarks: mt?.total_marks ?? null,
+        durationMin: mt?.duration_min ?? paperMetadata?.duration_min ?? null,
+        totalMarks: mt?.total_marks ?? paperMetadata?.total_marks ?? null,
         passingMarks: mt?.passing_marks ?? null,
         negativeMarking: mt?.negative_marking ?? 0,
         questionCount,
@@ -543,7 +665,7 @@ export async function fetchStudentTestInstructions(
       return { data: null, error: 'Test not found or no longer available' };
     }
 
-    // 3. Verify access via batch_subject_mock_tests or student enrollment
+    // 3. Verify access via batch_subject_mock_tests or student enrollment or PYQ purchase
     let hasAccess = false;
     let assignmentRow: any = null;
     let courseTitle: string | null = null;
@@ -586,6 +708,47 @@ export async function fetchStudentTestInstructions(
         const cb = bs?.batches?.course_batches?.[0];
         if (cb?.courses?.title) courseTitle = cb.courses.title;
       }
+
+      // Check if test is mapped to a purchased PYQ paper
+      if (!hasAccess) {
+        const { data: pyqMapping } = await supabase
+          .from('pyq_mock_mappings')
+          .select('paper_id')
+          .eq('test_id', testId)
+          .maybeSingle();
+
+        if (pyqMapping?.paper_id) {
+          const { data: paperRow } = await supabase
+            .from('pyq_papers')
+            .select(`
+              paper_id,
+              title,
+              package_id,
+              pyq_packages:package_id (
+                name
+              )
+            `)
+            .eq('paper_id', pyqMapping.paper_id)
+            .maybeSingle();
+
+          if (paperRow?.package_id) {
+            const { data: purchaseRow } = await supabase
+              .from('student_pyq_purchases')
+              .select('purchase_id')
+              .eq('student_id', studentId)
+              .eq('package_id', paperRow.package_id)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (purchaseRow) {
+              hasAccess = true;
+              if (paperRow.title) subjectName = paperRow.title;
+              const pkg = Array.isArray(paperRow.pyq_packages) ? paperRow.pyq_packages[0] : paperRow.pyq_packages;
+              if (pkg?.name) courseTitle = pkg.name;
+            }
+          }
+        }
+      }
     }
 
     // If test is published and accessible by institute, allow access
@@ -596,7 +759,7 @@ export async function fetchStudentTestInstructions(
     if (!hasAccess) {
       return {
         data: null,
-        error: 'You are not enrolled in the batch or course assigned to this assessment.',
+        error: 'You do not have access to this assessment. Please enroll or purchase the corresponding package.',
       };
     }
 

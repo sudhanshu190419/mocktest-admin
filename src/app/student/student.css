@@ -1,0 +1,392 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MakeMeTopper Student Portal — Design A Stylesheet
+   Built on Design A Tokens from courses.css
+   ═══════════════════════════════════════════════════════════════════ */
+
+.student-portal {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-store-paper);
+  color: var(--color-store-ink);
+  font-family: var(--font-store-body), sans-serif;
+}
+
+/* ── Sticky Sub-Navigation Strip ────────────────────────────── */
+.student-subnav-wrapper {
+  position: sticky;
+  top: 85px;
+  z-index: 25;
+  background: color-mix(in srgb, var(--color-store-paper) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-store-line);
+}
+
+.student-subnav-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.student-subnav-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.student-subnav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-store-button);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--color-store-muted);
+  white-space: nowrap;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.student-subnav-pill:hover {
+  color: var(--color-store-ink);
+  background: color-mix(in srgb, var(--color-store-white) 80%, transparent);
+  border-color: var(--color-store-line);
+}
+
+.student-subnav-pill.is-active {
+  background: var(--color-store-ink);
+  color: var(--color-store-white);
+  font-weight: 650;
+  border-color: var(--color-store-ink);
+  box-shadow: 0 4px 14px rgba(21, 43, 69, 0.15);
+}
+
+.student-subnav-pill.is-active .student-subnav-icon {
+  color: var(--color-store-apricot);
+}
+
+.student-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+  animation: studentPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes studentPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
+/* ── Student Content Container ──────────────────────────────── */
+.student-main-content {
+  flex: 1;
+  padding-block: 36px 64px;
+}
+
+/* ── Hero / Greeting Banner ─────────────────────────────────── */
+.student-hero-banner {
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-radius: var(--radius-store-card);
+  padding: 36px 40px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-store-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.student-hero-banner::after {
+  content: "";
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, var(--color-store-sky) 0%, transparent 70%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.student-hero-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+}
+
+@media (min-width: 900px) {
+  .student-hero-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.student-hero-lead {
+  font-size: 15px;
+  color: var(--color-store-muted);
+  max-width: 600px;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+
+.student-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ── Card Systems ───────────────────────────────────────────── */
+.student-card {
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-radius: var(--radius-store-card);
+  padding: 24px 28px;
+  box-shadow: var(--shadow-store-card);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.student-card:hover {
+  border-color: color-mix(in srgb, var(--color-store-blue) 40%, var(--color-store-line));
+  box-shadow: var(--shadow-store-hover);
+}
+
+/* ── KPI Stat Cards ─────────────────────────────────────────── */
+.student-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.student-kpi-card {
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-radius: var(--radius-store-card);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-store-card);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.student-kpi-card:hover {
+  border-color: var(--color-store-blue);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-store-hover);
+}
+
+.student-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.student-kpi-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-store-muted);
+}
+
+.student-kpi-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-store-sky);
+  color: var(--color-store-blue);
+}
+
+.student-kpi-value {
+  font-family: var(--font-store-display), sans-serif;
+  font-size: 32px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  color: var(--color-store-ink);
+  line-height: 1.1;
+}
+
+.student-kpi-sub {
+  font-size: 11.5px;
+  color: var(--color-store-muted);
+  margin-top: 4px;
+}
+
+/* ── Live Class Banner ──────────────────────────────────────── */
+.student-live-hero {
+  background: linear-gradient(135deg, #effaf5 0%, var(--color-store-white) 60%);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-store-card);
+  padding: 24px 28px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.08);
+}
+
+@media (min-width: 768px) {
+  .student-live-hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* ── Progress Bars ──────────────────────────────────────────── */
+.student-progress-track {
+  height: 7px;
+  width: 100%;
+  background: var(--color-store-sky);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-block: 8px;
+}
+
+.student-progress-fill {
+  height: 100%;
+  background: var(--color-store-blue);
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.student-progress-fill.success {
+  background: #10b981;
+}
+
+.student-progress-fill.warning {
+  background: #f59e0b;
+}
+
+/* ── Status Pills & Badges ──────────────────────────────────── */
+.student-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.student-pill-sky {
+  background: var(--color-store-sky);
+  color: var(--color-store-blue-dark);
+}
+
+.student-pill-mint {
+  background: var(--color-store-mint);
+  color: var(--color-store-green);
+}
+
+.student-pill-apricot {
+  background: var(--color-store-apricot);
+  color: var(--color-store-brown);
+}
+
+.student-pill-lilac {
+  background: var(--color-store-lilac);
+  color: var(--color-store-violet);
+}
+
+.student-pill-sand {
+  background: var(--color-store-sand);
+  color: #854d0e;
+}
+
+/* ── Filter Bar Pills ───────────────────────────────────────── */
+.student-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 22px;
+}
+
+.student-filter-btn {
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-store-muted);
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.student-filter-btn:hover {
+  color: var(--color-store-ink);
+  border-color: var(--color-store-blue);
+}
+
+.student-filter-btn.active {
+  background: var(--color-store-blue);
+  color: var(--color-store-white);
+  border-color: var(--color-store-blue);
+  box-shadow: 0 2px 8px rgba(36, 88, 211, 0.25);
+}
+
+/* ── Section Titles ─────────────────────────────────────────── */
+.student-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.student-section-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-store-ink);
+  letter-spacing: -0.03em;
+}
+
+/* ── Responsive Breakpoints ─────────────────────────────────── */
+@media (max-width: 1100px) {
+  .student-subnav-wrapper {
+    top: 75px;
+  }
+  .student-hero-banner {
+    padding: 28px 30px;
+  }
+}
+
+@media (max-width: 800px) {
+  .student-subnav-wrapper {
+    top: 65px;
+  }
+  .student-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .student-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .student-hero-banner {
+    padding: 22px 20px;
+  }
+  .student-kpi-value {
+    font-size: 26px;
+  }
+}

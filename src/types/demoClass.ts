@@ -24,6 +24,8 @@ export interface DemoClass {
   streamId: string;
   /** Joined stream name (from the streams table) when fetched with the join. */
   streamName: string | null;
+  /** Joined stream code (e.g. NEET, JEE, CUET). */
+  streamCode?: string | null;
   title: string;
   description: string | null;
   /** Storage bucket — defaults to the existing `content-videos` bucket. */

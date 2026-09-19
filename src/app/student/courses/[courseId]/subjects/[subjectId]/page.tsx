@@ -217,24 +217,18 @@ export default function SubjectLearningWorkspacePage() {
   ).length;
 
   return (
-    <div className="space-y-5">
+    <div className="store-container space-y-5 pb-12">
       {/* ── Breadcrumb & Top Bar ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 overflow-hidden">
-          <Link href="/student/overview" className="hover:text-sky-600 transition-colors">
-            Student Portal
-          </Link>
-          <CaretRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-          <Link href="/student/courses" className="hover:text-sky-600 transition-colors">
-            My Courses
-          </Link>
-          <CaretRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-          <Link href={`/student/courses/${courseId}`} className="hover:text-sky-600 transition-colors line-clamp-1">
-            {course.title}
-          </Link>
-          <CaretRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-          <span className="text-slate-900 font-bold">{subject.subjectName}</span>
-        </div>
+        <nav className="store-breadcrumb" aria-label="Breadcrumb">
+          <Link href="/student/overview">Student Hub</Link>
+          <span aria-hidden="true">/</span>
+          <Link href="/student/courses">My Courses</Link>
+          <span aria-hidden="true">/</span>
+          <Link href={`/student/courses/${courseId}`}>{course.title}</Link>
+          <span aria-hidden="true">/</span>
+          <span>{subject.subjectName}</span>
+        </nav>
 
         <Link
           href={`/student/courses/${courseId}`}
