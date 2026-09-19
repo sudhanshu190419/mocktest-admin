@@ -13,7 +13,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   useParams,
-  useRouter } from 'next/navigation';
+  useRouter,
+  useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   CaretRight,
@@ -29,7 +30,6 @@ import {
   Funnel,
   User,
   Clock,
-  Sparkle,
   DownloadSimple,
   Question,
   PlayCircle,
@@ -47,8 +47,11 @@ import { createContextQueryUrl } from '@/services/student/studentDoubtAcademicSe
 export default function SubjectLearningWorkspacePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const courseId = params?.courseId as string;
   const subjectId = params?.subjectId as string;
+  const targetContentId = searchParams?.get('contentId');
+  const targetTestId = searchParams?.get('testId');
 
   const [workspace, setWorkspace] = useState<SubjectLearningWorkspaceData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -68,15 +71,39 @@ export default function SubjectLearningWorkspacePage() {
       const { data, error: resErr } = await fetchSubjectLearningWorkspace(courseId, subjectId);
       if (resErr) {
         setError(resErr);
-      } else {
+      } else if (data) {
         setWorkspace(data);
-        // Auto-select first available content item
-        if (data?.allItems && data.allItems.length > 0) {
-          setSelectedContent(data.allItems[0]);
-          setSelectedMockTest(null);
-        } else if (data?.mockTests && data.mockTests.length > 0) {
-          setSelectedMockTest(data.mockTests[0]);
-          setSelectedContent(null);
+
+        let selected = false;
+        // Priority 1: Match contentId from notification link
+        if (targetContentId && data.allItems?.length > 0) {
+          const matchedItem = data.allItems.find((i) => i.contentId === targetContentId);
+          if (matchedItem) {
+            setSelectedContent(matchedItem);
+            setSelectedMockTest(null);
+            selected = true;
+          }
+        }
+
+        // Priority 2: Match testId from notification link
+        if (!selected && targetTestId && data.mockTests?.length > 0) {
+          const matchedTest = data.mockTests.find((t) => t.testId === targetTestId);
+          if (matchedTest) {
+            setSelectedMockTest(matchedTest);
+            setSelectedContent(null);
+            selected = true;
+          }
+        }
+
+        // Priority 3: Default auto-select first available item
+        if (!selected) {
+          if (data.allItems && data.allItems.length > 0) {
+            setSelectedContent(data.allItems[0]);
+            setSelectedMockTest(null);
+          } else if (data.mockTests && data.mockTests.length > 0) {
+            setSelectedMockTest(data.mockTests[0]);
+            setSelectedContent(null);
+          }
         }
       }
     } catch (err: any) {
@@ -88,7 +115,7 @@ export default function SubjectLearningWorkspacePage() {
 
   useEffect(() => {
     loadWorkspace();
-  }, [courseId, subjectId]);
+  }, [courseId, subjectId, targetContentId, targetTestId]);
 
   // Filter curriculum sections based on search query and content type filter
   const filteredSections = useMemo(() => {
@@ -209,7 +236,7 @@ export default function SubjectLearningWorkspacePage() {
     );
   }
 
-  const { subject, course, allItems, mockTests, progress } = workspace;
+  const { subject, course, allItems, mockTests } = workspace;
 
   const videoItemsCount = allItems.filter((i) => i.contentType === 'video').length;
   const pdfItemsCount = allItems.filter(
@@ -263,21 +290,13 @@ export default function SubjectLearningWorkspacePage() {
           </div>
         </div>
 
-        {/* Teacher & Progress Pills */}
+        {/* Teacher / Faculty Pill */}
         <div className="flex flex-wrap items-center gap-3 border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-5">
           <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
             <User className="h-4 w-4 text-slate-400" />
             <div>
               <p className="text-[10px] text-slate-400 uppercase font-bold">Faculty</p>
               <p className="font-semibold text-slate-800">{subject.teacherName || 'Assigned Faculty'}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800 border border-sky-100">
-            <Sparkle className="h-4 w-4 text-sky-600" />
-            <div>
-              <p className="text-[10px] text-sky-600 uppercase font-bold">Subject Progress</p>
-              <p className="font-bold">{progress.percent}% Completed</p>
             </div>
           </div>
         </div>
@@ -493,50 +512,29 @@ export default function SubjectLearningWorkspacePage() {
             onAskDoubt={handleAskDoubt}
           />
 
-          {/* Secondary Subject Performance & Quick Resources Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Subject Progress Summary Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900">Syllabus Completion</h3>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {progress.completedItems} of {progress.totalItems} lectures & notes completed
+          {/* Quick Doubts / Faculty Help Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-amber-600">
+                <Question className="h-4 w-4" />
+                <h3 className="text-sm font-bold text-slate-900">Have a Doubt in {subject.subjectName}?</h3>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Submit your academic queries directly to faculty and receive step-by-step solutions.
               </p>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-500"
-                  style={{ width: `${Math.max(5, progress.percent)}%` }}
-                />
-              </div>
-              <div className="mt-3 flex justify-between text-xs font-semibold text-slate-600">
-                <span>Completed: {progress.percent}%</span>
-                <span>Remaining: {100 - progress.percent}%</span>
-              </div>
             </div>
-
-            {/* Quick Doubts / Faculty Help Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-amber-600">
-                  <Question className="h-4 w-4" />
-                  <h3 className="text-sm font-bold text-slate-900">Have a Doubt in {subject.subjectName}?</h3>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Submit your academic queries directly to faculty and receive step-by-step solutions.
-                </p>
-              </div>
-              <div className="mt-4">
-                <Link
-                  href={createContextQueryUrl({
-                    subjectId: subjectId || workspace?.subject.subjectId,
-                    batchSubjectId: workspace?.subject.batchSubjectId,
-                    subjectName: workspace?.subject.subjectName,
-                  })}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/70 px-3.5 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors w-full"
-                >
-                  <Question className="h-3.5 w-3.5" />
-                  Ask Faculty a Doubt
-                </Link>
-              </div>
+            <div className="shrink-0">
+              <Link
+                href={createContextQueryUrl({
+                  subjectId: subjectId || workspace?.subject.subjectId,
+                  batchSubjectId: workspace?.subject.batchSubjectId,
+                  subjectName: workspace?.subject.subjectName,
+                })}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/70 px-4 py-2.5 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors w-full sm:w-auto"
+              >
+                <Question className="h-3.5 w-3.5" />
+                Ask Faculty a Doubt
+              </Link>
             </div>
           </div>
         </div>

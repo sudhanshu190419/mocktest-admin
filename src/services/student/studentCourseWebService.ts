@@ -750,7 +750,8 @@ export async function fetchCourseDetailWorkspace(
 
   try {
     // 1. Fetch course details
-    const { data: courseRow, error: cErr } = await supabase
+    let actualCourseId = courseId;
+    const { data: initialCourseRow, error: cErr } = await supabase
       .from('courses')
       .select(`
         course_id,
@@ -764,10 +765,104 @@ export async function fetchCourseDetailWorkspace(
       .eq('course_id', courseId)
       .maybeSingle();
 
-    if (cErr || !courseRow) {
-      console.warn('[studentCourseWebService] fetchCourseDetailWorkspace error:', cErr);
+    let courseRow = initialCourseRow;
+
+    if (!courseRow) {
+      // Fallback A: Check if passed ID is a content_id
+      const { data: bscRow } = await supabase
+        .from('batch_subject_contents')
+        .select(`
+          batch_subject_id,
+          batch_subjects:batch_subject_id (
+            batch_id
+          )
+        `)
+        .eq('content_id', courseId)
+        .maybeSingle();
+
+      const bs1 = Array.isArray(bscRow?.batch_subjects) ? bscRow?.batch_subjects[0] : bscRow?.batch_subjects;
+      if (bs1?.batch_id) {
+        const { data: cbRow } = await supabase
+          .from('course_batches')
+          .select('course_id')
+          .eq('batch_id', bs1.batch_id)
+          .maybeSingle();
+        if (cbRow?.course_id) {
+          actualCourseId = cbRow.course_id;
+        }
+      }
+
+      // Fallback B: Check if passed ID is a batch_subject_id
+      if (actualCourseId === courseId) {
+        const { data: bsRow } = await supabase
+          .from('batch_subjects')
+          .select('batch_id')
+          .eq('batch_subject_id', courseId)
+          .maybeSingle();
+
+        if (bsRow?.batch_id) {
+          const { data: cbRow } = await supabase
+            .from('course_batches')
+            .select('course_id')
+            .eq('batch_id', bsRow.batch_id)
+            .maybeSingle();
+          if (cbRow?.course_id) {
+            actualCourseId = cbRow.course_id;
+          }
+        }
+      }
+
+      // Fallback C: Check if passed ID is a mock test test_id
+      if (actualCourseId === courseId) {
+        const { data: bsmtRow } = await supabase
+          .from('batch_subject_mock_tests')
+          .select(`
+            batch_subject_id,
+            batch_subjects:batch_subject_id (
+              batch_id
+            )
+          `)
+          .eq('test_id', courseId)
+          .maybeSingle();
+
+        const bs2 = Array.isArray(bsmtRow?.batch_subjects) ? bsmtRow?.batch_subjects[0] : bsmtRow?.batch_subjects;
+        if (bs2?.batch_id) {
+          const { data: cbRow } = await supabase
+            .from('course_batches')
+            .select('course_id')
+            .eq('batch_id', bs2.batch_id)
+            .maybeSingle();
+          if (cbRow?.course_id) {
+            actualCourseId = cbRow.course_id;
+          }
+        }
+      }
+
+      if (actualCourseId !== courseId) {
+        const { data: resolvedCourseRow } = await supabase
+          .from('courses')
+          .select(`
+            course_id,
+            title,
+            description,
+            thumbnail_bucket,
+            thumbnail_path,
+            stream_id,
+            streams:stream_id (name)
+          `)
+          .eq('course_id', actualCourseId)
+          .maybeSingle();
+
+        courseRow = resolvedCourseRow;
+      }
+    }
+
+    if (!courseRow) {
+      console.warn('[studentCourseWebService] fetchCourseDetailWorkspace error: course not found for ID', courseId);
       return { data: null, error: 'Course not found or inaccessible' };
     }
+
+    courseId = actualCourseId;
 
     // 2. Fetch batches associated with this course
     const { data: cbRows } = await supabase

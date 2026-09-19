@@ -198,6 +198,12 @@ function firstEmbedded(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+// Safe short ID helper for diagnostic logging without exposing PII
+function safeShortId(id: string | null | undefined): string {
+  if (!id || typeof id !== 'string') return 'unknown';
+  return id.length >= 8 ? id.slice(0, 8) : id;
+}
+
 // ─── Notification helpers (Phase 11B.2) ─────────────────────────────────────
 
 /**
@@ -256,12 +262,19 @@ async function createSubscriptionNotification(
     .eq('notification_recipients.profile_id', profileId)
     .maybeSingle();
 
+  const alreadyExists = Boolean(existing);
+  structuredLog('IDEMPOTENCY_CHECK_RESULT', {
+    eventType,
+    referenceType,
+    subShortId: safeShortId(referenceId),
+    alreadyExists,
+  });
+
   if (existing) {
     structuredLog('NOTIFICATION_SKIPPED_DUPLICATE', {
       eventType,
       referenceType,
-      referenceId,
-      profileId,
+      subShortId: safeShortId(referenceId),
     });
     return 'skipped';
   }
@@ -444,20 +457,64 @@ async function dispatchSubscriptionNotifications(
     .lte('end_date', addDays(today, 7))
     .limit(BATCH_LIMIT);
 
+  structuredLog('N1_CANDIDATES_FETCHED', {
+    todayUtc: today,
+    targetEndDateFor7d: addDays(today, 7),
+    candidateCount: expiring?.length ?? 0,
+    hasTargetSubscription: (expiring ?? []).some(
+      (r) => String(r.subscription_id).startsWith('785540c7'),
+    ),
+    sampleCandidateShortIds: (expiring ?? []).slice(0, 5).map((r) => safeShortId(String(r.subscription_id))),
+  });
+
   if (expiringError) {
     structuredLog('NOTIFICATION_QUERY_FAILED', {
       section: 'expiry_reminders',
       error: expiringError.message,
     });
   } else {
+    let n1EligibleCount = 0;
+    let n1CreatedCount = 0;
+    let n1SkippedCount = 0;
+    let n1FailedCount = 0;
+
     for (const row of expiring ?? []) {
+      const subShortId = safeShortId(String(row.subscription_id));
       const daysLeft = diffDays(today, String(row.end_date));
-      if (!reminderDaysFor(reminderDaysMap, String(row.institute_id)).includes(daysLeft)) {
+      const reminderSchedule = reminderDaysFor(reminderDaysMap, String(row.institute_id));
+      const isMilestoneMatch = reminderSchedule.includes(daysLeft);
+
+      structuredLog('N1_CANDIDATE_EVALUATION', {
+        subShortId,
+        todayUtc: today,
+        endDate: row.end_date,
+        calculatedDaysLeft: daysLeft,
+        reminderSchedule,
+        isMilestoneMatch,
+        is7dMatch: daysLeft === 7,
+      });
+
+      if (!isMilestoneMatch) {
         continue;
       }
+      n1EligibleCount++;
+
       const details = firstEmbedded((row as Record<string, unknown>).student_details);
       const profileId = details?.profile_id;
+      const hasValidProfile = Boolean(profileId);
+
+      structuredLog('N1_PROFILE_CHECK', {
+        subShortId,
+        hasValidProfile,
+      });
+
       if (!profileId) continue;
+
+      structuredLog('N1_CALLING_CREATE_NOTIFICATION', {
+        subShortId,
+        eventType: 'subscription_expiring',
+        referenceType: `subscription_expiry_reminder_${daysLeft}d`,
+      });
 
       const outcome = await createSubscriptionNotification(supabase, {
         instituteId: String(row.institute_id),
@@ -468,8 +525,28 @@ async function dispatchSubscriptionNotifications(
         title: 'Subscription Expiring Soon',
         body: `Your subscription expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Renew now to continue uninterrupted access.`,
       });
+
+      structuredLog('N1_NOTIFICATION_OUTCOME', {
+        subShortId,
+        daysLeft,
+        outcome,
+      });
+
+      if (outcome === 'sent') n1CreatedCount++;
+      else if (outcome === 'skipped') n1SkippedCount++;
+      else n1FailedCount++;
+
       tallyNotification(result, outcome);
     }
+
+    structuredLog('N1_SUMMARY', {
+      todayUtc: today,
+      totalCandidates: expiring?.length ?? 0,
+      eligibleCandidates: n1EligibleCount,
+      sent: n1CreatedCount,
+      skipped: n1SkippedCount,
+      failed: n1FailedCount,
+    });
   }
 
   // ── N2: Grace period started (any subscription in 'grace') ─────────

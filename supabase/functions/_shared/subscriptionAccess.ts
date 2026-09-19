@@ -125,7 +125,8 @@ export interface SubscriptionAccessSummary {
   graceEndDate: string | null;
   contentAccessEndDate: string | null;
   daysRemaining: number | null;
-  isTrial: boolean;
+  /** True when the student permanently owns the course (Full Course purchase/conversion). */
+  isPermanentOwner?: boolean;
   canJoinLive: boolean;
   canViewRecorded: boolean;
   canDownloadNotes: boolean;
@@ -481,6 +482,7 @@ async function loadSubscriptionAccessState(
         permanentOwner: true,
         hasSubscription: true,
         courseId: courseId ?? null,
+        planName: 'Full Course Access',
       };
     }
   }
@@ -679,7 +681,8 @@ export function createSubscriptionAccessChecker(
         tier,
         status: tier,
         courseId: s.courseId,
-        plan: s.planName,
+        plan: s.permanentOwner ? 'Full Course Access' : s.planName,
+        isPermanentOwner: s.permanentOwner,
         hasSubscription: s.hasSubscription,
         subscriptionId: s.subscriptionId,
         endDate: s.endDate,

@@ -61,7 +61,7 @@ import { sendPushNotification } from '../_shared/pushNotification.ts';
 
 type NotificationType =
   | 'mock_test_assigned' | 'mock_test_reminder' | 'mock_test_submitted'
-  | 'result_published' | 'new_content_uploaded' | 'chapter_added'
+  | 'result_published' | 'result_available' | 'new_content_uploaded' | 'chapter_added'
   | 'subject_added' | 'new_mock_test_available' | 'announcement'
   | 'general_message' | 'warning' | 'success' | 'error'
   | 'live_class_reminder' | 'live_class_started' | 'content_approved'
@@ -92,6 +92,7 @@ interface DispatchRequest {
   triggeredBy?: string | null;
   referenceType?: string | null;
   referenceId?: string | null;
+  data?: Record<string, string>;
   audience: NotificationAudience;
   sendPush?: boolean;
 }
@@ -621,11 +622,12 @@ async function dispatchPushToRecipients(
   body: string,
   referenceType?: string | null,
   referenceId?: string | null,
+  customData?: Record<string, string>,
 ): Promise<{ successful: number; failed: number }> {
   let successful = 0;
   let failed = 0;
 
-  const data: Record<string, string> = {};
+  const data: Record<string, string> = { ...(customData ?? {}) };
   if (referenceType) data.referenceType = referenceType;
   if (referenceId) data.referenceId = referenceId;
   data.type = 'admin_notification';
@@ -858,6 +860,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         body.body,
         body.referenceType,
         body.referenceId,
+        body.data,
       );
 
       successfulPushes = pushResult.successful;

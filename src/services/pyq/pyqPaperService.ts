@@ -25,7 +25,7 @@
 import { supabase } from '@/config/supabase';
 import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
 import { buildPaginatedResponse } from '@/utils/response';
-import { uploadResource } from '@/services/storage/storageService';
+import { uploadResource, deleteFile } from '@/services/storage/storageService';
 import { auditService } from '@/services/audit/auditService';
 import {
   assertPaperOwnership,
@@ -363,62 +363,64 @@ export const pyqPaperService = {
       const paperId = data.paper_id;
       const instituteId = pkg.institute_id;
 
+      // ── Upload Question Paper PDF after paper creation ─────────────
+      let pdfBucket: string | null = null;
+      let pdfPath: string | null = null;
+
+      if (input.questionPdfFile) {
+        const uploadResult = await uploadResource({
+          file: input.questionPdfFile,
+          resourceType: 'pyq_question_paper_pdf',
+          pathParams: {
+            instituteId,
+            packageId: input.packageId,
+            paperId,
+          },
+          onProgress: input.onProgress,
+        });
+
+        if (!uploadResult.success || !uploadResult.data) {
+          // Cleanup newly created paper row on upload failure
+          await supabase.from('pyq_papers').delete().eq('paper_id', paperId);
+          return {
+            success: false,
+            error: uploadResult.error
+              ? `Question paper PDF upload failed: ${uploadResult.error}`
+              : 'Question paper PDF upload failed.',
+          };
+        }
+
+        pdfBucket = uploadResult.data.bucket;
+        pdfPath = uploadResult.data.storagePath;
+
+        // ── Update paper with storage path ───────────────────────────────
+        const { error: updateErr } = await supabase
+          .from('pyq_papers')
+          .update({
+            pdf_storage_bucket: pdfBucket,
+            pdf_storage_path: pdfPath,
+          })
+          .eq('paper_id', paperId);
+
+        if (updateErr) {
+          // Cleanup storage file and created paper row on DB link failure
+          if (pdfBucket && pdfPath) {
+            await deleteFile(pdfBucket, pdfPath);
+          }
+          await supabase.from('pyq_papers').delete().eq('paper_id', paperId);
+          return {
+            success: false,
+            error: `Failed to save PDF storage references: ${extractErrorMessage(updateErr)}`,
+          };
+        }
+      }
+
       // ── Audit: paper created ─────────────────────────────────────────
-      // Logged immediately after the INSERT so the create event is recorded
-      // even when a subsequent PDF upload fails (the row still exists).
       await auditService.logCreate({
         resourceType: 'pyq_papers',
         resourceId: paperId,
         metadata: { paperId, packageId: input.packageId, title: input.title.trim() },
       });
-
-      // ── Upload Question Paper PDF after paper creation ─────────────
-      let pdfBucket: string | null = null;
-      let pdfPath: string | null = null;
-
-      try {
-        if (input.questionPdfFile) {
-          const uploadResult = await uploadResource({
-            file: input.questionPdfFile,
-            resourceType: 'pyq_question_paper_pdf',
-            pathParams: {
-              instituteId,
-              packageId: input.packageId,
-              paperId,
-            },
-            onProgress: input.onProgress,
-          });
-
-          if (!uploadResult.success || !uploadResult.data) {
-            throw new Error(`Question paper PDF upload failed: ${uploadResult.error ?? 'Upload failed.'}`);
-          }
-
-          pdfBucket = uploadResult.data.bucket;
-          pdfPath = uploadResult.data.storagePath;
-        }
-
-        // ── Update paper with storage path ───────────────────────────────
-        if (pdfBucket) {
-          const { error: updateErr } = await supabase
-            .from('pyq_papers')
-            .update({
-              pdf_storage_bucket: pdfBucket,
-              pdf_storage_path: pdfPath,
-            })
-            .eq('paper_id', paperId);
-
-          if (updateErr) {
-            console.warn('Paper created but storage paths could not be saved:', updateErr.message);
-          }
-        }
-      } catch (uploadErr: any) {
-        // Paper was created, but uploads failed — return the paper with a warning
-        console.warn('Paper created but PDF upload failed:', uploadErr.message);
-        return {
-          success: true,
-          data: toPyqPaper({ ...data, pdf_storage_bucket: null, pdf_storage_path: null }),
-        };
-      }
 
       // ── Refresh parent package paper count ───────────────────────────
       await refreshPackagePaperCount(input.packageId);

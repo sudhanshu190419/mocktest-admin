@@ -115,6 +115,7 @@ export function mapNotificationReferenceType(refType: string | null): StudentNot
       return 'testResult';
     case 'course':
     case 'content':
+    case 'batch_subject':
       return 'courseDetails';
     case 'student_doubt':
       return 'doubtDetails';
@@ -227,7 +228,129 @@ export async function fetchStudentNotifications(
       return { data: [], totalCount: 0, unreadCount: 0, hasMore: false };
     }
 
-    // 4. Map rows
+    // 4. Resolve direct learning workspace URLs for content and mock test assignments
+    const contentIds = data
+      .filter((row: any) => row.notifications?.reference_type === 'content' && row.notifications?.reference_id)
+      .map((row: any) => row.notifications.reference_id as string);
+
+    const testIds = data
+      .filter((row: any) => row.notifications?.reference_type === 'mock_test' && row.notifications?.reference_id)
+      .map((row: any) => row.notifications.reference_id as string);
+
+    const contentUrlMap = new Map<string, string>();
+    const testUrlMap = new Map<string, string>();
+
+    // Batched content resolution
+    if (contentIds.length > 0) {
+      try {
+        const { data: bscData } = await supabase
+          .from('batch_subject_contents')
+          .select(`
+            content_id,
+            batch_subject_id,
+            batch_subjects:batch_subject_id (
+              batch_id
+            )
+          `)
+          .in('content_id', contentIds);
+
+        const batchIds = [
+          ...new Set(
+            (bscData ?? [])
+              .map((b: any) => {
+                const bs = Array.isArray(b.batch_subjects) ? b.batch_subjects[0] : b.batch_subjects;
+                return bs?.batch_id;
+              })
+              .filter(Boolean)
+          ),
+        ];
+
+        let courseMap = new Map<string, string>();
+        if (batchIds.length > 0) {
+          const { data: cbData } = await supabase
+            .from('course_batches')
+            .select('course_id, batch_id')
+            .in('batch_id', batchIds);
+
+          (cbData ?? []).forEach((cb: any) => {
+            if (!courseMap.has(cb.batch_id)) {
+              courseMap.set(cb.batch_id, cb.course_id);
+            }
+          });
+        }
+
+        (bscData ?? []).forEach((bsc: any) => {
+          const bs = Array.isArray(bsc.batch_subjects) ? bsc.batch_subjects[0] : bsc.batch_subjects;
+          const batchId = bs?.batch_id;
+          const courseId = batchId ? courseMap.get(batchId) : null;
+          if (courseId && bsc.batch_subject_id) {
+            contentUrlMap.set(
+              bsc.content_id,
+              `/student/courses/${courseId}/subjects/${bsc.batch_subject_id}?contentId=${bsc.content_id}`
+            );
+          }
+        });
+      } catch (err) {
+        console.warn('[studentNotificationWebService] Failed to resolve content notification URLs:', err);
+      }
+    }
+
+    // Batched mock test resolution
+    if (testIds.length > 0) {
+      try {
+        const { data: bsmtData } = await supabase
+          .from('batch_subject_mock_tests')
+          .select(`
+            test_id,
+            batch_subject_id,
+            batch_subjects:batch_subject_id (
+              batch_id
+            )
+          `)
+          .in('test_id', testIds);
+
+        const batchIds = [
+          ...new Set(
+            (bsmtData ?? [])
+              .map((b: any) => {
+                const bs = Array.isArray(b.batch_subjects) ? b.batch_subjects[0] : b.batch_subjects;
+                return bs?.batch_id;
+              })
+              .filter(Boolean)
+          ),
+        ];
+
+        let courseMap = new Map<string, string>();
+        if (batchIds.length > 0) {
+          const { data: cbData } = await supabase
+            .from('course_batches')
+            .select('course_id, batch_id')
+            .in('batch_id', batchIds);
+
+          (cbData ?? []).forEach((cb: any) => {
+            if (!courseMap.has(cb.batch_id)) {
+              courseMap.set(cb.batch_id, cb.course_id);
+            }
+          });
+        }
+
+        (bsmtData ?? []).forEach((bsmt: any) => {
+          const bs = Array.isArray(bsmt.batch_subjects) ? bsmt.batch_subjects[0] : bsmt.batch_subjects;
+          const batchId = bs?.batch_id;
+          const courseId = batchId ? courseMap.get(batchId) : null;
+          if (courseId && bsmt.batch_subject_id) {
+            testUrlMap.set(
+              bsmt.test_id,
+              `/student/courses/${courseId}/subjects/${bsmt.batch_subject_id}?testId=${bsmt.test_id}`
+            );
+          }
+        });
+      } catch (err) {
+        console.warn('[studentNotificationWebService] Failed to resolve mock test notification URLs:', err);
+      }
+    }
+
+    // 5. Map rows
     const items: StudentNotificationItem[] = [];
     data.forEach((row: any) => {
       const n = row.notifications;
@@ -237,7 +360,13 @@ export async function fetchStudentNotifications(
       const uiType = DB_EVENT_TYPE_TO_UI[eventType] || 'system';
       const actionType = mapNotificationReferenceType(n.reference_type);
       const actionId = n.reference_id || undefined;
-      const href = resolveNotificationWebHref(actionType, actionId);
+
+      let href = resolveNotificationWebHref(actionType, actionId);
+      if (n.reference_type === 'content' && actionId && contentUrlMap.has(actionId)) {
+        href = contentUrlMap.get(actionId)!;
+      } else if (n.reference_type === 'mock_test' && actionId && testUrlMap.has(actionId)) {
+        href = testUrlMap.get(actionId)!;
+      }
 
       items.push({
         id: row.recipient_id || n.notification_id,
@@ -253,7 +382,7 @@ export async function fetchStudentNotifications(
       });
     });
 
-    // 5. Unread count
+    // 6. Unread count
     const { count: unreadCount } = await supabase
       .from('notification_recipients')
       .select('*', { count: 'exact', head: true })

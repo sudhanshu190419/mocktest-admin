@@ -333,10 +333,10 @@ export const batchSubjectMockTestService = {
         validateUUID(id, 'testId');
       }
 
-      // 1. Get batch subject's institute_id
+      // 1. Get batch subject's institute_id and batch_id
       const { data: bs, error: bsErr } = await supabase
         .from('batch_subjects')
-        .select('institute_id')
+        .select('institute_id, batch_id')
         .eq('batch_subject_id', batchSubjectId)
         .single();
 
@@ -364,6 +364,10 @@ export const batchSubjectMockTestService = {
         assigned_by: assignedBy,
       }));
 
+      let assigned = 0;
+      let skipped = 0;
+      const newlyAssignedTestIds: string[] = [];
+
       const { error } = await supabase
         .from('batch_subject_mock_tests')
         .insert(rows);
@@ -371,9 +375,6 @@ export const batchSubjectMockTestService = {
       if (error) {
         // 23505 = unique violation — some or all rows already exist
         if (error.code === '23505') {
-          let assigned = 0;
-          let skipped = 0;
-
           for (const row of rows) {
             const { error: insertErr } = await supabase
               .from('batch_subject_mock_tests')
@@ -383,38 +384,82 @@ export const batchSubjectMockTestService = {
               skipped++;
             } else if (!insertErr) {
               assigned++;
+              newlyAssignedTestIds.push(row.test_id);
             } else {
               skipped++;
             }
           }
-
-          // ── Audit: mock tests assigned (single bulk event) ────────────
-          await auditService.logAssign({
-            resourceType: 'batch_subject_mock_tests',
-            resourceId: null,
-            metadata: { batchSubjectId, testIds, assigned, skipped },
-          });
-
-          return {
-            success: true,
-            data: { assigned, skipped },
-            warning: `${skipped} mock test(s) were already assigned to this batch subject.`,
-          };
+        } else {
+          return { success: false, error: extractErrorMessage(error) };
         }
-
-        return { success: false, error: extractErrorMessage(error) };
+      } else {
+        assigned = testIds.length;
+        newlyAssignedTestIds.push(...testIds);
       }
 
-      // ── Audit: mock tests assigned (single bulk event) ────────────────
+      // ── Audit: mock tests assigned (single bulk event) ────────────
       await auditService.logAssign({
         resourceType: 'batch_subject_mock_tests',
         resourceId: null,
-        metadata: { batchSubjectId, testIds, assigned: testIds.length, skipped: 0 },
+        metadata: { batchSubjectId, testIds, assigned, skipped },
       });
+
+      // ── Dispatch notifications for newly assigned mock tests ──────
+      if (newlyAssignedTestIds.length > 0 && bs.batch_id) {
+        try {
+          const { data: testRows } = await supabase
+            .from('mock_tests')
+            .select('test_id, title')
+            .in('test_id', newlyAssignedTestIds);
+
+          const testTitleMap = new Map(
+            (testRows ?? []).map((t: any) => [t.test_id, t.title])
+          );
+
+          for (const testId of newlyAssignedTestIds) {
+            const testTitle = testTitleMap.get(testId) || 'Mock Test';
+            try {
+              await supabase.functions.invoke('dispatch-notification', {
+                body: {
+                  instituteId: bs.institute_id,
+                  title: 'New Mock Test Assigned',
+                  body: `A new mock test "${testTitle}" has been assigned to your batch.`,
+                  eventType: 'mock_test_assigned',
+                  priority: 'normal',
+                  channel: 'in_app',
+                  referenceType: 'batch_subject',
+                  referenceId: batchSubjectId,
+                  data: {
+                    testId,
+                    batchSubjectId,
+                  },
+                  audience: {
+                    type: 'batch',
+                    batchId: bs.batch_id,
+                  },
+                  sendPush: true,
+                },
+              });
+            } catch (notifErr) {
+              console.warn('[batchSubjectMockTestService] Failed to dispatch notification for test:', testId, notifErr);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[batchSubjectMockTestService] Failed to fetch test details for notifications:', fetchErr);
+        }
+      }
+
+      if (skipped > 0) {
+        return {
+          success: true,
+          data: { assigned, skipped },
+          warning: `${skipped} mock test(s) were already assigned to this batch subject.`,
+        };
+      }
 
       return {
         success: true,
-        data: { assigned: testIds.length, skipped: 0 },
+        data: { assigned, skipped: 0 },
       };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };

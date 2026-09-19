@@ -325,8 +325,20 @@ export default function StudentOverviewPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {enrolledCourses.map((course) => {
               const summary = data?.courseContentSummary?.[course.course_id] || [];
-              const totalLectures = Array.isArray(summary) ? summary.reduce((a: number, c: any) => a + (c.total_lectures || 0), 0) : 0;
-              const totalPdfs = Array.isArray(summary) ? summary.reduce((a: number, c: any) => a + (c.total_materials || 0), 0) : 0;
+              const totalLectures = Array.isArray(summary)
+                ? summary.reduce((a: number, c: any) => a + (c.total_lectures || c.contentCountsByType?.video || 0), 0)
+                : 0;
+              const totalPdfs = Array.isArray(summary)
+                ? summary.reduce((a: number, c: any) => a + (c.total_materials || (c.contentCountsByType?.pdf || 0) + (c.contentCountsByType?.notes || 0)), 0)
+                : 0;
+
+              const firstBatchSubjectId = Array.isArray(summary) && summary.length > 0
+                ? (summary[0]?.batchSubjectId || summary[0]?.batch_subject_id || null)
+                : null;
+
+              const resumeHref = firstBatchSubjectId
+                ? `/student/courses/${course.course_id}/subjects/${firstBatchSubjectId}`
+                : `/student/courses/${course.course_id}`;
 
               return (
                 <article
@@ -361,7 +373,7 @@ export default function StudentOverviewPage() {
 
                   <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-end">
                     <Link
-                      href={`/student/courses/${course.course_id}`}
+                      href={resumeHref}
                       className="inline-flex items-center gap-1.5 text-xs font-bold transition-colors"
                       style={{ color: 'var(--color-store-blue)' }}
                     >

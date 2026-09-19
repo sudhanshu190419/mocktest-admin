@@ -410,10 +410,10 @@ export const batchSubjectContentService = {
         validateUUID(id, 'contentId');
       }
 
-      // 1. Get batch subject's institute_id
+      // 1. Get batch subject's institute_id and batch_id
       const { data: bs, error: bsErr } = await supabase
         .from('batch_subjects')
-        .select('institute_id')
+        .select('institute_id, batch_id')
         .eq('batch_subject_id', batchSubjectId)
         .single();
 
@@ -455,6 +455,7 @@ export const batchSubjectContentService = {
 
       // 5. Insert via individual attempts for graceful handling
       let assigned = 0;
+      const newlyAssignedContentIds: string[] = [];
       for (const record of records) {
         const { error: singleErr } = await supabase
           .from('batch_subject_contents')
@@ -462,6 +463,7 @@ export const batchSubjectContentService = {
 
         if (!singleErr) {
           assigned++;
+          newlyAssignedContentIds.push(record.content_id);
         } else if (singleErr.code !== '23505') {
           // 23505 = duplicate, skip silently
           return { success: false, error: extractErrorMessage(singleErr) };
@@ -474,6 +476,71 @@ export const batchSubjectContentService = {
         resourceId: null,
         metadata: { batchSubjectId, contentIds, assigned, sectionName: sectionName ?? null },
       });
+
+      // ── Dispatch notifications for newly assigned content items ──────
+      if (newlyAssignedContentIds.length > 0 && bs.batch_id) {
+        try {
+          // Resolve linked course for this batch so app notifications navigate to the course syllabus & workspace
+          const { data: cbRow } = await supabase
+            .from('course_batches')
+            .select('course_id')
+            .eq('batch_id', bs.batch_id)
+            .maybeSingle();
+
+          const courseId = cbRow?.course_id || null;
+
+          const { data: contentRows } = await supabase
+            .from('content')
+            .select('content_id, title, content_type')
+            .in('content_id', newlyAssignedContentIds);
+
+          for (const item of (contentRows ?? [])) {
+            let title = 'New Content Uploaded';
+            let body = `New content "${item.title}" has been assigned to your batch.`;
+
+            if (item.content_type === 'assignment') {
+              title = 'New Assignment Assigned';
+              body = `New assignment "${item.title}" has been assigned to your batch.`;
+            } else if (item.content_type === 'pdf' || item.content_type === 'notes') {
+              title = 'New Study Material Assigned';
+              body = `New study material "${item.title}" has been assigned to your batch.`;
+            } else if (item.content_type === 'video') {
+              title = 'New Video Lecture Assigned';
+              body = `New video lecture "${item.title}" has been assigned to your batch.`;
+            }
+
+            try {
+              await supabase.functions.invoke('dispatch-notification', {
+                body: {
+                  instituteId: bs.institute_id,
+                  title,
+                  body,
+                  eventType: 'new_content_uploaded',
+                  priority: 'normal',
+                  channel: 'in_app',
+                  referenceType: 'batch_subject',
+                  referenceId: batchSubjectId,
+                  data: {
+                    contentId: item.content_id,
+                    contentType: item.content_type,
+                    courseId: courseId || '',
+                    batchSubjectId,
+                  },
+                  audience: {
+                    type: 'batch',
+                    batchId: bs.batch_id,
+                  },
+                  sendPush: true,
+                },
+              });
+            } catch (notifErr) {
+              console.warn('[batchSubjectContentService] Failed to dispatch notification for content:', item.content_id, notifErr);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[batchSubjectContentService] Failed to fetch content details for notifications:', fetchErr);
+        }
+      }
 
       return { success: true, data: { assigned } };
     } catch (err) {

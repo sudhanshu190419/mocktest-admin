@@ -42,7 +42,6 @@ import { supabase } from '../../config/supabase';
 import { validateUUID, extractErrorMessage, buildPagination } from '../../utils/supabase';
 import { buildPaginatedResponse } from '../../utils/response';
 import { auditService } from '../audit/auditService';
-import { createBulkNotification } from '../notification/notificationService';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -72,13 +71,33 @@ async function getCurrentProfileId(): Promise<string | null> {
 
 /**
  * Send a student notification that their mock test result has been released.
+ * Dispatches both in-app notification and FCM push notification via the
+ * canonical `dispatch-notification` Edge Function.
+ *
+ * Enforces idempotency against `notifications` table to prevent duplicate
+ * notifications if a result is unreleased and re-released.
+ *
  * Fire-and-forget: notification failure must not block the release operation.
  */
 async function notifyStudentResultReleased(
   mockResult: MockResult,
 ): Promise<void> {
   try {
-    // Resolve the student's profile_id from student_details
+    // 1. Idempotency check: Skip if notification already exists for this attempt
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('notification_id')
+      .eq('reference_type', 'test_result')
+      .eq('reference_id', mockResult.attemptId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('[ResultService] Result notification already exists for attempt:', mockResult.attemptId);
+      return;
+    }
+
+    // 2. Resolve the student's profile_id from student_details
     const { data: studentRow } = await supabase
       .from('student_details')
       .select('profile_id')
@@ -87,15 +106,32 @@ async function notifyStudentResultReleased(
 
     if (!studentRow?.profile_id) return;
 
-    await createBulkNotification({
-      instituteId: mockResult.instituteId,
-      title: 'Mock Test Result Released',
-      body: 'Your result is now available. Check your My Results section.',
-      eventType: 'result_published',
-      referenceType: 'test_result',
-      referenceId: mockResult.attemptId,
-      recipientIds: [studentRow.profile_id],
+    // 3. Dispatch via canonical dispatch-notification Edge Function (in-app + push)
+    const { error: dispatchError } = await supabase.functions.invoke('dispatch-notification', {
+      body: {
+        instituteId: mockResult.instituteId,
+        title: 'Mock Test Result Released',
+        body: 'Your result is now available. Check your My Results section.',
+        eventType: 'result_available',
+        priority: 'normal',
+        channel: 'in_app',
+        referenceType: 'test_result',
+        referenceId: mockResult.attemptId,
+        data: {
+          testId: mockResult.testId,
+          attemptId: mockResult.attemptId,
+        },
+        audience: {
+          type: 'specific_students',
+          recipientIds: [studentRow.profile_id],
+        },
+        sendPush: true,
+      },
     });
+
+    if (dispatchError) {
+      console.warn('[ResultService] Failed to dispatch release notification:', dispatchError);
+    }
   } catch (err) {
     // Notification failure must not block result release
     console.warn('[ResultService] Failed to send release notification:', err);

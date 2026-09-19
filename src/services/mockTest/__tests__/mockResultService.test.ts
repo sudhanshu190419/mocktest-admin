@@ -10,26 +10,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
 const mockRpc = vi.fn();
+const mockFunctionsInvoke = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
 const mockAuditLog = vi.fn().mockResolvedValue({ success: true, logId: 'audit-1' });
-const mockCreateBulkNotification = vi.fn().mockResolvedValue({
-  success: true,
-  data: { notificationId: 'notif-1', recipientCount: 1 },
-});
 
 vi.mock('@/config/supabase', () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: mockFrom,
     rpc: mockRpc,
+    functions: { invoke: mockFunctionsInvoke },
   },
 }));
 
 vi.mock('@/services/audit/auditService', () => ({
   auditService: { log: mockAuditLog },
-}));
-
-vi.mock('@/services/notification/notificationService', () => ({
-  createBulkNotification: mockCreateBulkNotification,
 }));
 
 function okChain(data: any = null, error: any = null) {
@@ -44,6 +38,7 @@ function okChain(data: any = null, error: any = null) {
   c.range = vi.fn().mockReturnValue(c);
   c.update = vi.fn().mockReturnValue(c);
   c.insert = vi.fn().mockReturnValue(c);
+  c.limit = vi.fn().mockReturnValue(c);
   // Terminal methods resolve the chain:
   c.single = vi.fn().mockResolvedValue(result);
   c.maybeSingle = vi.fn().mockResolvedValue(result);
@@ -113,12 +108,15 @@ describe('mockResultService', () => {
   });
 
   it('releaseResult logs result_released audit event', async () => {
-    mockFrom.mockReturnValue(
-      okChain({
-        ...MOCK_RESULT,
-        student_details: { profiles: { name: 'Test Student' } },
-      }),
-    );
+    mockFrom
+      .mockReturnValueOnce(
+        okChain({
+          ...MOCK_RESULT,
+          student_details: { profiles: { name: 'Test Student' } },
+        }),
+      )
+      .mockReturnValueOnce(okChain(null))
+      .mockReturnValueOnce(okChain({ profile_id: UUIDS.profileId }));
 
     const { releaseResult } = await import('../mockResultService');
     await releaseResult(UUIDS.resultId);
@@ -140,29 +138,37 @@ describe('mockResultService', () => {
     );
   });
 
-  it('releaseResult sends student notification', async () => {
+  it('releaseResult sends student notification via dispatch-notification Edge Function', async () => {
     mockFrom
       .mockReturnValueOnce(okChain({
         ...MOCK_RESULT,
         student_details: { profiles: { name: 'Test Student' } },
       }))
-      .mockReturnValueOnce(okChain({ profile_id: UUIDS.profileId }));
+      .mockReturnValueOnce(okChain(null)) // Idempotency: no existing notification
+      .mockReturnValueOnce(okChain({ profile_id: UUIDS.profileId })); // student_details profile_id
 
     const { releaseResult } = await import('../mockResultService');
     await releaseResult(UUIDS.resultId);
 
-    expect(mockCreateBulkNotification).toHaveBeenCalledWith(
+    expect(mockFunctionsInvoke).toHaveBeenCalledWith(
+      'dispatch-notification',
       expect.objectContaining({
-        eventType: 'result_published',
-        referenceType: 'test_result',
-        referenceId: UUIDS.attemptId,
-        recipientIds: [UUIDS.profileId],
+        body: expect.objectContaining({
+          eventType: 'result_available',
+          referenceType: 'test_result',
+          referenceId: UUIDS.attemptId,
+          audience: {
+            type: 'specific_students',
+            recipientIds: [UUIDS.profileId],
+          },
+          sendPush: true,
+        }),
       }),
     );
   });
 
   it('hideResult logs result_unreleased audit event', async () => {
-    mockFrom.mockReturnValue(
+    mockFrom.mockReturnValueOnce(
       okChain({
         ...MOCK_RESULT,
         is_released: false,
@@ -197,7 +203,7 @@ describe('mockResultService', () => {
 
     expect(result.success).toBe(false);
     expect(mockAuditLog).not.toHaveBeenCalled();
-    expect(mockCreateBulkNotification).not.toHaveBeenCalled();
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
   });
 
   it('releaseMockResults logs audit events for each result', async () => {
@@ -208,7 +214,9 @@ describe('mockResultService', () => {
 
     mockFrom
       .mockReturnValueOnce(okChain(unreleasedRows))
+      .mockReturnValueOnce(okChain(null)) // Idempotency check for row 1
       .mockReturnValueOnce(okChain({ profile_id: UUIDS.profileId }))
+      .mockReturnValueOnce(okChain(null)) // Idempotency check for row 2
       .mockReturnValueOnce(okChain({ profile_id: UUIDS.profileId2 }));
 
     mockRpc.mockResolvedValue({ data: [{ updated_count: 2 }], error: null });
@@ -247,5 +255,21 @@ describe('mockResultService', () => {
         metadata: expect.objectContaining({ bulkUnrelease: true }),
       }),
     );
+  });
+
+  it('releaseResult skips notification if already sent (idempotency)', async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        okChain({
+          ...MOCK_RESULT,
+          student_details: { profiles: { name: 'Test Student' } },
+        }),
+      )
+      .mockReturnValueOnce(okChain({ notification_id: 'existing-notif-1' })); // Existing notification found!
+
+    const { releaseResult } = await import('../mockResultService');
+    await releaseResult(UUIDS.resultId);
+
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
   });
 });
