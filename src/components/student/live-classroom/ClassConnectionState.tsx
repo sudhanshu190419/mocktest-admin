@@ -18,14 +18,14 @@ export const ClassConnectionState: React.FC<ClassConnectionStateProps> = ({
   if (type === 'error') {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 rounded-3xl bg-slate-900 border border-slate-800 text-center text-white space-y-4 shadow-2xl">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-ink border border-ink text-center text-white space-y-4 shadow-2xl">
           <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
             <WarningCircle size={28} weight="bold" />
           </div>
 
           <div className="space-y-1.5">
             <h2 className="text-lg font-black text-white">Classroom Access Notice</h2>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-ink-muted leading-relaxed">
               {errorMessage || 'Unable to join this live classroom session.'}
             </p>
           </div>
@@ -35,7 +35,7 @@ export const ClassConnectionState: React.FC<ClassConnectionStateProps> = ({
               <button
                 type="button"
                 onClick={onRetry}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition-colors shadow-md"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-md"
               >
                 <ArrowsClockwise size={14} weight="bold" />
                 <span>Retry Connection</span>
@@ -44,7 +44,7 @@ export const ClassConnectionState: React.FC<ClassConnectionStateProps> = ({
 
             <Link
               href="/student/classes"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors border border-slate-700"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors border border-ink"
             >
               <ArrowLeft size={14} weight="bold" />
               <span>Back to Classes</span>
@@ -69,21 +69,21 @@ export const ClassConnectionState: React.FC<ClassConnectionStateProps> = ({
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center p-4">
-      <div className="max-w-md w-full p-8 rounded-3xl bg-slate-900/90 border border-slate-800 text-center text-white space-y-4 shadow-2xl backdrop-blur-md">
-        <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mx-auto border border-sky-500/30">
-          <CircleNotch size={28} weight="bold" className="animate-spin text-sky-400" />
+      <div className="max-w-md w-full p-8 rounded-3xl bg-ink/90 border border-ink text-center text-white space-y-4 shadow-2xl backdrop-blur-md">
+        <div className="w-14 h-14 rounded-2xl bg-brand/20 text-sky-ink flex items-center justify-center mx-auto border border-brand/30">
+          <CircleNotch size={28} weight="bold" className="animate-spin text-sky-ink" />
         </div>
 
         <div className="space-y-1.5">
           <h2 className="text-base sm:text-lg font-black text-white">{titles[type]}</h2>
-          <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
+          <p className="text-xs text-ink-muted leading-relaxed max-w-sm mx-auto">
             {descriptions[type]}
           </p>
         </div>
 
         <div className="pt-2 flex justify-center">
-          <div className="h-1.5 w-36 rounded-full bg-slate-800 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full animate-pulse" />
+          <div className="h-1.5 w-36 rounded-full bg-ink overflow-hidden">
+            <div className="h-full bg-gradient-to-r bg-brand bg-brand rounded-full animate-pulse" />
           </div>
         </div>
       </div>

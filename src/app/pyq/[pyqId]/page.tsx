@@ -72,10 +72,6 @@ export default async function PYQDetailPage({ params }: PageProps) {
             title={item.subjectBreakdown.map((entry) => entry.subject).slice(0, 2).join('\n')}
             large
           />
-          <div className="store-art-caption">
-            <span>SOLVED. SORTED. OFFICIAL.</span>
-            <span>Comprehensive exam archive</span>
-          </div>
           <nav className="store-section-nav" aria-label="Package sections">
             <a href="#pyq-overview">Overview</a>
             <a href="#pyq-papers">Included Papers</a>

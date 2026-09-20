@@ -61,7 +61,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       <div className="flex items-center justify-between">
         <Link
           href="/student/recordings"
-          className="inline-flex items-center gap-2 text-xs md:text-sm font-medium text-neutral-600 hover:text-indigo-600 transition-colors group"
+          className="inline-flex items-center gap-2 text-xs md:text-sm font-medium text-neutral-600 hover:text-brand transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
           <span>Back to Recorded Classes</span>
@@ -74,8 +74,8 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
             Completed
           </span>
         ) : percentage > 0 ? (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Clock className="w-4 h-4 text-indigo-600" weight="fill" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-tint text-brand-hover border border-line">
+            <Clock className="w-4 h-4 text-brand" weight="fill" />
             {percentage}% Watched
           </span>
         ) : (
@@ -125,7 +125,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-neutral-200/80 shadow-sm">
         {/* Teacher Info */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-500/20">
+          <div className="w-11 h-11 rounded-full bg-gradient-to-tr bg-brand bg-sky-tint flex items-center justify-center text-white font-bold text-sm shadow-md shadow-card">
             {recording.teacherName ? (
               recording.teacherName.charAt(0).toUpperCase()
             ) : (
@@ -146,9 +146,9 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
         <div className="flex items-center gap-2">
           <Link
             href={askDoubtUrl}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-tint hover:bg-sky-tint text-brand-hover text-xs font-semibold border border-line transition-colors shadow-sm"
           >
-            <Question className="w-4 h-4 text-indigo-600" />
+            <Question className="w-4 h-4 text-brand" />
             <span>Ask a Doubt</span>
           </Link>
 
@@ -165,7 +165,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       {/* ── Description & Notes ──────────────────────────────────── */}
       <div className="p-5 rounded-2xl bg-white border border-neutral-200/80 shadow-sm space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-400">
-          <Info className="w-4 h-4 text-indigo-500" />
+          <Info className="w-4 h-4 text-brand" />
           <span>Class Overview & Topics Covered</span>
         </div>
 
@@ -186,7 +186,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
           <Keyboard className="w-4 h-4 text-neutral-500" />
           <span>Player Keyboard Shortcuts</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[11px]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-caption">
           <div className="flex items-center gap-1.5">
             <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded font-mono shadow-xs text-neutral-900">Space</kbd>
             <span className="text-neutral-500">Play/Pause</span>

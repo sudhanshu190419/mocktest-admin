@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/marketing/Button';
@@ -54,8 +55,15 @@ export function AuthPreviewShell({ screen }: { screen: AuthScreen }) {
         Skip to content
       </a>
       <header className="auth-header">
-        <Link href="/" className="auth-logo" aria-label="MakeMeTopper home">
-          make<span>me</span>topper<b>.</b>
+        <Link href="/" className="auth-logo flex items-center" aria-label="Make Me Topper home">
+          <Image
+            src="/brand/logo-primary-horizontal.svg"
+            alt="Make Me Topper"
+            width={175}
+            height={40}
+            className="h-8 md:h-9 w-auto object-contain"
+            priority
+          />
         </Link>
         <Link href="/courses" className="auth-text-link">
           Explore courses <span aria-hidden="true">↗</span>

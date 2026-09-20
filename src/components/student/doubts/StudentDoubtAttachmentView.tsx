@@ -62,7 +62,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
 
   if (unavailable) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-400">
+      <span className="inline-flex items-center gap-1.5 rounded-xl bg-paper px-2.5 py-1 text-caption font-medium text-ink-muted">
         Attachment unavailable
       </span>
     );
@@ -76,7 +76,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
         type="button"
         onClick={open}
         title="View image"
-        className="group relative overflow-hidden rounded-2xl border border-slate-200 shadow-xs hover:border-blue-300 transition-all"
+        className="group relative overflow-hidden rounded-2xl border border-line shadow-xs hover:border-line transition-all"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -84,7 +84,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
           alt="Doubt attachment"
           className={`object-cover ${compact ? 'h-14 w-14' : 'h-24 w-24'}`}
         />
-        <span className="absolute inset-0 flex items-center justify-center bg-slate-900/40 text-[11px] font-bold text-white opacity-0 transition group-hover:opacity-100">
+        <span className="absolute inset-0 flex items-center justify-center bg-ink/40 text-caption font-bold text-white opacity-0 transition group-hover:opacity-100">
           View ↗
         </span>
       </button>
@@ -96,12 +96,12 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
       type="button"
       onClick={open}
       disabled={loading}
-      className="inline-flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-xl bg-paper border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-sky-tint hover:text-brand-hover hover:border-line transition-all disabled:opacity-50"
     >
       <span>{label === 'PDF Document' ? '📄' : '📎'}</span>
       <span>{label}</span>
       {!compact && (
-        <span className="text-[10px] text-slate-400 font-normal">({formatBytes(attachment.sizeBytes)})</span>
+        <span className="text-caption text-ink-muted font-normal">({formatBytes(attachment.sizeBytes)})</span>
       )}
     </button>
   );

@@ -16,7 +16,7 @@ export const ResultReleaseBanner: React.FC<ResultReleaseBannerProps> = ({
   releasedAt,
 }) => {
   return (
-    <div className="max-w-2xl mx-auto my-12 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl text-center flex flex-col items-center gap-4">
+    <div className="max-w-2xl mx-auto my-12 p-8 bg-white rounded-3xl border border-line shadow-xl text-center flex flex-col items-center gap-4">
       <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl">
         <Clock size={48} weight="bold" />
       </div>
@@ -25,11 +25,11 @@ export const ResultReleaseBanner: React.FC<ResultReleaseBannerProps> = ({
         <span className="px-3 py-1 bg-amber-100 text-amber-800 font-bold text-xs rounded-full uppercase tracking-wider self-center">
           Result Pending Release
         </span>
-        <h2 className="text-2xl font-black text-slate-900 mt-1">{testTitle}</h2>
-        <p className="text-xs text-slate-500 font-semibold">Attempt #{attemptNumber}</p>
+        <h2 className="text-2xl font-black text-ink mt-1">{testTitle}</h2>
+        <p className="text-xs text-ink-secondary font-semibold">Attempt #{attemptNumber}</p>
       </div>
 
-      <p className="text-sm text-slate-600 max-w-md">
+      <p className="text-sm text-ink-secondary max-w-md">
         Your exam has been submitted and evaluated securely. Detailed scoring and rankings will be released once authorized by your institute administrators.
       </p>
 
@@ -42,7 +42,7 @@ export const ResultReleaseBanner: React.FC<ResultReleaseBannerProps> = ({
       <div className="pt-4 w-full flex justify-center">
         <Link
           href="/student/tests"
-          className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-md"
+          className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-ink hover:bg-ink text-white transition-all shadow-md"
         >
           <ArrowLeft size={16} weight="bold" />
           <span>Return to Test Hub</span>

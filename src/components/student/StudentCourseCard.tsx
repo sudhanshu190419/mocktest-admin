@@ -10,6 +10,7 @@ import {
   Exam,
 } from '@phosphor-icons/react';
 import type { EnrolledCourseCardItem } from '@/services/student/studentCourseWebService';
+import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 
 interface StudentCourseCardProps {
   course: EnrolledCourseCardItem;
@@ -22,45 +23,58 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
     : `/student/courses/${course.courseId}`;
 
   return (
-    <div className="student-card group flex flex-col justify-between hover:-translate-y-1 transition-all duration-200">
+    <div className="group flex flex-col justify-between rounded-card border border-line bg-surface p-5 sm:p-6 shadow-card hover:border-line hover:shadow-card-hover transition-all duration-200">
       {/* Top Section: Category + Batch Badges */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="student-pill student-pill-sky">
-            <GraduationCap className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-caption font-bold text-brand-hover border border-line">
+            <GraduationCap className="h-3.5 w-3.5" weight="duotone" />
             {course.category || course.streamName || 'Academic Track'}
           </span>
-          <span className="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+          <span className="inline-flex items-center rounded-field bg-paper px-2.5 py-1 text-caption font-semibold text-ink-secondary border border-line">
             {course.batchName} {course.batchCode ? `(${course.batchCode})` : ''}
           </span>
         </div>
 
         {/* Title & Description */}
-        <h3 className="mt-3.5 text-base sm:text-lg font-extrabold text-slate-900 line-clamp-1 group-hover:text-store-blue transition-colors">
+        <h3 className="mt-3.5 text-h3 font-extrabold text-ink line-clamp-1 group-hover:text-brand transition-colors">
           {course.title}
         </h3>
         {course.description ? (
-          <p className="mt-1 text-xs text-slate-500 line-clamp-2 leading-relaxed">
+          <p className="mt-1 text-body text-ink-secondary line-clamp-2 leading-relaxed">
             {course.description}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-body text-ink-secondary">
             Comprehensive curriculum, video lectures, notes & mock test series.
           </p>
         )}
 
+        {/* Animated Progress Bar */}
+        <div className="mt-4 space-y-1.5">
+          <div className="flex items-center justify-between text-caption font-bold">
+            <span className="text-ink-secondary uppercase tracking-wider">Course Progress</span>
+            <span className="text-ink tabular-nums">{course.progress}%</span>
+          </div>
+          <ProgressBar
+            value={course.progress}
+            label={`${course.title} progress`}
+            tone={course.progress >= 80 ? 'success' : 'brand'}
+          />
+        </div>
+
         {/* Subjects List */}
         {course.subjects && course.subjects.length > 0 && (
           <div className="mt-4">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Enrolled Subject Tracks
+            <p className="text-caption font-bold uppercase tracking-wider text-ink-secondary">
+              Subject Tracks
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {course.subjects.map((sub) => (
                 <Link
                   key={sub.batchSubjectId || sub.subjectId}
                   href={`/student/courses/${course.courseId}/subjects/${sub.batchSubjectId || sub.subjectId}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-store-blue hover:bg-store-sky transition-colors"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field border border-line bg-paper px-2.5 py-1 text-caption font-medium text-ink hover:border-brand hover:bg-sky-tint transition-colors"
                 >
                   <span>{sub.emoji}</span>
                   <span>{sub.subjectName}</span>
@@ -71,40 +85,39 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
         )}
 
         {/* Content Availability Badges */}
-        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
-          <div className="rounded-xl p-2" style={{ background: 'var(--color-store-sky)' }}>
-            <div className="flex items-center justify-center gap-1" style={{ color: 'var(--color-store-blue)' }}>
-              <VideoCamera className="h-3.5 w-3.5" />
-              <span className="text-xs font-bold tabular-nums">{course.totalLectures}</span>
+        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
+          <div className="rounded-field bg-sky-tint p-2">
+            <div className="flex items-center justify-center gap-1 text-brand-hover">
+              <VideoCamera className="h-3.5 w-3.5" weight="duotone" />
+              <span className="text-body font-bold tabular-nums">{course.totalLectures}</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">Lectures</p>
+            <p className="text-caption text-ink-secondary mt-0.5">Lectures</p>
           </div>
-          <div className="rounded-xl p-2" style={{ background: 'var(--color-store-mint)' }}>
-            <div className="flex items-center justify-center gap-1" style={{ color: 'var(--color-store-green)' }}>
-              <FileText className="h-3.5 w-3.5" />
-              <span className="text-xs font-bold tabular-nums">{course.totalPdfs + course.totalNotes}</span>
+          <div className="rounded-field bg-mint-tint p-2">
+            <div className="flex items-center justify-center gap-1 text-mint-ink">
+              <FileText className="h-3.5 w-3.5" weight="duotone" />
+              <span className="text-body font-bold tabular-nums">{course.totalPdfs + course.totalNotes}</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">Notes & PDFs</p>
+            <p className="text-caption text-ink-secondary mt-0.5">Notes & PDFs</p>
           </div>
-          <div className="rounded-xl p-2" style={{ background: 'var(--color-store-lilac)' }}>
-            <div className="flex items-center justify-center gap-1" style={{ color: 'var(--color-store-violet)' }}>
-              <Exam className="h-3.5 w-3.5" />
-              <span className="text-xs font-bold tabular-nums">{course.totalMockTests}</span>
+          <div className="rounded-field bg-lilac-tint p-2">
+            <div className="flex items-center justify-center gap-1 text-lilac-ink">
+              <Exam className="h-3.5 w-3.5" weight="duotone" />
+              <span className="text-body font-bold tabular-nums">{course.totalMockTests}</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">Mock Tests</p>
+            <p className="text-caption text-ink-secondary mt-0.5">Mock Tests</p>
           </div>
         </div>
       </div>
 
-      {/* Bottom Row: Actions */}
-      <div className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-4">
+      {/* Bottom Row: Actions (≥44px hit-height) */}
+      <div className="mt-6 border-t border-line pt-4">
         <Link
           href={resumeHref}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl text-white px-4 py-2.5 text-xs font-bold shadow-xs hover:opacity-95 transition-all"
-          style={{ backgroundColor: 'var(--color-store-blue)' }}
+          className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-field bg-brand px-4 py-2.5 text-body font-bold text-white shadow-xs hover:bg-brand-hover active:scale-[0.98] transition-all"
         >
-          <PlayCircle className="h-4 w-4" />
-          Continue Learning
+          <PlayCircle className="h-4 w-4" weight="bold" />
+          <span>Continue Learning</span>
         </Link>
       </div>
     </div>

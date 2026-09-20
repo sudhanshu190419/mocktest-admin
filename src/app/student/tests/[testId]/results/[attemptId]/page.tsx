@@ -71,11 +71,11 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   // Loading State
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full text-center">
-          <SpinnerGap size={40} className="animate-spin text-indigo-600" />
-          <h3 className="font-bold text-slate-800 text-lg">Retrieving Scorecard</h3>
-          <p className="text-xs text-slate-500">Loading authoritative test results and section analytics...</p>
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-sm w-full text-center">
+          <SpinnerGap size={40} className="animate-spin text-brand" />
+          <h3 className="font-bold text-ink text-lg">Retrieving Scorecard</h3>
+          <p className="text-xs text-ink-secondary">Loading authoritative test results and section analytics...</p>
         </div>
       </div>
     );
@@ -84,16 +84,16 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   // Error State
   if (error || (!resultData && isReleased)) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full text-center">
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-md w-full text-center">
           <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
             <WarningCircle size={40} weight="fill" />
           </div>
-          <h3 className="font-bold text-slate-900 text-lg">Unable to Display Results</h3>
-          <p className="text-xs text-slate-600 font-medium">{error || 'Result record not found.'}</p>
+          <h3 className="font-bold text-ink text-lg">Unable to Display Results</h3>
+          <p className="text-xs text-ink-secondary font-medium">{error || 'Result record not found.'}</p>
           <Link
             href="/student/tests"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 transition-colors mt-2 shadow-sm"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
           >
             <ArrowLeft size={16} weight="bold" />
             <span>Return to Test Hub</span>
@@ -106,7 +106,7 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   // Unreleased Result Banner
   if (!isReleased && unreleasedMeta) {
     return (
-      <div className="min-h-screen bg-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col justify-center">
+      <div className="min-h-screen bg-paper p-4 sm:p-6 lg:p-8 flex flex-col justify-center">
         <ResultReleaseBanner
           testTitle={unreleasedMeta.testTitle}
           releasedAt={unreleasedMeta.releasedAt}
@@ -121,7 +121,7 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
     <div className="store-container space-y-7 pb-16">
       {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
       <nav className="store-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/student/overview">Student Hub</Link>
+        <Link href="/student/overview">My Learning</Link>
         <span aria-hidden="true">/</span>
         <Link href="/student/results">Results</Link>
         <span aria-hidden="true">/</span>

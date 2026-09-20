@@ -15,7 +15,7 @@
 /* ── Sticky Sub-Navigation Strip ────────────────────────────── */
 .student-subnav-wrapper {
   position: sticky;
-  top: 85px;
+  top: var(--shell-offset, 85px);
   z-index: 25;
   background: color-mix(in srgb, var(--color-store-paper) 92%, transparent);
   backdrop-filter: blur(12px);
@@ -181,7 +181,6 @@
 
 .student-kpi-card:hover {
   border-color: var(--color-store-blue);
-  transform: translateY(-2px);
   box-shadow: var(--shadow-store-hover);
 }
 
@@ -360,20 +359,420 @@
   letter-spacing: -0.03em;
 }
 
-/* ── Responsive Breakpoints ─────────────────────────────────── */
-@media (max-width: 1100px) {
+/* ═════════════════════════════════════════════════════════════
+   PRD §5 — "Today" page surfaces
+   ═════════════════════════════════════════════════════════════ */
+
+.today-greeting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.today-greeting-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-store-muted);
+  font-weight: 550;
+}
+
+/* Resume strip — up to 3 one-tap cards */
+.today-resume-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.today-resume-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-radius: var(--radius-store-card);
+  box-shadow: var(--shadow-store-card);
+  text-decoration: none;
+  transition: box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s;
+}
+.today-resume-card:hover {
+  border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-store-line));
+  box-shadow: var(--shadow-store-hover, 0 10px 28px rgba(21, 43, 69, 0.10));
+}
+.today-resume-card.is-primary {
+  border-color: color-mix(in srgb, var(--color-brand) 28%, var(--color-store-line));
+  background: linear-gradient(160deg, var(--color-store-white) 55%, var(--color-sky-tint) 130%);
+}
+.today-resume-card.is-live {
+  border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-store-line));
+  background: linear-gradient(160deg, var(--color-store-white) 55%, var(--color-mint) 130%);
+}
+.today-resume-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-brand);
+}
+.today-resume-card.is-live .today-resume-kicker {
+  color: var(--color-success);
+}
+.today-resume-title {
+  font-size: 15.5px;
+  font-weight: 750;
+  color: var(--color-store-ink);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.today-resume-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-brand);
+  margin-top: auto;
+}
+
+/* Today's schedule — compact rows */
+.today-schedule {
+  padding: 6px 0;
+}
+.today-schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--color-store-line);
+}
+.today-schedule-row:last-child {
+  border-bottom: none;
+}
+.today-schedule-time {
+  flex-shrink: 0;
+  width: 74px;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--color-store-ink);
+  font-variant-numeric: tabular-nums;
+}
+.today-schedule-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.today-schedule-subject {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-store-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-schedule-teacher {
+  font-size: 12px;
+  color: var(--color-store-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-schedule-chip {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.chip-live {
+  background: var(--color-mint);
+  color: var(--color-mint-ink);
+}
+.chip-upcoming,
+.chip-scheduled {
+  background: var(--color-sky-tint);
+  color: var(--color-sky-ink);
+}
+.chip-completed {
+  background: var(--color-store-paper);
+  color: var(--color-store-muted);
+}
+
+/* Momentum — compact stat row */
+.today-momentum {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.today-momentum-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px;
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-radius: var(--radius-store-card);
+  box-shadow: var(--shadow-store-card);
+}
+.today-momentum-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-store-ink);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.today-momentum-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-store-muted);
+}
+
+/* ═════════════════════════════════════════════════════════════
+   PRD §7.3 — Test state card system
+   State = left border strip + label + exactly ONE primary action
+   ═════════════════════════════════════════════════════════════ */
+
+.test-state-card {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 16px 16px 18px;
+  background: var(--color-store-white);
+  border: 1px solid var(--color-store-line);
+  border-left-width: 4px;
+  border-radius: var(--radius-store-card);
+  box-shadow: var(--shadow-store-card);
+}
+.tsc-strip-sand   { border-left-color: var(--color-sand-ink); }
+.tsc-strip-brand  { border-left-color: var(--color-brand); }
+.tsc-strip-sky    { border-left-color: var(--color-sky-ink); }
+.tsc-strip-mint   { border-left-color: var(--color-mint-ink); }
+.tsc-strip-line   { border-left-color: var(--color-store-line); }
+
+.tsc-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tsc-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tsc-icon {
+  flex-shrink: 0;
+  color: var(--color-store-muted);
+}
+.tsc-title {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--color-store-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsc-meta {
+  font-size: 11.5px;
+  color: var(--color-store-muted);
+  font-weight: 550;
+}
+.tsc-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+.tsc-label-available { color: var(--color-brand); }
+.tsc-label-in_progress { color: var(--color-sky-ink); }
+.tsc-label-submitted,
+.tsc-label-evaluated,
+.tsc-label-evaluated_retake { color: var(--color-mint-ink); }
+.tsc-label-upcoming { color: var(--color-sand-ink); }
+.tsc-label-limit_reached,
+.tsc-label-expired { color: var(--color-store-muted); }
+
+.tsc-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tsc-action-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 16px;
+  border-radius: var(--radius-store-button);
+  background: var(--color-brand);
+  color: var(--color-store-white);
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.tsc-action-primary:hover {
+  opacity: 0.9;
+}
+.tsc-action-tertiary {
+  padding: 9px 12px;
+  border-radius: var(--radius-store-button);
+  border: 1px solid var(--color-store-line);
+  color: var(--color-store-ink);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* ═════════════════════════════════════════════════════════════
+   PRD C6 — Sub-nav badge counts (apricot tint, ink text)
+   ═════════════════════════════════════════════════════════════ */
+
+.student-subnav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-apricot);
+  color: var(--color-apricot-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.student-subnav-pill.is-active .student-subnav-badge {
+  background: var(--color-apricot-ink);
+  color: var(--color-store-white);
+}
+
+/* C7 — softened active pill: sky tint + brand text + underline dot */
+.student-subnav-pill.is-active {
+  background: var(--color-sky-tint);
+  color: var(--color-brand);
+  font-weight: 700;
+  border-color: transparent;
+  box-shadow: none;
+  position: relative;
+}
+.student-subnav-pill.is-active .student-subnav-icon {
+  color: var(--color-brand);
+}
+.student-subnav-pill.is-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-brand);
+}
+
+/* 44px pill hit-height */
+.student-subnav-pill {
+  padding: 10px 16px;
+}
+
+/* Edge fade + next-item peek on scroll strip (C2) */
+.student-subnav-inner {
+  mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 28px), transparent 100%);
+  padding-inline: 14px;
+}
+
+/* ═════════════════════════════════════════════════════════════
+   PRD §4.1 — Mobile bottom bar (<1024px)
+   ═════════════════════════════════════════════════════════════ */
+
+.student-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 1023px) {
   .student-subnav-wrapper {
-    top: 75px;
+    display: none;
   }
+  .student-bottom-nav {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: color-mix(in srgb, var(--color-store-white) 94%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--color-store-line);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .student-main-content {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.student-bottomnav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 56px;
+  padding: 8px 4px 6px;
+  color: var(--color-store-muted);
+  text-decoration: none;
+  position: relative;
+  transition: color 0.15s;
+}
+.student-bottomnav-item.is-active {
+  color: var(--color-brand);
+}
+.student-bottomnav-label {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+.student-bottomnav-badge {
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 22px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-apricot);
+  color: var(--color-apricot-ink);
+  font-size: 9.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Responsive Breakpoints ─────────────────────────────────── */
+@media (max-width: 1100px) {
   .student-hero-banner {
     padding: 28px 30px;
   }
 }
 
 @media (max-width: 800px) {
-  .student-subnav-wrapper {
-    top: 65px;
-  }
   .student-kpi-grid {
     grid-template-columns: repeat(2, 1fr);
   }

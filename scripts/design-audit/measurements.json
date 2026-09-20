@@ -1,0 +1,3203 @@
+{
+  "desktop": {
+    "overview": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 36,
+      "smallTargetCount": 29,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 35,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Competitive Exams\"",
+        "fs=11px \"Active Enrolled Batch\"",
+        "fs=11px \"Check your weekly timetable or recorded \"",
+        "fs=11px \"Mock Tests\"",
+        "fs=11.5px \"Completed Evaluations\""
+      ],
+      "fontSizeHist": {
+        "10": 12,
+        "11": 19,
+        "12": 28,
+        "13": 6,
+        "14": 1,
+        "15": 1,
+        "16": 2,
+        "20": 3,
+        "23": 2,
+        "32": 1,
+        "35": 1,
+        "36": 1,
+        "12.5": 10,
+        "11.5": 4
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          16
+        ],
+        [
+          "rgb(36, 88, 211)",
+          6
+        ],
+        [
+          "rgb(220, 236, 248)",
+          4
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          4
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455677 0.0000200868 / 0.7)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          24
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          16
+        ],
+        [
+          "rgb(94, 112, 132)",
+          13
+        ],
+        [
+          "rgb(255, 255, 255)",
+          12
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          10
+        ],
+        [
+          "rgb(36, 88, 211)",
+          6
+        ],
+        [
+          "rgb(25, 67, 166)",
+          3
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          3
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          3
+        ],
+        [
+          "lab(31.2288 30.2627 40.0378)",
+          3
+        ],
+        [
+          "rgb(40, 94, 80)",
+          2
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 51,
+        "Manrope": 9
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          14
+        ],
+        [
+          "18px",
+          10
+        ],
+        [
+          "24px",
+          4
+        ],
+        [
+          "3.35544e+07px",
+          3
+        ]
+      ]
+    },
+    "courses": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 33,
+      "smallTargetCount": 26,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 14,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"MakeMeTopper\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"My Courses\"",
+        "fs=11px \"Enrolled Learning Programs\"",
+        "fs=11px \"Academic Course\""
+      ],
+      "fontSizeHist": {
+        "10": 7,
+        "11": 7,
+        "12": 12,
+        "13": 6,
+        "15": 1,
+        "16": 1,
+        "18": 1,
+        "23": 2,
+        "30": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "rgb(36, 88, 211)",
+          3
+        ],
+        [
+          "rgb(220, 236, 248)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.7)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          17
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "rgb(21, 43, 69)",
+          6
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          4
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          3
+        ],
+        [
+          "rgb(36, 88, 211)",
+          2
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          2
+        ],
+        [
+          "rgb(25, 67, 166)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "rgb(40, 94, 80)",
+          1
+        ],
+        [
+          "rgb(87, 80, 125)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 37,
+        "Manrope": 4
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          7
+        ],
+        [
+          "24px",
+          1
+        ],
+        [
+          "18px",
+          1
+        ],
+        [
+          "8px",
+          1
+        ]
+      ]
+    },
+    "classes": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 30,
+      "smallTargetCount": 23,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 16,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Live Classes\"",
+        "fs=11px \"Live Now\"",
+        "fs=11.5px \"ongoing lectures\"",
+        "fs=11px \"Upcoming\""
+      ],
+      "fontSizeHist": {
+        "10": 4,
+        "11": 8,
+        "12": 9,
+        "13": 6,
+        "15": 1,
+        "16": 2,
+        "23": 2,
+        "30": 1,
+        "35": 1,
+        "12.5": 10,
+        "11.5": 4
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.2)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          16
+        ],
+        [
+          "rgb(21, 43, 69)",
+          8
+        ],
+        [
+          "rgb(255, 255, 255)",
+          8
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(63.3038 -18.433 -51.0407)",
+          1
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 35,
+        "Manrope": 4
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "18px",
+          4
+        ],
+        [
+          "12px",
+          3
+        ],
+        [
+          "3.35544e+07px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ],
+        [
+          "24px",
+          1
+        ]
+      ]
+    },
+    "recordings": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 33,
+      "smallTargetCount": 25,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 8,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Recorded Classes\"",
+        "fs=11px \"A little more clarity. A little more con\"",
+        "fs=10px \"YOUR NEXT CHAPTER\"",
+        "fs=10px \"MakeMeTopper\""
+      ],
+      "fontSizeHist": {
+        "10": 4,
+        "11": 4,
+        "12": 14,
+        "13": 6,
+        "14": 1,
+        "16": 4,
+        "23": 2,
+        "30": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          5
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.1)",
+          4
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.672992 0.021962 -0.180645 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.15)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          16
+        ],
+        [
+          "rgb(94, 112, 132)",
+          14
+        ],
+        [
+          "rgb(21, 43, 69)",
+          6
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          3
+        ],
+        [
+          "lab(80.3307 -20.2945 -31.385)",
+          2
+        ],
+        [
+          "lab(88.6983 -11.3978 -16.8488)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          2
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(94.3709 -4.56053 -8.23453)",
+          1
+        ],
+        [
+          "oklab(0.950997 -0.0142362 -0.0217387 / 0.9)",
+          1
+        ],
+        [
+          "lab(83.9203 -48.7124 13.8849)",
+          1
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          1
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 33,
+        "Manrope": 4
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "24px",
+          6
+        ],
+        [
+          "12px",
+          6
+        ],
+        [
+          "32px",
+          3
+        ],
+        [
+          "3.35544e+07px",
+          3
+        ]
+      ]
+    },
+    "timetable": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 34,
+      "smallTargetCount": 27,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 10,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Timetable & Schedule\"",
+        "fs=11px \"Filter:\"",
+        "fs=11px \"Classes will automatically appear here o\"",
+        "fs=11px \"A little more clarity. A little more con\""
+      ],
+      "fontSizeHist": {
+        "10": 4,
+        "11": 6,
+        "12": 17,
+        "13": 6,
+        "14": 2,
+        "16": 1,
+        "23": 2,
+        "24": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          6
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455677 0.0000200868 / 0.7)",
+          1
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          14
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          6
+        ],
+        [
+          "rgb(21, 43, 69)",
+          5
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          4
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 38,
+        "Manrope": 5
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "8px",
+          7
+        ],
+        [
+          "12px",
+          3
+        ],
+        [
+          "24px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ]
+      ]
+    },
+    "doubts": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 36,
+      "smallTargetCount": 26,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 8,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Doubts & Support\"",
+        "fs=11px \"A little more clarity. A little more con\"",
+        "fs=10px \"YOUR NEXT CHAPTER\"",
+        "fs=10px \"MakeMeTopper\""
+      ],
+      "fontSizeHist": {
+        "10": 4,
+        "11": 4,
+        "12": 16,
+        "13": 6,
+        "14": 1,
+        "15": 1,
+        "16": 1,
+        "18": 1,
+        "23": 2,
+        "24": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "rgb(36, 88, 211)",
+          3
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ],
+        [
+          "lab(98.6252 -0.635982 8.42309)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          17
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "rgb(21, 43, 69)",
+          8
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          7
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          6
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 37,
+        "Manrope": 4
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          7
+        ],
+        [
+          "24px",
+          3
+        ],
+        [
+          "18px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ]
+      ]
+    },
+    "tests": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 41,
+      "smallTargetCount": 32,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 54,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Mock Tests\"",
+        "fs=10px \"Available\"",
+        "fs=10px \"In Progress\"",
+        "fs=10px \"Completed\""
+      ],
+      "fontSizeHist": {
+        "10": 26,
+        "11": 28,
+        "12": 51,
+        "13": 6,
+        "15": 1,
+        "16": 1,
+        "18": 4,
+        "23": 2,
+        "30": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          16
+        ],
+        [
+          "rgb(255, 255, 255)",
+          13
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          4
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.8)",
+          4
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          3
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          3
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ],
+        [
+          "rgb(220, 239, 232)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(94.9004 -17.0769 5.63836)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          40
+        ],
+        [
+          "rgb(21, 43, 69)",
+          37
+        ],
+        [
+          "rgb(94, 112, 132)",
+          17
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          17
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          15
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          13
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          12
+        ],
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          6
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          4
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          4
+        ],
+        [
+          "lab(84.7652 -1.94535 -7.93337)",
+          4
+        ],
+        [
+          "lab(63.3038 -18.433 -51.0407)",
+          4
+        ],
+        [
+          "lab(66.9756 -58.27 19.5419)",
+          4
+        ],
+        [
+          "lab(72.7183 31.8672 97.9407)",
+          4
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 84,
+        "Manrope": 3
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          28
+        ],
+        [
+          "3.35544e+07px",
+          8
+        ],
+        [
+          "24px",
+          4
+        ],
+        [
+          "8px",
+          4
+        ],
+        [
+          "18px",
+          3
+        ],
+        [
+          "6px",
+          1
+        ]
+      ]
+    },
+    "results": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 30,
+      "smallTargetCount": 23,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 20,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Test Results\"",
+        "fs=10px \"Evaluated\"",
+        "fs=10px \"Avg Score\"",
+        "fs=10px \"Accuracy\""
+      ],
+      "fontSizeHist": {
+        "10": 12,
+        "11": 8,
+        "12": 12,
+        "13": 6,
+        "15": 1,
+        "16": 1,
+        "18": 1,
+        "23": 2,
+        "30": 1,
+        "35": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "rgb(220, 236, 248)",
+          3
+        ],
+        [
+          "rgb(220, 239, 232)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(233, 230, 246)",
+          1
+        ],
+        [
+          "lab(96.2369 4.94152 1.28012)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          14
+        ],
+        [
+          "rgb(21, 43, 69)",
+          12
+        ],
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          6
+        ],
+        [
+          "rgb(40, 94, 80)",
+          6
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          5
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          3
+        ],
+        [
+          "rgb(25, 67, 166)",
+          3
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          3
+        ],
+        [
+          "rgb(87, 80, 125)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(84.7652 -1.94535 -7.93337)",
+          1
+        ],
+        [
+          "lab(41.1651 71.6251 30.3087)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 43,
+        "Manrope": 3
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          8
+        ],
+        [
+          "18px",
+          4
+        ]
+      ]
+    },
+    "analytics": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 35,
+      "smallTargetCount": 28,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 31,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Performance Analytics\"",
+        "fs=11px \"Total evaluated attempts\"",
+        "fs=11px \"Mean marks per test\"",
+        "fs=11px \"Highest marks achieved\""
+      ],
+      "fontSizeHist": {
+        "10": 15,
+        "11": 16,
+        "12": 22,
+        "13": 6,
+        "14": 5,
+        "15": 1,
+        "16": 1,
+        "20": 1,
+        "23": 2,
+        "24": 1,
+        "30": 1,
+        "35": 1,
+        "12.5": 10,
+        "38.16": 4
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          17
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          5
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.05)",
+          4
+        ],
+        [
+          "oklab(0.278998 -0.00710082 -0.0403727 / 0.8)",
+          4
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          2
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          2
+        ],
+        [
+          "lab(98.6252 -0.635982 8.42309)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(97.1626 2.99937 -4.13398)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          1
+        ],
+        [
+          "oklab(0.684991 -0.0912492 -0.142231 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.684991 -0.0912492 -0.142231 / 0.2)",
+          1
+        ],
+        [
+          "oklab(0.695996 -0.162107 0.0511875 / 0.2)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          25
+        ],
+        [
+          "rgb(255, 255, 255)",
+          22
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          17
+        ],
+        [
+          "rgb(94, 112, 132)",
+          14
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          14
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          12
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          6
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          4
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          4
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          3
+        ],
+        [
+          "lab(70.687 -23.6078 -45.9483)",
+          3
+        ],
+        [
+          "lab(75.0771 -60.7313 19.4146)",
+          3
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          2
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 45,
+        "Manrope": 10
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          24
+        ],
+        [
+          "24px",
+          11
+        ],
+        [
+          "32px",
+          9
+        ],
+        [
+          "3.35544e+07px",
+          9
+        ]
+      ]
+    },
+    "profile": {
+      "viewport": 1440,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 32,
+      "smallTargetCount": 24,
+      "smallTargetSample": [
+        "a h=37px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests",
+        "a h=38px Results"
+      ],
+      "tinyTextCount": 24,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Student Hub\"",
+        "fs=11px \"Profile & Account\"",
+        "fs=11px \"Verified Student\"",
+        "fs=11px \"Keep your contact details updated for in\"",
+        "fs=10px \"Full Name\""
+      ],
+      "fontSizeHist": {
+        "10": 13,
+        "11": 11,
+        "12": 18,
+        "13": 6,
+        "14": 2,
+        "16": 1,
+        "23": 2,
+        "24": 2,
+        "35": 1,
+        "12.5": 10,
+        "38.16": 1
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          8
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.7)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          3
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          2
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.745991 -0.0970495 -0.127188 / 0.2)",
+          1
+        ],
+        [
+          "lab(75.0771 -60.7313 19.4146)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.2)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(96.2369 4.94152 1.28012)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          14
+        ],
+        [
+          "rgb(94, 112, 132)",
+          14
+        ],
+        [
+          "rgb(255, 255, 255)",
+          12
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          12
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          9
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          4
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          3
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          3
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(86.4156 6.13147 78.3961)",
+          1
+        ],
+        [
+          "lab(94.3709 -4.56053 -8.23453)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ],
+        [
+          "lab(44.4871 -41.0396 11.0361)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 41,
+        "Manrope": 8,
+        "JetBrains Mono": 1
+      },
+      "headerHeight": 86,
+      "subnavTop": "85px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "24px",
+          9
+        ],
+        [
+          "12px",
+          6
+        ],
+        [
+          "32px",
+          5
+        ],
+        [
+          "3.35544e+07px",
+          4
+        ],
+        [
+          "8px",
+          1
+        ]
+      ]
+    }
+  },
+  "mobile": {
+    "overview": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 32,
+      "smallTargetCount": 29,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 36,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=11px \"Competitive Exams\"",
+        "fs=11px \"Active Enrolled Batch\"",
+        "fs=11px \"Check your weekly timetable or recorded \"",
+        "fs=11px \"Mock Tests\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 9,
+        "11": 20,
+        "12": 28,
+        "13": 1,
+        "14": 1,
+        "15": 1,
+        "16": 2,
+        "20": 5,
+        "26": 1,
+        "30": 1,
+        "32": 1,
+        "12.5": 10,
+        "11.5": 4
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          16
+        ],
+        [
+          "rgb(36, 88, 211)",
+          6
+        ],
+        [
+          "rgb(220, 236, 248)",
+          4
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          4
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455677 0.0000200868 / 0.7)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          25
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          16
+        ],
+        [
+          "rgb(255, 255, 255)",
+          12
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          10
+        ],
+        [
+          "rgb(94, 112, 132)",
+          9
+        ],
+        [
+          "rgb(36, 88, 211)",
+          5
+        ],
+        [
+          "rgb(25, 67, 166)",
+          3
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          3
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          3
+        ],
+        [
+          "lab(31.2288 30.2627 40.0378)",
+          3
+        ],
+        [
+          "rgb(40, 94, 80)",
+          2
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 51,
+        "Manrope": 9
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          14
+        ],
+        [
+          "18px",
+          10
+        ],
+        [
+          "24px",
+          4
+        ],
+        [
+          "3.35544e+07px",
+          3
+        ]
+      ]
+    },
+    "courses": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 29,
+      "smallTargetCount": 27,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 15,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"MakeMeTopper\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"My Courses\"",
+        "fs=11px \"Enrolled Learning Programs\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 7,
+        "11": 5,
+        "12": 12,
+        "13": 1,
+        "15": 1,
+        "16": 2,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "rgb(36, 88, 211)",
+          3
+        ],
+        [
+          "rgb(220, 236, 248)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.7)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          13
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "rgb(21, 43, 69)",
+          7
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          4
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          3
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          2
+        ],
+        [
+          "rgb(25, 67, 166)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "rgb(40, 94, 80)",
+          1
+        ],
+        [
+          "rgb(87, 80, 125)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 37,
+        "Manrope": 4
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          7
+        ],
+        [
+          "24px",
+          1
+        ],
+        [
+          "18px",
+          1
+        ],
+        [
+          "8px",
+          1
+        ]
+      ]
+    },
+    "classes": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 26,
+      "smallTargetCount": 24,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 17,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Live Classes\"",
+        "fs=11px \"Live Now\"",
+        "fs=11.5px \"ongoing lectures\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 3,
+        "11": 7,
+        "12": 8,
+        "13": 1,
+        "15": 1,
+        "16": 2,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10,
+        "11.5": 4
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.2)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          12
+        ],
+        [
+          "rgb(21, 43, 69)",
+          9
+        ],
+        [
+          "rgb(255, 255, 255)",
+          8
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          2
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          2
+        ],
+        [
+          "lab(63.3038 -18.433 -51.0407)",
+          1
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 35,
+        "Manrope": 4
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "18px",
+          4
+        ],
+        [
+          "12px",
+          3
+        ],
+        [
+          "3.35544e+07px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ],
+        [
+          "24px",
+          1
+        ]
+      ]
+    },
+    "recordings": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 29,
+      "smallTargetCount": 26,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 9,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Recorded Classes\"",
+        "fs=11px \"A little more clarity. A little more con\"",
+        "fs=10px \"YOUR NEXT CHAPTER\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 3,
+        "11": 3,
+        "12": 14,
+        "13": 1,
+        "16": 4,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          5
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.1)",
+          4
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.672992 0.021962 -0.180645 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.15)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          16
+        ],
+        [
+          "rgb(94, 112, 132)",
+          10
+        ],
+        [
+          "rgb(21, 43, 69)",
+          7
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          3
+        ],
+        [
+          "lab(80.3307 -20.2945 -31.385)",
+          2
+        ],
+        [
+          "lab(88.6983 -11.3978 -16.8488)",
+          2
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "lab(94.3709 -4.56053 -8.23453)",
+          1
+        ],
+        [
+          "oklab(0.950997 -0.0142362 -0.0217387 / 0.9)",
+          1
+        ],
+        [
+          "lab(83.9203 -48.7124 13.8849)",
+          1
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          1
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 33,
+        "Manrope": 4
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "24px",
+          6
+        ],
+        [
+          "12px",
+          6
+        ],
+        [
+          "32px",
+          3
+        ],
+        [
+          "3.35544e+07px",
+          3
+        ]
+      ]
+    },
+    "timetable": {
+      "viewport": 421,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 30,
+      "smallTargetCount": 26,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 10,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Timetable & Schedule\"",
+        "fs=11px \"Classes will automatically appear here o\"",
+        "fs=11px \"A little more clarity. A little more con\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 3,
+        "11": 4,
+        "12": 17,
+        "13": 1,
+        "14": 2,
+        "16": 1,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          6
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455677 0.0000200868 / 0.7)",
+          1
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          10
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "rgb(21, 43, 69)",
+          6
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          6
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          4
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 38,
+        "Manrope": 5
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "8px",
+          7
+        ],
+        [
+          "12px",
+          3
+        ],
+        [
+          "24px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ]
+      ]
+    },
+    "doubts": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 32,
+      "smallTargetCount": 27,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 9,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Doubts & Support\"",
+        "fs=11px \"A little more clarity. A little more con\"",
+        "fs=10px \"YOUR NEXT CHAPTER\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 3,
+        "11": 3,
+        "12": 17,
+        "13": 1,
+        "15": 1,
+        "16": 1,
+        "18": 1,
+        "20": 3,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "rgb(36, 88, 211)",
+          3
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          1
+        ],
+        [
+          "lab(98.6252 -0.635982 8.42309)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(94, 112, 132)",
+          13
+        ],
+        [
+          "rgb(21, 43, 69)",
+          9
+        ],
+        [
+          "rgb(255, 255, 255)",
+          9
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          7
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          6
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          1
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 37,
+        "Manrope": 4
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          7
+        ],
+        [
+          "24px",
+          3
+        ],
+        [
+          "18px",
+          2
+        ],
+        [
+          "32px",
+          1
+        ]
+      ]
+    },
+    "tests": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 37,
+      "smallTargetCount": 33,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 55,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Mock Tests\"",
+        "fs=10px \"Available\"",
+        "fs=10px \"In Progress\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 25,
+        "11": 27,
+        "12": 51,
+        "13": 1,
+        "15": 1,
+        "16": 5,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          16
+        ],
+        [
+          "rgb(255, 255, 255)",
+          13
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          4
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.8)",
+          4
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          3
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          3
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(220, 236, 248)",
+          1
+        ],
+        [
+          "rgb(220, 239, 232)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(94.9004 -17.0769 5.63836)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          40
+        ],
+        [
+          "rgb(21, 43, 69)",
+          38
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          17
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          15
+        ],
+        [
+          "rgb(94, 112, 132)",
+          13
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          13
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          12
+        ],
+        [
+          "rgb(255, 255, 255)",
+          11
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          6
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          4
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          4
+        ],
+        [
+          "lab(84.7652 -1.94535 -7.93337)",
+          4
+        ],
+        [
+          "lab(63.3038 -18.433 -51.0407)",
+          4
+        ],
+        [
+          "lab(66.9756 -58.27 19.5419)",
+          4
+        ],
+        [
+          "lab(72.7183 31.8672 97.9407)",
+          4
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 84,
+        "Manrope": 3
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          28
+        ],
+        [
+          "3.35544e+07px",
+          8
+        ],
+        [
+          "24px",
+          4
+        ],
+        [
+          "8px",
+          4
+        ],
+        [
+          "18px",
+          3
+        ],
+        [
+          "6px",
+          1
+        ]
+      ]
+    },
+    "results": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 26,
+      "smallTargetCount": 24,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 21,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Test Results\"",
+        "fs=10px \"Evaluated\"",
+        "fs=10px \"Avg Score\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 11,
+        "11": 7,
+        "12": 12,
+        "13": 1,
+        "15": 1,
+        "16": 2,
+        "20": 2,
+        "24": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "rgb(220, 236, 248)",
+          3
+        ],
+        [
+          "rgb(220, 239, 232)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "rgb(233, 230, 246)",
+          1
+        ],
+        [
+          "lab(96.2369 4.94152 1.28012)",
+          1
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          1
+        ],
+        [
+          "rgb(36, 88, 211)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          13
+        ],
+        [
+          "rgb(94, 112, 132)",
+          10
+        ],
+        [
+          "rgb(255, 255, 255)",
+          7
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          6
+        ],
+        [
+          "rgb(40, 94, 80)",
+          6
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          5
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          3
+        ],
+        [
+          "rgb(25, 67, 166)",
+          3
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          3
+        ],
+        [
+          "rgb(87, 80, 125)",
+          2
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          1
+        ],
+        [
+          "lab(84.7652 -1.94535 -7.93337)",
+          1
+        ],
+        [
+          "lab(41.1651 71.6251 30.3087)",
+          1
+        ],
+        [
+          "lab(29.7104 51.514 12.6253)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 43,
+        "Manrope": 3
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          8
+        ],
+        [
+          "18px",
+          4
+        ]
+      ]
+    },
+    "analytics": {
+      "viewport": 470,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 31,
+      "smallTargetCount": 27,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 32,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Performance Analytics\"",
+        "fs=11px \"Total evaluated attempts\"",
+        "fs=11px \"Mean marks per test\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 14,
+        "11": 15,
+        "12": 22,
+        "13": 1,
+        "14": 5,
+        "15": 1,
+        "16": 1,
+        "20": 3,
+        "24": 2,
+        "28": 4,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          17
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          5
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.05)",
+          4
+        ],
+        [
+          "oklab(0.278998 -0.00710082 -0.0403727 / 0.8)",
+          4
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          2
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          2
+        ],
+        [
+          "lab(98.6252 -0.635982 8.42309)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "lab(97.1626 2.99937 -4.13398)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          1
+        ],
+        [
+          "oklab(0.684991 -0.0912492 -0.142231 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.684991 -0.0912492 -0.142231 / 0.2)",
+          1
+        ],
+        [
+          "oklab(0.695996 -0.162107 0.0511875 / 0.2)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          25
+        ],
+        [
+          "rgb(255, 255, 255)",
+          22
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          17
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          14
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          12
+        ],
+        [
+          "rgb(94, 112, 132)",
+          10
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          6
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          4
+        ],
+        [
+          "lab(35.5623 -1.74978 -15.4316)",
+          4
+        ],
+        [
+          "lab(60.3514 40.5624 87.1228)",
+          3
+        ],
+        [
+          "lab(70.687 -23.6078 -45.9483)",
+          3
+        ],
+        [
+          "lab(75.0771 -60.7313 19.4146)",
+          3
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          2
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          2
+        ],
+        [
+          "lab(43.0295 75.21 -86.5669)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 45,
+        "Manrope": 10
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "12px",
+          24
+        ],
+        [
+          "24px",
+          11
+        ],
+        [
+          "32px",
+          9
+        ],
+        [
+          "3.35544e+07px",
+          9
+        ]
+      ]
+    },
+    "profile": {
+      "viewport": 397,
+      "overflowTotal": 0,
+      "offenders": [],
+      "interactiveCount": 28,
+      "smallTargetCount": 24,
+      "smallTargetSample": [
+        "a h=32px mtmakemetopper.",
+        "button h=42px ASAmar Singh",
+        "button h=34px Menu",
+        "a h=38px Overview",
+        "a h=38px My Courses",
+        "a h=38px Live Classes",
+        "a h=38px Recordings",
+        "a h=38px Mock Tests"
+      ],
+      "tinyTextCount": 25,
+      "tinyTextSample": [
+        "fs=11px \"AS\"",
+        "fs=11px \"Menu\"",
+        "fs=10px \"Student Hub\"",
+        "fs=10px \"Profile & Account\"",
+        "fs=11px \"Verified Student\"",
+        "fs=11px \"Keep your contact details updated for in\""
+      ],
+      "fontSizeHist": {
+        "9": 3,
+        "10": 12,
+        "11": 10,
+        "12": 18,
+        "13": 1,
+        "14": 2,
+        "16": 1,
+        "20": 2,
+        "24": 2,
+        "28": 1,
+        "32": 1,
+        "12.5": 10
+      },
+      "bgColorsTop": [
+        [
+          "rgb(255, 255, 255)",
+          8
+        ],
+        [
+          "oklab(0.983998 -0.00114059 -0.00275564 / 0.7)",
+          4
+        ],
+        [
+          "lab(97.3623 -2.33799 -4.13098)",
+          3
+        ],
+        [
+          "lab(95.4818 0.411302 -6.78529)",
+          2
+        ],
+        [
+          "lab(98.1434 -0.369549 -1.05968)",
+          2
+        ],
+        [
+          "rgb(21, 43, 69)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.1)",
+          1
+        ],
+        [
+          "oklab(0.745991 -0.0970495 -0.127188 / 0.2)",
+          1
+        ],
+        [
+          "lab(75.0771 -60.7313 19.4146)",
+          1
+        ],
+        [
+          "oklab(0.999994 0.0000455678 0.0000200868 / 0.2)",
+          1
+        ],
+        [
+          "lab(96.286 -0.852466 -2.46847)",
+          1
+        ],
+        [
+          "lab(97.8462 -6.94963 1.85487)",
+          1
+        ],
+        [
+          "lab(96.2369 4.94152 1.28012)",
+          1
+        ]
+      ],
+      "textColorsTop": [
+        [
+          "rgb(21, 43, 69)",
+          15
+        ],
+        [
+          "rgb(255, 255, 255)",
+          12
+        ],
+        [
+          "lab(65.5349 -2.25151 -14.5072)",
+          12
+        ],
+        [
+          "rgb(94, 112, 132)",
+          10
+        ],
+        [
+          "lab(7.78673 1.82346 -15.0537)",
+          9
+        ],
+        [
+          "lab(51.7754 -11.4713 -49.8349)",
+          4
+        ],
+        [
+          "lab(41.6013 -9.10804 -42.5648)",
+          3
+        ],
+        [
+          "lab(38.4009 52.6132 -92.3857)",
+          3
+        ],
+        [
+          "lab(48.0876 -2.03595 -16.5814)",
+          2
+        ],
+        [
+          "lab(26.9569 -1.47018 -15.6993)",
+          2
+        ],
+        [
+          "lab(86.4156 6.13147 78.3961)",
+          1
+        ],
+        [
+          "lab(94.3709 -4.56053 -8.23453)",
+          1
+        ],
+        [
+          "lab(55.0481 -49.9246 15.93)",
+          1
+        ],
+        [
+          "lab(44.4871 -41.0396 11.0361)",
+          1
+        ],
+        [
+          "lab(16.132 -0.318021 -14.6672)",
+          1
+        ]
+      ],
+      "fontFamilies": {
+        "Outfit": 1,
+        "DM Sans": 41,
+        "Manrope": 8,
+        "JetBrains Mono": 1
+      },
+      "headerHeight": 70,
+      "subnavTop": "65px",
+      "subnavHeight": 59,
+      "radiusHist": [
+        [
+          "24px",
+          9
+        ],
+        [
+          "12px",
+          6
+        ],
+        [
+          "32px",
+          5
+        ],
+        [
+          "3.35544e+07px",
+          4
+        ],
+        [
+          "8px",
+          1
+        ]
+      ]
+    }
+  }
+}

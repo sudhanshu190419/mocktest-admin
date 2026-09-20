@@ -27,6 +27,9 @@ import {
   type DynamicDayItem,
 } from '@/utils/studentTimetableProjector';
 
+// Re-export for consumers (dashboard service, Today page) — PRD §5 today schedule.
+export type { TimetableSessionItem } from '@/utils/studentTimetableProjector';
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Internal Types & Select Constants
 // ═══════════════════════════════════════════════════════════════════════════

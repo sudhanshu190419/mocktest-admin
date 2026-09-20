@@ -50,19 +50,19 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
   counts,
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-slate-900 text-slate-100 border-b border-slate-800 px-4 sm:px-6 py-3.5 shadow-md flex flex-col gap-3 select-none">
+    <header className="sticky top-0 z-40 bg-ink text-sky-ink border-b border-ink px-4 sm:px-6 py-3.5 shadow-md flex flex-col gap-3 select-none">
       {/* Top row: Back button, Title, Overall Score */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/student/tests/${testId}/results/${attemptId}`}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-xl bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors cursor-pointer"
             title="Back to Scorecard"
           >
             <ArrowLeft size={18} weight="bold" />
           </Link>
           <div className="flex flex-col min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+            <span className="text-caption font-bold uppercase tracking-wider text-brand">
               Solution & Answer Review
             </span>
             <h1 className="text-sm sm:text-base font-bold text-white truncate max-w-xs sm:max-w-md" title={testTitle}>
@@ -72,10 +72,10 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
         </div>
 
         {/* Score summary pill */}
-        <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs sm:text-sm font-bold">
-          <span className="text-indigo-400">Score:</span>
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-ink border border-ink text-xs sm:text-sm font-bold">
+          <span className="text-brand">Score:</span>
           <span className="text-white">{totalScore} / {maxScore}</span>
-          <span className="text-xs text-slate-400">({percentage}%)</span>
+          <span className="text-xs text-ink-muted">({percentage}%)</span>
         </div>
       </div>
 
@@ -88,8 +88,8 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
             onClick={() => onSelectFilter('all')}
             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeFilter === 'all'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300'
+                ? 'bg-brand text-white shadow-xs'
+                : 'bg-ink/80 hover:bg-ink text-ink-muted'
             }`}
           >
             <ListChecks size={14} weight="bold" />
@@ -102,7 +102,7 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeFilter === 'correct'
                 ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-800/80 hover:bg-slate-800 text-emerald-400'
+                : 'bg-ink/80 hover:bg-ink text-emerald-400'
             }`}
           >
             <CheckCircle size={14} weight="fill" />
@@ -115,7 +115,7 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeFilter === 'incorrect'
                 ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-slate-800/80 hover:bg-slate-800 text-rose-400'
+                : 'bg-ink/80 hover:bg-ink text-rose-400'
             }`}
           >
             <XCircle size={14} weight="fill" />
@@ -127,8 +127,8 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
             onClick={() => onSelectFilter('skipped')}
             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeFilter === 'skipped'
-                ? 'bg-slate-600 text-white shadow-xs'
-                : 'bg-slate-800/80 hover:bg-slate-800 text-slate-400'
+                ? 'bg-ink-secondary text-white shadow-xs'
+                : 'bg-ink/80 hover:bg-ink text-ink-muted'
             }`}
           >
             <MinusCircle size={14} weight="fill" />
@@ -142,7 +142,7 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeFilter === 'pending'
                   ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-800/80 hover:bg-slate-800 text-amber-400'
+                  : 'bg-ink/80 hover:bg-ink text-amber-400'
               }`}
             >
               <HourglassMedium size={14} weight="bold" />
@@ -154,11 +154,11 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
         {/* Section Filter Dropdown / Chips */}
         {sections.length > 1 && (
           <div className="flex items-center gap-1 shrink-0">
-            <span className="text-xs text-slate-400 hidden sm:inline mr-1">Section:</span>
+            <span className="text-xs text-ink-muted hidden sm:inline mr-1">Section:</span>
             <select
               value={activeSection}
               onChange={(e) => onSelectSection(e.target.value)}
-              className="bg-slate-800 text-slate-200 text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-700 focus:outline-hidden focus:border-indigo-500 cursor-pointer"
+              className="bg-ink text-sky-ink text-xs font-semibold px-2.5 py-1 rounded-lg border border-ink focus:outline-hidden focus:border-brand cursor-pointer"
             >
               <option value="all">All Sections</option>
               {sections.map((sec) => (

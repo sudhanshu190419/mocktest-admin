@@ -16,7 +16,7 @@ describe('Student "My Test Results" Dedicated Flow Verification', () => {
     expect(content).toContain('fetchStudentAssignedMockTests');
     expect(content).toContain('My Test Results');
     expect(content).toContain('/student/tests');
-    expect(content).toContain('View Scorecard');
+    expect(content).toContain('View results');
     expect(content).toContain('Solutions');
   });
 

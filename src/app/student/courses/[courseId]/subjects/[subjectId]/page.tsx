@@ -5,7 +5,9 @@
  * (/student/courses/[courseId]/subjects/[subjectId])
  *
  * Modeled after SubjectDashboardScreen from MockTestApp.
- * 3-pane layout for desktop with curriculum navigation, web content player, and progress.
+ * 3-pane layout for desktop (curriculum navigation, web content player, and progress).
+ * Mobile (<1024px) has player primary with segmented curriculum drawer/sheet.
+ * In-context doubt button next to every content item.
  *
  * @module app/student/courses/[courseId]/subjects/[subjectId]/page
  */
@@ -14,26 +16,20 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   useParams,
   useRouter,
-  useSearchParams } from 'next/navigation';
+  useSearchParams,
+} from 'next/navigation';
 import Link from 'next/link';
 import {
-  CaretRight,
   ArrowLeft,
   BookOpen,
   VideoCamera,
   FileText,
   Exam,
   CheckCircle,
-  Warning,
-  ArrowsClockwise,
   MagnifyingGlass,
-  Funnel,
   User,
-  Clock,
-  DownloadSimple,
   Question,
-  PlayCircle,
-  ListNumbers
+  ListBullets,
 } from '@phosphor-icons/react';
 import {
   fetchSubjectLearningWorkspace,
@@ -43,6 +39,8 @@ import {
 } from '@/services/student/studentCourseWebService';
 import { StudentWebContentPlayer } from '@/components/student/StudentWebContentPlayer';
 import { createContextQueryUrl } from '@/services/student/studentDoubtAcademicService';
+import { Skeleton, ErrorState, Sheet } from '@/components/ui/mmt';
+import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 
 export default function SubjectLearningWorkspacePage() {
   const params = useParams();
@@ -63,6 +61,9 @@ export default function SubjectLearningWorkspacePage() {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'video' | 'pdf' | 'tests'>('all');
   const [curriculumSearch, setCurriculumSearch] = useState<string>('');
 
+  // Mobile drawer state
+  const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState<boolean>(false);
+
   const loadWorkspace = async () => {
     if (!courseId || !subjectId) return;
     setIsLoading(true);
@@ -75,7 +76,7 @@ export default function SubjectLearningWorkspacePage() {
         setWorkspace(data);
 
         let selected = false;
-        // Priority 1: Match contentId from notification link
+        // Priority 1: Match contentId from link
         if (targetContentId && data.allItems?.length > 0) {
           const matchedItem = data.allItems.find((i) => i.contentId === targetContentId);
           if (matchedItem) {
@@ -85,7 +86,7 @@ export default function SubjectLearningWorkspacePage() {
           }
         }
 
-        // Priority 2: Match testId from notification link
+        // Priority 2: Match testId from link
         if (!selected && targetTestId && data.mockTests?.length > 0) {
           const matchedTest = data.mockTests.find((t) => t.testId === targetTestId);
           if (matchedTest) {
@@ -147,11 +148,13 @@ export default function SubjectLearningWorkspacePage() {
   const handleSelectContent = (item: SubjectWorkspaceContentItem) => {
     setSelectedContent(item);
     setSelectedMockTest(null);
+    setIsMobileCurriculumOpen(false);
   };
 
   const handleSelectTest = (test: AssignedMockTestItem) => {
     setSelectedMockTest(test);
     setSelectedContent(null);
+    setIsMobileCurriculumOpen(false);
   };
 
   const handleMarkItemComplete = (contentId: string) => {
@@ -181,10 +184,11 @@ export default function SubjectLearningWorkspacePage() {
     });
   };
 
-  const handleAskDoubt = (contentId: string, title: string) => {
+  const handleAskDoubt = (contentId?: string, contentTitle?: string) => {
+    const title = contentTitle || selectedContent?.title || 'Subject Topic';
     const doubtUrl = createContextQueryUrl({
       relatedResourceType: 'content',
-      relatedResourceId: contentId,
+      relatedResourceId: contentId || selectedContent?.contentId,
       subjectId: subjectId || workspace?.subject.subjectId,
       batchSubjectId: workspace?.subject.batchSubjectId,
       subjectName: workspace?.subject.subjectName,
@@ -195,12 +199,12 @@ export default function SubjectLearningWorkspacePage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-6 w-56 rounded bg-slate-200" />
-        <div className="h-28 rounded-2xl bg-slate-200" />
+      <div className="store-container space-y-6 animate-pulse">
+        <Skeleton className="h-6 w-56" />
+        <Skeleton className="h-28 w-full rounded-card" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 h-[600px] rounded-2xl bg-slate-200" />
-          <div className="lg:col-span-8 h-[600px] rounded-2xl bg-slate-200" />
+          <Skeleton className="lg:col-span-4 h-[600px] rounded-card" />
+          <Skeleton className="lg:col-span-8 h-[600px] rounded-card" />
         </div>
       </div>
     );
@@ -208,47 +212,253 @@ export default function SubjectLearningWorkspacePage() {
 
   if (error || !workspace) {
     return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
-          <Warning className="h-6 w-6" />
-        </div>
-        <h3 className="mt-3 text-base font-bold text-slate-900">Workspace Unavailable</h3>
-        <p className="mt-1 text-xs text-slate-600 max-w-sm mx-auto">
-          {error || 'Could not load subject curriculum for this course.'}
-        </p>
-        <div className="mt-5 flex justify-center gap-3">
-          <button
-            onClick={loadWorkspace}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-          >
-            <ArrowsClockwise className="h-3.5 w-3.5" />
-            Retry
-          </button>
-          <Link
-            href={`/student/courses/${courseId}`}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Syllabus
-          </Link>
-        </div>
+      <div className="store-container">
+        <ErrorState
+          title="Workspace Unavailable"
+          detail={error || 'Could not load subject curriculum for this course.'}
+          onRetry={loadWorkspace}
+        />
       </div>
     );
   }
 
-  const { subject, course, allItems, mockTests } = workspace;
+  const { subject, course, allItems, mockTests, progress } = workspace;
 
   const videoItemsCount = allItems.filter((i) => i.contentType === 'video').length;
   const pdfItemsCount = allItems.filter(
     (i) => i.contentType === 'pdf' || i.contentType === 'notes' || i.contentType === 'assignment'
   ).length;
 
+  // Curriculum content renderer (shared between desktop sidebar and mobile drawer)
+  const renderCurriculumList = () => (
+    <div className="space-y-4">
+      {/* Search & Filter Header */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-body font-bold text-ink flex items-center gap-1.5">
+            <BookOpen className="h-4 w-4 text-brand" weight="duotone" />
+            <span>Curriculum Syllabus</span>
+          </h2>
+          <span className="text-caption font-semibold text-ink-muted">
+            {allItems.length} items
+          </span>
+        </div>
+
+        {/* Search Box */}
+        <div className="relative">
+          <MagnifyingGlass className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-muted" />
+          <input
+            type="text"
+            placeholder="Search lectures or notes..."
+            value={curriculumSearch}
+            onChange={(e) => setCurriculumSearch(e.target.value)}
+            className="w-full min-h-[38px] rounded-field border border-line bg-paper pl-8 pr-3 py-2 text-body font-medium placeholder:text-ink-muted focus:border-brand focus:bg-surface focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Type Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <button
+          onClick={() => setSelectedTypeFilter('all')}
+          className={`min-h-[34px] rounded-field px-2.5 py-1 text-caption font-bold whitespace-nowrap transition-colors ${
+            selectedTypeFilter === 'all'
+              ? 'bg-brand text-white shadow-xs'
+              : 'bg-paper text-ink-secondary hover:bg-sky-tint'
+          }`}
+        >
+          All ({allItems.length})
+        </button>
+        <button
+          onClick={() => setSelectedTypeFilter('video')}
+          className={`min-h-[34px] rounded-field px-2.5 py-1 text-caption font-bold whitespace-nowrap transition-colors ${
+            selectedTypeFilter === 'video'
+              ? 'bg-brand text-white shadow-xs'
+              : 'bg-paper text-ink-secondary hover:bg-sky-tint'
+          }`}
+        >
+          Videos ({videoItemsCount})
+        </button>
+        <button
+          onClick={() => setSelectedTypeFilter('pdf')}
+          className={`min-h-[34px] rounded-field px-2.5 py-1 text-caption font-bold whitespace-nowrap transition-colors ${
+            selectedTypeFilter === 'pdf'
+              ? 'bg-brand text-white shadow-xs'
+              : 'bg-paper text-ink-secondary hover:bg-sky-tint'
+          }`}
+        >
+          PDFs ({pdfItemsCount})
+        </button>
+        {mockTests.length > 0 && (
+          <button
+            onClick={() => setSelectedTypeFilter('tests')}
+            className={`min-h-[34px] rounded-field px-2.5 py-1 text-caption font-bold whitespace-nowrap transition-colors ${
+              selectedTypeFilter === 'tests'
+                ? 'bg-brand text-white shadow-xs'
+                : 'bg-paper text-ink-secondary hover:bg-sky-tint'
+            }`}
+          >
+            Tests ({mockTests.length})
+          </button>
+        )}
+      </div>
+
+      {/* Curriculum Item Sections */}
+      <div className="max-h-[560px] overflow-y-auto space-y-4 pr-1">
+        {selectedTypeFilter === 'tests' ? (
+          /* Mock Tests List */
+          <div className="space-y-2">
+            <p className="text-caption font-bold uppercase tracking-wider text-ink-muted">
+              Assigned Tests
+            </p>
+            {mockTests.map((test) => {
+              const isSelected = selectedMockTest?.testId === test.testId;
+              const attempt = test.attemptSummary;
+              return (
+                <button
+                  key={test.testId}
+                  onClick={() => handleSelectTest(test)}
+                  className={`flex min-h-[44px] w-full items-start gap-2.5 rounded-field border p-3 text-left transition-all ${
+                    isSelected
+                      ? 'border-brand bg-sky-tint shadow-xs ring-1 ring-brand'
+                      : 'border-line bg-surface hover:border-line hover:bg-paper'
+                  }`}
+                >
+                  <Exam className={`h-4 w-4 mt-0.5 shrink-0 ${isSelected ? 'text-brand' : 'text-ink-muted'}`} weight="duotone" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-body font-bold text-ink line-clamp-1">{test.title}</p>
+                      {attempt?.attemptState === 'in_progress' && (
+                        <span className="shrink-0 rounded bg-sand px-1.5 py-0.5 text-caption font-bold text-sand-ink">
+                          Resume
+                        </span>
+                      )}
+                      {attempt?.attemptState === 'submitted' && (
+                        <span className="shrink-0 rounded bg-mint-tint px-1.5 py-0.5 text-caption font-bold text-mint-ink">
+                          Done
+                        </span>
+                      )}
+                      {attempt?.attemptState === 'limit_reached' && (
+                        <span className="shrink-0 rounded bg-paper px-1.5 py-0.5 text-caption font-bold text-ink-secondary">
+                          Used
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-caption text-ink-secondary">
+                      <span>{test.durationMin !== null ? `${test.durationMin}m` : 'Flexible'}</span>
+                      <span>·</span>
+                      <span>{test.totalMarks !== null ? `${test.totalMarks} Marks` : 'Assessed'}</span>
+                      {test.questionCount > 0 && (
+                        <>
+                          <span>·</span>
+                          <span>{test.questionCount} Q</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : filteredSections.length === 0 ? (
+          <div className="py-8 text-center text-body text-ink-muted">
+            No learning content matching filter.
+          </div>
+        ) : (
+          filteredSections.map((section, sIdx) => (
+            <div key={section.sectionName || sIdx} className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-caption font-bold uppercase tracking-wider text-ink-secondary bg-paper px-2.5 py-1 rounded-field">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+                <span className="truncate">{section.sectionName}</span>
+              </div>
+
+              <div className="space-y-1.5 pl-0.5">
+                {section.items.map((item) => {
+                  const isSelected = selectedContent?.contentId === item.contentId;
+                  const isVideo = item.contentType === 'video';
+
+                  return (
+                    <div
+                      key={item.contentId}
+                      className={`group/item flex min-h-[44px] w-full items-center justify-between gap-2 rounded-field border p-2 text-left transition-all ${
+                        isSelected
+                          ? 'border-brand bg-sky-tint shadow-xs ring-1 ring-brand'
+                          : 'border-line bg-surface hover:border-line hover:bg-paper'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelectContent(item)}
+                        className="flex flex-1 items-center gap-2.5 min-w-0 text-left cursor-pointer"
+                      >
+                        <div
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-field text-white ${
+                            isVideo ? 'bg-brand' : 'bg-brand-hover'
+                          }`}
+                        >
+                          {isVideo ? (
+                            <VideoCamera className="h-3.5 w-3.5" weight="duotone" />
+                          ) : (
+                            <FileText className="h-3.5 w-3.5" weight="duotone" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-body font-semibold text-ink line-clamp-1 group-hover/item:text-brand transition-colors">
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-2 text-caption text-ink-secondary">
+                            <span className="capitalize">{item.contentType}</span>
+                            {item.durationSeconds ? (
+                              <>
+                                <span>·</span>
+                                <span>{Math.round(item.durationSeconds / 60)} min</span>
+                              </>
+                            ) : item.pageCount ? (
+                              <>
+                                <span>·</span>
+                                <span>{item.pageCount} pgs</span>
+                              </>
+                            ) : null}
+                            {item.isCompleted && (
+                              <span className="inline-flex items-center gap-0.5 text-mint-ink font-bold">
+                                <CheckCircle className="h-3 w-3" weight="bold" />
+                                Done
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* In-Context Doubt Deep Link Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAskDoubt(item.contentId, item.title);
+                        }}
+                        title={`Ask doubt on "${item.title}"`}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field text-ink-muted hover:text-amber-800 hover:bg-sand transition-colors"
+                      >
+                        <Question className="h-4 w-4" weight="bold" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="store-container space-y-5 pb-12">
       {/* ── Breadcrumb & Top Bar ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav className="store-breadcrumb" aria-label="Breadcrumb">
-          <Link href="/student/overview">Student Hub</Link>
+          <Link href="/student/overview">My Learning</Link>
           <span aria-hidden="true">/</span>
           <Link href="/student/courses">My Courses</Link>
           <span aria-hidden="true">/</span>
@@ -259,250 +469,95 @@ export default function SubjectLearningWorkspacePage() {
 
         <Link
           href={`/student/courses/${courseId}`}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-field border border-line bg-surface px-3 py-1.5 text-body font-semibold text-ink-secondary hover:bg-paper transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Course Syllabus
+          <span>Course Syllabus</span>
         </Link>
       </div>
 
       {/* ── Subject Info Banner ──────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-card border border-line bg-surface p-5 shadow-card">
         <div className="flex items-center gap-3.5">
           <div
-            className="flex h-14 w-14 items-center justify-center rounded-2xl text-3xl shadow-sm"
+            className="flex h-14 w-14 items-center justify-center rounded-card text-3xl shadow-xs"
             style={{ backgroundColor: `${subject.color}15` }}
           >
             {subject.emoji}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-extrabold text-slate-900">{subject.subjectName}</h1>
+              <h1 className="text-xl font-extrabold text-ink">{subject.subjectName}</h1>
               {subject.subjectCode && (
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                <span className="rounded-field bg-paper px-2 py-0.5 text-caption font-bold text-ink-secondary border border-line">
                   {subject.subjectCode}
                 </span>
               )}
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-body text-ink-secondary">
               {subject.batchName} · {allItems.length} Study Items · {mockTests.length} Mock Tests
             </p>
           </div>
         </div>
 
-        {/* Teacher / Faculty Pill */}
-        <div className="flex flex-wrap items-center gap-3 border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-5">
-          <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
-            <User className="h-4 w-4 text-slate-400" />
+        {/* Progress & Faculty Pill */}
+        <div className="flex flex-wrap items-center gap-4 border-t sm:border-t-0 sm:border-l border-line pt-3 sm:pt-0 sm:pl-5">
+          <div className="min-w-[120px] space-y-1">
+            <div className="flex items-center justify-between text-caption font-bold">
+              <span className="text-ink-secondary uppercase">Progress</span>
+              <span className="text-ink tabular-nums">{progress.percent}%</span>
+            </div>
+            <ProgressBar
+              value={progress.percent}
+              label={`${subject.subjectName} completion`}
+              tone={progress.percent >= 80 ? 'success' : 'brand'}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 rounded-field bg-paper px-3 py-2 text-body border border-line">
+            <User className="h-4 w-4 text-ink-muted" weight="duotone" />
             <div>
-              <p className="text-[10px] text-slate-400 uppercase font-bold">Faculty</p>
-              <p className="font-semibold text-slate-800">{subject.teacherName || 'Assigned Faculty'}</p>
+              <p className="text-caption text-ink-muted uppercase font-bold">Faculty</p>
+              <p className="font-semibold text-ink text-xs">{subject.teacherName || 'Assigned Faculty'}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Main 3-Pane Curriculum Learning Layout ───────────────────────────── */}
+      {/* ── Mobile-Only Segmented Top Area (Curriculum Drawer Button) ────────── */}
+      <div className="block lg:hidden">
+        <button
+          type="button"
+          onClick={() => setIsMobileCurriculumOpen(true)}
+          className="flex min-h-[44px] w-full items-center justify-between rounded-field border border-line bg-surface p-3 text-body font-bold text-ink shadow-xs hover:bg-paper transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <ListBullets className="h-5 w-5 text-brand" weight="bold" />
+            <span>Curriculum Syllabus</span>
+          </span>
+          <span className="rounded-full bg-sky-tint px-2.5 py-0.5 text-caption text-brand-hover font-bold">
+            {allItems.length} items
+          </span>
+        </button>
+
+        {/* Mobile Curriculum Sheet Drawer */}
+        <Sheet
+          open={isMobileCurriculumOpen}
+          onClose={() => setIsMobileCurriculumOpen(false)}
+          title={`${subject.subjectName} Curriculum`}
+        >
+          {renderCurriculumList()}
+        </Sheet>
+      </div>
+
+      {/* ── Main Layout: Desktop 3-Pane / Mobile Player Primary ─────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ── LEFT PANE: Curriculum Sidebar & Modules (Col 4) ────────────────── */}
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
-          {/* Header & Search */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <BookOpen className="h-4 w-4 text-sky-600" />
-                Curriculum Syllabus
-              </h2>
-              <span className="text-[11px] font-semibold text-slate-400">
-                {allItems.length} items
-              </span>
-            </div>
-
-            {/* Search Box */}
-            <div className="relative">
-              <MagnifyingGlass className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search lectures or notes..."
-                value={curriculumSearch}
-                onChange={(e) => setCurriculumSearch(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 py-2 text-xs placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Type Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            <button
-              onClick={() => setSelectedTypeFilter('all')}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap transition-colors ${
-                selectedTypeFilter === 'all'
-                  ? 'bg-sky-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All ({allItems.length})
-            </button>
-            <button
-              onClick={() => setSelectedTypeFilter('video')}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap transition-colors ${
-                selectedTypeFilter === 'video'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Videos ({videoItemsCount})
-            </button>
-            <button
-              onClick={() => setSelectedTypeFilter('pdf')}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap transition-colors ${
-                selectedTypeFilter === 'pdf'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              PDFs ({pdfItemsCount})
-            </button>
-            {mockTests.length > 0 && (
-              <button
-                onClick={() => setSelectedTypeFilter('tests')}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap transition-colors ${
-                  selectedTypeFilter === 'tests'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                Tests ({mockTests.length})
-              </button>
-            )}
-          </div>
-
-          {/* Curriculum Item Sections */}
-          <div className="mt-3 max-h-[580px] overflow-y-auto space-y-4 pr-1">
-            {selectedTypeFilter === 'tests' ? (
-              /* Mock Tests List */
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Assigned Tests
-                </p>
-                {mockTests.map((test) => {
-                  const isSelected = selectedMockTest?.testId === test.testId;
-                  const attempt = test.attemptSummary;
-                  return (
-                    <button
-                      key={test.testId}
-                      onClick={() => handleSelectTest(test)}
-                      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                        isSelected
-                          ? 'border-indigo-500 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-200'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Exam className={`h-4 w-4 mt-0.5 shrink-0 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <p className="text-xs font-bold text-slate-900 line-clamp-1">{test.title}</p>
-                          {attempt?.attemptState === 'in_progress' && (
-                            <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">
-                              Resume
-                            </span>
-                          )}
-                          {attempt?.attemptState === 'submitted' && (
-                            <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
-                              Done
-                            </span>
-                          )}
-                          {attempt?.attemptState === 'limit_reached' && (
-                            <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
-                              Exhausted
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
-                          <span>{test.durationMin !== null ? `${test.durationMin}m` : 'Flexible'}</span>
-                          <span>·</span>
-                          <span>{test.totalMarks !== null ? `${test.totalMarks} Marks` : 'Assessed'}</span>
-                          {test.questionCount > 0 && (
-                            <>
-                              <span>·</span>
-                              <span>{test.questionCount} Q</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : filteredSections.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                No learning content matching filter.
-              </div>
-            ) : (
-              filteredSections.map((section, sIdx) => (
-                <div key={section.sectionName || sIdx} className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 px-2 py-1 rounded-md">
-                    <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-                    <span className="truncate">{section.sectionName}</span>
-                  </div>
-
-                  <div className="space-y-1 pl-1">
-                    {section.items.map((item) => {
-                      const isSelected = selectedContent?.contentId === item.contentId;
-                      const isVideo = item.contentType === 'video';
-
-                      return (
-                        <button
-                          key={item.contentId}
-                          onClick={() => handleSelectContent(item)}
-                          className={`flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition-all ${
-                            isSelected
-                              ? 'border-sky-500 bg-sky-50/70 shadow-sm ring-1 ring-sky-200'
-                              : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div
-                            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white ${
-                              isVideo ? 'bg-purple-600' : 'bg-sky-600'
-                            }`}
-                          >
-                            {isVideo ? <VideoCamera className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-slate-900 line-clamp-1">{item.title}</p>
-                            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
-                              <span className="capitalize">{item.contentType}</span>
-                              {item.durationSeconds ? (
-                                <>
-                                  <span>·</span>
-                                  <span>{Math.round(item.durationSeconds / 60)} min</span>
-                                </>
-                              ) : item.pageCount ? (
-                                <>
-                                  <span>·</span>
-                                  <span>{item.pageCount} pgs</span>
-                                </>
-                              ) : null}
-                              {item.isCompleted && (
-                                <span className="inline-flex items-center gap-0.5 text-emerald-600 font-bold">
-                                  <CheckCircle className="h-2.5 w-2.5" />
-                                  Done
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+        {/* ── LEFT PANE: Curriculum Sidebar (Desktop only, Col 4) ─────────────── */}
+        <div className="hidden lg:block lg:col-span-4 rounded-card border border-line bg-surface p-4 shadow-card">
+          {renderCurriculumList()}
         </div>
 
-        {/* ── CENTER & RIGHT PANE: Content Display & Learning Workspace (Col 8) ── */}
+        {/* ── CENTER & RIGHT: Content Player & Doubt CTA (Col 8) ─────────────── */}
         <div className="lg:col-span-8 space-y-6">
           {/* Main Web Content Player */}
           <StudentWebContentPlayer
@@ -512,29 +567,26 @@ export default function SubjectLearningWorkspacePage() {
             onAskDoubt={handleAskDoubt}
           />
 
-          {/* Quick Doubts / Faculty Help Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Quick Doubts / Faculty Help Card (Design A) */}
+          <div className="rounded-card border border-line bg-surface p-5 sm:p-6 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-amber-600">
-                <Question className="h-4 w-4" />
-                <h3 className="text-sm font-bold text-slate-900">Have a Doubt in {subject.subjectName}?</h3>
+              <div className="flex items-center gap-2 text-sand-ink">
+                <Question className="h-5 w-5 text-amber-600" weight="duotone" />
+                <h3 className="text-h3 font-bold text-ink">Have a Doubt in {subject.subjectName}?</h3>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Submit your academic queries directly to faculty and receive step-by-step solutions.
+              <p className="mt-1 text-body text-ink-secondary">
+                Submit your academic questions to assigned faculty for step-by-step verified explanations.
               </p>
             </div>
             <div className="shrink-0">
-              <Link
-                href={createContextQueryUrl({
-                  subjectId: subjectId || workspace?.subject.subjectId,
-                  batchSubjectId: workspace?.subject.batchSubjectId,
-                  subjectName: workspace?.subject.subjectName,
-                })}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/70 px-4 py-2.5 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors w-full sm:w-auto"
+              <button
+                type="button"
+                onClick={() => handleAskDoubt()}
+                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-field bg-sand px-4 py-2.5 text-body font-bold text-sand-ink hover:bg-amber-100 transition-colors w-full sm:w-auto border border-amber-200"
               >
-                <Question className="h-3.5 w-3.5" />
-                Ask Faculty a Doubt
-              </Link>
+                <Question className="h-4 w-4" weight="bold" />
+                <span>Ask Faculty a Doubt</span>
+              </button>
             </div>
           </div>
         </div>

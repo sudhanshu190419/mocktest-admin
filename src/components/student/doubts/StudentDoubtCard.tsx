@@ -32,7 +32,11 @@ function formatRelativeDate(iso: string): string {
     if (diffHours < 24) return `${diffHours}h ago`;
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+    return date.toLocaleDateString('en-IN', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
   } catch {
     return 'recently';
   }
@@ -42,51 +46,57 @@ function getResourceBadge(type: DoubtResourceType | null) {
   if (!type) return null;
   switch (type) {
     case 'live_class':
-      return { label: 'Live Class', icon: VideoCamera, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' };
+      return { label: 'Live Class', icon: VideoCamera, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'content':
-      return { label: 'Study Material', icon: FileText, color: 'text-blue-700 bg-blue-50 border-blue-200' };
+      return { label: 'Study Material', icon: FileText, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'question':
-      return { label: 'Test Question', icon: Exam, color: 'text-purple-700 bg-purple-50 border-purple-200' };
+      return { label: 'Test Question', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'mock_test':
-      return { label: 'Mock Test', icon: Exam, color: 'text-purple-700 bg-purple-50 border-purple-200' };
+      return { label: 'Mock Test', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'pyq_paper':
-      return { label: 'PYQ Paper', icon: FileText, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+      return { label: 'PYQ Paper', icon: FileText, color: 'text-mint-ink bg-mint-tint border-emerald-200' };
     default:
       return null;
   }
 }
 
+/**
+ * PRD §7.2 Standard Status Vocabulary:
+ *  - open: "Waiting on faculty"
+ *  - in_progress: "Faculty is on it"
+ *  - resolved: "Resolved"
+ */
 function getStatusBadgeConfig(status: DoubtStatus) {
   switch (status) {
     case 'open':
       return {
-        label: 'Open',
-        dotColor: 'bg-sky-500',
-        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+        label: 'Waiting on faculty',
+        dotColor: 'bg-brand',
+        badgeClass: 'bg-sky-tint text-brand-hover border-line',
       };
     case 'in_progress':
       return {
-        label: 'Faculty Reviewing',
+        label: 'Faculty is on it',
         dotColor: 'bg-amber-500 animate-pulse',
-        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        badgeClass: 'bg-sand text-sand-ink border-amber-200',
       };
     case 'resolved':
       return {
         label: 'Resolved',
         dotColor: 'bg-emerald-500',
-        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        badgeClass: 'bg-mint-tint text-mint-ink border-emerald-200',
       };
     case 'archived':
       return {
         label: 'Archived',
-        dotColor: 'bg-slate-400',
-        badgeClass: 'bg-slate-50 text-slate-600 border-slate-200',
+        dotColor: 'bg-sky-tint',
+        badgeClass: 'bg-paper text-ink-secondary border-line',
       };
     default:
       return {
         label: status,
-        dotColor: 'bg-slate-400',
-        badgeClass: 'bg-slate-50 text-slate-600 border-slate-200',
+        dotColor: 'bg-sky-tint',
+        badgeClass: 'bg-paper text-ink-secondary border-line',
       };
   }
 }
@@ -113,7 +123,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
   return (
     <Link
       href={`/student/doubts/${doubt.doubtId}`}
-      className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md"
+      className="group relative flex flex-col justify-between rounded-card border border-line bg-surface p-5 sm:p-6 shadow-card transition-all duration-200 hover:border-line hover:shadow-card-hover"
       aria-label={`View doubt: ${doubt.title}`}
     >
       <div>
@@ -121,7 +131,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-field text-caption font-bold border"
               style={{
                 backgroundColor: `${subjectColor}12`,
                 color: subjectColor,
@@ -134,7 +144,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
 
             {resourceBadge && (
               <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${resourceBadge.color}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-field text-caption font-bold border ${resourceBadge.color}`}
               >
                 <resourceBadge.icon size={12} weight="bold" />
                 <span>{resourceBadge.label}</span>
@@ -142,7 +152,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
             )}
 
             {doubt.reopenedCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-field text-caption font-bold bg-sand text-sand-ink border border-amber-200">
                 <ArrowsClockwise size={11} weight="bold" />
                 <span>Reopened ({doubt.reopenedCount}/3)</span>
               </span>
@@ -150,7 +160,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
           </div>
 
           <div
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${statusConfig.badgeClass}`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-caption font-bold border shrink-0 ${statusConfig.badgeClass}`}
           >
             <span className={`h-2 w-2 rounded-full ${statusConfig.dotColor}`} />
             <span>{statusConfig.label}</span>
@@ -159,29 +169,29 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
 
         {/* Academic Hierarchy Breadcrumb */}
         {hierarchyText && (
-          <p className="text-[11px] font-medium text-slate-400 mb-1.5 truncate">
+          <p className="text-caption font-medium text-ink-muted mb-1.5 truncate">
             {hierarchyText}
           </p>
         )}
 
         {/* Title */}
-        <h3 className="text-sm font-bold text-slate-900 group-hover:text-sky-600 transition-colors line-clamp-1 mb-1.5">
+        <h3 className="text-h3 font-bold text-ink group-hover:text-brand transition-colors line-clamp-1 mb-1.5">
           {doubt.title}
         </h3>
 
         {/* Description Snippet */}
-        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-4">
+        <p className="text-body text-ink-secondary line-clamp-2 leading-relaxed mb-4">
           {doubt.description}
         </p>
       </div>
 
       {/* Card Footer: Metadata & Response Indicators */}
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 text-xs text-slate-500">
+      <div className="pt-3 border-t border-line flex items-center justify-between gap-3 text-caption text-ink-secondary">
         <div className="flex items-center gap-3 flex-wrap min-w-0">
           {/* Replies Pill */}
           <span
             className={`inline-flex items-center gap-1 font-semibold ${
-              replyCount > 0 ? 'text-sky-700' : 'text-slate-400'
+              replyCount > 0 ? 'text-brand-hover' : 'text-ink-muted'
             }`}
           >
             <ChatText size={15} weight={replyCount > 0 ? 'fill' : 'regular'} />
@@ -190,7 +200,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
 
           {/* Attachments Indicator */}
           {attachmentCount > 0 && (
-            <span className="inline-flex items-center gap-1 text-slate-500 font-medium" title={`${attachmentCount} attached file(s)`}>
+            <span className="inline-flex items-center gap-1 text-ink-secondary font-medium" title={`${attachmentCount} attached file(s)`}>
               <Paperclip size={14} weight="bold" />
               <span>{attachmentCount}</span>
             </span>
@@ -198,9 +208,8 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
 
           {/* Assigned Faculty */}
           {doubt.assignedTeacherName && (
-            <span className="inline-flex items-center gap-1 text-slate-600 font-medium truncate max-w-[140px]" title={`Assigned Faculty: ${doubt.assignedTeacherName}`}
-            >
-              <User size={13} weight="bold" className="text-slate-400 shrink-0" />
+            <span className="inline-flex items-center gap-1 text-ink-secondary font-medium truncate max-w-[140px]" title={`Assigned Faculty: ${doubt.assignedTeacherName}`}>
+              <User size={13} weight="bold" className="text-ink-muted shrink-0" />
               <span className="truncate">{doubt.assignedTeacherName}</span>
             </span>
           )}
@@ -208,11 +217,11 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
 
         {/* Date + Action Icon */}
         <div className="flex items-center gap-2 shrink-0">
-          <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+          <span className="inline-flex items-center gap-1 text-caption text-ink-muted font-medium">
             <CalendarBlank size={13} />
             <span>{formatRelativeDate(doubt.createdAt)}</span>
           </span>
-          <CaretRight size={14} weight="bold" className="text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
+          <CaretRight size={14} weight="bold" className="text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </Link>

@@ -1,24 +1,38 @@
+'use client';
+
 import Link from 'next/link';
+import Image from 'next/image';
+import { useAuth } from '@/context/AuthContext';
 
 /**
  * Site footer — light-blue tinted, matching the design system.
+ * PRD §4.3: Logged-in variant suppressing guest login links and displaying support/help links.
  */
 export function SiteFooter() {
+  const { user } = useAuth();
+  const loggedIn = Boolean(user);
+
   return (
     <footer className="mt-auto border-t border-divider bg-surface">
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-8">
         <div className="flex flex-col justify-between gap-8 md:flex-row">
           <div>
-            <p className="font-display text-lg font-extrabold tracking-tight">
-              Make<span className="text-brand">MeTopper</span>
-            </p>
+            <Link href="/" className="inline-block" aria-label="Make Me Topper home">
+              <Image
+                src="/brand/logo-primary-horizontal.svg"
+                alt="Make Me Topper"
+                width={160}
+                height={38}
+                className="h-8 w-auto object-contain"
+              />
+            </Link>
             <p className="mt-2 max-w-xs text-sm text-ink-secondary">
               Live classes, recorded lectures, PYQ practice, and a full mock-test
               engine for India&apos;s competitive exams.
             </p>
           </div>
 
-          <div className="flex gap-12">
+          <div className="flex flex-wrap gap-8 sm:gap-12">
             <FooterCol
               title="Learn"
               links={[
@@ -27,12 +41,31 @@ export function SiteFooter() {
                 { href: '/demo-class', label: 'Demo Class' },
               ]}
             />
+            {loggedIn ? (
+              <FooterCol
+                title="My Learning"
+                links={[
+                  { href: '/student/overview', label: 'Dashboard' },
+                  { href: '/student/tests', label: 'Mock tests' },
+                  { href: '/student/doubts', label: 'Help & Doubts' },
+                  { href: '/student/profile', label: 'Profile & Settings' },
+                ]}
+              />
+            ) : (
+              <FooterCol
+                title="Account"
+                links={[
+                  { href: '/login', label: 'Log in' },
+                  { href: '/signup', label: 'Sign up' },
+                  { href: '/student/overview', label: 'My Learning' },
+                ]}
+              />
+            )}
             <FooterCol
-              title="Account"
+              title="Support"
               links={[
-                { href: '/login', label: 'Log in' },
-                { href: '/signup', label: 'Sign up' },
-                { href: '/student/overview', label: 'My Learning' },
+                { href: loggedIn ? '/student/doubts' : '/login', label: 'Ask a Doubt' },
+                { href: '/courses', label: 'Explore Programs' },
               ]}
             />
           </div>
@@ -60,7 +93,7 @@ function FooterCol({
       </p>
       <ul className="mt-3 space-y-2">
         {links.map((l) => (
-          <li key={l.href}>
+          <li key={l.href + l.label}>
             <Link href={l.href} className="text-sm text-ink-secondary transition-colors hover:text-brand">
               {l.label}
             </Link>

@@ -8,7 +8,7 @@ export default function StudentTimetablePage() {
   return (
     <div className="store-container space-y-7 pb-12">
       <nav className="store-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/student/overview">Student Hub</Link>
+        <Link href="/student/overview">My Learning</Link>
         <span aria-hidden="true">/</span>
         <span>Timetable & Schedule</span>
       </nav>

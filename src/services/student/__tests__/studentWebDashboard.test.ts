@@ -16,21 +16,19 @@ describe('Student Web Shell & Dashboard Verification', () => {
     expect(getPostLoginDestination('admin', 'approved')).toBe('/admin');
   });
 
-  it('Student Layout exists and wraps children with RoleGuard for student and user', () => {
-    const layoutPath = 'C:/Projects/mocktest-admin/src/app/student/layout.tsx';
+  it('Student Layout exists and wraps children with StudentGuard', () => {
+    const layoutPath = 'src/app/student/layout.tsx';
     expect(fs.existsSync(layoutPath)).toBe(true);
 
     const layoutContent = fs.readFileSync(layoutPath, 'utf8');
-    expect(layoutContent).toContain('RoleGuard');
-    expect(layoutContent).toContain("'student'");
-    expect(layoutContent).toContain("'user'");
-    expect(layoutContent).toContain('StudentSidebar');
-    expect(layoutContent).toContain('StudentHeader');
-    expect(layoutContent).toContain('#F0F9FF');
+    expect(layoutContent).toContain('StudentGuard');
+    expect(layoutContent).toContain('CourseStoreShell');
+    expect(layoutContent).toContain('StudentSubNav');
+    expect(layoutContent).toContain('StudentBottomNav');
   });
 
   it('Student Sidebar exports navigation for all core student modules', () => {
-    const sidebarPath = 'C:/Projects/mocktest-admin/src/components/student/StudentSidebar.tsx';
+    const sidebarPath = 'src/components/student/StudentSidebar.tsx';
     expect(fs.existsSync(sidebarPath)).toBe(true);
 
     const sidebarContent = fs.readFileSync(sidebarPath, 'utf8');
@@ -46,37 +44,35 @@ describe('Student Web Shell & Dashboard Verification', () => {
     expect(sidebarContent).toContain('/student/profile');
   });
 
-  it('Student Overview Dashboard imports and renders all 8 required sections with empty and dynamic states', () => {
-    const overviewPath = 'C:/Projects/mocktest-admin/src/app/student/overview/page.tsx';
+  it('Student Overview Dashboard imports and renders core sections with empty and dynamic states', () => {
+    const overviewPath = 'src/app/student/overview/page.tsx';
     expect(fs.existsSync(overviewPath)).toBe(true);
 
     const overviewContent = fs.readFileSync(overviewPath, 'utf8');
-    // Section 1: Welcome / Student Context
-    expect(overviewContent).toContain('Welcome back');
+    // Section 1: Greeting / Resume
+    expect(overviewContent).toContain('getGreeting');
     // Section 2: Live Class Banner
     expect(overviewContent).toContain('Live Class Active');
-    // Section 3: Performance Snapshot
-    expect(overviewContent).toContain('Academic Performance Snapshot');
-    // Section 4: Continue Learning / My Courses
-    expect(overviewContent).toContain('Continue Learning (My Courses)');
-    // Section 5: Assigned Mock Tests
-    expect(overviewContent).toContain('Assigned Mock Tests');
-    // Section 7: Recent Scorecard
-    expect(overviewContent).toContain('Latest Mock Test Scorecard');
-    // Section 8: Weak Areas
-    expect(overviewContent).toContain('Target Focus Areas');
+    // Section 3: Today's schedule
+    expect(overviewContent).toContain('schedule');
+    // Section 4: This week's tests
+    expect(overviewContent).toContain('tests');
+    // Section 5: Momentum
+    expect(overviewContent).toContain('Momentum');
+    // Section 6: Worth practicing
+    expect(overviewContent).toContain('Worth practicing');
   });
 
   it('All 8 placeholder student routes exist', () => {
     const routes = ['courses', 'classes', 'recordings', 'tests', 'timetable', 'doubts', 'analytics', 'profile'];
     for (const route of routes) {
-      const p = path.join('C:/Projects/mocktest-admin/src/app/student', route, 'page.tsx');
+      const p = path.join('src/app/student', route, 'page.tsx');
       expect(fs.existsSync(p)).toBe(true);
     }
   });
 
   it('studentDashboardWebService reuses get_home_screen_bootstrap and get_courses_content_summary RPCs', () => {
-    const servicePath = 'C:/Projects/mocktest-admin/src/services/student/studentDashboardWebService.ts';
+    const servicePath = 'src/services/student/studentDashboardWebService.ts';
     expect(fs.existsSync(servicePath)).toBe(true);
 
     const serviceContent = fs.readFileSync(servicePath, 'utf8');
@@ -90,8 +86,8 @@ describe('Student Web Shell & Dashboard Verification', () => {
 });
 
 describe('Task 1: Student Overview Dashboard Cleanup Verification', () => {
-  const overviewContent = fs.readFileSync('C:/Projects/mocktest-admin/src/app/student/overview/page.tsx', 'utf8');
-  const serviceContent = fs.readFileSync('C:/Projects/mocktest-admin/src/services/student/studentDashboardWebService.ts', 'utf8');
+  const overviewContent = fs.readFileSync('src/app/student/overview/page.tsx', 'utf8');
+  const serviceContent = fs.readFileSync('src/services/student/studentDashboardWebService.ts', 'utf8');
 
   it('1. No hardcoded mock test titles remain in overview page', () => {
     expect(overviewContent).not.toContain('NEET Full Length Mock Test #04');
@@ -100,16 +96,14 @@ describe('Task 1: Student Overview Dashboard Cleanup Verification', () => {
   });
 
   it('2. Empty assigned mock tests state is present and user-friendly', () => {
-    expect(overviewContent).toContain('No Mock Tests Assigned');
-    expect(overviewContent).toContain('assignedMockTests.length > 0');
+    expect(overviewContent).toContain('No tests due this week');
+    expect(overviewContent).toContain('weekTests.length > 0');
   });
 
   it('3. Real assigned mock tests are wired from service and render dynamic properties', () => {
     expect(overviewContent).toContain('assignedMockTests');
-    expect(overviewContent).toContain('test.testId');
-    expect(overviewContent).toContain('test.title');
-    expect(overviewContent).toContain('test.questionCount');
-    expect(overviewContent).toContain('test.attemptSummary?.attemptState');
+    expect(overviewContent).toContain('TestStateCard');
+    expect(overviewContent).toContain('weekTests');
   });
 
   it('4. No fabricated weak chapter names remain in overview page', () => {
@@ -120,7 +114,7 @@ describe('Task 1: Student Overview Dashboard Cleanup Verification', () => {
 
   it('5. Educational empty state is shown when no weak chapters exist', () => {
     expect(overviewContent).toContain('No weak areas identified yet');
-    expect(overviewContent).toContain('Complete mock tests to unlock personalized study recommendations');
+    expect(overviewContent).toContain("we&apos;ll point out exactly what to practice.");
   });
 
   it('6. No fabricated rank (#42) exists in service or overview', () => {
@@ -141,9 +135,9 @@ describe('Task 1: Student Overview Dashboard Cleanup Verification', () => {
   });
 
   it('9. Error and loading states are properly supported with retry capability', () => {
-    expect(overviewContent).toContain('Retry Connection');
-    expect(overviewContent).toContain('Unable to Load Student Dashboard');
-    expect(overviewContent).toContain('animate-pulse');
+    expect(overviewContent).toContain('Try Again');
+    expect(overviewContent).toContain("load your day");
+    expect(overviewContent).toContain('skeleton');
   });
 });
 

@@ -64,29 +64,29 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
     }));
   }, [questions]);
 
-  // Status badge styling helper
+  // Status badge styling helper matching NTA semantics
   const getBadgeStyle = (status: QuestionStatus, isCurrent: boolean) => {
-    let bg = 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300';
+    let bg = 'bg-paper hover:bg-sky-tint text-ink border-line';
 
     if (status === 'answered') {
-      bg = 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600';
+      bg = 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 font-bold';
     } else if (status === 'marked') {
-      bg = 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600';
+      bg = 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 font-bold';
     } else if (status === 'answered_and_marked') {
-      bg = 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 ring-2 ring-emerald-400';
+      bg = 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 ring-2 ring-emerald-400 font-bold';
     } else if (status === 'not_answered') {
-      bg = 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500';
+      bg = 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 font-bold';
     }
 
-    const ring = isCurrent ? 'ring-3 ring-sky-500 ring-offset-2 scale-105 z-10' : '';
+    const ring = isCurrent ? 'ring-2 ring-brand ring-offset-2 scale-105 font-extrabold z-10' : '';
     return `${bg} ${ring}`;
   };
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col gap-4 ${className}`}>
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 className="font-bold text-slate-900 text-sm">Question Palette</h3>
-        <span className="text-xs text-slate-500 font-medium">
+    <div className={`bg-white rounded-card border border-line shadow-xs p-4 flex flex-col gap-4 ${className}`}>
+      <div className="flex items-center justify-between pb-3 border-b border-line">
+        <h3 className="font-bold text-ink text-sm">Question Palette</h3>
+        <span className="text-caption text-ink-secondary font-semibold">
           {questions.length} Questions
         </span>
       </div>
@@ -99,7 +99,7 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
         {sections.map((sec) => (
           <div key={sec.name} className="flex flex-col gap-2.5">
             {sections.length > 1 && (
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <div className="text-caption font-bold text-ink-secondary uppercase tracking-wider">
                 {sec.name} ({sec.items.length})
               </div>
             )}
@@ -113,7 +113,7 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
                     key={q.id}
                     type="button"
                     onClick={() => onSelectQuestion(globalIndex)}
-                    className={`h-9 rounded-xl font-bold text-xs border transition-all flex items-center justify-center cursor-pointer shadow-2xs ${getBadgeStyle(
+                    className={`h-10 rounded-field font-bold text-caption border transition-all flex items-center justify-center cursor-pointer shadow-xs ${getBadgeStyle(
                       status,
                       isCurrent
                     )}`}

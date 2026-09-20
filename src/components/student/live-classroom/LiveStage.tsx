@@ -27,7 +27,7 @@ export const LiveStage: React.FC<LiveStageProps> = ({ teacherName }) => {
         <ScreenShareTile trackRef={screenShareTrack} />
 
         {cameraTrack && (
-          <div className="absolute top-4 right-4 w-44 sm:w-56 aspect-video z-20 shadow-2xl rounded-2xl overflow-hidden ring-2 ring-white/20 border border-slate-900">
+          <div className="absolute top-4 right-4 w-44 sm:w-56 aspect-video z-20 shadow-2xl rounded-2xl overflow-hidden ring-2 ring-white/20 border border-ink">
             <TeacherVideoTile trackRef={cameraTrack} teacherName={teacherName} />
           </div>
         )}

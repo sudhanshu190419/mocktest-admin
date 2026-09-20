@@ -24,7 +24,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
     let base = 'relative flex items-center justify-center rounded-xl font-mono text-xs font-bold transition-all cursor-pointer h-10 ';
 
     if (isCurrent) {
-      base += 'ring-2 ring-indigo-600 ring-offset-2 scale-105 z-10 ';
+      base += 'ring-2 ring-brand ring-offset-2 scale-105 z-10 ';
     }
 
     switch (status) {
@@ -38,7 +38,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
         return base + 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200';
       case 'skipped':
       default:
-        return base + 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200';
+        return base + 'bg-paper text-ink border border-line hover:bg-sky-tint';
     }
   };
 
@@ -59,10 +59,10 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col gap-4">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-        <h3 className="text-sm font-bold text-slate-900">Question Navigator</h3>
-        <span className="text-xs text-slate-500 font-medium">
+    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-line shadow-xs flex flex-col gap-4">
+      <div className="flex items-center justify-between border-b border-line pb-3">
+        <h3 className="text-sm font-bold text-ink">Question Navigator</h3>
+        <span className="text-xs text-ink-secondary font-medium">
           {questions.length} {questions.length === 1 ? 'Question' : 'Questions'}
         </span>
       </div>
@@ -87,7 +87,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
       </div>
 
       {/* Legend */}
-      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-[11px] text-slate-600">
+      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-line text-caption text-ink-secondary">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-xs bg-emerald-100 border border-emerald-400" />
           <span>Correct</span>
@@ -97,7 +97,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
           <span>Incorrect</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-xs bg-slate-100 border border-slate-400" />
+          <div className="w-3 h-3 rounded-xs bg-paper border border-line" />
           <span>Skipped</span>
         </div>
         <div className="flex items-center gap-1.5">

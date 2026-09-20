@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   SquaresFour,
@@ -53,14 +54,14 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
 
   return (
     <aside
-      className={`flex h-full w-full flex-col justify-between bg-white border-r border-slate-200/80 select-none font-body transition-all duration-300 ${
+      className={`flex h-full w-full flex-col justify-between bg-white border-r border-line/80 select-none font-body transition-all duration-300 ${
         isCollapsed ? 'px-2 py-4 items-center' : 'p-4'
       }`}
     >
       <div className="w-full">
         {/* Brand Header */}
         <div
-          className={`flex items-center mb-4 border-b border-slate-100 ${
+          className={`flex items-center mb-4 border-b border-line ${
             isCollapsed
               ? 'justify-center pb-3'
               : 'justify-between px-2 py-3'
@@ -69,22 +70,32 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           {isCollapsed ? (
             <Link
               href="/student/overview"
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-extrabold text-sm tracking-tight shadow-sm hover:scale-105 transition-transform font-display"
-              title="MakeMeTopper Student Studio"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 p-1 transition-all hover:scale-105 shadow-sm"
+              title="Make Me Topper — Student Studio"
             >
-              mt
+              <Image
+                src="/brand/logo-submark.svg"
+                alt="Make Me Topper"
+                width={28}
+                height={28}
+                className="h-7 w-auto object-contain"
+              />
             </Link>
           ) : (
             <Link href="/student/overview" className="flex items-center gap-2.5 group">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-extrabold text-sm tracking-tight shadow-sm group-hover:scale-105 transition-transform font-display">
-                mt
-              </span>
+              <Image
+                src="/brand/logo-submark.svg"
+                alt="Make Me Topper"
+                width={36}
+                height={36}
+                className="h-9 w-auto object-contain group-hover:scale-105 transition-transform"
+              />
               <div>
-                <span className="text-base font-extrabold tracking-tight text-slate-900 font-display block leading-tight">
-                  make<span className="text-blue-600">me</span>topper<span className="text-blue-600">.</span>
+                <span className="text-[15px] font-black tracking-tight text-ink font-display block leading-tight">
+                  MAKE ME TOPPER
                 </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                  <Sparkle size={10} weight="fill" className="text-blue-600" /> Student Studio
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-secondary flex items-center gap-1">
+                  <Sparkle size={10} weight="fill" className="text-brand" /> Student Studio
                 </span>
               </div>
             </Link>
@@ -94,7 +105,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           {onCloseMobile && (
             <button
               onClick={onCloseMobile}
-              className="lg:hidden p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              className="lg:hidden p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-paper"
               aria-label="Close menu"
             >
               <X size={18} />
@@ -105,7 +116,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           {!isCollapsed && onToggleCollapse && (
             <button
               onClick={onToggleCollapse}
-              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              className="hidden lg:flex p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-paper transition-colors"
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
             >
@@ -134,15 +145,15 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
                     : 'justify-between px-3.5 py-2.5'
                 } ${
                   isActive
-                    ? 'bg-blue-50/90 text-blue-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                    ? 'bg-sky-tint/90 text-brand-hover font-bold shadow-xs'
+                    : 'text-ink-secondary hover:bg-paper hover:text-ink font-medium'
                 }`}
               >
                 <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
                   <IconComponent
                     size={isCollapsed ? 20 : 18}
                     weight={isActive ? 'fill' : 'regular'}
-                    className={isActive ? 'text-blue-600' : 'text-slate-400'}
+                    className={isActive ? 'text-brand' : 'text-ink-muted'}
                   />
                   {!isCollapsed && <span>{item.label}</span>}
                 </div>
@@ -151,11 +162,11 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
                 {item.badge && (
                   isCollapsed ? (
                     <span
-                      className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
+                      className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-500"
                       title={item.badge}
                     />
                   ) : (
-                    <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200/60 animate-pulse">
+                    <span className="px-2 py-0.5 text-caption font-extrabold uppercase tracking-wider rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200/60">
                       {item.badge}
                     </span>
                   )
@@ -167,28 +178,28 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
       </div>
 
       {/* Sidebar Footer */}
-      <div className={`space-y-2 pt-3 border-t border-slate-100 w-full ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+      <div className={`space-y-2 pt-3 border-t border-line w-full ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
         {/* Assistance Help Card */}
         {isCollapsed ? (
           <Link
             href="/student/doubts"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-brand bg-sky-tint hover:bg-sky-tint transition-colors"
             title="Need Assistance? Ask a Doubt"
           >
             <Question size={20} weight="duotone" />
           </Link>
         ) : (
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/70 to-slate-50 border border-blue-100/80">
-            <div className="flex items-center gap-2 text-blue-900 font-bold text-xs mb-1 font-display">
-              <Question size={16} weight="duotone" className="text-blue-600" />
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br bg-sky-tint/70 bg-paper border border-line/80">
+            <div className="flex items-center gap-2 text-brand-hover font-bold text-xs mb-1 font-display">
+              <Question size={16} weight="duotone" className="text-brand" />
               <span>Need Assistance?</span>
             </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed mb-2.5">
+            <p className="text-caption text-ink-secondary leading-relaxed mb-2.5">
               Ask faculty doubts or contact student support 24/7.
             </p>
             <Link
               href="/student/doubts"
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 text-caption font-bold text-brand hover:text-brand-hover"
             >
               <span>Ask a Doubt</span>
               <span>&rarr;</span>
@@ -200,7 +211,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
         {isCollapsed && onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-secondary hover:bg-paper hover:text-ink transition-colors"
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
@@ -215,7 +226,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
             window.location.href = '/';
           }}
           title={isCollapsed ? 'Sign Out' : undefined}
-          className={`flex items-center rounded-xl text-xs font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors ${
+          className={`flex items-center rounded-xl text-xs font-semibold text-ink-secondary hover:bg-rose-50 hover:text-rose-600 transition-colors ${
             isCollapsed
               ? 'h-10 w-10 justify-center'
               : 'w-full gap-2 px-3 py-2'

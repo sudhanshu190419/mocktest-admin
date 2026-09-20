@@ -143,7 +143,7 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
 
           {/* Video Player Skeleton */}
           <div className="w-full aspect-video bg-neutral-900 rounded-2xl flex flex-col items-center justify-center gap-3 shadow-2xl border border-neutral-800 animate-pulse">
-            <Spinner className="w-8 h-8 animate-spin text-indigo-500" />
+            <Spinner className="w-8 h-8 animate-spin text-brand" />
             <span className="text-xs text-neutral-400 font-medium">
               Loading recorded session...
             </span>
@@ -192,7 +192,7 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
 
             <Link
               href="/student/recordings"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand text-white text-xs font-semibold shadow-md shadow-card transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>All Recordings</span>
@@ -208,7 +208,7 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
     <div className="store-container space-y-7 pb-12">
       {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
       <nav className="store-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/student/overview">Student Hub</Link>
+        <Link href="/student/overview">My Learning</Link>
         <span aria-hidden="true">/</span>
         <Link href="/student/recordings">Recorded Classes</Link>
         <span aria-hidden="true">/</span>

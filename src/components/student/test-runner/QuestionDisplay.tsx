@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookmarkSimple, MagnifyingGlassPlus, X } from '@phosphor-icons/react';
 import type { RunnerQuestion } from '@/services/student/studentTestWebService';
 import { AnswerOptions } from './AnswerOptions';
@@ -24,6 +24,15 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
 }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!zoomedImage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomedImage(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomedImage]);
+
   const getQuestionTypeLabel = (type: string) => {
     switch (type) {
       case 'msq':
@@ -41,26 +50,26 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+    <div className="bg-white rounded-card border border-line shadow-xs overflow-hidden flex flex-col">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-200">
-        <div className="flex items-center gap-3">
-          <span className="px-3 py-1 bg-sky-600 text-white font-bold text-xs sm:text-sm rounded-lg shadow-xs">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-paper border-b border-line">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <span className="px-3 py-1 bg-brand text-white font-bold text-caption sm:text-sm rounded-field shadow-xs">
             Question {question.index}
           </span>
-          <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+          <span className="text-caption sm:text-sm text-ink-secondary font-semibold">
             of {totalQuestions}
           </span>
           {question.sectionName && (
-            <span className="px-2.5 py-0.5 bg-slate-200 text-slate-700 text-xs font-semibold rounded-md">
+            <span className="hidden sm:inline-block px-2.5 py-0.5 bg-sky-tint text-ink text-caption font-semibold rounded-field">
               {question.sectionName}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Scoring Pill */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-mint text-mint-ink border border-mint-ink/30 rounded-field text-caption font-bold tabular-nums">
             <span>+{question.marks}</span>
             {question.negativeMarks > 0 && (
               <span className="text-rose-700">/-{question.negativeMarks}</span>
@@ -68,45 +77,48 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
           </div>
 
           {/* Type Badge */}
-          <span className="hidden md:inline px-2.5 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-lg border border-slate-200">
+          <span className="hidden md:inline px-2.5 py-1 bg-paper text-ink-secondary text-caption font-medium rounded-field border border-line">
             {getQuestionTypeLabel(question.questionType)}
           </span>
 
           {/* Bookmark Button */}
           <button
+            type="button"
             onClick={onToggleBookmark}
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+            className={`min-h-[38px] p-2 rounded-field border transition-colors cursor-pointer flex items-center justify-center ${
               isBookmarked
-                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                : 'bg-white hover:bg-slate-100 text-slate-400 border-slate-200'
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-white hover:bg-paper text-ink-secondary border-line'
             }`}
             title={isBookmarked ? 'Bookmarked' : 'Bookmark Question'}
             aria-label="Bookmark"
           >
-            <BookmarkSimple size={16} weight={isBookmarked ? 'fill' : 'bold'} />
+            <BookmarkSimple size={18} weight={isBookmarked ? 'fill' : 'bold'} />
           </button>
         </div>
       </div>
 
       {/* Main Question Stem & Options */}
       <div className="p-5 sm:p-7 flex flex-col gap-6">
-        {/* Question Text */}
-        <div className="text-base sm:text-lg text-slate-900 font-medium leading-relaxed whitespace-pre-line">
+        {/* Question Stem (16px / 26px typography on reading scale) */}
+        <div className="text-[16px] leading-[26px] text-ink font-medium whitespace-pre-line">
           {question.text || 'Question content'}
         </div>
 
         {/* Question Stem Image (if present) */}
         {question.imageUrl && (
-          <div className="relative group max-w-xl rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-2">
+          <div className="relative group max-w-xl rounded-field overflow-hidden border border-line bg-paper p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={question.imageUrl}
               alt={question.imageAlt || 'Question diagram'}
-              className="max-h-80 w-auto object-contain rounded-lg"
+              className="max-h-80 w-auto object-contain rounded-md"
               loading="lazy"
             />
             <button
+              type="button"
               onClick={() => setZoomedImage(question.imageUrl!)}
-              className="absolute bottom-3 right-3 p-2 bg-slate-900/70 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-semibold cursor-pointer"
+              className="absolute bottom-3 right-3 p-2 bg-ink/80 hover:bg-ink text-white rounded-field opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-caption font-semibold cursor-pointer"
             >
               <MagnifyingGlassPlus size={14} weight="bold" />
               <span>Expand</span>
@@ -115,7 +127,7 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         )}
 
         {/* Answer Options Area */}
-        <div className="mt-2 pt-4 border-t border-slate-100">
+        <div className="mt-2 pt-4 border-t border-line">
           <AnswerOptions
             questionType={question.questionType}
             options={question.options}
@@ -128,16 +140,19 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
       {/* Zoom Modal */}
       {zoomedImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
           onClick={() => setZoomedImage(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh] bg-white p-4 rounded-2xl shadow-2xl overflow-auto">
+          <div className="relative max-w-4xl max-h-[90vh] bg-white p-4 rounded-sheet shadow-dialog overflow-auto">
             <button
+              type="button"
               onClick={() => setZoomedImage(null)}
-              className="absolute top-4 right-4 p-2 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors"
+              className="absolute top-4 right-4 p-2 bg-ink text-white rounded-full hover:bg-ink/80 transition-colors"
+              aria-label="Close zoomed image"
             >
               <X size={18} weight="bold" />
             </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={zoomedImage} alt="Expanded diagram" className="max-h-[80vh] w-auto object-contain" />
           </div>
         </div>

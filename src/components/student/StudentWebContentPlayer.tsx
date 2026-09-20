@@ -22,11 +22,9 @@ import {
   Question,
   Clock,
   Exam,
-  Sparkle,
   BookOpen,
   ArrowRight,
   Play,
-  ArrowClockwise,
 } from '@phosphor-icons/react';
 import {
   type SubjectWorkspaceContentItem,
@@ -122,21 +120,21 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
     // Status badge determination based on real student attempt state
     let statusBadgeText = isAvailable ? '● Ready to Attempt' : mockTestItem.status === 'upcoming' ? 'Scheduled Soon' : 'Expired';
     let statusBadgeClass = isAvailable
-      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+      ? 'bg-mint-tint text-mint-ink border-emerald-200'
       : mockTestItem.status === 'upcoming'
-      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-      : 'bg-slate-100 text-slate-600';
+      ? 'bg-sand text-sand-ink border-amber-200'
+      : 'bg-paper text-ink-secondary border-line';
 
     if (attempt) {
       if (attempt.attemptState === 'in_progress') {
         statusBadgeText = '● In Progress (Resume)';
-        statusBadgeClass = 'bg-sky-100 text-sky-800 border border-sky-200';
+        statusBadgeClass = 'bg-sand text-sand-ink border-amber-200';
       } else if (attempt.attemptState === 'limit_reached') {
         statusBadgeText = 'Attempts Exhausted';
-        statusBadgeClass = 'bg-slate-100 text-slate-600 border border-slate-200';
+        statusBadgeClass = 'bg-paper text-ink-secondary border-line';
       } else if (attempt.attemptState === 'submitted') {
         statusBadgeText = '● Attempted / Submitted';
-        statusBadgeClass = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+        statusBadgeClass = 'bg-mint-tint text-mint-ink border-emerald-200';
       }
     }
 
@@ -145,63 +143,63 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
     const canAttempt = attempt ? attempt.canAttempt : isAvailable;
 
     return (
-      <div className="flex flex-col rounded-2xl border border-indigo-200 bg-gradient-to-b from-indigo-50/40 via-white to-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-              <Exam className="h-5 w-5" />
+      <div className="flex flex-col rounded-card border border-line bg-surface p-6 sm:p-7 shadow-card">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-field bg-brand text-white shadow-xs">
+              <Exam className="h-6 w-6" weight="duotone" />
             </div>
             <div>
-              <span className="inline-flex rounded-full bg-indigo-100 px-2.5 py-0.5 text-[11px] font-bold text-indigo-800">
+              <span className="inline-flex rounded-full bg-sky-tint px-2.5 py-0.5 text-caption font-bold text-brand-hover border border-line">
                 Assigned Mock Assessment
               </span>
-              <h2 className="text-xl font-bold text-slate-900 mt-1">{mockTestItem.title}</h2>
+              <h2 className="text-h2 font-extrabold text-ink mt-1">{mockTestItem.title}</h2>
             </div>
           </div>
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClass}`}>
+          <span className={`inline-flex items-center rounded-full px-3 py-1 text-caption font-bold border shrink-0 ${statusBadgeClass}`}>
             {statusBadgeText}
           </span>
         </div>
 
         {mockTestItem.description && (
-          <p className="mt-3 text-sm text-slate-600 leading-relaxed">{mockTestItem.description}</p>
+          <p className="mt-3 text-body text-ink-secondary leading-relaxed">{mockTestItem.description}</p>
         )}
 
         {/* Real Test Spec Grid */}
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 text-center">
-            <Clock className="h-4 w-4 text-slate-400 mx-auto" />
-            <p className="mt-1 text-xs text-slate-500 font-medium">Duration</p>
-            <p className="text-base font-bold text-slate-900">
+          <div className="rounded-field border border-line bg-paper p-3.5 text-center">
+            <Clock className="h-4 w-4 text-ink-muted mx-auto" weight="duotone" />
+            <p className="mt-1 text-caption text-ink-secondary font-medium">Duration</p>
+            <p className="text-body font-bold text-ink">
               {mockTestItem.durationMin !== null ? `${mockTestItem.durationMin} mins` : 'Flexible'}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 text-center">
-            <Exam className="h-4 w-4 text-indigo-500 mx-auto" />
-            <p className="mt-1 text-xs text-slate-500 font-medium">Total Marks</p>
-            <p className="text-base font-bold text-slate-900">
+          <div className="rounded-field border border-line bg-paper p-3.5 text-center">
+            <Exam className="h-4 w-4 text-brand mx-auto" weight="duotone" />
+            <p className="mt-1 text-caption text-ink-secondary font-medium">Total Marks</p>
+            <p className="text-body font-bold text-ink">
               {mockTestItem.totalMarks !== null ? mockTestItem.totalMarks : '—'}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 text-center">
-            <BookOpen className="h-4 w-4 text-sky-500 mx-auto" />
-            <p className="mt-1 text-xs text-slate-500 font-medium">Questions</p>
-            <p className="text-base font-bold text-slate-900">
+          <div className="rounded-field border border-line bg-paper p-3.5 text-center">
+            <BookOpen className="h-4 w-4 text-brand mx-auto" weight="duotone" />
+            <p className="mt-1 text-caption text-ink-secondary font-medium">Questions</p>
+            <p className="text-body font-bold text-ink">
               {mockTestItem.questionCount > 0 ? `${mockTestItem.questionCount} Q` : 'Configured'}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 text-center">
-            <WarningCircle className="h-4 w-4 text-amber-500 mx-auto" />
-            <p className="mt-1 text-xs text-slate-500 font-medium">Negative Mark</p>
-            <p className="text-base font-bold text-slate-900">
+          <div className="rounded-field border border-line bg-paper p-3.5 text-center">
+            <WarningCircle className="h-4 w-4 text-amber-500 mx-auto" weight="duotone" />
+            <p className="mt-1 text-caption text-ink-secondary font-medium">Negative Mark</p>
+            <p className="text-body font-bold text-ink">
               {mockTestItem.negativeMarking ? `-${mockTestItem.negativeMarking}` : 'None'}
             </p>
           </div>
         </div>
 
-        {/* Action Button */}
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-          <span className="text-xs text-slate-500">
+        {/* Action Button (≥44px hit-height) */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
+          <span className="text-body text-ink-secondary">
             {mockTestItem.attemptLimit
               ? `Attempt Limit: ${mockTestItem.attemptLimit} times${
                   attempt?.attemptsUsed ? ` (${attempt.attemptsUsed} used)` : ''
@@ -211,18 +209,18 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
           {canAttempt ? (
             <a
               href={actionHref}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-md hover:bg-indigo-700 active:scale-[0.98] transition-all"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-6 py-2.5 text-body font-bold text-white shadow-xs hover:bg-brand-hover active:scale-[0.98] transition-all"
             >
-              {actionLabel}
-              <ArrowRight className="h-4 w-4" />
+              <span>{actionLabel}</span>
+              <ArrowRight className="h-4 w-4" weight="bold" />
             </a>
           ) : (
             <a
               href="/student/tests"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-200 px-6 py-3 text-sm font-bold text-slate-600 shadow-none hover:bg-slate-300 transition-all"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-paper border border-line px-6 py-2.5 text-body font-bold text-ink-secondary transition-all"
             >
-              {actionLabel}
-              <ArrowRight className="h-4 w-4" />
+              <span>{actionLabel}</span>
+              <ArrowRight className="h-4 w-4" weight="bold" />
             </a>
           )}
         </div>
@@ -233,13 +231,13 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
   // 2. Empty / Nothing Selected State
   if (!contentItem) {
     return (
-      <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-          <BookOpen className="h-8 w-8" />
+      <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-card border border-dashed border-line bg-surface p-8 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-card bg-sky-tint text-brand">
+          <BookOpen className="h-8 w-8" weight="duotone" />
         </div>
-        <h3 className="mt-4 text-base font-bold text-slate-800">Select a Topic from the Curriculum</h3>
-        <p className="mt-1.5 max-w-sm text-xs text-slate-500 leading-relaxed">
-          Choose any video lecture, revision note, or formula PDF on the left to start reading or streaming your coursework.
+        <h3 className="mt-4 text-h3 font-bold text-ink">Select a Topic from the Curriculum</h3>
+        <p className="mt-1.5 max-w-sm text-body text-ink-secondary leading-relaxed">
+          Choose any video lecture, revision note, or formula PDF to start reading or streaming your coursework.
         </p>
       </div>
     );
@@ -268,22 +266,22 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
   };
 
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div className="flex flex-col rounded-card border border-line bg-surface shadow-card overflow-hidden">
       {/* Top Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <div
-            className={`flex h-8 w-8 items-center justify-center rounded-lg text-white ${
-              isVideo ? 'bg-purple-600' : 'bg-sky-600'
+            className={`flex h-8 w-8 items-center justify-center rounded-field text-white ${
+              isVideo ? 'bg-brand' : 'bg-brand-hover'
             }`}
           >
-            {isVideo ? <VideoCamera className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+            {isVideo ? <VideoCamera className="h-4 w-4" weight="duotone" /> : <FileText className="h-4 w-4" weight="duotone" />}
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-caption font-bold uppercase tracking-wider text-ink-secondary">
               {contentItem.sectionName || 'Curriculum Module'} · {contentItem.contentType.toUpperCase()}
             </span>
-            <h2 className="text-sm font-bold text-slate-900 line-clamp-1">{contentItem.title}</h2>
+            <h2 className="text-body font-bold text-ink line-clamp-1">{contentItem.title}</h2>
           </div>
         </div>
 
@@ -294,10 +292,10 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
               href={signedUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field border border-line bg-surface px-2.5 py-1.5 text-caption font-semibold text-ink hover:bg-paper"
               title="Open in new tab"
             >
-              <ArrowSquareOut className="h-3.5 w-3.5" />
+              <ArrowSquareOut className="h-3.5 w-3.5" weight="bold" />
               <span className="hidden sm:inline">Popout</span>
             </a>
           )}
@@ -305,33 +303,34 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
             <a
               href={signedUrl}
               download
-              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 border border-sky-200 hover:bg-sky-100"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field bg-sky-tint px-2.5 py-1.5 text-caption font-semibold text-brand-hover border border-line hover:bg-sky-tint"
             >
-              <DownloadSimple className="h-3.5 w-3.5" />
+              <DownloadSimple className="h-3.5 w-3.5" weight="bold" />
               <span className="hidden sm:inline">Save PDF</span>
             </a>
           )}
           <button
+            type="button"
             onClick={handleMarkComplete}
             disabled={isMarkingComplete}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-field px-3 py-1.5 text-caption font-bold transition-colors ${
               isCompleted
-                ? 'bg-emerald-600 text-white'
-                : 'border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:text-emerald-700'
+                ? 'bg-mint-tint text-mint-ink border border-emerald-200'
+                : 'border border-line bg-surface text-ink hover:border-emerald-500 hover:text-emerald-700'
             }`}
           >
-            <CheckCircle className="h-3.5 w-3.5" />
-            {isCompleted ? 'Completed' : 'Mark Done'}
+            <CheckCircle className="h-3.5 w-3.5" weight="bold" />
+            <span>{isCompleted ? 'Completed' : 'Mark Done'}</span>
           </button>
         </div>
       </div>
 
       {/* Main Content Display Area */}
-      <div className="relative min-h-[440px] bg-slate-900 flex items-center justify-center">
+      <div className="relative min-h-[440px] bg-paper flex items-center justify-center">
         {loadingUrl ? (
-          <div className="flex flex-col items-center justify-center text-slate-400 p-8">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-            <p className="mt-3 text-xs font-medium">Securing document stream...</p>
+          <div className="flex flex-col items-center justify-center text-ink-muted p-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+            <p className="mt-3 text-caption font-medium">Securing document stream...</p>
           </div>
         ) : isVideo ? (
           /* Video Player Container */
@@ -345,12 +344,12 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
                 className="w-full h-full object-contain"
               />
             ) : (
-              <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-300">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-800 text-purple-400 mb-3">
-                  <Play className="h-8 w-8" />
+              <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface text-brand mb-3 shadow-card">
+                  <Play className="h-8 w-8" weight="fill" />
                 </div>
-                <h4 className="text-base font-semibold text-white">{contentItem.title}</h4>
-                <p className="mt-1 text-xs text-slate-400 max-w-sm">
+                <h4 className="text-h3 font-semibold text-ink">{contentItem.title}</h4>
+                <p className="mt-1 text-caption text-ink-secondary max-w-sm">
                   {urlError || 'Video streaming container ready. File path attached.'}
                 </p>
               </div>
@@ -358,7 +357,7 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
           </div>
         ) : (
           /* PDF / Document Viewer Container */
-          <div className="w-full h-[520px] bg-slate-100 flex flex-col">
+          <div className="w-full h-[520px] bg-paper flex flex-col">
             {signedUrl ? (
               <iframe
                 src={`${signedUrl}#toolbar=1&navpanes=0&scrollbar=1`}
@@ -367,19 +366,19 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-100 text-sky-600 mb-3">
-                  <FileText className="h-7 w-7" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-card bg-sky-tint text-brand mb-3">
+                  <FileText className="h-7 w-7" weight="duotone" />
                 </div>
-                <h4 className="text-base font-bold text-slate-900">{contentItem.title}</h4>
-                <p className="mt-1 text-xs text-slate-500 max-w-md">
+                <h4 className="text-h3 font-bold text-ink">{contentItem.title}</h4>
+                <p className="mt-1 text-body text-ink-secondary max-w-md">
                   {contentItem.description || 'Study note / reference material assigned to this batch.'}
                 </p>
                 <div className="mt-4 flex gap-2">
-                  <span className="rounded-md bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  <span className="rounded-field bg-sky-tint px-2.5 py-1 text-caption font-semibold text-brand-hover border border-line">
                     {contentItem.pageCount ? `${contentItem.pageCount} Pages` : 'Document File'}
                   </span>
                   {contentItem.fileSizeBytes && (
-                    <span className="rounded-md bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    <span className="rounded-field bg-sky-tint px-2.5 py-1 text-caption font-semibold text-brand-hover border border-line">
                       {(contentItem.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
                     </span>
                   )}
@@ -390,22 +389,23 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
         )}
       </div>
 
-      {/* Bottom Info & Description Bar */}
-      <div className="p-4 bg-white border-t border-slate-100">
+      {/* Bottom Info & Description Bar with In-Context Doubt CTA */}
+      <div className="p-4 bg-surface border-t border-line">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">{contentItem.title}</h3>
+            <h3 className="text-body font-bold text-ink">{contentItem.title}</h3>
             {contentItem.description && (
-              <p className="mt-1 text-xs text-slate-600 leading-relaxed">{contentItem.description}</p>
+              <p className="mt-1 text-caption text-ink-secondary leading-relaxed">{contentItem.description}</p>
             )}
           </div>
           {onAskDoubt && (
             <button
+              type="button"
               onClick={() => onAskDoubt(contentItem.contentId, contentItem.title)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-sand px-4 py-2 text-body font-bold text-sand-ink hover:bg-amber-100 transition-colors border border-amber-200 shadow-xs"
             >
-              <Question className="h-3.5 w-3.5" />
-              Ask Doubt on this Lecture
+              <Question className="h-4 w-4" weight="bold" />
+              <span>Ask Doubt on this Lecture</span>
             </button>
           )}
         </div>

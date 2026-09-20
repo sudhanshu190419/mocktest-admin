@@ -7,37 +7,39 @@ import {
   SquaresFour,
   BookOpen,
   VideoCamera,
-  FilmSlate,
   Exam,
-  Trophy,
-  CalendarBlank,
   ChatCircleDots,
-  ChartLineUp,
-  User,
 } from '@phosphor-icons/react';
+import { useNavBadgeCounts } from '@/hooks/student/useNavBadgeCounts';
+
+/**
+ * PRD §4.1 — section nav (desktop ≥1024px).
+ * Primary 5 only: Today · Courses · Classes · Tests · Doubts.
+ * Secondary destinations (Recordings · Timetable · Results · Analytics ·
+ * Profile) live in the header avatar menu. Badge counts (apricot, C6) on
+ * Tests (due this week) and Doubts (open + in progress).
+ * Hidden entirely below 1024px — the mobile bottom bar takes over.
+ */
 
 interface SubNavItem {
   label: string;
   href: string;
   icon: React.ElementType;
   isExact?: boolean;
+  badge?: 'tests' | 'doubts';
 }
 
-const navItems: SubNavItem[] = [
-  { label: 'Overview', href: '/student/overview', icon: SquaresFour, isExact: true },
+const primaryNavItems: SubNavItem[] = [
+  { label: 'Today', href: '/student/overview', icon: SquaresFour, isExact: true },
   { label: 'My Courses', href: '/student/courses', icon: BookOpen },
   { label: 'Live Classes', href: '/student/classes', icon: VideoCamera },
-  { label: 'Recordings', href: '/student/recordings', icon: FilmSlate },
-  { label: 'Mock Tests', href: '/student/tests', icon: Exam },
-  { label: 'Results', href: '/student/results', icon: Trophy },
-  { label: 'Timetable', href: '/student/timetable', icon: CalendarBlank },
-  { label: 'My Doubts', href: '/student/doubts', icon: ChatCircleDots },
-  { label: 'Analytics', href: '/student/analytics', icon: ChartLineUp },
-  { label: 'Profile', href: '/student/profile', icon: User },
+  { label: 'Mock Tests', href: '/student/tests', icon: Exam, badge: 'tests' },
+  { label: 'My Doubts', href: '/student/doubts', icon: ChatCircleDots, badge: 'doubts' },
 ];
 
 export function StudentSubNav() {
   const pathname = usePathname();
+  const { testsDue, openDoubts } = useNavBadgeCounts();
 
   // Do not render sub-nav in distraction-free immersive test runner or active live room
   if (
@@ -51,11 +53,13 @@ export function StudentSubNav() {
     <nav className="student-subnav-wrapper" aria-label="Student sections navigation">
       <div className="store-container">
         <div className="student-subnav-inner">
-          {navItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const isActive = item.isExact
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
+            const count =
+              item.badge === 'tests' ? testsDue : item.badge === 'doubts' ? openDoubts : 0;
 
             return (
               <Link
@@ -66,6 +70,11 @@ export function StudentSubNav() {
               >
                 <Icon size={16} weight={isActive ? 'fill' : 'bold'} className="student-subnav-icon" />
                 <span>{item.label}</span>
+                {count > 0 && (
+                  <span className="student-subnav-badge" aria-label={`${count} pending`}>
+                    {count > 9 ? '9+' : count}
+                  </span>
+                )}
               </Link>
             );
           })}

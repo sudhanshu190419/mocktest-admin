@@ -110,7 +110,7 @@ const ClassroomInner: React.FC<{
   return (
     <div
       ref={containerRef}
-      className="flex flex-col h-screen max-h-screen bg-slate-950 text-white overflow-hidden select-none"
+      className="flex flex-col h-screen max-h-screen bg-ink text-white overflow-hidden select-none"
     >
       {/* Top Header */}
       <LiveClassHeader

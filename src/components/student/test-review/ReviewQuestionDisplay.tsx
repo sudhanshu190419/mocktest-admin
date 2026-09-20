@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -30,6 +30,15 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
   testTitle,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedImage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedImage(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedImage]);
 
   const askDoubtUrl = createContextQueryUrl({
     relatedResourceType: 'question',
@@ -70,8 +79,8 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
       case 'skipped':
       default:
         return (
-          <span className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-            <MinusCircle size={16} weight="fill" className="text-slate-500" />
+          <span className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-paper text-ink border border-line">
+            <MinusCircle size={16} weight="fill" className="text-ink-secondary" />
             <span>Skipped (0 marks)</span>
           </span>
         );
@@ -88,44 +97,44 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         return 'bg-emerald-50/60 border-emerald-400 border-dashed text-emerald-950 font-medium';
       case 'neutral':
       default:
-        return 'bg-slate-50 border-slate-200 text-slate-700';
+        return 'bg-paper border-line text-ink';
     }
   };
 
   return (
     <div className="flex flex-col gap-6">
       {/* Question Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col gap-5">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
         {/* Top Header */}
-        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-line pb-4">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-bold">
+            <span className="px-3 py-1 bg-ink text-white rounded-lg text-xs font-bold">
               Question {question.index}
             </span>
-            <span className="text-xs font-semibold text-slate-500 uppercase">
+            <span className="text-xs font-semibold text-ink-secondary uppercase">
               {question.sectionName}
             </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+            <span className="px-2 py-0.5 rounded text-caption font-bold uppercase bg-paper text-ink-secondary border border-line">
               {question.questionType.replace(/_/g, ' ')}
             </span>
           </div>
 
           <div className="flex items-center gap-3">
             {getStatusBadge()}
-            <div className="text-xs font-bold text-slate-500">
+            <div className="text-xs font-bold text-ink-secondary">
               <span>{question.marks} Marks</span>
             </div>
           </div>
         </div>
 
         {/* Stem Text */}
-        <div className="text-base sm:text-lg text-slate-900 font-medium leading-relaxed whitespace-pre-wrap">
+        <div className="text-base sm:text-lg text-ink font-medium leading-relaxed whitespace-pre-wrap">
           {question.questionText}
         </div>
 
         {/* Question Image */}
         {question.questionImageUrl && (
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-w-lg">
+          <div className="relative rounded-2xl overflow-hidden border border-line bg-paper max-w-lg">
             <Image
               src={question.questionImageUrl}
               alt={question.questionImageAlt || 'Question diagram'}
@@ -141,7 +150,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         {/* Options for MCQ / MSQ / True-False */}
         {question.options && question.options.length > 0 && (
           <div className="flex flex-col gap-3 mt-2">
-            <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Options:</span>
+            <span className="text-xs font-bold uppercase text-ink-muted tracking-wider">Options:</span>
             {question.options.map((opt) => {
               return (
                 <div
@@ -151,13 +160,13 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
                   )}`}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 text-slate-800 shadow-2xs">
+                    <span className="w-7 h-7 rounded-lg bg-white border border-line flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 text-ink shadow-2xs">
                       {opt.label}
                     </span>
                     <div className="flex flex-col gap-2">
                       <span className="text-sm leading-snug">{opt.text}</span>
                       {opt.imageUrl && (
-                        <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-white max-w-xs">
+                        <div className="relative rounded-lg overflow-hidden border border-line bg-white max-w-xs">
                           <Image
                             src={opt.imageUrl}
                             alt="Option diagram"
@@ -201,15 +210,15 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
 
         {/* Numerical Answers */}
         {question.questionType === 'numerical' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 p-5 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 p-5 rounded-2xl bg-paper border border-line">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-bold text-slate-500 uppercase">Your Answer:</span>
-              <span className="text-lg font-mono font-bold text-slate-900">
+              <span className="text-xs font-bold text-ink-secondary uppercase">Your Answer:</span>
+              <span className="text-lg font-mono font-bold text-ink">
                 {question.studentNumericalAnswer !== null ? question.studentNumericalAnswer : 'Not Answered'}
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-bold text-slate-500 uppercase">Correct Value:</span>
+              <span className="text-xs font-bold text-ink-secondary uppercase">Correct Value:</span>
               <span className="text-lg font-mono font-bold text-emerald-700">
                 {question.correctNumericalAnswer !== null ? question.correctNumericalAnswer : 'N/A'}
               </span>
@@ -220,17 +229,17 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         {/* Subjective / Text Answers */}
         {(question.questionType === 'subjective' || question.questionType === 'text_based') && (
           <div className="flex flex-col gap-3 mt-2">
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-xs font-bold text-slate-500 uppercase block mb-1">Your Submitted Response:</span>
-              <p className="text-sm text-slate-800 whitespace-pre-wrap font-mono">
+            <div className="p-4 rounded-2xl bg-paper border border-line">
+              <span className="text-xs font-bold text-ink-secondary uppercase block mb-1">Your Submitted Response:</span>
+              <p className="text-sm text-ink whitespace-pre-wrap font-mono">
                 {question.studentAnswerText || 'No response submitted.'}
               </p>
             </div>
 
             {question.evaluatorFeedback && (
-              <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200">
-                <span className="text-xs font-bold text-indigo-800 uppercase block mb-1">Teacher Feedback:</span>
-                <p className="text-sm text-indigo-950 whitespace-pre-wrap">
+              <div className="p-4 rounded-2xl bg-sky-tint border border-line">
+                <span className="text-xs font-bold text-brand-hover uppercase block mb-1">Teacher Feedback:</span>
+                <p className="text-sm text-brand-hover whitespace-pre-wrap">
                   {question.evaluatorFeedback}
                 </p>
               </div>
@@ -240,23 +249,23 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
       </div>
 
       {/* Solution & Explanation Card */}
-      <div className="bg-gradient-to-br from-indigo-50/80 via-white to-sky-50/80 rounded-3xl p-6 sm:p-8 border border-indigo-200/80 shadow-sm flex flex-col gap-4">
+      <div className="bg-gradient-to-br bg-sky-tint/80 via-white bg-sky-tint/80 rounded-3xl p-6 sm:p-8 border border-line/80 shadow-sm flex flex-col gap-4">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+          <div className="p-2 bg-brand text-white rounded-xl shadow-xs">
             <BookOpen size={20} weight="bold" />
           </div>
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Explanation & Concept</h3>
-            <p className="text-xs text-slate-500">Step-by-step verified solution</p>
+            <h3 className="text-base sm:text-lg font-bold text-ink">Explanation & Concept</h3>
+            <p className="text-xs text-ink-secondary">Step-by-step verified solution</p>
           </div>
         </div>
 
         {question.explanationText ? (
-          <div className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-wrap font-sans">
+          <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-wrap font-sans">
             {question.explanationText}
           </div>
         ) : (
-          <div className="p-4 rounded-xl bg-white border border-slate-200 text-xs text-slate-500 italic">
+          <div className="p-4 rounded-xl bg-white border border-line text-xs text-ink-secondary italic">
             Detailed text solution is not yet available for this question.
           </div>
         )}
@@ -267,7 +276,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
             {question.explanationImages.map((imgUrl, i) => (
               <div
                 key={i}
-                className="relative rounded-2xl overflow-hidden border border-slate-200 bg-white p-2"
+                className="relative rounded-2xl overflow-hidden border border-line bg-white p-2"
               >
                 <Image
                   src={imgUrl}
@@ -285,16 +294,16 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
 
         {/* Video Solution Link */}
         {question.explanationVideoUrl && (
-          <div className="mt-2 pt-4 border-t border-indigo-100 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-indigo-900">
-              <VideoCamera size={18} weight="fill" className="text-indigo-600" />
+          <div className="mt-2 pt-4 border-t border-line flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-brand-hover">
+              <VideoCamera size={18} weight="fill" className="text-brand" />
               <span>Video Solution Available</span>
             </div>
             <a
               href={question.explanationVideoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors"
+              className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold shadow-xs transition-colors"
             >
               Watch Video Solution
             </a>
@@ -305,7 +314,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
       {/* Image Expand Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150 cursor-zoom-out"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm p-4 animate-in fade-in duration-150 cursor-zoom-out"
           onClick={() => setSelectedImage(null)}
         >
           <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 overflow-hidden shadow-2xl">

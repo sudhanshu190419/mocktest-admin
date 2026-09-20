@@ -102,6 +102,7 @@ export function MarketingHomeView() {
     .join(' ');
 
   const enrolledCourseIds = (dashboardData?.enrolledCourses || []).map((c) => c.course_id);
+  const hasEnrolledCourses = enrolledCourseIds.length > 0;
 
   const goal = GOALS.find((item) => item.code === selectedGoal) ?? GOALS[0];
   const featuredCourses = courses.filter((course) => course.streamCode === goal.code).slice(0, 3);
@@ -113,8 +114,8 @@ export function MarketingHomeView() {
         <main id="store-main">
           <h1 className="sr-only">MakeMeTopper — Learn with structure. Practise with intent.</h1>
 
-          {/* Dual-Mode Hero: Personalized Student Hero when logged in, Visitor Carousel when guest */}
-          {user ? (
+          {/* Dual-Mode Hero: Personalized Student Hero only when enrolled in 1+ courses, Visitor/Discovery Carousel for guests & new students */}
+          {user && hasEnrolledCourses ? (
             <StudentHomeHero
               studentName={studentName}
               streamName={dashboardData?.selectedStreamName}

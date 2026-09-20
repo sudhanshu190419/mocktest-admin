@@ -107,7 +107,7 @@ export default function StudentRecordingsHubPage() {
     <div className="store-container space-y-7 pb-12">
       {/* Breadcrumbs */}
       <nav className="store-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/student/overview">Student Hub</Link>
+        <Link href="/student/overview">My Learning</Link>
         <span aria-hidden="true">/</span>
         <span>Recorded Classes</span>
       </nav>

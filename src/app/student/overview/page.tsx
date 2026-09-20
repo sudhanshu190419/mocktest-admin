@@ -1,660 +1,496 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  Sparkle,
   VideoCamera,
   BookOpen,
   Exam,
-  TrendUp,
-  Target,
-  Clock,
-  CheckCircle,
-  WarningCircle,
   ArrowRight,
-  ArrowSquareOut,
   CalendarCheck,
   Lightning,
   Play,
-  FileText,
   GraduationCap,
+  WarningCircle,
+  CheckCircle,
+  CalendarBlank,
+  ChatCircleDots,
+  PlayCircle,
+  ListChecks,
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
+import { useOpenDoubtCount } from '@/hooks/student/useNavBadgeCounts';
+import { TestStateCard } from '@/components/student/TestStateCard';
+import { isDueThisWeek } from '@/lib/testCardState';
 import {
   fetchCompleteStudentDashboard,
   type StudentDashboardSummary,
+  type StudentEnrolledCourse,
 } from '@/services/student/studentDashboardWebService';
+import type { TimetableSessionItem } from '@/services/student/studentTimetableWebService';
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function getGreeting(now: Date): string {
+  const h = now.getHours();
+  if (h < 5) return 'Burning the midnight oil';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function titleCase(raw: string): string {
+  return raw
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatClock(time: string): string {
+  // "HH:MM:SS" or "HH:MM" → locale short time
+  const [hStr, mStr] = time.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return time;
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function courseResumeHref(course: StudentEnrolledCourse, summary: unknown): string {
+  const firstBatchSubjectId =
+    Array.isArray(summary) && summary.length > 0
+      ? (summary[0]?.batchSubjectId || summary[0]?.batch_subject_id || null)
+      : null;
+  return firstBatchSubjectId
+    ? `/student/courses/${course.course_id}/subjects/${firstBatchSubjectId}`
+    : `/student/courses/${course.course_id}`;
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function StudentOverviewPage() {
   const { user, teacherProfile } = useAuth();
   const [data, setData] = useState<StudentDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const openDoubts = useOpenDoubtCount();
 
-  const loadDashboard = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await fetchCompleteStudentDashboard();
-      setData(result);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const todayTimetable = useMemo(() => data?.todayTimetable || [], [data]);
+  const nextSession: TimetableSessionItem | null = useMemo(() => {
+    if (todayTimetable.length === 0) return null;
+    return (
+      todayTimetable.find((s) => s.status === 'live') ||
+      todayTimetable.find((s) => s.status === 'upcoming' || s.status === 'scheduled') ||
+      null
+    );
+  }, [todayTimetable]);
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    let cancelled = false;
+    fetchCompleteStudentDashboard()
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+          setError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [retryToken]);
 
-  const rawName = data?.profile?.name || teacherProfile?.name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student';
-  const studentName = rawName
-    .split(/[\s._-]+/)
-    .filter(Boolean)
-    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
-  const streamName = data?.selectedStreamName || 'Competitive Exam Prep';
-  const activeBatch = data?.activeBatches && data.activeBatches.length > 0 ? data.activeBatches[0].name : 'Active Enrolled Batch';
+  const retry = () => setRetryToken((t) => t + 1);
 
-  // ── SKELETON LOADER ──────────────────────────────────────────────────────
+  // ── SKELETON (reference shape per §6) ─────────────────────────────────────
   if (loading) {
     return (
-      <div className="store-container space-y-6 animate-pulse">
-        {/* Hero Skeleton */}
-        <div className="student-hero-banner h-48 bg-white/70" />
-
-        {/* 4 KPIs Skeleton */}
-        <div className="student-kpi-grid">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 rounded-2xl bg-white border border-slate-100" />
+      <div className="store-container space-y-6">
+        <div className="skeleton skeleton-text" style={{ width: '40%', height: 28 }} />
+        <div className="today-resume-strip">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton today-resume-card" style={{ height: 112 }} />
           ))}
         </div>
-
-        {/* Split Grid Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7 h-72 rounded-3xl bg-white border border-slate-100" />
-          <div className="lg:col-span-5 h-72 rounded-3xl bg-white border border-slate-100" />
-        </div>
+        <div className="skeleton student-card" style={{ height: 120 }} />
+        <div className="skeleton student-card" style={{ height: 180 }} />
+        <div className="skeleton student-card" style={{ height: 220 }} />
       </div>
     );
   }
 
-  // ── ERROR STATE ──────────────────────────────────────────────────────────
+  // ── ERROR STATE ───────────────────────────────────────────────────────────
   if (error && !data) {
     return (
       <div className="store-container">
-        <div className="p-8 rounded-3xl bg-red-50 border border-red-200 text-center max-w-lg mx-auto my-12">
-          <WarningCircle size={40} className="text-red-500 mx-auto mb-3" weight="duotone" />
-          <h3 className="text-base font-bold text-red-900 mb-1">Unable to Load Student Dashboard</h3>
-          <p className="text-xs text-red-700 mb-4 leading-relaxed">{error}</p>
+        <div className="p-8 rounded-3xl bg-paper border border-line text-center max-w-lg mx-auto my-12">
+          <WarningCircle size={40} className="text-apricot-ink mx-auto mb-3" weight="duotone" style={{ color: 'var(--color-apricot-ink)' }} />
+          <h3 className="text-base font-bold text-ink mb-1">Couldn&apos;t load your day</h3>
+          <p className="text-xs text-ink-secondary mb-4 leading-relaxed">{error}</p>
           <button
-            onClick={() => loadDashboard()}
-            className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-xs hover:bg-red-700 transition-colors shadow-sm"
+            onClick={retry}
+            className="px-4 py-2 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-opacity shadow-xs"
+            style={{ backgroundColor: 'var(--color-brand)' }}
           >
-            Retry Connection
+            Try Again
           </button>
         </div>
       </div>
     );
   }
 
-  const liveClass = data?.liveClass;
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const now = new Date();
+  const rawName =
+    data?.profile?.name ||
+    teacherProfile?.name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split('@')[0] ||
+    'Student';
+  const firstName = titleCase(rawName).split(' ')[0] || 'Student';
+  const activeBatch =
+    data?.activeBatches && data.activeBatches.length > 0
+      ? data.activeBatches[0].name
+      : 'Active Enrolled Batch';
+
   const enrolledCourses = data?.enrolledCourses || [];
   const weakChapters = data?.weakChapters || [];
-  const recentResults = data?.recentResults || [];
-  const assignedMockTests = data?.assignedMockTests || [];
+  const assignedTests = data?.assignedMockTests || [];
+  const liveClass = data?.liveClass;
+
+  // Resume strip: in-progress test beats next class beats last course.
+  const resumeTest = assignedTests.find(
+    (t) => t.attemptSummary?.attemptState === 'in_progress',
+  );
+  const resumeCourse = enrolledCourses[0] || null;
+
+  const hasAnyResumePoint = Boolean(resumeTest || nextSession || resumeCourse || liveClass);
+  const weekTests = assignedTests.filter((t) => isDueThisWeek(t, now)).slice(0, 4);
+  const liveNow = liveClass?.status === 'live';
+
+  const analytics = data?.analytics;
 
   return (
     <div className="store-container space-y-7 pb-12">
-      
-      {/* ═══════════════════════════════════════════════════════════════════
-          SECTION 1 — WELCOME & STUDENT CONTEXT HERO BANNER (Design A)
-         ═══════════════════════════════════════════════════════════════════ */}
-      <section className="student-hero-banner">
-        <div className="student-hero-header">
-          <div>
-            <div className="student-pill student-pill-sky mb-3">
-              <Sparkle size={13} weight="fill" />
-              <span>{streamName}</span>
-              <span className="opacity-40">•</span>
-              <span>{activeBatch}</span>
-            </div>
 
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
-              Welcome back, {studentName}.
-            </h1>
-            <p className="student-hero-lead">
-              Pick up where you left off, take your next mock test, or review your personalized study recommendations.
-            </p>
-          </div>
-
-          <div className="student-hero-actions">
-            <Link
-              href="/student/courses"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-store-blue text-white font-bold text-xs hover:opacity-90 transition-all shadow-sm"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
-            >
-              <BookOpen size={16} weight="bold" />
-              <span>Continue Learning</span>
-            </Link>
-            <Link
-              href="/student/tests"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-all shadow-xs"
-            >
-              <Exam size={16} weight="bold" />
-              <span>Mock Tests</span>
-            </Link>
-            <Link
-              href="/courses"
-              className="inline-flex items-center gap-1.5 px-4 py-3 rounded-xl text-slate-600 hover:text-slate-900 text-xs font-semibold transition-all"
-            >
-              <span>Explore Catalog</span>
-              <ArrowSquareOut size={14} />
-            </Link>
-          </div>
+      {/* ═══ 1 — Greeting (compact, time-of-day aware) ═══ */}
+      <header className="today-greeting">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
+          {getGreeting(now)}, {firstName}.
+        </h1>
+        <div className="today-greeting-meta">
+          <span>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          <span className="opacity-40">•</span>
+          <span>{activeBatch}</span>
         </div>
+      </header>
+
+      {/* ═══ 2 — Resume strip (up to 3 one-tap cards) ═══ */}
+      <section aria-label="Pick up where you left off" className="today-resume-strip">
+        {resumeTest && (
+          <Link href={`/student/tests/${resumeTest.testId}`} className="today-resume-card is-primary">
+            <span className="today-resume-kicker">
+              <ListChecks size={14} weight="bold" />
+              <span>Test in progress</span>
+            </span>
+            <span className="today-resume-title">{resumeTest.title}</span>
+            <span className="today-resume-cta">
+              Resume now <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
+
+        {!resumeTest && liveClass && (
+          <Link href="/student/classes" className={`today-resume-card ${liveNow ? 'is-live' : ''}`}>
+            <span className="today-resume-kicker">
+              <VideoCamera size={14} weight="bold" />
+              <span>{liveNow ? 'Live now' : 'Next class today'}</span>
+            </span>
+            <span className="today-resume-title">{liveClass.subject_name}</span>
+            <span className="today-resume-cta">
+              {liveNow
+                ? 'Join classroom'
+                : new Date(liveClass.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
+              <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
+
+        {!resumeTest && !liveClass && nextSession && (
+          <Link href="/student/timetable" className="today-resume-card">
+            <span className="today-resume-kicker">
+              <VideoCamera size={14} weight="bold" />
+              <span>Next class today</span>
+            </span>
+            <span className="today-resume-title">{nextSession.subject}</span>
+            <span className="today-resume-cta">
+              {nextSession.timeSlot} <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
+
+        {!resumeTest && !liveClass && !nextSession && resumeCourse && (
+          <Link
+            href={courseResumeHref(resumeCourse, data?.courseContentSummary?.[resumeCourse.course_id])}
+            className="today-resume-card is-primary"
+          >
+            <span className="today-resume-kicker">
+              <PlayCircle size={14} weight="bold" />
+              <span>Continue learning</span>
+            </span>
+            <span className="today-resume-title">{resumeCourse.title}</span>
+            <span className="today-resume-cta">
+              Pick up where you left off <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
+
+        {!resumeTest && (liveClass || nextSession) && resumeCourse && (
+          <Link
+            href={courseResumeHref(resumeCourse, data?.courseContentSummary?.[resumeCourse.course_id])}
+            className="today-resume-card"
+          >
+            <span className="today-resume-kicker">
+              <PlayCircle size={14} weight="bold" />
+              <span>Continue learning</span>
+            </span>
+            <span className="today-resume-title">{resumeCourse.title}</span>
+            <span className="today-resume-cta">
+              Pick up <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
+
+        {!resumeTest && !hasAnyResumePoint && (
+          <Link href="/courses" className="today-resume-card is-primary">
+            <span className="today-resume-kicker">
+              <GraduationCap size={14} weight="bold" />
+              <span>Start your day</span>
+            </span>
+            <span className="today-resume-title">Explore courses & mock tests</span>
+            <span className="today-resume-cta">
+              Browse catalog <ArrowRight size={14} weight="bold" />
+            </span>
+          </Link>
+        )}
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          SECTION 2 — LIVE NOW / NEXT SCHEDULED CLASS BANNER
-         ═══════════════════════════════════════════════════════════════════ */}
-      {liveClass ? (
-        <section className={`student-live-hero ${
-          liveClass.status === 'live'
-            ? 'border-emerald-300'
-            : 'border-blue-200'
-        }`}>
+      {/* ═══ Live interrupt banner (only when a class is actually live) ═══ */}
+      {liveNow && liveClass && (
+        <section className="student-live-hero border-emerald-300">
           <div className="flex items-start sm:items-center gap-4">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl shrink-0 ${
-              liveClass.status === 'live'
-                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25 animate-pulse'
-                : 'bg-store-blue text-white shadow-md'
-            }`} style={{ backgroundColor: liveClass.status === 'live' ? '#10b981' : 'var(--color-store-blue)' }}>
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl shrink-0 text-white shadow-md"
+              style={{ backgroundColor: 'var(--color-success)' }}
+            >
               <VideoCamera size={24} weight="duotone" />
             </div>
-
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                {liveClass.status === 'live' ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-white uppercase tracking-wider">
-                    <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
-                    Live Class Active
-                  </span>
-                ) : (
-                  <span className="student-pill student-pill-sky">
-                    <Clock size={12} weight="bold" /> Upcoming Lecture
-                  </span>
-                )}
-                <span className="text-xs font-bold text-slate-400">•</span>
-                <span className="text-xs font-semibold text-slate-600">{liveClass.subject_name}</span>
-              </div>
-
-              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                {liveClass.title}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-caption font-extrabold text-white uppercase tracking-wider" style={{ backgroundColor: 'var(--color-success)' }}>
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
+                Live Class Active
+              </span>
+              <h2 className="text-base font-extrabold text-ink tracking-tight">
+                {liveClass.subject_name}: {liveClass.title}
               </h2>
-              <p className="text-xs text-slate-500">
-                Faculty: <strong className="text-slate-700 font-semibold">{liveClass.teacher_name}</strong> •{' '}
-                {new Date(liveClass.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({liveClass.duration_minutes} mins)
+              <p className="text-xs text-ink-secondary">
+                {liveClass.teacher_name} • {new Date(liveClass.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 pt-2 md:pt-0">
-            <Link
-              href="/student/classes"
-              className="w-full sm:w-auto px-5 py-3 rounded-xl font-extrabold text-xs tracking-wide shadow-md flex items-center justify-center gap-2 text-white transition-all"
-              style={{ backgroundColor: liveClass.status === 'live' ? '#10b981' : 'var(--color-store-blue)' }}
-            >
-              <Play size={16} weight="fill" />
-              <span>{liveClass.status === 'live' ? 'Join Classroom Now' : 'Class Details'}</span>
-            </Link>
-          </div>
-        </section>
-      ) : (
-        <section className="student-card flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-store-sky text-store-blue" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
-              <CalendarCheck size={22} weight="duotone" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">No Live Class in Session</p>
-              <p className="text-[11px] text-slate-500">Check your weekly timetable or recorded lectures archive.</p>
+            <div className="ml-auto shrink-0">
+              <Link
+                href="/student/classes"
+                className="w-full sm:w-auto px-5 py-3 rounded-xl font-extrabold text-xs tracking-wide shadow-md flex items-center justify-center gap-2 text-white transition-all"
+                style={{ backgroundColor: 'var(--color-success)' }}
+              >
+                <Play size={16} weight="fill" />
+                <span>Join Now</span>
+              </Link>
             </div>
           </div>
-          <Link
-            href="/student/timetable"
-            className="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs transition-colors"
-          >
-            Timetable &rarr;
-          </Link>
         </section>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          SECTION 3 — ACADEMIC PERFORMANCE SNAPSHOT (4 KPIS)
-         ═══════════════════════════════════════════════════════════════════ */}
+      {/* ═══ 3 — Today's schedule ═══ */}
       <section>
         <div className="student-section-header">
           <h2 className="flex items-center gap-2">
-            <TrendUp size={18} weight="bold" style={{ color: 'var(--color-store-blue)' }} />
-            <span>Academic Performance Snapshot</span>
+            <CalendarBlank size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <span>Today&apos;s schedule</span>
           </h2>
-          <span className="text-xs text-slate-400 font-medium">Real-time metrics</span>
-        </div>
-
-        <div className="student-kpi-grid">
-          {/* Tile 1: Tests Attempted */}
-          <div className="student-kpi-card">
-            <div className="student-kpi-top">
-              <span className="student-kpi-label">Mock Tests</span>
-              <div className="student-kpi-icon-box">
-                <Exam size={18} weight="duotone" />
-              </div>
-            </div>
-            <div className="student-kpi-value tabular-nums">
-              {data?.analytics?.testsAttempted ?? 0}
-            </div>
-            <p className="student-kpi-sub">Completed Evaluations</p>
-          </div>
-
-          {/* Tile 2: Avg Score */}
-          <div className="student-kpi-card">
-            <div className="student-kpi-top">
-              <span className="student-kpi-label">Average Score</span>
-              <div className="student-kpi-icon-box" style={{ background: 'var(--color-store-mint)', color: 'var(--color-store-green)' }}>
-                <CheckCircle size={18} weight="duotone" />
-              </div>
-            </div>
-            <div className="student-kpi-value tabular-nums" style={{ color: 'var(--color-store-green)' }}>
-              {data?.analytics?.averageScore ?? 0}%
-            </div>
-            <p className="student-kpi-sub">Across All Assessments</p>
-          </div>
-
-          {/* Tile 3: Accuracy */}
-          <div className="student-kpi-card">
-            <div className="student-kpi-top">
-              <span className="student-kpi-label">Overall Accuracy</span>
-              <div className="student-kpi-icon-box" style={{ background: 'var(--color-store-lilac)', color: 'var(--color-store-violet)' }}>
-                <Target size={18} weight="duotone" />
-              </div>
-            </div>
-            <div className="student-kpi-value tabular-nums" style={{ color: 'var(--color-store-violet)' }}>
-              {data?.analytics?.accuracy ?? 0}%
-            </div>
-            <p className="student-kpi-sub">Correct vs Attempted</p>
-          </div>
-
-          {/* Tile 4: Percentile / Rank */}
-          <div className="student-kpi-card">
-            <div className="student-kpi-top">
-              <span className="student-kpi-label">Class Standing</span>
-              <div className="student-kpi-icon-box" style={{ background: 'var(--color-store-sand)', color: '#854d0e' }}>
-                <Lightning size={18} weight="duotone" />
-              </div>
-            </div>
-            <div className="student-kpi-value tabular-nums" style={{ color: '#854d0e' }}>
-              {data?.analytics?.percentile !== null && data?.analytics?.percentile !== undefined
-                ? `${data.analytics.percentile}th %`
-                : data?.analytics?.rank && data?.analytics?.rank !== '--'
-                ? data.analytics.rank
-                : '--'}
-            </div>
-            <p className="student-kpi-sub">Batch Percentile Benchmark</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          SECTION 4 — CONTINUE LEARNING / MY ENROLLED COURSES
-         ═══════════════════════════════════════════════════════════════════ */}
-      <section>
-        <div className="student-section-header">
-          <h2 className="flex items-center gap-2">
-            <BookOpen size={18} weight="bold" style={{ color: 'var(--color-store-blue)' }} />
-            <span>Continue Learning (My Courses)</span>
-          </h2>
-          <Link href="/student/courses" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-store-blue)' }}>
-            All Courses &rarr;
+          <Link href="/student/timetable" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
+            Full timetable &rarr;
           </Link>
         </div>
 
-        {enrolledCourses.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {enrolledCourses.map((course) => {
-              const summary = data?.courseContentSummary?.[course.course_id] || [];
-              const totalLectures = Array.isArray(summary)
-                ? summary.reduce((a: number, c: any) => a + (c.total_lectures || c.contentCountsByType?.video || 0), 0)
-                : 0;
-              const totalPdfs = Array.isArray(summary)
-                ? summary.reduce((a: number, c: any) => a + (c.total_materials || (c.contentCountsByType?.pdf || 0) + (c.contentCountsByType?.notes || 0)), 0)
-                : 0;
-
-              const firstBatchSubjectId = Array.isArray(summary) && summary.length > 0
-                ? (summary[0]?.batchSubjectId || summary[0]?.batch_subject_id || null)
-                : null;
-
-              const resumeHref = firstBatchSubjectId
-                ? `/student/courses/${course.course_id}/subjects/${firstBatchSubjectId}`
-                : `/student/courses/${course.course_id}`;
-
-              return (
-                <article
-                  key={course.course_id}
-                  className="student-card flex flex-col justify-between"
-                >
-                  <div className="space-y-3">
-                    <div>
-                      <span className="student-pill student-pill-sky mb-2">
-                        {course.category || 'Core Program'}
-                      </span>
-                      <h3 className="text-base font-extrabold text-slate-900 leading-snug">
-                        {course.title}
-                      </h3>
-                    </div>
-
-                    <p className="text-xs text-slate-500">
-                      Batch: <strong className="text-slate-700 font-semibold">{course.batch_name || activeBatch}</strong>
-                    </p>
-
-                    <div className="flex items-center gap-4 text-xs text-slate-500 pt-1">
-                      <span className="flex items-center gap-1.5">
-                        <Play size={14} style={{ color: 'var(--color-store-blue)' }} />
-                        <span>{totalLectures > 0 ? `${totalLectures} Lectures` : 'Lectures Included'}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <FileText size={14} style={{ color: 'var(--color-store-green)' }} />
-                        <span>{totalPdfs > 0 ? `${totalPdfs} Study PDFs` : 'Formula Notes'}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-end">
-                    <Link
-                      href={resumeHref}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold transition-colors"
-                      style={{ color: 'var(--color-store-blue)' }}
-                    >
-                      <span>Continue Learning</span>
-                      <ArrowRight size={14} weight="bold" />
-                    </Link>
-                  </div>
-                </article>
-              );
-            })}
+        {todayTimetable.length > 0 ? (
+          <div className="student-card today-schedule">
+            {todayTimetable.map((s) => (
+              <div key={s.id} className="today-schedule-row">
+                <span className="today-schedule-time tabular-nums">{formatClock(s.startTime)}</span>
+                <div className="today-schedule-info">
+                  <span className="today-schedule-subject">{s.subject}</span>
+                  {s.teacher && <span className="today-schedule-teacher">{s.teacher}</span>}
+                </div>
+                <span className={`today-schedule-chip chip-${s.status}`}>
+                  {s.status === 'live' ? 'Live now' : s.status === 'completed' ? 'Done' : s.status === 'upcoming' ? 'Upcoming' : formatClock(s.startTime)}
+                </span>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="student-card text-center p-8 sm:p-10">
-            <GraduationCap size={40} className="text-slate-400 mx-auto mb-2" weight="duotone" />
-            <h3 className="text-sm font-bold text-slate-900 mb-1">No Active Courses Enrolled</h3>
-            <p className="text-xs text-slate-500 mb-4">Contact your academic administrator to enroll in your target batch courses, or explore available programs.</p>
-            <Link
-              href="/courses"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-colors shadow-xs"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
-            >
-              <span>Explore Courses</span>
-              <ArrowSquareOut size={14} />
-            </Link>
+          <div className="student-card flex items-center justify-between">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'var(--color-sky-tint)', color: 'var(--color-sky-ink)' }}>
+                <CalendarCheck size={22} weight="duotone" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-ink">Nothing scheduled today</p>
+                <p className="text-caption text-ink-secondary">A good day for a mock test or catching up on lectures.</p>
+              </div>
+            </div>
           </div>
         )}
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          SECTION 5 — SPLIT GRID: TESTS + RESULTS + WEAK AREAS
-         ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column (Span 7) — Assigned Tests & Recent Results */}
-        <div className="lg:col-span-7 space-y-6">
-          
-          {/* Recent Test Result Card */}
-          {recentResults.length > 0 && (
-            <div className="student-card space-y-4" style={{ background: 'linear-gradient(135deg, #ffffff 0%, var(--color-store-paper) 100%)' }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'var(--color-store-mint)', color: 'var(--color-store-green)' }}>
-                    <CheckCircle size={20} weight="duotone" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Latest Mock Test Scorecard
-                    </span>
-                    <h3 className="text-sm font-extrabold text-slate-900">
-                      {recentResults[0].test_title}
-                    </h3>
-                  </div>
-                </div>
+      {/* ═══ 4 — This week's tests (state-card system §7.3) ═══ */}
+      <section>
+        <div className="student-section-header">
+          <h2 className="flex items-center gap-2">
+            <Exam size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <span>This week&apos;s tests</span>
+          </h2>
+          <Link href="/student/tests" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
+            All tests &rarr;
+          </Link>
+        </div>
 
-                <div className="text-right">
-                  <span className="text-xl font-black block leading-tight tabular-nums" style={{ color: 'var(--color-store-green)' }}>
-                    {recentResults[0].score} / {recentResults[0].total_score}
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-400">
-                    {recentResults[0].percentage}% Score
-                  </span>
-                </div>
-              </div>
+        {weekTests.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {weekTests.map((test) => (
+              <TestStateCard key={test.testId} test={test} />
+            ))}
+          </div>
+        ) : (
+          <div className="student-card text-center p-8">
+            <CheckCircle size={36} className="mx-auto mb-2" weight="duotone" style={{ color: 'var(--color-mint-ink)' }} />
+            <h3 className="text-sm font-bold text-ink mb-1">No tests due this week</h3>
+            <p className="text-caption text-ink-secondary">
+              New tests assigned to your batch will show up here.
+            </p>
+          </div>
+        )}
+      </section>
 
-              <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-slate-100 text-center">
-                <div className="p-2.5 rounded-xl bg-white border border-slate-100">
-                  <span className="text-[10px] font-semibold text-slate-500 block">Accuracy</span>
-                  <span className="text-xs font-black text-slate-900 tabular-nums">{recentResults[0].accuracy}%</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-100">
-                  <span className="text-[10px] font-semibold text-slate-500 block">Submitted</span>
-                  <span className="text-xs font-black text-slate-900">
-                    {new Date(recentResults[0].submitted_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-100">
-                  <span className="text-[10px] font-semibold text-slate-500 block">Status</span>
-                  <span className="text-xs font-black" style={{ color: 'var(--color-store-green)' }}>Evaluated</span>
-                </div>
-              </div>
+      {/* ═══ 5 — Momentum, compact (2–3 stats, "—" for zero) ═══ */}
+      <section>
+        <div className="student-section-header">
+          <h2 className="flex items-center gap-2">
+            <Lightning size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <span>Momentum</span>
+          </h2>
+          <Link href="/student/analytics" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
+            Full analytics &rarr;
+          </Link>
+        </div>
 
-              <div className="flex justify-end pt-1">
-                <Link
-                  href={
-                    recentResults[0].attempt_id && recentResults[0].test_id
-                      ? `/student/tests/${recentResults[0].test_id}/results/${recentResults[0].attempt_id}`
-                      : '/student/results'
-                  }
-                  className="text-xs font-bold hover:underline flex items-center gap-1.5"
-                  style={{ color: 'var(--color-store-blue)' }}
+        <div className="today-momentum">
+          <div className="today-momentum-stat">
+            <span className="today-momentum-value tabular-nums">
+              {analytics?.testsAttempted ? analytics.testsAttempted : '—'}
+            </span>
+            <span className="today-momentum-label">Tests you&apos;ve taken</span>
+          </div>
+          <div className="today-momentum-stat">
+            <span className="today-momentum-value tabular-nums">
+              {analytics?.averageScore ? `${analytics.averageScore}%` : '—'}
+            </span>
+            <span className="today-momentum-label">Average score</span>
+          </div>
+          <div className="today-momentum-stat">
+            <span className="today-momentum-value tabular-nums">
+              {openDoubts > 0 ? openDoubts : '—'}
+            </span>
+            <span className="today-momentum-label">Doubts waiting on faculty</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ 6 — Worth practicing (focus areas, coach voice, one rubric) ═══ */}
+      <section>
+        <div className="student-section-header">
+          <h2 className="flex items-center gap-2">
+            <BookOpen size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <span>Worth practicing</span>
+          </h2>
+        </div>
+
+        <div className="student-card space-y-4" style={{ background: 'linear-gradient(135deg, var(--color-sand) 0%, var(--color-store-white) 70%)' }}>
+          <p className="text-xs text-ink-secondary leading-relaxed">
+            Chapters scoring under 60% on recent tests. Steady is 60–80%, mastered is 80%+ — lift these and your total moves.
+          </p>
+
+          {weakChapters.length > 0 ? (
+            <div className="space-y-2.5">
+              {weakChapters.map((chap) => (
+                <div
+                  key={chap.chapter_id}
+                  className="p-3 rounded-2xl bg-white/90 border border-line flex items-center justify-between"
                 >
-                  <span>Review Solutions & Explanations</span>
-                  <ArrowRight size={14} />
-                </Link>
-              </div>
+                  <div>
+                    <span className="text-caption font-bold uppercase text-ink-muted tracking-wider block">
+                      {chap.subject_name}
+                    </span>
+                    <h4 className="text-xs font-bold text-ink">{chap.chapter_name}</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-black text-ink block tabular-nums">{chap.accuracy}%</span>
+                    <Link
+                      href="/student/tests"
+                      className="text-caption font-bold hover:underline"
+                      style={{ color: 'var(--color-brand)' }}
+                    >
+                      Practice &rarr;
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-white/70 border border-line text-center space-y-1.5">
+              <p className="text-xs font-bold text-ink">No weak areas identified yet</p>
+              <p className="text-caption text-ink-secondary leading-normal">
+                Take a mock test and we&apos;ll point out exactly what to practice.
+              </p>
             </div>
           )}
 
-          {/* Active / Assigned Mock Tests */}
-          <div className="student-card space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <Exam size={16} weight="bold" style={{ color: 'var(--color-store-blue)' }} />
-                <span>Assigned Mock Tests</span>
-              </h3>
-              <Link href="/student/tests" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-store-blue)' }}>
-                View All &rarr;
-              </Link>
-            </div>
-
-            {assignedMockTests.length > 0 ? (
-              <div className="space-y-3">
-                {assignedMockTests.slice(0, 3).map((test) => {
-                  const attemptId = test.latestResult?.attemptId || test.attemptSummary?.latestAttemptId;
-                  const resultHref = attemptId ? `/student/tests/${test.testId}/results/${attemptId}` : `/student/tests/${test.testId}`;
-
-                  return (
-                    <div
-                      key={test.testId}
-                      className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between hover:bg-slate-100/70 transition-colors gap-3"
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-xs font-bold text-slate-900 truncate">{test.title}</h4>
-                          {test.subjectName && (
-                            <span className="text-[10px] font-semibold text-slate-500 px-2 py-0.5 rounded-full bg-white border border-slate-200 shrink-0">
-                              {test.subjectName}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          {test.durationMin ? `⏱ ${test.durationMin} mins • ` : ''}
-                          📝 {test.questionCount} Questions
-                          {test.totalMarks !== null && test.totalMarks !== undefined ? ` • 🏆 ${test.totalMarks} Marks` : ''}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {test.attemptSummary?.attemptState === 'submitted' ? (
-                          <>
-                            <Link
-                              href={resultHref}
-                              className="px-3 py-1.5 rounded-xl text-white font-bold text-[11px] transition-colors shadow-xs"
-                              style={{ backgroundColor: 'var(--color-store-green)' }}
-                            >
-                              View Result
-                            </Link>
-                            {test.attemptSummary.canAttempt && (
-                              <Link
-                                href={`/student/tests/${test.testId}`}
-                                className="px-3 py-1.5 rounded-xl text-white font-bold text-[11px] transition-colors shadow-xs"
-                                style={{ backgroundColor: 'var(--color-store-blue)' }}
-                              >
-                                Retake Test
-                              </Link>
-                            )}
-                          </>
-                        ) : test.attemptSummary?.attemptState === 'in_progress' ? (
-                          <Link
-                            href={`/student/tests/${test.testId}`}
-                            className="px-3.5 py-1.5 rounded-xl text-white font-bold text-[11px] transition-colors shadow-xs"
-                            style={{ backgroundColor: 'var(--color-store-blue)' }}
-                          >
-                            Resume Test
-                          </Link>
-                        ) : test.attemptSummary?.attemptState === 'limit_reached' ? (
-                          <Link
-                            href={resultHref}
-                            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors"
-                          >
-                            View Result
-                          </Link>
-                        ) : (
-                          <Link
-                            href={`/student/tests/${test.testId}`}
-                            className="px-3.5 py-1.5 rounded-xl text-white font-bold text-[11px] transition-colors shadow-xs"
-                            style={{ backgroundColor: 'var(--color-store-blue)' }}
-                          >
-                            Start Test
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-1">
-                <p className="text-xs font-bold text-slate-700">No Mock Tests Assigned</p>
-                <p className="text-[11px] text-slate-500">
-                  New mock tests assigned to your enrolled batches will appear here.
-                </p>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* Right Column (Span 5) — Weak Areas & Study Focus */}
-        <div className="lg:col-span-5 space-y-6">
-          
-          {/* Target Focus / Growth Areas (< 60% Accuracy) */}
-          <div className="student-card border-amber-200 space-y-4" style={{ background: 'linear-gradient(135deg, #fffbeb 0%, var(--color-store-white) 70%)' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-amber-900">
-                <WarningCircle size={18} weight="duotone" className="text-amber-600" />
-                <h3 className="text-xs font-extrabold uppercase tracking-wider">
-                  Target Focus Areas (&lt;60% Accuracy)
-                </h3>
-              </div>
-              <span className={`student-pill ${
-                weakChapters.length > 0 ? 'student-pill-apricot' : 'student-pill-sky'
-              }`}>
-                {weakChapters.length > 0 ? 'Action Required' : 'Up to Date'}
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Based on your recent test evaluations, practicing these chapters will yield maximum score improvement.
-            </p>
-
-            {weakChapters.length > 0 ? (
-              <div className="space-y-2.5">
-                {weakChapters.map((chap) => (
-                  <div
-                    key={chap.chapter_id}
-                    className="p-3 rounded-2xl bg-white/90 border border-amber-100 flex items-center justify-between"
-                  >
-                    <div>
-                      <span className="text-[10px] font-bold uppercase text-amber-800 tracking-wider block">
-                        {chap.subject_name}
-                      </span>
-                      <h4 className="text-xs font-bold text-slate-900">{chap.chapter_name}</h4>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs font-black text-rose-600 block tabular-nums">{chap.accuracy}%</span>
-                      <Link
-                        href="/student/tests"
-                        className="text-[10px] font-bold text-amber-800 hover:underline"
-                      >
-                        Practice &rarr;
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 rounded-2xl bg-white/70 border border-amber-100/80 text-center space-y-1.5">
-                <p className="text-xs font-bold text-amber-900">No weak areas identified yet</p>
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Complete mock tests to unlock personalized study recommendations and targeted chapter analytics.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Support / Ask a Doubt Card */}
-          <div className="student-card space-y-3" style={{ background: 'linear-gradient(135deg, var(--color-store-sky) 0%, var(--color-store-white) 80%)' }}>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-xs" style={{ backgroundColor: 'var(--color-store-blue)' }}>
-                <GraduationCap size={20} weight="duotone" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">Have questions about a topic?</h4>
-                <p className="text-[11px] text-slate-500">Ask expert faculty and get verified step-by-step solutions.</p>
-              </div>
-            </div>
-
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-caption text-ink-secondary flex items-center gap-1.5">
+              <ChatCircleDots size={14} />
+              Stuck on a topic?
+            </span>
             <Link
-              href="/student/doubts"
-              className="w-full py-2.5 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-xs"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
+              href="/student/doubts?new=true"
+              className="text-xs font-bold hover:underline"
+              style={{ color: 'var(--color-brand)' }}
             >
-              <span>Ask a Faculty Doubt</span>
-              <ArrowSquareOut size={14} />
+              Ask a doubt &rarr;
             </Link>
           </div>
-
         </div>
-
-      </div>
+      </section>
 
     </div>
   );

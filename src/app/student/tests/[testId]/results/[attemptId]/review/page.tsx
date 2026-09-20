@@ -10,7 +10,6 @@ import {
 import {
   fetchStudentAnswerReview,
   type ReviewSessionData,
-  type ReviewQuestionItem,
 } from '@/services/student/studentTestResultWebService';
 import { ReviewHeader, type ReviewFilterType } from '@/components/student/test-review/ReviewHeader';
 import { QuestionNavigator } from '@/components/student/test-review/QuestionNavigator';
@@ -144,11 +143,11 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
   // Loading State
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full text-center">
-          <SpinnerGap size={40} className="animate-spin text-indigo-600" />
-          <h3 className="font-bold text-slate-800 text-lg">Loading Solutions</h3>
-          <p className="text-xs text-slate-500">Preparing verified question explanations and diagrams...</p>
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-sm w-full text-center">
+          <SpinnerGap size={40} className="animate-spin text-brand" />
+          <h3 className="font-bold text-ink text-lg">Loading Solutions</h3>
+          <p className="text-xs text-ink-secondary">Preparing verified question explanations and diagrams...</p>
         </div>
       </div>
     );
@@ -157,16 +156,16 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
   // Error State
   if (error || !reviewData) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full text-center">
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-md w-full text-center">
           <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
             <WarningCircle size={40} weight="fill" />
           </div>
-          <h3 className="font-bold text-slate-900 text-lg">Unable to Load Review</h3>
-          <p className="text-xs text-slate-600 font-medium">{error || 'Review session not available.'}</p>
+          <h3 className="font-bold text-ink text-lg">Unable to Load Review</h3>
+          <p className="text-xs text-ink-secondary font-medium">{error || 'Review session not available.'}</p>
           <Link
             href={`/student/tests/${testId}/results/${attemptId}`}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 transition-colors mt-2 shadow-sm"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
           >
             <ArrowLeft size={16} weight="bold" />
             <span>Return to Scorecard</span>
@@ -180,7 +179,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
     <div className="store-container space-y-7 pb-16">
       {/* ── Breadcrumb Navigation ──────────────────────────────────── */}
       <nav className="store-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/student/overview">Student Hub</Link>
+        <Link href="/student/overview">My Learning</Link>
         <span aria-hidden="true">/</span>
         <Link href="/student/results">Results</Link>
         <span aria-hidden="true">/</span>
@@ -221,7 +220,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
               testTitle={reviewData.test.title}
             />
           ) : (
-            <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500">
+            <div className="p-12 text-center bg-white rounded-3xl border border-line text-ink-secondary">
               No questions match the selected filter.
             </div>
           )}

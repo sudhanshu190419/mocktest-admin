@@ -1,0 +1,126 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MMT Design System — Tokens (source of truth)
+   Companion doc: DESIGN_SYSTEM.md (root)
+
+   Layering contract (why this file looks the way it does):
+   1. Palette   — private :root names. The ONLY place raw values live.
+   2. @theme    — Tailwind v4 utility bridge. ADDITIVE ONLY: this block
+                  must never re-define a token globals.css already owns
+                  at root (brand/ink/shadow-card/radius-card/success/
+                  font-display), or admin & marketing surfaces drift.
+   3. Scope     — Design A values flow inside .course-store (student +
+                  storefront shell) via courses.css + the extensions here.
+   4. Base      — focus, reduced motion, coarse-pointer touch targets.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Palette (private names) ──────────────────────────────────── */
+:root {
+  /* Brand */
+  --brand: #2458d3;
+  --brand-hover: #1943a6;
+
+  /* Ink (text) */
+  --ink: #152b45;
+  --ink-secondary: #51637a; /* ≥4.5:1 on paper — the default muted */
+  --ink-muted: #5e7084;     /* white surfaces only, ≥14px, non-essential meta */
+
+  /* Surfaces & lines */
+  --paper: #f3f8fc;
+  --line: #d9e3ed;
+
+  /* Tints (each with its accessible ink pair) */
+  --tint-sky: #dcecf8;      --tint-sky-ink: #1943a6;
+  --tint-mint: #dcefe8;     --tint-mint-ink: #285e50;
+  --tint-apricot: #ffd7b7;  --tint-apricot-ink: #7c4c26;
+  --tint-lilac: #e9e6f6;    --tint-lilac-ink: #57507d;
+  --tint-sand: #f7e9d7;     --tint-sand-ink: #854d0e;
+}
+
+/* ── 2. Tailwind v4 utility bridge (additive tokens only) ───────── */
+@theme {
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+
+  --color-sky-tint: var(--tint-sky);    --color-sky-ink: var(--tint-sky-ink);
+  --color-mint: var(--tint-mint);       --color-mint-ink: var(--tint-mint-ink);
+  --color-apricot: var(--tint-apricot); --color-apricot-ink: var(--tint-apricot-ink);
+  --color-lilac: var(--tint-lilac);     --color-lilac-ink: var(--tint-lilac-ink);
+  --color-sand: var(--tint-sand);       --color-sand-ink: var(--tint-sand-ink);
+
+  /* Type scale — 12px floor. text-caption is the smallest allowed size. */
+  --text-caption: 12px;  --text-caption--line-height: 16px;
+  --text-meta: 13px;     --text-meta--line-height: 18px;
+  --text-body: 14px;     --text-body--line-height: 22px;
+  --text-h3: 16px;       --text-h3--line-height: 24px;
+  --text-h2: 20px;       --text-h2--line-height: 28px;
+  --text-h1: 24px;       --text-h1--line-height: 30px;
+  --text-display: 32px;  --text-display--line-height: 40px;
+
+  --font-body: var(--font-store-body), system-ui, sans-serif;
+
+  /* Radius set — field/card/sheet + rounded-full. Nothing else.
+     NOTE: --radius-field is owned by globals.css @theme (12px); the
+     Design A 10px value is applied inside .course-store below — this
+     block stays additive-only (see header contract). */
+  --radius-sheet: 24px;
+
+  /* Status/surface shadows (Design A elevation) */
+  --shadow-hover: 0 18px 45px #19385512;
+  --shadow-dialog: 0 30px 90px #102b4930;
+
+  /* Motion contract — see src/lib/motion.ts */
+  --ease-coach: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-fade-quick: fadeQuick 0.15s ease-out both;
+  --animate-pop-in: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes fadeQuick {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Dialog scrim (Sheet/toast overlays) — works outside .course-store */
+  --color-scrim: #102b4980;
+}
+
+/* ── 3. Scope extensions ─────────────────────────────────────────── */
+/* Design A values that courses.css's .course-store block doesn't
+   bridge yet. Root defaults (globals.css) remain untouched, so
+   admin/teacher/marketing surfaces are unaffected. */
+.course-store {
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --font-display: var(--font-store-display), system-ui, sans-serif;
+  /* Design A field radius (scoped — globals.css owns the root value) */
+  --radius-field: 10px;
+}
+
+/* ── 4. Base rules ───────────────────────────────────────────────── */
+
+/* Numerals align in every table column, app-wide (harmless + helpful) */
+.tabular-nums, td, th { font-variant-numeric: tabular-nums; }
+
+/* Reduced motion — global kill-switch (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Coarse pointers: 44px minimum hit height on interactive elements.
+   Scoped to the student/storefront shell (.course-store) so admin
+   surfaces are unaffected until their own pass. */
+@media (pointer: coarse) {
+  .course-store :is(a, button, [role='button'], input, select, summary) {
+    min-height: 44px;
+  }
+}

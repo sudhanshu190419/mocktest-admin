@@ -20,18 +20,18 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
   const isLast = currentIndex === totalQuestions - 1;
 
   return (
-    <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 py-3.5 px-4 sm:px-6 shadow-md flex items-center justify-between">
+    <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-md border-t border-line py-3.5 px-4 sm:px-6 shadow-md flex items-center justify-between">
       <button
         type="button"
         onClick={onPrevious}
         disabled={isFirst}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-paper hover:bg-sky-tint text-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         <ArrowLeft size={16} weight="bold" />
         <span>Previous</span>
       </button>
 
-      <span className="text-xs font-bold text-slate-500">
+      <span className="text-xs font-bold text-ink-secondary">
         Question {currentIndex + 1} of {totalQuestions}
       </span>
 
@@ -39,7 +39,7 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
         type="button"
         onClick={onNext}
         disabled={isLast}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-brand hover:bg-brand-hover text-white shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         <span>Next</span>
         <ArrowRight size={16} weight="bold" />

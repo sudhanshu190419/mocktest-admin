@@ -52,16 +52,39 @@ export default function StudentTestsHubPage() {
         setTests(data.tests);
         setSummary(data.summary);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load assigned mock tests');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load assigned mock tests');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadTests();
-  }, [loadTests]);
+    let isMounted = true;
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await fetchStudentAssignedMockTests();
+        if (!isMounted) return;
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setTests(data.tests);
+          setSummary(data.summary);
+        }
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Failed to load assigned mock tests');
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Split into active (current) vs expired tests
   const activeTests = useMemo(() => {
@@ -166,13 +189,13 @@ export default function StudentTestsHubPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <nav className="store-breadcrumb" aria-label="Breadcrumb">
-            <Link href="/student/overview">Student Hub</Link>
+            <Link href="/student/overview">My Learning</Link>
             <span aria-hidden="true">/</span>
-            <span>Mock Tests</span>
+            <span>Mock tests</span>
           </nav>
           <div className="flex items-center gap-3 mt-1">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Mock Tests & Examination Center
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
+              Mock tests
             </h1>
           </div>
           <p className="student-hero-lead">
@@ -185,15 +208,15 @@ export default function StudentTestsHubPage() {
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]">
             <Sparkle className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Available</p>
-              <p className="text-sm font-extrabold text-slate-900 tabular-nums">{activeTabCounts.all}</p>
+              <p className="text-caption font-bold text-ink-muted uppercase">Available</p>
+              <p className="text-sm font-extrabold text-ink tabular-nums">{activeTabCounts.all}</p>
             </div>
           </div>
 
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sky)' }}>
-            <ArrowClockwise className="h-4 w-4 animate-pulse" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
+            <ArrowClockwise className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
             <div>
-              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-blue-dark)' }}>In Progress</p>
+              <p className="text-caption font-bold uppercase" style={{ color: 'var(--color-store-blue-dark)' }}>In Progress</p>
               <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-ink)' }}>{activeTabCounts.inProgress}</p>
             </div>
           </div>
@@ -201,7 +224,7 @@ export default function StudentTestsHubPage() {
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-mint)' }}>
             <CheckCircle className="h-4 w-4" style={{ color: 'var(--color-store-green)' }} weight="bold" />
             <div>
-              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-green)' }}>Completed</p>
+              <p className="text-caption font-bold uppercase" style={{ color: 'var(--color-store-green)' }}>Completed</p>
               <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-green)' }}>{activeTabCounts.completed}</p>
             </div>
           </div>
@@ -210,7 +233,7 @@ export default function StudentTestsHubPage() {
             <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sand)' }}>
               <Clock className="h-4 w-4 text-amber-600" weight="bold" />
               <div>
-                <p className="text-[10px] font-bold text-amber-700 uppercase">Upcoming</p>
+                <p className="text-caption font-bold text-amber-700 uppercase">Upcoming</p>
                 <p className="text-sm font-extrabold text-amber-950 tabular-nums">{activeTabCounts.upcoming}</p>
               </div>
             </div>
@@ -219,7 +242,7 @@ export default function StudentTestsHubPage() {
       </div>
 
       {/* Filter Tabs & Search Bar Row */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-line pb-4">
         {/* Navigation Tabs */}
         <div className="student-filter-strip mb-0 pb-0">
           <button
@@ -274,18 +297,18 @@ export default function StudentTestsHubPage() {
         {/* Search Input & Subject Filter */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="relative flex-1 sm:w-64">
-            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
             <input
               type="text"
               placeholder="Search tests, subjects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:border-store-blue focus:outline-none transition-all"
+              className="w-full rounded-xl border border-line bg-white py-2 pl-9 pr-8 text-xs text-ink placeholder:text-ink-muted focus:border-store-blue focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink-secondary"
               >
                 <XCircle size={14} weight="fill" />
               </button>
@@ -296,7 +319,7 @@ export default function StudentTestsHubPage() {
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs font-medium text-slate-700 focus:border-store-blue focus:outline-none"
+              className="rounded-xl border border-line bg-white py-2 px-3 text-xs font-medium text-ink focus:border-store-blue focus:outline-none"
             >
               <option value="all">All Subjects</option>
               {availableSubjects.map((s) => (
@@ -324,8 +347,8 @@ export default function StudentTestsHubPage() {
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mx-auto">
             <WarningCircle size={24} weight="bold" />
           </div>
-          <h2 className="text-base font-bold text-slate-900">Could Not Load Mock Tests</h2>
-          <p className="text-xs text-slate-500 leading-relaxed">{error}</p>
+          <h2 className="text-base font-bold text-ink">Could Not Load Mock Tests</h2>
+          <p className="text-xs text-ink-secondary leading-relaxed">{error}</p>
           <button
             onClick={loadTests}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors shadow-sm"
@@ -340,13 +363,13 @@ export default function StudentTestsHubPage() {
             <Exam size={28} weight="duotone" />
           </div>
 
-          <h2 className="text-base sm:text-lg font-bold text-slate-900">
+          <h2 className="text-base sm:text-lg font-bold text-ink">
             {searchQuery || selectedSubject !== 'all' || activeTab !== 'all'
               ? 'No matching active tests found'
               : 'No active mock tests available'}
           </h2>
 
-          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+          <p className="text-xs text-ink-secondary leading-relaxed max-w-md mx-auto">
             {searchQuery || selectedSubject !== 'all' || activeTab !== 'all'
               ? 'Try resetting your search query or switching tabs to see more assessments.'
               : 'Tests assigned by your teachers and curriculum schedule will appear here automatically.'}
@@ -359,7 +382,7 @@ export default function StudentTestsHubPage() {
                 setSearchQuery('');
                 setSelectedSubject('all');
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-ink text-white font-bold text-xs hover:bg-ink transition-colors shadow-sm"
             >
               <span>Clear All Filters</span>
             </button>
@@ -383,21 +406,21 @@ export default function StudentTestsHubPage() {
 
       {/* Dedicated Expired Tests Section at bottom */}
       {!isLoading && !error && expiredTests.length > 0 && (
-        <div className="mt-12 pt-8 border-t border-slate-200">
+        <div className="mt-12 pt-8 border-t border-line">
           <div className="student-card p-6" style={{ background: 'var(--color-store-paper)' }}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start sm:items-center gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-700">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-tint text-ink">
                   <LockKey className="h-5 w-5" weight="bold" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-slate-900">Expired Tests</h2>
-                    <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-extrabold text-slate-700 tabular-nums">
+                    <h2 className="text-base font-bold text-ink">Expired Tests</h2>
+                    <span className="rounded-full bg-sky-tint px-2.5 py-0.5 text-xs font-extrabold text-ink tabular-nums">
                       {expiredTests.length}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-ink-secondary mt-0.5">
                     Past assessments whose attempt window has closed. You can view scorecards and solutions for previously submitted tests.
                   </p>
                 </div>
@@ -405,7 +428,7 @@ export default function StudentTestsHubPage() {
 
               <button
                 onClick={() => setShowExpired((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-xs shrink-0"
+                className="inline-flex items-center gap-2 rounded-xl bg-white border border-line px-4 py-2.5 text-xs font-bold text-ink hover:bg-paper transition-all shadow-xs shrink-0"
               >
                 <span>{showExpired ? 'Hide Expired Tests' : 'View Expired Tests'}</span>
                 {showExpired ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />}
@@ -414,9 +437,9 @@ export default function StudentTestsHubPage() {
 
             {/* Expired Tests Grid (Accordion) */}
             {showExpired && (
-              <div className="mt-6 pt-6 border-t border-slate-200">
+              <div className="mt-6 pt-6 border-t border-line">
                 {filteredExpiredTests.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500 py-4">
+                  <p className="text-center text-xs text-ink-secondary py-4">
                     No expired tests match your current search/filter.
                   </p>
                 ) : (

@@ -20,6 +20,10 @@ import {
   fetchStudentAssignedMockTests,
   type StudentMockTestCardItem,
 } from './studentTestWebService';
+import {
+  fetchTodayTimetable,
+  type TimetableSessionItem,
+} from './studentTimetableWebService';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -107,16 +111,7 @@ export interface RecentTestResultItem {
   percentile?: number | null;
 }
 
-export interface TimetableSessionItem {
-  session_id: string;
-  batch_id: string;
-  subject_name: string;
-  teacher_name: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  room_or_link?: string;
-}
+// TimetableSessionItem is the unified projector type from studentTimetableWebService.
 
 export interface StudentDashboardSummary {
   profile: StudentProfileData | null;
@@ -375,14 +370,18 @@ export async function fetchCompleteStudentDashboard(): Promise<StudentDashboardS
     subjectAnalytics,
     weakChapters,
     scoreTrend,
-    assignedTestsData
+    assignedTestsData,
+    todayTimetable
   ] = await Promise.all([
     fetchCoursesContentSummary(courseIds, batchIds),
     fetchStudentLiveAndUpcomingClasses(batchIds),
     fetchStudentSubjectAnalytics(),
     fetchStudentWeakChapters(),
     fetchStudentScoreTrend(),
-    fetchStudentAssignedMockTests(profile?.profile_id || undefined)
+    fetchStudentAssignedMockTests(profile?.profile_id || undefined),
+    // PRD §5: today's schedule. Timetable source may be mid-repair (§10.2);
+    // fail soft to an empty day so the Today page never blocks.
+    fetchTodayTimetable().catch(() => ({ sessions: [] as TimetableSessionItem[], todayStr: '' }))
   ]);
 
   // Identify Live Now vs Next Scheduled class
@@ -429,7 +428,7 @@ export async function fetchCompleteStudentDashboard(): Promise<StudentDashboardS
     weakChapters,
     recentResults: scoreTrend,
     assignedMockTests: assignedTestsData?.tests || [],
-    todayTimetable: [],
+    todayTimetable: todayTimetable?.sessions || [],
     courseContentSummary: contentSummary,
     hasPurchased,
     selectedStreamName,

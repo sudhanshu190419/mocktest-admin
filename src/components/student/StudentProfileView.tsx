@@ -204,11 +204,11 @@ export const StudentProfileView: React.FC = () => {
   if (loading) {
     return (
       <div className="space-y-6 max-w-5xl mx-auto pb-12 animate-pulse">
-        <div className="h-6 w-36 bg-slate-200 rounded-lg" />
-        <div className="h-44 bg-slate-200 rounded-3xl" />
+        <div className="h-6 w-36 bg-sky-tint rounded-lg" />
+        <div className="h-44 bg-sky-tint rounded-3xl" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="h-64 bg-slate-200 rounded-3xl" />
-          <div className="h-64 bg-slate-200 rounded-3xl" />
+          <div className="h-64 bg-sky-tint rounded-3xl" />
+          <div className="h-64 bg-sky-tint rounded-3xl" />
         </div>
       </div>
     );
@@ -221,12 +221,12 @@ export const StudentProfileView: React.FC = () => {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 mx-auto">
           <WarningCircle size={32} weight="duotone" />
         </div>
-        <h2 className="text-lg font-extrabold text-slate-900">Failed to Load Student Profile</h2>
-        <p className="text-xs text-slate-500 max-w-md mx-auto">{error || 'Unable to retrieve your student profile.'}</p>
+        <h2 className="text-lg font-extrabold text-ink">Failed to Load Student Profile</h2>
+        <p className="text-xs text-ink-secondary max-w-md mx-auto">{error || 'Unable to retrieve your student profile.'}</p>
         <div className="pt-2">
           <button
             onClick={loadProfile}
-            className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs transition-colors shadow-xs"
+            className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white font-bold text-xs transition-colors shadow-xs"
           >
             Retry Loading
           </button>
@@ -242,13 +242,13 @@ export const StudentProfileView: React.FC = () => {
         <div>
           <Link
             href="/student/overview"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-700 mb-1 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-brand hover:text-brand-hover mb-1 transition-colors"
           >
             <ArrowLeft size={14} weight="bold" />
             <span>Back to Dashboard</span>
           </Link>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Student Profile & Account</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-2xl font-black text-ink tracking-tight">Student Profile & Account</h1>
+          <p className="text-xs text-ink-secondary mt-0.5">
             Manage your personal contact details, academic stream, enrolled batches, and account security.
           </p>
         </div>
@@ -269,10 +269,10 @@ export const StudentProfileView: React.FC = () => {
       )}
 
       {/* ── Hero Profile Card ──────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-sky-700 via-sky-600 to-indigo-700 p-6 sm:p-8 text-white shadow-lg">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br bg-brand-hover bg-brand bg-brand-hover p-6 sm:p-8 text-white shadow-lg">
         {/* Subtle Decorative Backdrop Elements */}
         <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 -mb-12 w-48 h-48 rounded-full bg-sky-400/20 blur-xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 -mb-12 w-48 h-48 rounded-full bg-sky-tint/20 blur-xl pointer-events-none" />
 
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-5 z-10">
           {/* Avatar Circle */}
@@ -284,7 +284,7 @@ export const StudentProfileView: React.FC = () => {
                 className="h-20 w-20 sm:h-22 sm:w-22 rounded-2xl object-cover ring-4 ring-white/30 shadow-md bg-white"
               />
             ) : (
-              <div className="flex h-20 w-20 sm:h-22 sm:w-22 items-center justify-center rounded-2xl bg-white text-sky-700 font-black text-2xl ring-4 ring-white/30 shadow-md">
+              <div className="flex h-20 w-20 sm:h-22 sm:w-22 items-center justify-center rounded-2xl bg-white text-brand-hover font-black text-2xl ring-4 ring-white/30 shadow-md">
                 {getInitials(profile.name)}
               </div>
             )}
@@ -297,13 +297,13 @@ export const StudentProfileView: React.FC = () => {
               <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
                 {profile.name}
               </h2>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-black uppercase tracking-wider backdrop-blur-xs border border-white/25">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-caption font-black uppercase tracking-wider backdrop-blur-xs border border-white/25">
                 <Sparkle size={12} weight="fill" className="text-amber-300" />
                 <span>Verified Student</span>
               </span>
             </div>
 
-            <p className="text-xs text-sky-100 font-medium flex items-center gap-1.5">
+            <p className="text-xs text-brand font-medium flex items-center gap-1.5">
               <Envelope size={14} />
               <span>{profile.email}</span>
             </p>
@@ -311,7 +311,7 @@ export const StudentProfileView: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {profile.instituteName && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-black/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/10">
-                  <Buildings size={14} className="text-sky-300" />
+                  <Buildings size={14} className="text-sky-ink" />
                   <span>{profile.instituteName}</span>
                 </span>
               )}
@@ -331,15 +331,15 @@ export const StudentProfileView: React.FC = () => {
         {/* ── Left Column: Personal Information (2 Cols) ──────────────────── */}
         <div className="lg:col-span-2 space-y-6">
           {/* Card: Personal Details */}
-          <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="p-6 sm:p-7 rounded-3xl bg-white border border-line/80 shadow-xs space-y-5">
+            <div className="flex items-center justify-between border-b border-line pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-600 border border-sky-100">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-tint text-brand border border-line">
                   <User size={18} weight="bold" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">Personal Information</h3>
-                  <p className="text-[11px] text-slate-400">Keep your contact details updated for institute communications.</p>
+                  <h3 className="text-sm font-black text-ink">Personal Information</h3>
+                  <p className="text-caption text-ink-muted">Keep your contact details updated for institute communications.</p>
                 </div>
               </div>
 
@@ -347,7 +347,7 @@ export const StudentProfileView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 text-xs font-bold transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-line bg-sky-tint text-brand-hover hover:bg-sky-tint text-xs font-bold transition-colors"
                 >
                   <PencilSimple size={13} weight="bold" />
                   <span>Edit Name</span>
@@ -360,7 +360,7 @@ export const StudentProfileView: React.FC = () => {
                     setEditName(profile.name);
                     setInfoError(null);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-line bg-paper text-ink-secondary hover:bg-paper text-xs font-bold transition-colors"
                 >
                   <X size={13} weight="bold" />
                   <span>Cancel</span>
@@ -378,51 +378,51 @@ export const StudentProfileView: React.FC = () => {
             {!isEditing ? (
               /* Read-only Grid View */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Full Name</span>
-                  <p className="text-xs font-black text-slate-900">{profile.name}</p>
+                <div className="p-3.5 rounded-2xl bg-paper/70 border border-line space-y-1">
+                  <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">Full Name</span>
+                  <p className="text-xs font-black text-ink">{profile.name}</p>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 flex items-center justify-between gap-2">
+                <div className="p-3.5 rounded-2xl bg-paper/70 border border-line flex items-center justify-between gap-2">
                   <div className="space-y-1 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phone Number</span>
-                    <p className="text-xs font-black text-slate-900 truncate">{profile.phone || '--'}</p>
+                    <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">Phone Number</span>
+                    <p className="text-xs font-black text-ink truncate">{profile.phone || '--'}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsChangeMobileOpen(true)}
-                    className="px-2.5 py-1 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 text-[11px] font-bold transition-colors shrink-0"
+                    className="px-2.5 py-1 rounded-lg border border-line bg-sky-tint text-brand-hover hover:bg-sky-tint text-caption font-bold transition-colors shrink-0"
                   >
                     Change
                   </button>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address (Managed)</span>
-                  <p className="text-xs font-bold text-slate-700 truncate">{profile.email}</p>
+                <div className="p-3.5 rounded-2xl bg-paper/70 border border-line space-y-1">
+                  <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">Email Address (Managed)</span>
+                  <p className="text-xs font-bold text-ink truncate">{profile.email}</p>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Official Student ID</span>
-                  <p className="text-xs font-mono font-bold text-slate-700">{profile.enrollmentNo || profile.studentId || '--'}</p>
+                <div className="p-3.5 rounded-2xl bg-paper/70 border border-line space-y-1">
+                  <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">Official Student ID</span>
+                  <p className="text-xs font-mono font-bold text-ink">{profile.enrollmentNo || profile.studentId || '--'}</p>
                 </div>
 
                 {/* Optional Guardian Details if available */}
                 {(profile.guardianName || profile.guardianMobile) && (
-                  <div className="sm:col-span-2 p-3.5 rounded-2xl bg-sky-50/40 border border-sky-100 space-y-2">
-                    <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">Guardian Details</span>
+                  <div className="sm:col-span-2 p-3.5 rounded-2xl bg-sky-tint/40 border border-line space-y-2">
+                    <span className="text-caption font-bold text-brand-hover uppercase tracking-wider">Guardian Details</span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                       <div>
-                        <span className="text-slate-400 text-[10px] block">Name</span>
-                        <span className="font-bold text-slate-800">{profile.guardianName || '--'}</span>
+                        <span className="text-ink-muted text-caption block">Name</span>
+                        <span className="font-bold text-ink">{profile.guardianName || '--'}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 text-[10px] block">Mobile</span>
-                        <span className="font-bold text-slate-800">{profile.guardianMobile || '--'}</span>
+                        <span className="text-ink-muted text-caption block">Mobile</span>
+                        <span className="font-bold text-ink">{profile.guardianMobile || '--'}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 text-[10px] block">Email</span>
-                        <span className="font-bold text-slate-800">{profile.guardianEmail || '--'}</span>
+                        <span className="text-ink-muted text-caption block">Email</span>
+                        <span className="font-bold text-ink">{profile.guardianEmail || '--'}</span>
                       </div>
                     </div>
                   </div>
@@ -432,70 +432,70 @@ export const StudentProfileView: React.FC = () => {
               /* Editable Form View */
               <form onSubmit={handleSavePersonalInfo} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Full Name</label>
+                  <label className="text-xs font-bold text-ink">Full Name</label>
                   <div className="relative">
-                    <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                     <input
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       placeholder="Enter your full name"
                       required
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-line text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Phone Number</label>
+                  <label className="text-xs font-bold text-ink">Phone Number</label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                       <input
                         type="tel"
                         value={profile.phone || ''}
                         disabled
                         placeholder="No mobile number registered"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-500 cursor-not-allowed"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-line bg-paper text-xs font-semibold text-ink-secondary cursor-not-allowed"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => setIsChangeMobileOpen(true)}
-                      className="px-3.5 py-2 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 text-xs font-bold transition-colors shrink-0"
+                      className="px-3.5 py-2 rounded-xl bg-sky-tint border border-line text-brand-hover hover:bg-sky-tint text-xs font-bold transition-colors shrink-0"
                     >
                       Change Mobile via OTP
                     </button>
                   </div>
-                  <span className="text-[10px] text-slate-400">Mobile number changes require password re-authentication and SMS OTP verification.</span>
+                  <span className="text-caption text-ink-muted">Mobile number changes require password re-authentication and SMS OTP verification.</span>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Email Address (Managed)</label>
+                  <label className="text-xs font-bold text-ink">Email Address (Managed)</label>
                   <div className="relative">
-                    <Envelope size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Envelope size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                     <input
                       type="email"
                       value={profile.email}
                       disabled
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-500 cursor-not-allowed"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-line bg-paper text-xs font-semibold text-ink-secondary cursor-not-allowed"
                     />
                   </div>
-                  <span className="text-[10px] text-slate-400">Account login email is managed by your institute administrator.</span>
+                  <span className="text-caption text-ink-muted">Account login email is managed by your institute administrator.</span>
                 </div>
 
                 <div className="pt-2 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setIsEditing(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors"
+                    className="px-4 py-2 rounded-xl border border-line bg-white text-ink text-xs font-bold hover:bg-paper transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={savingInfo}
-                    className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
                   >
                     {savingInfo ? (
                       <>
@@ -515,57 +515,57 @@ export const StudentProfileView: React.FC = () => {
           </div>
 
           {/* Card: Academic & Enrollment Information */}
-          <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-5">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+          <div className="p-6 sm:p-7 rounded-3xl bg-white border border-line/80 shadow-xs space-y-5">
+            <div className="flex items-center gap-2.5 border-b border-line pb-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-tint text-brand border border-line">
                 <Books size={18} weight="bold" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-slate-900">Course Enrollments</h3>
-                <p className="text-[11px] text-slate-400">Your subscribed subject courses.</p>
+                <h3 className="text-sm font-black text-ink">Course Enrollments</h3>
+                <p className="text-caption text-ink-muted">Your subscribed subject courses.</p>
               </div>
             </div>
 
             {/* Enrolled Courses Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <GraduationCap size={14} className="text-indigo-600" />
+                <h4 className="text-xs font-black text-ink uppercase tracking-wider flex items-center gap-1.5">
+                  <GraduationCap size={14} className="text-brand" />
                   <span>Enrolled Courses ({profile.enrolledCourses.length})</span>
                 </h4>
                 <Link
                   href="/student/courses"
-                  className="text-[11px] font-bold text-sky-600 hover:text-sky-700 hover:underline"
+                  className="text-caption font-bold text-brand hover:text-brand-hover hover:underline"
                 >
                   View All Courses
                 </Link>
               </div>
 
               {profile.enrolledCourses.length === 0 ? (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                  <p className="text-xs font-bold text-slate-500">No course enrollments found.</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Explore available courses from the My Courses hub.</p>
+                <div className="p-4 rounded-2xl bg-paper border border-dashed border-line text-center">
+                  <p className="text-xs font-bold text-ink-secondary">No course enrollments found.</p>
+                  <p className="text-caption text-ink-muted mt-0.5">Explore available courses from the My Courses hub.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {profile.enrolledCourses.slice(0, 4).map((c) => (
                     <div
                       key={c.courseId}
-                      className="p-3 rounded-2xl bg-white border border-slate-100 hover:border-slate-200 transition-colors flex items-center justify-between gap-3 shadow-2xs"
+                      className="p-3 rounded-2xl bg-white border border-line hover:border-line transition-colors flex items-center justify-between gap-3 shadow-2xs"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 shrink-0 font-black text-xs">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-tint text-brand shrink-0 font-black text-xs">
                           <Books size={16} />
                         </div>
                         <div className="min-w-0">
-                          <h5 className="text-xs font-extrabold text-slate-900 truncate">{c.title}</h5>
-                          <span className="text-[10px] font-semibold text-slate-400">{c.category || 'Academic Course'}</span>
+                          <h5 className="text-xs font-extrabold text-ink truncate">{c.title}</h5>
+                          <span className="text-caption font-semibold text-ink-muted">{c.category || 'Academic Course'}</span>
                         </div>
                       </div>
 
                       <Link
                         href={`/student/courses/${c.courseId}`}
-                        className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 font-bold text-[11px] transition-colors shrink-0"
+                        className="px-3 py-1 rounded-xl bg-paper hover:bg-sky-tint hover:text-brand-hover text-ink font-bold text-caption transition-colors shrink-0"
                       >
                         Open
                       </Link>
@@ -580,27 +580,27 @@ export const StudentProfileView: React.FC = () => {
         {/* ── Right Column: Account Security & Sign Out (1 Col) ────────────── */}
         <div className="space-y-6">
           {/* Card: Account Security & Password */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+          <div className="p-6 rounded-3xl bg-white border border-line/80 shadow-xs space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-line pb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
                 <ShieldCheck size={16} weight="bold" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-slate-900">Account & Security</h3>
-                <p className="text-[10px] text-slate-400">Password and account status.</p>
+                <h3 className="text-xs font-black text-ink">Account & Security</h3>
+                <p className="text-caption text-ink-muted">Password and account status.</p>
               </div>
             </div>
 
             <div className="space-y-2.5">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-paper border border-line">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
+                  <span className="text-caption font-bold text-ink-muted uppercase tracking-wider block">Status</span>
                   <span className="text-xs font-black text-emerald-700 flex items-center gap-1 mt-0.5">
                     <CheckCircle size={13} weight="fill" />
                     <span>Active Account</span>
                   </span>
                 </div>
-                <span className="text-[10px] font-bold text-slate-400">Verified</span>
+                <span className="text-caption font-bold text-ink-muted">Verified</span>
               </div>
 
               {/* Password Management */}
@@ -608,60 +608,60 @@ export const StudentProfileView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPasswordForm(true)}
-                  className="w-full p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-left flex items-center justify-between transition-colors"
+                  className="w-full p-3 rounded-2xl bg-paper hover:bg-paper border border-line/80 text-left flex items-center justify-between transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <Lock size={15} className="text-slate-500" />
+                    <Lock size={15} className="text-ink-secondary" />
                     <div>
-                      <span className="text-xs font-extrabold text-slate-800 block">Change Password</span>
-                      <span className="text-[10px] text-slate-400">Update your login security credentials</span>
+                      <span className="text-xs font-extrabold text-ink block">Change Password</span>
+                      <span className="text-caption text-ink-muted">Update your login security credentials</span>
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-sky-600">Edit</span>
+                  <span className="text-xs font-bold text-brand">Edit</span>
                 </button>
               ) : (
-                <form onSubmit={handleUpdatePassword} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <span className="text-xs font-black text-slate-900">Update Password</span>
+                <form onSubmit={handleUpdatePassword} className="p-4 rounded-2xl bg-paper border border-line space-y-3">
+                  <div className="flex items-center justify-between border-b border-line pb-2">
+                    <span className="text-xs font-black text-ink">Update Password</span>
                     <button
                       type="button"
                       onClick={() => {
                         setShowPasswordForm(false);
                         setPasswordError(null);
                       }}
-                      className="text-slate-400 hover:text-slate-600 text-xs"
+                      className="text-ink-muted hover:text-ink-secondary text-xs"
                     >
                       <X size={14} weight="bold" />
                     </button>
                   </div>
 
                   {passwordError && (
-                    <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[11px] font-bold">
+                    <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-caption font-bold">
                       {passwordError}
                     </div>
                   )}
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-700">New Password</label>
+                    <label className="text-caption font-bold text-ink">New Password</label>
                     <input
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Min. 6 characters"
                       required
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      className="w-full px-3 py-2 rounded-xl border border-line bg-white text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-700">Confirm Password</label>
+                    <label className="text-caption font-bold text-ink">Confirm Password</label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat new password"
                       required
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      className="w-full px-3 py-2 rounded-xl border border-line bg-white text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20"
                     />
                   </div>
 
@@ -669,14 +669,14 @@ export const StudentProfileView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowPasswordForm(false)}
-                      className="px-3 py-1.5 rounded-xl text-slate-600 text-[11px] font-bold hover:bg-slate-200/60"
+                      className="px-3 py-1.5 rounded-xl text-ink-secondary text-caption font-bold hover:bg-sky-tint/60"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={savingPassword}
-                      className="px-4 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold shadow-xs flex items-center gap-1 disabled:opacity-60"
+                      className="px-4 py-1.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-caption font-bold shadow-xs flex items-center gap-1 disabled:opacity-60"
                     >
                       {savingPassword ? <CircleNotch size={12} className="animate-spin" /> : 'Save Password'}
                     </button>
@@ -687,9 +687,9 @@ export const StudentProfileView: React.FC = () => {
           </div>
 
           {/* Card: Sign Out Action */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-            <h3 className="text-xs font-black text-slate-900">Session Actions</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
+          <div className="p-6 rounded-3xl bg-white border border-line/80 shadow-xs space-y-3">
+            <h3 className="text-xs font-black text-ink">Session Actions</h3>
+            <p className="text-caption text-ink-muted leading-relaxed">
               Sign out of your active student session on this browser.
             </p>
 
@@ -709,7 +709,7 @@ export const StudentProfileView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowSignOutConfirm(false)}
-                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+                    className="px-3 py-1.5 rounded-xl bg-white border border-line text-ink text-xs font-bold hover:bg-paper"
                   >
                     Cancel
                   </button>

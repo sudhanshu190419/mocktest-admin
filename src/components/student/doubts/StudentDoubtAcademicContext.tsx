@@ -12,11 +12,11 @@ interface StudentDoubtAcademicContextProps {
 function ContextRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-0">
-      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-line last:border-0">
+      <span className="text-caption font-bold uppercase tracking-wider text-ink-muted">
         {label}
       </span>
-      <span className="text-right text-xs font-semibold text-slate-800">
+      <span className="text-right text-xs font-semibold text-ink">
         {value}
       </span>
     </div>
@@ -38,12 +38,12 @@ export function StudentDoubtAcademicContext({
     return (
       <div className={className}>
         {course && batch && (
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-ink-secondary">
             {course} · {batch}
           </span>
         )}
         {chapter && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-secondary">
             {' '}
             · {chapter}
             {topic ? ` / ${topic}` : ''}
@@ -55,10 +55,10 @@ export function StudentDoubtAcademicContext({
 
   return (
     <div className={className}>
-      <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+      <h3 className="mb-3 text-caption font-bold uppercase tracking-wider text-ink-muted">
         Academic Context
       </h3>
-      <div className="space-y-0.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+      <div className="space-y-0.5 bg-paper/70 p-3 rounded-2xl border border-line">
         <ContextRow label="Course" value={course} />
         <ContextRow label="Batch" value={batch} />
         <ContextRow label="Subject" value={subject} />

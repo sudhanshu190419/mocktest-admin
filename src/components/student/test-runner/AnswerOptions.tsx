@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import Image from 'next/image';
 import { Check, Backspace, ArrowCounterClockwise } from '@phosphor-icons/react';
 import type { RunnerQuestionOption } from '@/services/student/studentTestWebService';
 
@@ -83,18 +82,18 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
               type="button"
               disabled={disabled}
               onClick={() => handleSingleSelect(opt.id)}
-              className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3.5 cursor-pointer ${
+              className={`w-full min-h-[48px] text-left p-4 rounded-field border-2 transition-all flex items-start gap-3.5 cursor-pointer ${
                 isSelected
-                  ? 'bg-sky-50/80 border-sky-600 shadow-xs'
-                  : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
+                  ? 'bg-sky-tint/80 border-brand shadow-xs'
+                  : 'bg-white hover:bg-paper border-line hover:border-line'
               } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              {/* Radio Indicator */}
+              {/* Radio Indicator (>=44px touch-friendly row) */}
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border-2 transition-colors mt-0.5 ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-caption shrink-0 border-2 transition-colors mt-0.5 ${
                   isSelected
-                    ? 'bg-sky-600 border-sky-600 text-white'
-                    : 'bg-slate-50 border-slate-300 text-slate-600'
+                    ? 'bg-brand border-brand text-white'
+                    : 'bg-paper border-line text-ink-secondary'
                 }`}
               >
                 {opt.label}
@@ -102,11 +101,12 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
               {/* Option Text & Optional Image */}
               <div className="flex-1 min-w-0 pt-0.5">
-                <div className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-line">
+                <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-line">
                   {opt.text}
                 </div>
                 {opt.imageUrl && (
-                  <div className="mt-3 relative max-w-sm rounded-lg overflow-hidden border border-slate-200 bg-white">
+                  <div className="mt-3 relative max-w-sm rounded-field overflow-hidden border border-line bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={opt.imageUrl}
                       alt={`Option ${opt.label}`}
@@ -129,7 +129,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
     return (
       <div className="flex flex-col gap-3">
-        <div className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 self-start">
+        <div className="text-caption font-semibold text-lilac-ink bg-lilac px-3 py-1.5 rounded-field border border-lilac-ink/30 self-start">
           Multiple Choice Question (One or more options may be correct)
         </div>
         {options.map((opt) => {
@@ -140,18 +140,18 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
               type="button"
               disabled={disabled}
               onClick={() => handleMultiToggle(opt.id)}
-              className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3.5 cursor-pointer ${
+              className={`w-full min-h-[48px] text-left p-4 rounded-field border-2 transition-all flex items-start gap-3.5 cursor-pointer ${
                 isSelected
-                  ? 'bg-purple-50/80 border-purple-600 shadow-xs'
-                  : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
+                  ? 'bg-lilac/70 border-purple-600 shadow-xs'
+                  : 'bg-white hover:bg-paper border-line hover:border-line'
               } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {/* Checkbox Indicator */}
               <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 border-2 transition-colors mt-0.5 ${
+                className={`w-7 h-7 rounded-md flex items-center justify-center font-bold text-caption shrink-0 border-2 transition-colors mt-0.5 ${
                   isSelected
                     ? 'bg-purple-600 border-purple-600 text-white'
-                    : 'bg-slate-50 border-slate-300 text-slate-600'
+                    : 'bg-paper border-line text-ink-secondary'
                 }`}
               >
                 {isSelected ? <Check size={14} weight="bold" /> : opt.label}
@@ -159,11 +159,12 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
               {/* Option Text & Optional Image */}
               <div className="flex-1 min-w-0 pt-0.5">
-                <div className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-line">
+                <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-line">
                   {opt.text}
                 </div>
                 {opt.imageUrl && (
-                  <div className="mt-3 relative max-w-sm rounded-lg overflow-hidden border border-slate-200 bg-white">
+                  <div className="mt-3 relative max-w-sm rounded-field overflow-hidden border border-line bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={opt.imageUrl}
                       alt={`Option ${opt.label}`}
@@ -186,7 +187,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
     return (
       <div className="flex flex-col gap-4 max-w-md">
-        <div className="text-xs font-semibold text-sky-800 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-200 self-start">
+        <div className="text-caption font-semibold text-ink bg-sky-tint px-3 py-1.5 rounded-field border border-line self-start">
           Numerical Answer Question (Enter integer or decimal value)
         </div>
 
@@ -199,19 +200,19 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             value={numVal}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Enter numerical answer"
-            className="w-full px-4 py-3 text-lg font-mono font-bold text-slate-900 bg-white rounded-xl border-2 border-slate-300 focus:border-sky-600 focus:outline-none shadow-xs"
+            className="w-full min-h-[48px] px-4 py-3 text-lg font-mono font-bold text-ink bg-white rounded-field border-2 border-line focus:border-brand focus:outline-none shadow-xs"
           />
         </div>
 
         {/* On-screen Keypad */}
-        <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 grid grid-cols-3 gap-2">
+        <div className="p-3 bg-paper rounded-card border border-line grid grid-cols-3 gap-2">
           {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => (
             <button
               key={n}
               type="button"
               disabled={disabled}
               onClick={() => handleNumericKey(n)}
-              className="py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-base rounded-xl shadow-xs border border-slate-200 transition-colors cursor-pointer"
+              className="min-h-[44px] py-3 bg-white hover:bg-paper text-ink font-bold text-base rounded-field shadow-xs border border-line transition-colors cursor-pointer"
             >
               {n}
             </button>
@@ -220,7 +221,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleNumericKey('.')}
-            className="py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-base rounded-xl shadow-xs border border-slate-200 transition-colors cursor-pointer"
+            className="min-h-[44px] py-3 bg-white hover:bg-paper text-ink font-bold text-base rounded-field shadow-xs border border-line transition-colors cursor-pointer"
           >
             .
           </button>
@@ -228,7 +229,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleNumericKey('0')}
-            className="py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-base rounded-xl shadow-xs border border-slate-200 transition-colors cursor-pointer"
+            className="min-h-[44px] py-3 bg-white hover:bg-paper text-ink font-bold text-base rounded-field shadow-xs border border-line transition-colors cursor-pointer"
           >
             0
           </button>
@@ -236,7 +237,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleNumericKey('-')}
-            className="py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-base rounded-xl shadow-xs border border-slate-200 transition-colors cursor-pointer"
+            className="min-h-[44px] py-3 bg-white hover:bg-paper text-ink font-bold text-base rounded-field shadow-xs border border-line transition-colors cursor-pointer"
           >
             -
           </button>
@@ -244,7 +245,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleNumericKey('backspace')}
-            className="py-3 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+            className="min-h-[44px] py-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 font-bold text-caption rounded-field transition-colors cursor-pointer flex items-center justify-center"
             title="Backspace"
           >
             <Backspace size={18} weight="bold" />
@@ -253,7 +254,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleNumericKey('CLR')}
-            className="col-span-2 py-3 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
+            className="col-span-2 min-h-[44px] py-3 bg-red-500/20 hover:bg-red-500/30 text-red-900 font-bold text-caption rounded-field transition-colors cursor-pointer flex items-center justify-center gap-1"
           >
             <ArrowCounterClockwise size={14} weight="bold" />
             CLEAR
@@ -269,7 +270,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
     return (
       <div className="flex flex-col gap-3">
-        <div className="text-xs font-semibold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 self-start">
+        <div className="text-caption font-semibold text-ink bg-paper px-3 py-1.5 rounded-field border border-line self-start">
           Subjective Question (Write your response below)
         </div>
         <textarea
@@ -278,7 +279,7 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
           value={textVal}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Type your response here..."
-          className="w-full p-4 text-sm sm:text-base text-slate-800 bg-white rounded-xl border-2 border-slate-300 focus:border-sky-600 focus:outline-none shadow-xs resize-y"
+          className="w-full p-4 text-sm sm:text-base text-ink bg-white rounded-field border-2 border-line focus:border-brand focus:outline-none shadow-xs resize-y"
         />
       </div>
     );

@@ -3,25 +3,32 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft,
   ArrowClockwise,
   ChartBar,
   Target,
   Trophy,
   Percent,
   ClipboardText,
-  WarningCircle,
-  CheckCircle,
   TrendUp,
   TrendDown,
   MagnifyingGlass,
   BookOpen,
   Funnel,
-  SlidersHorizontal,
   Clock,
-  ArrowCounterClockwise,
   Sparkle,
   ArrowRight,
+  Atom,
+  Flask,
+  Dna,
+  Calculator,
+  Scroll,
+  Globe,
+  Coins,
+  Laptop,
+  Newspaper,
+  CheckCircle,
+  WarningCircle,
+  Exam,
 } from '@phosphor-icons/react';
 import {
   useStudentDashboardSummary,
@@ -39,67 +46,28 @@ import type {
   ChapterPerformanceSummary,
 } from '@/types/analytics';
 import { formatChapterBreakdownStats } from '@/utils/chapterAnalyticsFormatter';
+import { formatDate, formatPercent, ordinal } from '@/lib/format';
+import { getRubricLevel, isWorthPracticing, isMastered } from '@/lib/rubric';
+import { Button, ButtonLink, EmptyState, ErrorState, Skeleton } from '@/components/ui/mmt';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Phosphor Subject Icon Selector (No Emoji) ──────────────────────────────
 
-function formatDateTime(isoString: string): string {
-  if (!isoString) return '—';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-IN', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function getSubjectIcon(subjectName: string): string {
+function getSubjectIconComponent(subjectName: string): React.ElementType {
   const name = subjectName.toLowerCase();
-  if (name.includes('phys')) return '🔬';
-  if (name.includes('chem')) return '🧪';
-  if (name.includes('bio') || name.includes('botan') || name.includes('zool')) return '🧬';
-  if (name.includes('math')) return '📐';
-  if (name.includes('eng')) return '📖';
-  if (name.includes('hist') || name.includes('civic') || name.includes('polity')) return '📜';
-  if (name.includes('geo')) return '🌍';
-  if (name.includes('econ') || name.includes('commerc')) return '💰';
-  if (name.includes('comp') || name.includes('tech') || name.includes('it')) return '💻';
-  if (name.includes('gk') || name.includes('general') || name.includes('current')) return '🗞️';
-  return '📚';
-}
-
-function getAccuracyColor(accuracy: number | null): { text: string; bg: string; border: string; bar: string } {
-  if (accuracy === null || accuracy === undefined) {
-    return { text: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-200', bar: 'bg-slate-400' };
-  }
-  if (accuracy >= 75) {
-    return { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', bar: 'bg-emerald-500' };
-  }
-  if (accuracy >= 50) {
-    return { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', bar: 'bg-amber-500' };
-  }
-  return { text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', bar: 'bg-rose-500' };
+  if (name.includes('phys')) return Atom;
+  if (name.includes('chem')) return Flask;
+  if (name.includes('bio') || name.includes('botan') || name.includes('zool')) return Dna;
+  if (name.includes('math')) return Calculator;
+  if (name.includes('eng') || name.includes('lang') || name.includes('lit')) return BookOpen;
+  if (name.includes('hist') || name.includes('civic') || name.includes('polity')) return Scroll;
+  if (name.includes('geo')) return Globe;
+  if (name.includes('econ') || name.includes('commerc')) return Coins;
+  if (name.includes('comp') || name.includes('tech') || name.includes('it') || name.includes('cs')) return Laptop;
+  if (name.includes('gk') || name.includes('general') || name.includes('current')) return Newspaper;
+  return BookOpen;
 }
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
-
-/** Skeleton loader for metric cards */
-function MetricCardSkeleton() {
-  return (
-    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-xs animate-pulse space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="h-4 w-24 bg-slate-100 rounded-md" />
-        <div className="h-9 w-9 bg-slate-100 rounded-xl" />
-      </div>
-      <div className="h-8 w-20 bg-slate-200 rounded-lg" />
-      <div className="h-3 w-32 bg-slate-100 rounded-md" />
-    </div>
-  );
-}
 
 /** Performance Overview Metric Card */
 function MetricCard({
@@ -118,33 +86,34 @@ function MetricCard({
   iconBg: string;
 }) {
   return (
-    <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+    <div className="p-5 rounded-card bg-surface border border-line shadow-card hover:border-brand/40 transition-all flex flex-col justify-between">
       <div className="flex items-center justify-between gap-2 mb-3">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</span>
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${iconBg} ${iconColor}`}>
+        <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">{title}</span>
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-field ${iconBg} ${iconColor}`}>
           <IconComponent size={20} weight="duotone" />
         </div>
       </div>
       <div>
-        <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{value}</div>
-        <p className="text-[11px] font-medium text-slate-500 mt-1">{subtitle}</p>
+        <div className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight tabular-nums">{value}</div>
+        <p className="text-caption font-medium text-ink-secondary mt-1">{subtitle}</p>
       </div>
     </div>
   );
 }
 
-/** Interactive Web-Native Score Trend SVG Chart */
+/** Design A Score Trajectory Trend Chart (White / Paper Surface) */
 function ScoreTrendCard({
   trendData,
   isLoading,
   error,
+  onRetry,
 }: {
   trendData?: ScoreTrendPoint[];
   isLoading: boolean;
   error: Error | null;
+  onRetry?: () => void;
 }) {
-  const [hoveredPoint, setHoveredPoint] = useState<ScoreTrendPoint | null>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const stats = useMemo(() => {
     if (!trendData || trendData.length === 0) {
@@ -178,13 +147,11 @@ function ScoreTrendCard({
 
     const points = trendData.map((d, i) => {
       const x = n === 1 ? width / 2 : padX + i * stepX;
-      // Clamp percentage between 0 and 100 for graph Y mapping
       const p = Math.max(0, Math.min(100, d.percentage));
       const y = padY + chartH - (p / 100) * chartH;
-      return { x, y, data: d };
+      return { x, y, data: d, index: i };
     });
 
-    // Build SVG Path
     let pathD = '';
     if (points.length === 1) {
       pathD = `M ${points[0].x} ${points[0].y}`;
@@ -200,47 +167,46 @@ function ScoreTrendCard({
     return { width, height, padX, padY, chartW, chartH, points, pathD, areaD };
   }, [trendData]);
 
-  return (
-    <div className="p-6 sm:p-7 rounded-3xl bg-slate-900 text-white shadow-sm space-y-6 relative overflow-hidden">
-      {/* Background aesthetic gradient */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+  const activePoint = hoveredIndex !== null && chartLayout ? chartLayout.points[hoveredIndex] : null;
 
+  return (
+    <div className="p-6 sm:p-7 rounded-card bg-surface border border-line shadow-card space-y-6 relative">
       {/* Card Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-400/30">
+            <div className="p-2 rounded-field bg-sky-tint text-brand">
               <ChartBar size={18} weight="duotone" />
             </div>
-            <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+            <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Score Trajectory Trend
             </h2>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Chronological percentage scored across released evaluated mock tests
+          <p className="text-xs text-ink-secondary mt-1">
+            Chronological percentage scored across evaluated mock tests
           </p>
         </div>
 
         {/* Quick summary stat chips */}
         {stats.peak !== null && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-1.5">
-              <span className="text-slate-400 text-[11px]">Peak:</span>
-              <span className="font-extrabold text-emerald-400">{Math.round(stats.peak)}%</span>
+            <div className="px-3 py-1.5 rounded-field bg-mint-tint border border-emerald-200 flex items-center gap-1.5">
+              <span className="text-ink-secondary text-caption">Peak:</span>
+              <span className="font-extrabold text-mint-ink">{Math.round(stats.peak)}%</span>
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-1.5">
-              <span className="text-slate-400 text-[11px]">Average:</span>
-              <span className="font-extrabold text-sky-300">{stats.avg}%</span>
+            <div className="px-3 py-1.5 rounded-field bg-sky-tint border border-line flex items-center gap-1.5">
+              <span className="text-ink-secondary text-caption">Average:</span>
+              <span className="font-extrabold text-brand-hover">{stats.avg}%</span>
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-1.5">
-              <span className="text-slate-400 text-[11px]">Latest:</span>
-              <span className="font-extrabold text-white">{Math.round(stats.latest || 0)}%</span>
+            <div className="px-3 py-1.5 rounded-field bg-paper border border-line flex items-center gap-1.5">
+              <span className="text-ink-secondary text-caption">Latest:</span>
+              <span className="font-extrabold text-ink">{Math.round(stats.latest || 0)}%</span>
               {stats.delta !== null && (
                 <span
-                  className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                  className={`inline-flex items-center gap-0.5 text-caption font-bold px-1.5 py-0.5 rounded-md ${
                     stats.delta >= 0
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-rose-500/20 text-rose-300'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
                   }`}
                 >
                   {stats.delta >= 0 ? <TrendUp size={10} weight="bold" /> : <TrendDown size={10} weight="bold" />}
@@ -254,95 +220,85 @@ function ScoreTrendCard({
 
       {/* Main Chart Body */}
       {isLoading ? (
-        <div className="h-60 rounded-2xl bg-slate-800/60 animate-pulse flex items-center justify-center">
-          <span className="text-xs text-slate-500 font-semibold">Loading score trend data...</span>
-        </div>
+        <Skeleton className="h-60 rounded-field" />
       ) : error ? (
-        <div className="p-6 rounded-2xl bg-rose-950/40 border border-rose-800/40 text-center space-y-2">
-          <WarningCircle size={24} weight="duotone" className="text-rose-400 mx-auto" />
-          <p className="text-xs font-bold text-rose-200">Unable to load score trajectory</p>
-          <p className="text-[11px] text-rose-300/80">Please check your network connection and retry.</p>
-        </div>
+        <ErrorState
+          title="Unable to load score trajectory"
+          detail="Please check your network connection and retry."
+          onRetry={onRetry}
+        />
       ) : !trendData || trendData.length === 0 ? (
-        <div className="py-12 px-6 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">
-          <div className="h-12 w-12 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-400/20 flex items-center justify-center mx-auto">
-            <ClipboardText size={24} weight="duotone" />
-          </div>
-          <h3 className="text-sm font-bold text-white">No Test Trend Available Yet</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-            Complete and submit mock tests to unlock your interactive score trajectory and accuracy curves.
-          </p>
-          <div className="pt-2">
-            <Link
-              href="/student/tests"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition-colors shadow-xs"
-            >
-              <span>Explore Assigned Mock Tests</span>
-              <ArrowRight size={14} weight="bold" />
-            </Link>
-          </div>
-        </div>
+        <EmptyState
+          icon={ClipboardText}
+          title="No Test Trend Available Yet"
+          detail="Complete and submit mock tests to unlock your interactive score trajectory and accuracy curves."
+          action={
+            <ButtonLink href="/student/tests" size="sm">
+              Explore Assigned Mock Tests
+            </ButtonLink>
+          }
+        />
       ) : trendData.length === 1 ? (
-        <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+        <div className="p-6 rounded-field bg-paper border border-line space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <div className="flex h-10 w-10 items-center justify-center rounded-field bg-mint-tint text-mint-ink border border-emerald-200">
               <CheckCircle size={22} weight="duotone" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Initial Test Attempt</span>
-              <h3 className="text-sm font-bold text-white">{trendData[0].testName}</h3>
+              <span className="text-caption font-bold text-brand-hover uppercase tracking-wider">Initial Test Attempt</span>
+              <h3 className="text-sm font-bold text-ink">{trendData[0].testName}</h3>
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-medium">Score Achieved</span>
-              <span className="text-sm font-extrabold text-white">
+            <div className="p-3 rounded-field bg-surface border border-line">
+              <span className="text-caption text-ink-muted block font-medium">Score Achieved</span>
+              <span className="text-sm font-extrabold text-ink">
                 {trendData[0].score} / {trendData[0].maxScore}
               </span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-medium">Percentage</span>
-              <span className="text-sm font-extrabold text-emerald-400">
+            <div className="p-3 rounded-field bg-surface border border-line">
+              <span className="text-caption text-ink-muted block font-medium">Percentage</span>
+              <span className="text-sm font-extrabold text-mint-ink">
                 {trendData[0].percentage.toFixed(1)}%
               </span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-medium">Accuracy</span>
-              <span className="text-sm font-extrabold text-sky-400">
+            <div className="p-3 rounded-field bg-surface border border-line">
+              <span className="text-caption text-ink-muted block font-medium">Accuracy</span>
+              <span className="text-sm font-extrabold text-brand-hover">
                 {trendData[0].accuracy !== null ? `${Math.round(trendData[0].accuracy)}%` : '—'}
               </span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-medium">Attempted On</span>
-              <span className="text-sm font-extrabold text-slate-300">
-                {formatDateTime(trendData[0].attemptedOn)}
+            <div className="p-3 rounded-field bg-surface border border-line">
+              <span className="text-caption text-ink-muted block font-medium">Attempted On</span>
+              <span className="text-sm font-extrabold text-ink-secondary">
+                {formatDate(trendData[0].attemptedOn)}
               </span>
             </div>
           </div>
-          <p className="text-[11px] text-slate-400 italic">
-            Complete at least 2 tests to start drawing your multi-test progress trajectory line chart.
+          <p className="text-caption text-ink-muted italic">
+            Complete at least 2 tests to display your continuous progress trajectory chart.
           </p>
         </div>
       ) : chartLayout ? (
         <div className="relative pt-2">
-          {/* Responsive SVG Container */}
+          {/* SVG Container */}
           <div className="w-full overflow-x-auto">
             <svg
               viewBox={`0 0 ${chartLayout.width} ${chartLayout.height}`}
-              className="w-full h-auto min-w-[550px] overflow-visible"
+              className="w-full h-auto min-w-[550px] overflow-visible select-none"
             >
               <defs>
-                <linearGradient id="webAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0284C7" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#0284C7" stopOpacity="0.0" />
+                <linearGradient id="scoreAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2563EB" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="#2563EB" stopOpacity="0.0" />
                 </linearGradient>
-                <linearGradient id="webLineGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#38BDF8" />
-                  <stop offset="100%" stopColor="#34D399" />
+                <linearGradient id="scoreLineGradient" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#2563EB" />
+                  <stop offset="100%" stopColor="#059669" />
                 </linearGradient>
               </defs>
 
-              {/* Grid Lines */}
+              {/* Grid Lines & Y-Axis Labels */}
               {[0, 25, 50, 75, 100].map((val) => {
                 const y = chartLayout.padY + chartLayout.chartH - (val / 100) * chartLayout.chartH;
                 return (
@@ -352,13 +308,13 @@ function ScoreTrendCard({
                       y1={y}
                       x2={chartLayout.width - chartLayout.padX}
                       y2={y}
-                      stroke="rgba(255, 255, 255, 0.08)"
+                      stroke="#E2E8F0"
                       strokeDasharray="4 4"
                     />
                     <text
                       x={chartLayout.padX - 8}
                       y={y + 4}
-                      fill="rgba(148, 163, 184, 0.8)"
+                      fill="#94A3B8"
                       fontSize="10"
                       fontWeight="bold"
                       textAnchor="end"
@@ -369,44 +325,41 @@ function ScoreTrendCard({
                 );
               })}
 
-              {/* Area Under Curve */}
-              {chartLayout.areaD && <path d={chartLayout.areaD} fill="url(#webAreaGrad)" />}
+              {/* Area Fill */}
+              {chartLayout.areaD && <path d={chartLayout.areaD} fill="url(#scoreAreaGradient)" />}
 
               {/* Trend Curve Line */}
               <path
                 d={chartLayout.pathD}
                 fill="none"
-                stroke="url(#webLineGrad)"
+                stroke="url(#scoreLineGradient)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
 
-              {/* Data Interactive Dots */}
+              {/* Data Interactive Points */}
               {chartLayout.points.map((pt, idx) => {
-                const isHovered = hoverIndex === idx;
+                const isSelected = hoveredIndex === idx;
                 return (
                   <g
                     key={idx}
-                    className="cursor-pointer transition-transform"
-                    onMouseEnter={() => {
-                      setHoverIndex(idx);
-                      setHoveredPoint(pt.data);
-                    }}
-                    onMouseLeave={() => {
-                      setHoverIndex(null);
-                      setHoveredPoint(null);
-                    }}
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredIndex(idx)}
+                    onClick={() => setHoveredIndex(idx)}
+                    onTouchStart={() => setHoveredIndex(idx)}
                   >
-                    {isHovered && (
-                      <circle cx={pt.x} cy={pt.y} r="10" fill="#0284C7" fillOpacity="0.3" />
+                    <circle cx={pt.x} cy={pt.y} r="20" fill="transparent" />
+
+                    {isSelected && (
+                      <circle cx={pt.x} cy={pt.y} r="10" fill="#2563EB" fillOpacity="0.2" />
                     )}
                     <circle
                       cx={pt.x}
                       cy={pt.y}
-                      r={isHovered ? 6 : 4.5}
-                      fill={isHovered ? '#34D399' : '#FFFFFF'}
-                      stroke={isHovered ? '#34D399' : '#0284C7'}
+                      r={isSelected ? 6 : 4.5}
+                      fill={isSelected ? '#059669' : '#FFFFFF'}
+                      stroke={isSelected ? '#059669' : '#2563EB'}
                       strokeWidth="2.5"
                     />
                   </g>
@@ -415,39 +368,45 @@ function ScoreTrendCard({
             </svg>
           </div>
 
-          {/* Active Hover / Selected Tooltip Drawer */}
-          {hoveredPoint && (
-            <div className="mt-4 p-4 rounded-2xl bg-slate-800/95 border border-sky-500/40 shadow-lg text-xs space-y-2 animate-in fade-in zoom-in-95 duration-150">
+          {/* First / Last Date Labels along X-Axis */}
+          <div className="flex items-center justify-between pt-2 px-10 text-caption font-semibold text-ink-muted border-t border-line/60 mt-1">
+            <span>First: {formatDate(trendData[0].attemptedOn)}</span>
+            <span>Latest: {formatDate(trendData[trendData.length - 1].attemptedOn)}</span>
+          </div>
+
+          {/* Anchored Tooltip Card */}
+          {activePoint && (
+            <div className="mt-4 p-4 rounded-field bg-paper border border-line shadow-card text-xs space-y-2">
               <div className="flex items-center justify-between gap-4">
-                <span className="font-extrabold text-white text-sm">{hoveredPoint.testName}</span>
-                <span className="text-[11px] font-bold text-slate-400">
-                  {formatDateTime(hoveredPoint.attemptedOn)}
+                <span className="font-extrabold text-ink text-sm">{activePoint.data.testName}</span>
+                <span className="text-caption font-bold text-ink-muted">
+                  {formatDate(activePoint.data.attemptedOn)}
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Score</span>
-                  <span className="font-extrabold text-white">
-                    {hoveredPoint.score} / {hoveredPoint.maxScore}
+                  <span className="text-ink-muted text-caption block">Score</span>
+                  <span className="font-extrabold text-ink">
+                    {activePoint.data.score} / {activePoint.data.maxScore}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Percentage</span>
-                  <span className="font-extrabold text-emerald-400">
-                    {hoveredPoint.percentage.toFixed(1)}%
+                  <span className="text-ink-muted text-caption block">Percentage</span>
+                  <span className="font-extrabold text-mint-ink">
+                    {activePoint.data.percentage.toFixed(1)}%
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Accuracy</span>
-                  <span className="font-extrabold text-sky-400">
-                    {hoveredPoint.accuracy !== null ? `${Math.round(hoveredPoint.accuracy)}%` : '—'}
+                  <span className="text-ink-muted text-caption block">Accuracy</span>
+                  <span className="font-extrabold text-brand-hover">
+                    {formatPercent(activePoint.data.accuracy, { forceZero: true })}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Rank / Percentile</span>
-                  <span className="font-extrabold text-purple-300">
-                    {hoveredPoint.rank !== null ? `#${hoveredPoint.rank}` : '—'}{' '}
-                    {hoveredPoint.percentile !== null ? `(${hoveredPoint.percentile}%ile)` : ''}
+                  <span className="text-ink-muted text-caption block">Rank / Percentile</span>
+                  <span className="font-extrabold text-purple-700">
+                    {activePoint.data.rank !== null ? `#${activePoint.data.rank}` : '—'}{' '}
+                    {activePoint.data.percentile !== null ? `(${ordinal(activePoint.data.percentile)} percentile)` : ''}
                   </span>
                 </div>
               </div>
@@ -459,7 +418,8 @@ function ScoreTrendCard({
   );
 }
 
-/** Subject Performance Component with Overall and Test-wise Scope Filter */
+// ─── Subject Performance Section ─────────────────────────────────────────────
+
 function SubjectPerformanceSection({
   subjects,
   isLoading,
@@ -468,6 +428,7 @@ function SubjectPerformanceSection({
   onSelectTest,
   attemptedTests,
   isAttemptedTestsLoading,
+  onRetry,
 }: {
   subjects?: SubjectPerformanceSummary[];
   isLoading: boolean;
@@ -476,6 +437,7 @@ function SubjectPerformanceSection({
   onSelectTest: (testId: string | null) => void;
   attemptedTests?: AttemptedTestOption[];
   isAttemptedTestsLoading?: boolean;
+  onRetry?: () => void;
 }) {
   const selectedTest = useMemo(() => {
     if (!selectedTestId || !attemptedTests) return null;
@@ -483,20 +445,20 @@ function SubjectPerformanceSection({
   }, [selectedTestId, attemptedTests]);
 
   return (
-    <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-6">
+    <div className="p-6 sm:p-7 rounded-card bg-surface border border-line shadow-card space-y-6">
       {/* ── Header & Scope Selection Bar ─────────────────────── */}
       <div className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+              <div className="p-2 rounded-field bg-sky-tint text-brand">
                 <BookOpen size={18} weight="duotone" />
               </div>
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+              <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
                 Subject-wise Accuracy & Performance
               </h2>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-ink-secondary mt-1">
               {selectedTestId
                 ? `Showing subject metrics for ${selectedTest?.testName || 'selected test'}`
                 : 'Cumulative metrics across all completed mock tests'}
@@ -505,21 +467,21 @@ function SubjectPerformanceSection({
 
           {/* Test Selector Dropdown */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600">
-              <Funnel size={14} weight="bold" className="text-indigo-500" />
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-field bg-paper border border-line text-xs font-bold text-ink-secondary min-h-[44px]">
+              <Funnel size={14} weight="bold" className="text-brand" />
               <span>Scope:</span>
               <select
                 value={selectedTestId || 'overall'}
                 onChange={(e) => onSelectTest(e.target.value === 'overall' ? null : e.target.value)}
                 disabled={isAttemptedTestsLoading}
-                className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-2"
+                className="bg-transparent font-bold text-ink focus:outline-none cursor-pointer pr-2"
               >
                 <option value="overall">
                   Overall Performance ({attemptedTests?.length ?? 0} {attemptedTests?.length === 1 ? 'Test' : 'Tests'})
                 </option>
                 {attemptedTests?.map((test) => (
                   <option key={test.testId} value={test.testId}>
-                    {test.testName} {test.attemptedOn ? `(${formatDateTime(test.attemptedOn)})` : ''}
+                    {test.testName} {test.attemptedOn ? `(${formatDate(test.attemptedOn)})` : ''}
                   </option>
                 ))}
               </select>
@@ -530,30 +492,28 @@ function SubjectPerformanceSection({
         {/* Horizontal Quick-Filter Chips */}
         {attemptedTests && attemptedTests.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar">
-            {/* Overall Chip */}
             <button
               onClick={() => onSelectTest(null)}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+              className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all min-h-[44px] ${
                 selectedTestId === null
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                  ? 'bg-brand text-white shadow-2xs'
+                  : 'bg-paper hover:bg-sky-tint/80 text-ink border border-line'
               }`}
             >
               <ChartBar size={14} weight={selectedTestId === null ? 'fill' : 'regular'} />
               <span>Overall ({attemptedTests.length})</span>
             </button>
 
-            {/* Individual Test Chips */}
             {attemptedTests.map((test) => {
               const isSelected = selectedTestId === test.testId;
               return (
                 <button
                   key={test.testId}
                   onClick={() => onSelectTest(test.testId)}
-                  className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all max-w-[220px] truncate ${
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all max-w-[220px] truncate min-h-[44px] ${
                     isSelected
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                      ? 'bg-brand text-white shadow-2xs'
+                      : 'bg-paper hover:bg-sky-tint/80 text-ink border border-line'
                   }`}
                 >
                   <Clock size={14} weight={isSelected ? 'fill' : 'regular'} />
@@ -569,77 +529,75 @@ function SubjectPerformanceSection({
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 animate-pulse space-y-3">
-              <div className="h-4 w-28 bg-slate-200 rounded-md" />
-              <div className="h-3 w-full bg-slate-200 rounded-full" />
-              <div className="h-4 w-36 bg-slate-100 rounded-md" />
-            </div>
+            <Skeleton key={i} className="h-44 rounded-card" />
           ))}
         </div>
       ) : error ? (
-        <div className="p-6 rounded-2xl bg-rose-50 border border-rose-100 text-center space-y-1">
-          <p className="text-xs font-bold text-rose-700">Unable to load subject analytics</p>
-          <p className="text-[11px] text-slate-500">Please pull down or refresh the page.</p>
-        </div>
+        <ErrorState
+          title="Unable to load subject analytics"
+          detail="Please refresh or try again later."
+          onRetry={onRetry}
+        />
       ) : !subjects || subjects.length === 0 ? (
-        <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-3">
-          <p className="text-xs font-bold text-slate-700">
-            {selectedTestId ? 'No Questions Recorded for This Test' : 'No Subject Performance Data Yet'}
-          </p>
-          <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-            {selectedTestId
+        <EmptyState
+          icon={BookOpen}
+          title={selectedTestId ? 'No Questions Recorded for This Test' : 'No Subject Performance Data Yet'}
+          detail={
+            selectedTestId
               ? 'This specific test did not contain recorded questions for the selected subject scope.'
-              : 'Complete and submit mock tests to view subject-specific strengths and accuracy breakdowns.'}
-          </p>
-          {selectedTestId && (
-            <div>
-              <button
-                onClick={() => onSelectTest(null)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors"
-              >
-                <ArrowCounterClockwise size={14} weight="bold" />
-                <span>Reset to Overall Performance</span>
-              </button>
-            </div>
-          )}
-        </div>
+              : 'Complete and submit mock tests to view subject-specific strengths and accuracy breakdowns.'
+          }
+          action={
+            selectedTestId ? (
+              <Button variant="secondary" size="sm" onClick={() => onSelectTest(null)}>
+                Reset to Overall Performance
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {subjects.map((sub) => {
-            const accStyle = getAccuracyColor(sub.accuracy);
+            const rubric = getRubricLevel(sub.accuracy);
             const accuracyVal = sub.accuracy !== null ? Math.round(sub.accuracy) : null;
-            const isHigh = sub.accuracy !== null && sub.accuracy >= 80;
-            const isMid = sub.accuracy !== null && sub.accuracy >= 50 && sub.accuracy < 80;
-            const statusLabel = isHigh ? 'Mastered' : isMid ? 'Moderate' : 'Needs Focus';
-            const statusBg = isHigh ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isMid ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200';
-
+            const SubjectIcon = getSubjectIconComponent(sub.subjectName);
             const totalQ = sub.correct + sub.wrong + sub.skipped;
 
             return (
               <div
                 key={sub.subjectId}
-                className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200/80 hover:bg-white hover:border-slate-300 transition-all space-y-4"
+                className="p-5 rounded-card bg-surface border border-line shadow-card hover:border-brand/40 transition-all space-y-4"
               >
                 {/* Subject Header */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xl">{getSubjectIcon(sub.subjectName)}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-field bg-sky-tint text-brand">
+                      <SubjectIcon size={22} weight="duotone" />
+                    </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900">{sub.subjectName}</h3>
-                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mt-0.5 ${statusBg}`}>
-                        {isHigh ? '🌟 ' : isMid ? '⚡ ' : '⚠️ '}{statusLabel}
-                      </span>
+                      <h3 className="text-sm font-bold text-ink">{sub.subjectName}</h3>
+                      {rubric && (
+                        <span
+                          className={`inline-block text-caption font-bold px-2 py-0.5 rounded-full border mt-0.5 ${rubric.colorClass.pill}`}
+                        >
+                          {rubric.label}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
                     <span
-                      className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${accStyle.bg} ${accStyle.text} ${accStyle.border}`}
+                      className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${
+                        rubric
+                          ? rubric.colorClass.pill
+                          : 'bg-paper text-ink-secondary border-line'
+                      }`}
                     >
                       {accuracyVal !== null ? `${accuracyVal}% Accuracy` : 'No Answers'}
                     </span>
                     {sub.averageTimePerQuestionSeconds !== null && sub.averageTimePerQuestionSeconds > 0 && (
-                      <span className="block text-[10px] font-bold text-slate-400 mt-1">
-                        ⚡ {Math.round(sub.averageTimePerQuestionSeconds)}s / Q
+                      <span className="block text-caption font-bold text-ink-muted mt-1">
+                        {Math.round(sub.averageTimePerQuestionSeconds)}s / Q
                       </span>
                     )}
                   </div>
@@ -648,56 +606,58 @@ function SubjectPerformanceSection({
                 {/* Multi-Segmented Progress Bar */}
                 <div className="space-y-1.5">
                   {totalQ > 0 ? (
-                    <div className="h-2 w-full rounded-full bg-slate-200/80 overflow-hidden flex">
+                    <div className="h-2.5 w-full rounded-full bg-paper overflow-hidden flex border border-line/60">
                       {sub.correct > 0 && (
                         <div
                           style={{ flex: sub.correct }}
-                          className="h-full bg-emerald-500 transition-all duration-500"
+                          className="h-full bg-emerald-500 transition-all duration-300"
                           title={`Correct: ${sub.correct}`}
                         />
                       )}
                       {sub.wrong > 0 && (
                         <div
                           style={{ flex: sub.wrong }}
-                          className="h-full bg-rose-500 transition-all duration-500"
+                          className="h-full bg-amber-500 transition-all duration-300"
                           title={`Wrong: ${sub.wrong}`}
                         />
                       )}
                       {sub.skipped > 0 && (
                         <div
                           style={{ flex: sub.skipped }}
-                          className="h-full bg-slate-300 transition-all duration-500"
+                          className="h-full bg-slate-300 transition-all duration-300"
                           title={`Skipped: ${sub.skipped}`}
                         />
                       )}
                     </div>
                   ) : (
-                    <div className="h-2 w-full rounded-full bg-slate-200/80 overflow-hidden">
+                    <div className="h-2.5 w-full rounded-full bg-paper overflow-hidden border border-line/60">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${accStyle.bar}`}
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          rubric ? rubric.colorClass.bar : 'bg-brand'
+                        }`}
                         style={{ width: `${accuracyVal ?? 0}%` }}
                       />
                     </div>
                   )}
                 </div>
 
-                {/* Granular Stats Chips */}
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-center text-xs pt-1">
-                  <div className="p-2 rounded-xl bg-white border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block font-medium">Attempted</span>
-                    <span className="font-extrabold text-slate-900">{sub.questionsAttempted}</span>
+                {/* Inline counts under segmented bars */}
+                <div className="grid grid-cols-4 gap-2 text-center text-xs pt-1">
+                  <div className="p-2 rounded-field bg-paper border border-line">
+                    <span className="text-caption text-ink-muted block font-medium">Attempted</span>
+                    <span className="font-extrabold text-ink tabular-nums">{sub.questionsAttempted}</span>
                   </div>
-                  <div className="p-2 rounded-xl bg-white border border-slate-100">
-                    <span className="text-[10px] text-emerald-600 block font-medium">Correct</span>
-                    <span className="font-extrabold text-emerald-600">{sub.correct}</span>
+                  <div className="p-2 rounded-field bg-mint-tint/60 border border-emerald-100">
+                    <span className="text-caption text-mint-ink block font-medium">Correct</span>
+                    <span className="font-extrabold text-mint-ink tabular-nums">{sub.correct}</span>
                   </div>
-                  <div className="p-2 rounded-xl bg-white border border-slate-100">
-                    <span className="text-[10px] text-rose-500 block font-medium">Wrong</span>
-                    <span className="font-extrabold text-rose-600">{sub.wrong}</span>
+                  <div className="p-2 rounded-field bg-amber-50/70 border border-amber-200/80">
+                    <span className="text-caption text-amber-800 block font-medium">Wrong</span>
+                    <span className="font-extrabold text-amber-900 tabular-nums">{sub.wrong}</span>
                   </div>
-                  <div className="p-2 rounded-xl bg-white border border-slate-100 col-span-3 sm:col-span-1">
-                    <span className="text-[10px] text-slate-400 block font-medium">Score</span>
-                    <span className="font-extrabold text-slate-900">
+                  <div className="p-2 rounded-field bg-paper border border-line">
+                    <span className="text-caption text-ink-muted block font-medium">Score</span>
+                    <span className="font-extrabold text-ink tabular-nums">
                       {sub.score}/{sub.maxScore}
                     </span>
                   </div>
@@ -711,17 +671,20 @@ function SubjectPerformanceSection({
   );
 }
 
-/** Chapter Performance Section with Subject Filter */
+// ─── Chapter Performance Section ─────────────────────────────────────────────
+
 function ChapterPerformanceSection({
   chapters,
   isLoading,
   error,
   subjects,
+  onRetry,
 }: {
   chapters?: ChapterPerformanceSummary[];
   isLoading: boolean;
   error: Error | null;
   subjects?: SubjectPerformanceSummary[];
+  onRetry?: () => void;
 }) {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -754,29 +717,28 @@ function ChapterPerformanceSection({
   }, [chapters, selectedSubjectId, searchQuery, sortBy]);
 
   return (
-    <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-6">
+    <div className="p-6 sm:p-7 rounded-card bg-surface border border-line shadow-card space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-sky-50 text-sky-600">
+            <div className="p-2 rounded-field bg-sky-tint text-brand">
               <ClipboardText size={18} weight="duotone" />
             </div>
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Chapter-wise Breakdown
             </h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-ink-secondary mt-1">
             Pinpoint specific syllabus topics needing practice and review
           </p>
         </div>
 
         {/* Filter & Search Bar */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Subject Selector */}
           <select
             value={selectedSubjectId}
             onChange={(e) => setSelectedSubjectId(e.target.value)}
-            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="px-3 py-2 text-xs font-bold rounded-field bg-paper border border-line text-ink focus:outline-none focus:border-brand min-h-[44px]"
           >
             <option value="all">All Subjects</option>
             {subjects?.map((s) => (
@@ -786,26 +748,24 @@ function ChapterPerformanceSection({
             ))}
           </select>
 
-          {/* Search Box */}
           <div className="relative">
             <MagnifyingGlass
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
             />
             <input
               type="text"
               placeholder="Search chapters..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 w-36 sm:w-48"
+              className="pl-8 pr-3 py-2 text-xs rounded-field bg-paper border border-line text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand w-36 sm:w-48 min-h-[44px]"
             />
           </div>
 
-          {/* Sort Selector */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="px-3 py-2 text-xs font-bold rounded-field bg-paper border border-line text-ink focus:outline-none focus:border-brand min-h-[44px]"
           >
             <option value="accuracy_asc">Lowest Accuracy First</option>
             <option value="accuracy_desc">Highest Accuracy First</option>
@@ -817,41 +777,42 @@ function ChapterPerformanceSection({
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-14 bg-slate-50 rounded-2xl border border-slate-100 animate-pulse" />
+            <Skeleton key={i} className="h-16 rounded-field" />
           ))}
         </div>
       ) : error ? (
-        <div className="p-6 rounded-2xl bg-rose-50 border border-rose-100 text-center space-y-1">
-          <p className="text-xs font-bold text-rose-700">Unable to load chapter analytics</p>
-          <p className="text-[11px] text-slate-500">Please refresh the dashboard.</p>
-        </div>
+        <ErrorState
+          title="Unable to load chapter analytics"
+          detail="Please refresh the dashboard."
+          onRetry={onRetry}
+        />
       ) : filteredChapters.length === 0 ? (
-        <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-1.5">
-          <p className="text-xs font-bold text-slate-700">No chapters found</p>
-          <p className="text-[11px] text-slate-500">
-            {searchQuery || selectedSubjectId !== 'all'
+        <EmptyState
+          title="No chapters found"
+          detail={
+            searchQuery || selectedSubjectId !== 'all'
               ? 'Try changing your search query or subject filter.'
-              : 'Complete mock tests to generate chapter-specific analytics.'}
-          </p>
-        </div>
+              : 'Complete mock tests to generate chapter-specific analytics.'
+          }
+        />
       ) : (
         <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
           {filteredChapters.map((chap) => {
-            const accStyle = getAccuracyColor(chap.accuracy);
+            const rubric = getRubricLevel(chap.accuracy);
             const accuracyVal = chap.accuracy !== null ? Math.round(chap.accuracy) : null;
             return (
               <div
                 key={chap.chapterId}
-                className="p-3.5 sm:p-4 rounded-2xl bg-slate-50/60 border border-slate-200/80 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                className="p-3.5 sm:p-4 rounded-field bg-paper/60 border border-line hover:bg-paper transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-500 px-2 py-0.5 rounded-full bg-slate-200/60 uppercase tracking-wider">
+                    <span className="text-caption font-bold text-ink-secondary px-2 py-0.5 rounded-full bg-sky-tint uppercase tracking-wider">
                       {chap.subjectName}
                     </span>
-                    <h3 className="text-xs font-bold text-slate-900">{chap.chapterName}</h3>
+                    <h3 className="text-xs font-bold text-ink">{chap.chapterName}</h3>
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-caption text-ink-secondary">
                     {formatChapterBreakdownStats(chap)}
                   </p>
                 </div>
@@ -860,21 +821,27 @@ function ChapterPerformanceSection({
                   <div className="w-24 sm:w-32 hidden sm:block">
                     <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${accStyle.bar}`}
+                        className={`h-full rounded-full ${
+                          rubric ? rubric.colorClass.bar : 'bg-brand'
+                        }`}
                         style={{ width: `${accuracyVal ?? 0}%` }}
                       />
                     </div>
                   </div>
 
                   <span
-                    className={`text-xs font-extrabold px-2.5 py-1 rounded-xl border ${accStyle.bg} ${accStyle.text} ${accStyle.border}`}
+                    className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${
+                      rubric
+                        ? rubric.colorClass.pill
+                        : 'bg-paper text-ink-secondary border-line'
+                    }`}
                   >
                     {accuracyVal !== null ? `${accuracyVal}%` : '—'}
                   </span>
 
                   <Link
                     href="/student/tests"
-                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-700 font-bold text-[11px] transition-colors shadow-2xs"
+                    className="px-3.5 py-2 rounded-field bg-surface border border-line hover:border-brand hover:text-brand text-ink font-bold text-caption transition-colors shadow-2xs min-h-[44px] inline-flex items-center"
                   >
                     Practice
                   </Link>
@@ -888,7 +855,8 @@ function ChapterPerformanceSection({
   );
 }
 
-/** Targeted Focus Areas (Weak Chapters & Strong Chapters) */
+// ─── Targeted Syllabus Recommendations (Unified Rubric) ──────────────────────
+
 function TargetedFocusSection({
   weakChapters,
   strongChapters,
@@ -902,13 +870,14 @@ function TargetedFocusSection({
 }) {
   const [activeTab, setActiveTab] = useState<'weak' | 'strong'>('weak');
 
+  // Unified rubric thresholds: <60% = worth practicing, >=80% = mastered
   const filteredWeak = useMemo(
-    () => weakChapters?.filter((c) => c.accuracy !== null && c.accuracy < 50) ?? [],
+    () => weakChapters?.filter((c) => isWorthPracticing(c.accuracy)) ?? [],
     [weakChapters],
   );
 
   const filteredStrong = useMemo(
-    () => strongChapters?.filter((c) => c.accuracy !== null && c.accuracy >= 80) ?? [],
+    () => strongChapters?.filter((c) => isMastered(c.accuracy)) ?? [],
     [strongChapters],
   );
 
@@ -916,45 +885,47 @@ function TargetedFocusSection({
   const isLoading = activeTab === 'weak' ? isWeakLoading : isStrongLoading;
 
   return (
-    <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-6">
+    <div className="p-6 sm:p-7 rounded-card bg-surface border border-line shadow-card space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+            <div className="p-2 rounded-field bg-amber-50 text-amber-600">
               <Sparkle size={18} weight="duotone" />
             </div>
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Targeted Syllabus Recommendations
             </h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Focus on weak chapters to maximize test score jumps, and reinforce strong topics
+          <p className="text-xs text-ink-secondary mt-1">
+            Focus on chapters worth practicing to maximize score gains, and maintain mastered topics
           </p>
         </div>
 
-        {/* Weak vs Strong Tab Toggle */}
-        <div className="inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200">
+        {/* Tab Toggle */}
+        <div className="inline-flex p-1 rounded-field bg-paper border border-line">
           <button
+            type="button"
             onClick={() => setActiveTab('weak')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+            className={`px-4 py-2 text-xs font-bold rounded-field transition-all flex items-center gap-1.5 min-h-[44px] ${
               activeTab === 'weak'
-                ? 'bg-white text-amber-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-amber-900 shadow-2xs border border-amber-200'
+                : 'text-ink-secondary hover:text-ink'
             }`}
           >
             <WarningCircle size={14} weight="bold" className="text-amber-600" />
-            <span>Needs Attention ({filteredWeak.length})</span>
+            <span>Worth Practicing ({filteredWeak.length})</span>
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('strong')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+            className={`px-4 py-2 text-xs font-bold rounded-field transition-all flex items-center gap-1.5 min-h-[44px] ${
               activeTab === 'strong'
-                ? 'bg-white text-emerald-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-emerald-900 shadow-2xs border border-emerald-200'
+                : 'text-ink-secondary hover:text-ink'
             }`}
           >
             <Trophy size={14} weight="bold" className="text-emerald-600" />
-            <span>Mastery Areas ({filteredStrong.length})</span>
+            <span>Mastered Topics ({filteredStrong.length})</span>
           </button>
         </div>
       </div>
@@ -962,53 +933,56 @@ function TargetedFocusSection({
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-slate-50 rounded-2xl border border-slate-100 animate-pulse" />
+            <Skeleton key={i} className="h-20 rounded-field" />
           ))}
         </div>
       ) : displayList.length === 0 ? (
-        <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-1.5">
-          <p className="text-xs font-bold text-slate-700">
-            {activeTab === 'weak' ? 'No Weak Chapters Identified' : 'No mastered topics yet'}
-          </p>
-          <p className="text-[11px] text-slate-500">
-            {activeTab === 'weak'
-              ? "Great job! You have no chapters scoring below the 50% accuracy threshold."
-              : 'Complete more tests and score above 80% to highlight mastery chapters.'}
-          </p>
-        </div>
+        <EmptyState
+          icon={activeTab === 'weak' ? CheckCircle : Trophy}
+          title={activeTab === 'weak' ? 'No Topics Below 60%' : 'No Mastered Topics Yet'}
+          detail={
+            activeTab === 'weak'
+              ? 'Great job! You currently have no chapters scoring below the 60% accuracy threshold.'
+              : 'Complete more tests and score 80% or above to highlight mastery chapters here.'
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {displayList.map((item) => {
-            const accStyle = getAccuracyColor(item.accuracy);
+            const rubric = getRubricLevel(item.accuracy);
             const accuracyVal = item.accuracy !== null ? Math.round(item.accuracy) : null;
             return (
               <div
                 key={item.chapterId}
-                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                className={`p-4 rounded-field border transition-all flex flex-col justify-between ${
                   activeTab === 'weak'
-                    ? 'bg-amber-50/40 border-amber-200/80 hover:bg-amber-50/70'
-                    : 'bg-emerald-50/40 border-emerald-200/80 hover:bg-emerald-50/70'
+                    ? 'bg-amber-50/50 border-amber-200/80 hover:bg-amber-50/80'
+                    : 'bg-mint-tint/50 border-emerald-200/80 hover:bg-mint-tint/80'
                 }`}
               >
                 <div className="space-y-1 mb-3">
                   <span
-                    className={`text-[10px] font-bold uppercase tracking-wider ${
-                      activeTab === 'weak' ? 'text-amber-800' : 'text-emerald-800'
+                    className={`text-caption font-bold uppercase tracking-wider ${
+                      activeTab === 'weak' ? 'text-amber-800' : 'text-mint-ink'
                     }`}
                   >
                     {item.subjectName}
                   </span>
-                  <h4 className="text-xs font-bold text-slate-900 leading-tight">{item.chapterName}</h4>
+                  <h4 className="text-xs font-bold text-ink leading-tight">{item.chapterName}</h4>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-                  <span className={`text-xs font-black ${accStyle.text}`}>
+                <div className="flex items-center justify-between pt-2 border-t border-line/60">
+                  <span
+                    className={`text-xs font-extrabold ${
+                      rubric ? rubric.colorClass.text : 'text-ink'
+                    }`}
+                  >
                     {accuracyVal !== null ? `${accuracyVal}% Accuracy` : '—'}
                   </span>
                   <Link
                     href="/student/tests"
-                    className={`text-xs font-bold hover:underline flex items-center gap-1 ${
-                      activeTab === 'weak' ? 'text-amber-900' : 'text-emerald-900'
+                    className={`text-xs font-bold hover:underline flex items-center gap-1 min-h-[44px] ${
+                      activeTab === 'weak' ? 'text-amber-900' : 'text-mint-ink'
                     }`}
                   >
                     <span>Practice</span>
@@ -1097,44 +1071,57 @@ export default function StudentAnalyticsPage() {
   }, [refetchSummary, refetchTrend, refetchSubject, refetchAttemptedTests, refetchChapter, refetchWeak, refetchStrong]);
 
   return (
-    <div className="store-container space-y-8 pb-12">
-      {/* ── Top Header ────────────────────────────────────────── */}
+    <div className="store-container space-y-6 pb-12">
+      {/* ── Top Header & Breadcrumb ───────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <nav className="store-breadcrumb" aria-label="Breadcrumb">
-            <Link href="/student/overview">Student Hub</Link>
+            <Link href="/student/overview">My Learning</Link>
             <span aria-hidden="true">/</span>
             <span>Performance Analytics</span>
           </nav>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Performance Analytics</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight mt-1">
+            Performance Analytics
+          </h1>
           <p className="student-hero-lead">
             Track your mock test accuracy, score trajectories, and identify targeted syllabus areas to improve.
           </p>
         </div>
 
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors shadow-2xs shrink-0 self-start sm:self-auto disabled:opacity-60"
-        >
-          <ArrowClockwise
-            size={14}
-            weight="bold"
-            className={`text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`}
-          />
-          <span>{isRefreshing ? 'Refreshing...' : 'Refresh Analytics'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
+          {/* Cross-Link CTA to Test Results */}
+          <Link
+            href="/student/results"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-sky-tint hover:bg-sky-tint/80 border border-line text-brand-hover font-bold text-xs transition-colors shadow-2xs min-h-[44px]"
+          >
+            <Exam size={16} weight="duotone" className="text-brand" />
+            <span>View Test Scorecards</span>
+            <ArrowRight size={14} weight="bold" />
+          </Link>
+
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold text-xs transition-colors shadow-2xs min-h-[44px] disabled:opacity-60"
+          >
+            <ArrowClockwise
+              size={14}
+              weight="bold"
+              className={`text-ink-secondary ${isRefreshing ? 'animate-spin' : ''}`}
+            />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Section 1: Performance Overview 5-Card Grid ───────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {isSummaryLoading ? (
           <>
-            <MetricCardSkeleton />
-            <MetricCardSkeleton />
-            <MetricCardSkeleton />
-            <MetricCardSkeleton />
-            <MetricCardSkeleton />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-28 rounded-card" />
+            ))}
           </>
         ) : (
           <>
@@ -1143,20 +1130,28 @@ export default function StudentAnalyticsPage() {
               value={summary?.testsAttempted ?? 0}
               subtitle="Total evaluated attempts"
               icon={ClipboardText}
-              iconColor="text-sky-600"
-              iconBg="bg-sky-50"
+              iconColor="text-brand"
+              iconBg="bg-sky-tint"
             />
             <MetricCard
               title="Average Score"
-              value={summary?.averageScore != null && (summary?.testsAttempted ?? 0) > 0 ? summary.averageScore : '—'}
+              value={
+                summary?.averageScore != null && (summary?.testsAttempted ?? 0) > 0
+                  ? summary.averageScore
+                  : '—'
+              }
               subtitle="Mean marks per test"
               icon={ChartBar}
-              iconColor="text-indigo-600"
-              iconBg="bg-indigo-50"
+              iconColor="text-brand"
+              iconBg="bg-sky-tint"
             />
             <MetricCard
               title="Best Score"
-              value={summary?.bestScore != null && (summary?.testsAttempted ?? 0) > 0 ? summary.bestScore : '—'}
+              value={
+                summary?.bestScore != null && (summary?.testsAttempted ?? 0) > 0
+                  ? summary.bestScore
+                  : '—'
+              }
               subtitle="Highest marks achieved"
               icon={Trophy}
               iconColor="text-purple-600"
@@ -1166,19 +1161,19 @@ export default function StudentAnalyticsPage() {
               title="Overall Accuracy"
               value={
                 summary?.overallAccuracy != null && (summary?.testsAttempted ?? 0) > 0
-                  ? `${Math.round(summary.overallAccuracy)}%`
+                  ? formatPercent(summary.overallAccuracy, { forceZero: true })
                   : '—'
               }
               subtitle="Correct / Total answered"
               icon={Target}
-              iconColor="text-emerald-600"
-              iconBg="bg-emerald-50"
+              iconColor="text-mint-ink"
+              iconBg="bg-mint-tint"
             />
             <MetricCard
               title="Avg Percentage"
               value={
                 summary?.averagePercentage != null && (summary?.testsAttempted ?? 0) > 0
-                  ? `${Math.round(summary.averagePercentage)}%`
+                  ? formatPercent(summary.averagePercentage, { forceZero: true })
                   : '—'
               }
               subtitle="Overall test percentage"
@@ -1195,6 +1190,7 @@ export default function StudentAnalyticsPage() {
         trendData={scoreTrend}
         isLoading={isTrendLoading}
         error={trendError}
+        onRetry={refetchTrend}
       />
 
       {/* ── Section 3: Subject-wise Performance Breakdown ─────── */}
@@ -1206,6 +1202,7 @@ export default function StudentAnalyticsPage() {
         onSelectTest={setSelectedTestId}
         attemptedTests={attemptedTests}
         isAttemptedTestsLoading={isAttemptedTestsLoading}
+        onRetry={refetchSubject}
       />
 
       {/* ── Section 4: Chapter-wise Performance Breakdown ─────── */}
@@ -1214,6 +1211,7 @@ export default function StudentAnalyticsPage() {
         subjects={subjectData?.subjects}
         isLoading={isChapterLoading}
         error={chapterError}
+        onRetry={refetchChapter}
       />
 
       {/* ── Section 5: Targeted Syllabus Recommendations ──────── */}

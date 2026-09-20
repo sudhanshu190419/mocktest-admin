@@ -3,7 +3,6 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  Sparkle,
   BookOpen,
   GraduationCap,
   Play,
@@ -179,91 +178,6 @@ export function StudentHomeHero({
     );
   }
 
-  // 3. State B: New / Unenrolled Student (0 courses)
-  return (
-    <section className="store-container py-10 lg:py-14">
-      {/* Onboarding Welcome Banner */}
-      <div className="p-8 sm:p-12 rounded-3xl bg-white border border-slate-200/80 shadow-xs relative overflow-hidden mb-8">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-amber-50/80 via-sky-50/50 to-transparent rounded-full -mr-24 -mt-24 pointer-events-none" />
-
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/60 text-amber-800 text-[11px] font-bold tracking-wide mb-4">
-            <Sparkle size={14} weight="fill" className="text-amber-600" />
-            <span>WELCOME TO MAKEMETOPPER</span>
-          </div>
-
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight font-display mb-4">
-            Welcome, <br />
-            <span className="text-blue-600">{studentName}</span>.
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-600 leading-relaxed mb-8">
-            Your student account is active! You haven't enrolled in any courses yet. Choose your goal below, try a free interactive demo class, or explore our structured classroom programs.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <a
-              href="#home-goals"
-              className="store-enroll-button !mt-0 !w-auto inline-flex items-center gap-2 text-xs font-bold"
-            >
-              <span>Explore Courses by Goal</span>
-              <ArrowRight size={14} weight="bold" />
-            </a>
-            <ButtonLink
-              href="/demo-class"
-              variant="secondary"
-              className="!w-auto inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
-            >
-              <span>Watch Free Demo Class ↗</span>
-            </ButtonLink>
-          </div>
-        </div>
-      </div>
-
-      {/* 3-Step Orientation Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="p-6 rounded-2xl bg-white border border-slate-200/70 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">STEP 01</span>
-            <h3 className="text-base font-bold text-slate-900 font-display mb-1.5">Pick Your Exam Goal</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Select NEET, JEE, CUET, or Foundation to shape your study catalog, practice tests, and subject syllabus.
-            </p>
-          </div>
-          <a href="#home-goals" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 mt-4">
-            <span>Select goal below</span>
-            <span>↓</span>
-          </a>
-        </div>
-
-        <div className="p-6 rounded-2xl bg-white border border-slate-200/70 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-xs font-mono font-bold text-amber-600 mb-2 block">STEP 02</span>
-            <h3 className="text-base font-bold text-slate-900 font-display mb-1.5">Experience Free Demo Class</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Watch real lectures by top faculty to see how our mentors break down complex ideas with clarity.
-            </p>
-          </div>
-          <Link href="/demo-class" className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 mt-4">
-            <span>Try sample class</span>
-            <span>↗</span>
-          </Link>
-        </div>
-
-        <div className="p-6 rounded-2xl bg-white border border-slate-200/70 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-xs font-mono font-bold text-emerald-600 mb-2 block">STEP 03</span>
-            <h3 className="text-base font-bold text-slate-900 font-display mb-1.5">Enroll & Unlock All Tools</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Get full live classes, recorded archives, verified notes, full-length mock tests, and 24/7 doubt resolution.
-            </p>
-          </div>
-          <Link href="/courses" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 mt-4">
-            <span>Explore packages</span>
-            <span>↗</span>
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
+  // 3. Fallback: Not enrolled (handled by HeroCarousel in MarketingHomeView)
+  return null;
 }

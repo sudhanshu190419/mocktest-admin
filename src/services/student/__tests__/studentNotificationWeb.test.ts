@@ -193,8 +193,8 @@ describe('2. Student Notification Web Service Layer', () => {
 });
 
 describe('3. StudentHeader & Notification Center UI Contract Verification', () => {
-  const headerContent = fs.readFileSync('C:/Projects/mocktest-admin/src/components/student/StudentHeader.tsx', 'utf8');
-  const centerContent = fs.readFileSync('C:/Projects/mocktest-admin/src/components/student/StudentNotificationCenter.tsx', 'utf8');
+  const headerContent = fs.readFileSync('src/components/student/StudentHeader.tsx', 'utf8');
+  const centerContent = fs.readFileSync('src/components/student/StudentNotificationCenter.tsx', 'utf8');
 
   it('Notification bell does NOT link to /student/profile', () => {
     // Check that notification bell does not redirect to profile

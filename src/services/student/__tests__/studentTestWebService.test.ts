@@ -106,6 +106,15 @@ describe('studentTestWebService', () => {
             }),
           };
         }
+        if (table === 'student_pyq_purchases') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: [] }),
+              }),
+            }),
+          };
+        }
         return { select: vi.fn().mockReturnThis() };
       });
 

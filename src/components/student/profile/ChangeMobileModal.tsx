@@ -79,7 +79,17 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
-  }, [isOpen]);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   const startCooldown = () => {
     setCanResend(false);
@@ -238,19 +248,24 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
   const formattedNewPhoneDisplay = normalizePhoneNumber(rawNewPhone);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-line overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-line">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 border border-sky-100">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-tint text-brand border border-line">
               <ShieldCheck size={20} weight="bold" />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900">
+              <h3 className="text-base font-black text-ink">
                 {step === 1 ? 'Change Mobile Number' : 'Verify Mobile Number'}
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-caption text-ink-muted">
                 {step === 1 ? 'Verify identity to update login number' : 'Enter the code sent to your new phone'}
               </p>
             </div>
@@ -258,7 +273,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="rounded-xl p-1.5 text-ink-muted hover:bg-paper hover:text-ink-secondary transition-colors"
           >
             <X size={18} weight="bold" />
           </button>
@@ -285,29 +300,29 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
           <form onSubmit={handleStep1Submit} className="p-6 space-y-4">
             {/* Current Mobile Display */}
             {currentPhone && (
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">Current Number</span>
-                <span className="font-bold text-slate-700">{currentPhone}</span>
+              <div className="p-3 rounded-2xl bg-paper border border-line flex items-center justify-between text-xs">
+                <span className="text-ink-muted font-bold uppercase text-caption tracking-wider">Current Number</span>
+                <span className="font-bold text-ink">{currentPhone}</span>
               </div>
             )}
 
             {/* Current Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Current Password</label>
+              <label className="text-xs font-bold text-ink">Current Password</label>
               <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter your current password"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-line text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink-secondary"
                 >
                   {showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
                 </button>
@@ -316,10 +331,10 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
 
             {/* New Phone Number */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">New Mobile Number</label>
-              <div className="flex rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-sky-500/20 focus-within:border-sky-500 transition-all">
-                <div className="flex items-center gap-1.5 px-3 bg-slate-50 border-r border-slate-200 text-slate-600 text-xs font-bold shrink-0">
-                  <Phone size={14} className="text-slate-400" />
+              <label className="text-xs font-bold text-ink">New Mobile Number</label>
+              <div className="flex rounded-xl border border-line overflow-hidden focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-all">
+                <div className="flex items-center gap-1.5 px-3 bg-paper border-r border-line text-ink-secondary text-xs font-bold shrink-0">
+                  <Phone size={14} className="text-ink-muted" />
                   <span>+91</span>
                 </div>
                 <input
@@ -332,10 +347,10 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                   placeholder="9876543210"
                   required
                   maxLength={10}
-                  className="w-full px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-xs font-semibold text-ink focus:outline-none"
                 />
               </div>
-              <p className="text-[10px] text-slate-400">
+              <p className="text-caption text-ink-muted">
                 An SMS OTP will be sent to this number for verification.
               </p>
             </div>
@@ -345,14 +360,14 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+                className="px-4 py-2.5 rounded-xl border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
               >
                 {submitting ? (
                   <>
@@ -373,18 +388,18 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
         {/* Step 2 Form: 6-Digit OTP Verification */}
         {step === 2 && (
           <form onSubmit={handleStep2Submit} className="p-6 space-y-5">
-            <div className="p-3.5 rounded-2xl bg-sky-50/60 border border-sky-100 text-center space-y-0.5">
-              <p className="text-xs text-sky-900 font-semibold">
+            <div className="p-3.5 rounded-2xl bg-sky-tint/60 border border-line text-center space-y-0.5">
+              <p className="text-xs text-brand-hover font-semibold">
                 Verification code sent to
               </p>
-              <p className="text-sm font-black text-sky-950 font-mono tracking-wider">
+              <p className="text-sm font-black text-brand-hover font-mono tracking-wider">
                 {formattedNewPhoneDisplay}
               </p>
             </div>
 
             {/* 6 OTP Boxes */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700 block text-center">
+              <label className="text-xs font-bold text-ink block text-center">
                 Enter 6-Digit Verification Code
               </label>
               <div className="flex items-center justify-center gap-2">
@@ -401,7 +416,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className="h-12 w-11 text-center text-lg font-black font-mono rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all shadow-2xs"
+                    className="h-12 w-11 text-center text-lg font-black font-mono rounded-xl border border-line bg-paper text-ink focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all shadow-2xs"
                   />
                 ))}
               </div>
@@ -415,7 +430,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                   setStep(1);
                   setError(null);
                 }}
-                className="text-sky-600 hover:text-sky-700 font-bold hover:underline"
+                className="text-brand hover:text-brand-hover font-bold hover:underline"
               >
                 Change Number
               </button>
@@ -424,7 +439,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                 type="button"
                 onClick={handleResend}
                 disabled={!canResend || resending}
-                className="inline-flex items-center gap-1 font-bold text-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed hover:text-slate-900 transition-colors"
+                className="inline-flex items-center gap-1 font-bold text-ink-secondary disabled:text-ink-muted disabled:cursor-not-allowed hover:text-ink transition-colors"
               >
                 <ArrowCounterClockwise size={13} className={resending ? 'animate-spin' : ''} />
                 <span>
@@ -440,14 +455,14 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+                className="px-4 py-2.5 rounded-xl border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
               >
                 {submitting ? (
                   <>

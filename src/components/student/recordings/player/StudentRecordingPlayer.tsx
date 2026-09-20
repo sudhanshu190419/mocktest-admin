@@ -680,7 +680,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
         />
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400 bg-neutral-900 gap-3">
-          <Spinner className="w-8 h-8 animate-spin text-indigo-500" />
+          <Spinner className="w-8 h-8 animate-spin text-brand" />
           <p className="text-sm font-medium">Securing live-class recording stream...</p>
         </div>
       )}
@@ -702,7 +702,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
 
         {isRefreshingUrl && (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 backdrop-blur-md border border-neutral-700 text-xs text-neutral-300">
-            <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+            <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-brand" />
             <span>Renewing token...</span>
           </div>
         )}
@@ -715,7 +715,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
           <span className="text-xs font-medium">{resumeNotification}</span>
           <button
             onClick={restartFromBeginning}
-            className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 ml-1 underline underline-offset-2 transition-colors"
+            className="text-xs font-semibold text-brand hover:text-brand ml-1 underline underline-offset-2 transition-colors"
           >
             Start Over
           </button>
@@ -726,7 +726,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
       {isBuffering && !playerError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 pointer-events-none">
           <div className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-neutral-900/80 border border-neutral-700 shadow-2xl">
-            <Spinner className="w-10 h-10 animate-spin text-indigo-500" />
+            <Spinner className="w-10 h-10 animate-spin text-brand" />
             <span className="text-xs font-medium text-neutral-300">Buffering...</span>
           </div>
         </div>
@@ -744,7 +744,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
           </p>
           <button
             onClick={() => executeUrlRefresh(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all active:scale-95"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand hover:bg-brand text-white text-xs font-semibold shadow-lg shadow-card transition-all active:scale-[0.98]"
           >
             <ArrowsClockwise className="w-4 h-4" />
             Retry Playback
@@ -757,7 +757,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
         <button
           onClick={togglePlay}
           aria-label="Play recording"
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-indigo-600/90 hover:bg-indigo-500 text-white flex items-center justify-center shadow-2xl shadow-indigo-600/50 backdrop-blur-sm transition-all transform hover:scale-110 active:scale-95 z-20"
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-brand/90 hover:bg-brand text-white flex items-center justify-center shadow-2xl shadow-card backdrop-blur-sm transition-all transform hover:scale-105 active:scale-[0.98] z-20"
         >
           <Play className="w-7 h-7 ml-1" weight="fill" />
         </button>
@@ -787,7 +787,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
 
           {/* Played progress bar */}
           <div
-            className="absolute left-0 h-1.5 bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full pointer-events-none transition-all group-hover/scrubber:h-2.5"
+            className="absolute left-0 h-1.5 bg-gradient-to-r bg-brand bg-sky-tint rounded-full pointer-events-none transition-all group-hover/scrubber:h-2.5"
             style={{ width: `${playedPercent}%` }}
           />
 
@@ -800,7 +800,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
           {/* Hover Time Bubble */}
           {hoverTime && (
             <div
-              className="absolute -top-7 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-[11px] font-mono text-white shadow-lg transform -translate-x-1/2 pointer-events-none"
+              className="absolute -top-7 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-caption font-mono text-white shadow-lg transform -translate-x-1/2 pointer-events-none"
               style={{ left: `${hoverTime.xPercent}%` }}
             >
               {formatPlayerTime(hoverTime.time)}
@@ -814,7 +814,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={togglePlay}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-brand"
               title={isPlaying ? 'Pause (Space or K)' : 'Play (Space or K)'}
             >
               {isPlaying ? (
@@ -863,7 +863,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-16 h-1.5 bg-neutral-700 accent-indigo-500 rounded-lg cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
+                className="w-16 h-1.5 bg-neutral-700 accent-brand rounded-lg cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
                 title="Volume"
               />
             </div>
@@ -890,7 +890,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
 
               {showSpeedMenu && (
                 <div className="absolute bottom-full right-0 mb-2 py-1 w-24 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                  <div className="px-3 py-1 text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                  <div className="px-3 py-1 text-caption uppercase font-bold text-neutral-400 tracking-wider">
                     Speed
                   </div>
                   {PLAYBACK_SPEEDS.map((s) => (
@@ -899,12 +899,12 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
                       onClick={() => handleSpeedSelect(s)}
                       className={`w-full px-3 py-1.5 text-xs text-left transition-colors flex items-center justify-between ${
                         playbackSpeed === s
-                          ? 'bg-indigo-600 text-white font-bold'
+                          ? 'bg-brand text-white font-bold'
                           : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
                       }`}
                     >
                       <span>{s}x</span>
-                      {s === 1.0 && <span className="text-[10px] text-neutral-400 font-normal">Normal</span>}
+                      {s === 1.0 && <span className="text-caption text-neutral-400 font-normal">Normal</span>}
                     </button>
                   ))}
                 </div>

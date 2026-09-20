@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   List,
@@ -93,13 +94,13 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 sm:px-6 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-line/80 bg-white/95 px-4 sm:px-6 backdrop-blur-md">
       {/* Left: Mobile Toggle, Desktop Sidebar Toggle, Mobile Brand, & Primary Top Nav */}
       <div className="flex items-center gap-3 lg:gap-4">
         {onToggleMobile && (
           <button
             onClick={onToggleMobile}
-            className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
+            className="lg:hidden p-2 rounded-xl text-ink-secondary hover:bg-paper transition-colors"
             aria-label="Toggle navigation"
           >
             <List size={22} weight="bold" />
@@ -110,7 +111,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         {onToggleSidebar && (
           <button
             onClick={onToggleSidebar}
-            className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            className="hidden lg:flex items-center justify-center p-2 rounded-xl text-ink-secondary hover:text-ink hover:bg-paper transition-colors"
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -119,13 +120,15 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         )}
 
         {/* Mobile Brand Mark (shown when sidebar is hidden) */}
-        <Link href="/" className="lg:hidden flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-extrabold text-sm tracking-tight shadow-sm">
-            mt
-          </span>
-          <span className="font-extrabold text-slate-900 text-base tracking-tight font-display">
-            make<span className="text-blue-600">me</span>topper<span className="text-blue-600">.</span>
-          </span>
+        <Link href="/" className="lg:hidden flex items-center">
+          <Image
+            src="/brand/logo-primary-horizontal.svg"
+            alt="Make Me Topper"
+            width={145}
+            height={34}
+            className="h-7 w-auto object-contain"
+            priority
+          />
         </Link>
 
         {/* Primary Desktop Top Nav */}
@@ -142,8 +145,8 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 href={link.href}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
                   isActive
-                    ? 'bg-blue-50 text-blue-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                    ? 'bg-sky-tint text-brand-hover font-bold shadow-xs'
+                    : 'text-ink-secondary hover:text-ink hover:bg-paper/70'
                 }`}
               >
                 {link.label}
@@ -156,8 +159,8 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
       {/* Right: Target Stream Pill + Notifications + Profile Avatar Dropdown */}
       <div className="flex items-center gap-3 sm:gap-4">
         {/* Stream Badge */}
-        <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50/80 border border-blue-200/60 text-blue-800 text-xs font-bold font-body">
-          <Sparkle size={14} weight="fill" className="text-blue-600" />
+        <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-tint/80 border border-line/60 text-brand-hover text-xs font-bold font-body">
+          <Sparkle size={14} weight="fill" className="text-brand" />
           <span>{streamName}</span>
         </div>
 
@@ -171,8 +174,8 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
             aria-haspopup="dialog"
             className={`relative p-2 rounded-xl transition-colors ${
               notificationCenterOpen
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                ? 'bg-sky-tint text-brand-hover'
+                : 'text-ink-secondary hover:bg-paper hover:text-ink'
             }`}
             title="Notifications"
           >
@@ -197,35 +200,35 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2.5 p-1 rounded-2xl hover:bg-slate-100/70 transition-colors"
+            className="flex items-center gap-2.5 p-1 rounded-2xl hover:bg-paper/70 transition-colors"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-bold text-white shadow-xs font-display">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br bg-brand bg-brand-hover text-xs font-bold text-white shadow-xs font-display">
               {studentInitials}
             </div>
             <div className="hidden sm:block text-left">
-              <span className="block text-xs font-bold text-slate-900 leading-tight font-display">
+              <span className="block text-xs font-bold text-ink leading-tight font-display">
                 {studentName}
               </span>
-              <span className="block text-[10px] font-medium text-slate-500 capitalize">
+              <span className="block text-caption font-medium text-ink-secondary capitalize">
                 Student Account
               </span>
             </div>
-            <CaretDown size={14} className="text-slate-400" />
+            <CaretDown size={14} className="text-ink-muted" />
           </button>
 
           {/* Dropdown Menu */}
           {dropdownOpen && (
-            <div className="absolute right-0 top-12 z-50 w-56 rounded-2xl bg-white p-1.5 border border-slate-200 shadow-xl shadow-slate-900/10 animate-fadeIn font-body">
-              <div className="p-2.5 border-b border-slate-100 mb-1">
-                <p className="text-xs font-bold text-slate-900 leading-tight font-display">{studentName}</p>
-                <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
+            <div className="absolute right-0 top-12 z-50 w-56 rounded-2xl bg-white p-1.5 border border-line shadow-xl shadow-card animate-fadeIn font-body">
+              <div className="p-2.5 border-b border-line mb-1">
+                <p className="text-xs font-bold text-ink leading-tight font-display">{studentName}</p>
+                <p className="text-caption text-ink-secondary truncate">{user?.email}</p>
               </div>
 
               <div className="space-y-0.5">
                 <Link
                   href="/student/profile"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <User size={16} />
                   <span>My Profile</span>
@@ -234,7 +237,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/student/courses"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <BookOpen size={16} />
                   <span>Enrolled Courses</span>
@@ -243,7 +246,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/courses"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <Sparkle size={16} />
                   <span>Explore Courses ↗</span>
@@ -252,14 +255,14 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/pyq"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <GraduationCap size={16} />
                   <span>PYQ Store ↗</span>
                 </Link>
               </div>
 
-              <div className="pt-1 mt-1 border-t border-slate-100">
+              <div className="pt-1 mt-1 border-t border-line">
                 <button
                   onClick={async () => {
                     setDropdownOpen(false);

@@ -28,13 +28,9 @@ import {
   ArrowClockwise,
   CheckCircle,
   ShieldCheck,
-  Globe,
   Sparkle,
   Info,
-  CalendarBlank,
   LockKey,
-  CheckSquare,
-  Square,
   Desktop,
   WifiHigh,
 } from '@phosphor-icons/react';
@@ -69,16 +65,39 @@ export default function StudentTestInstructionsPage() {
       } else {
         setData(res.data);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load test instructions.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load test instructions.');
     } finally {
       setIsLoading(false);
     }
   }, [testId]);
 
   useEffect(() => {
-    loadInstructions();
-  }, [loadInstructions]);
+    let isMounted = true;
+    async function load() {
+      if (!testId) return;
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetchStudentTestInstructions(testId);
+        if (!isMounted) return;
+        if (res.error || !res.data) {
+          setError(res.error || 'Test not found or no longer accessible.');
+        } else {
+          setData(res.data);
+        }
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Failed to load test instructions.');
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      isMounted = false;
+    };
+  }, [testId]);
 
   // Handle Start / Resume Test
   const handleStartOrResume = async () => {
@@ -118,8 +137,8 @@ export default function StudentTestInstructionsPage() {
 
       // Navigate to the Web Test Runner with attempt ID
       router.push('/student/tests/' + test.testId + '/runner?attemptId=' + attemptId);
-    } catch (err: any) {
-      setStartError(err?.message || 'An error occurred while launching the exam.');
+    } catch (err: unknown) {
+      setStartError(err instanceof Error ? err.message : 'An error occurred while launching the exam.');
       setIsStarting(false);
     }
   };
@@ -146,17 +165,17 @@ export default function StudentTestInstructionsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6 max-w-6xl mx-auto py-2 animate-pulse">
-        <div className="h-4 w-36 bg-slate-200 rounded-md" />
-        <div className="h-8 w-2/3 bg-slate-200 rounded-xl" />
+        <div className="h-4 w-36 bg-sky-tint rounded-md" />
+        <div className="h-8 w-2/3 bg-sky-tint rounded-xl" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
           <div className="lg:col-span-2 space-y-4">
-            <div className="h-44 bg-slate-100 rounded-2xl" />
-            <div className="h-32 bg-slate-100 rounded-2xl" />
-            <div className="h-64 bg-slate-100 rounded-2xl" />
+            <div className="h-44 bg-paper rounded-2xl" />
+            <div className="h-32 bg-paper rounded-2xl" />
+            <div className="h-64 bg-paper rounded-2xl" />
           </div>
           <div className="space-y-4">
-            <div className="h-60 bg-slate-100 rounded-2xl" />
-            <div className="h-40 bg-slate-100 rounded-2xl" />
+            <div className="h-60 bg-paper rounded-2xl" />
+            <div className="h-40 bg-paper rounded-2xl" />
           </div>
         </div>
       </div>
@@ -170,23 +189,23 @@ export default function StudentTestInstructionsPage() {
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-rose-50 text-rose-600 mx-auto">
           <WarningCircle size={28} weight="bold" />
         </div>
-        <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+        <h2 className="text-lg sm:text-xl font-bold text-ink">
           Cannot Access Test
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
+        <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed max-w-md mx-auto">
           {error || 'This assessment is currently inaccessible or does not exist.'}
         </p>
         <div className="pt-4 flex items-center justify-center gap-3">
           <Link
             href="/student/tests"
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-ink hover:bg-ink text-white font-bold text-xs transition-colors shadow-sm"
           >
             <ArrowLeft size={14} weight="bold" />
             <span>Back to Mock Tests Hub</span>
           </Link>
           <button
             onClick={loadInstructions}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
+            className="px-4 py-2.5 rounded-xl border border-line bg-white hover:bg-paper text-ink font-bold text-xs transition-colors"
           >
             Retry
           </button>
@@ -217,7 +236,7 @@ export default function StudentTestInstructionsPage() {
       {/* Top Header & Breadcrumb */}
       <div>
         <nav className="store-breadcrumb" aria-label="Breadcrumb">
-          <Link href="/student/overview">Student Hub</Link>
+          <Link href="/student/overview">My Learning</Link>
           <span aria-hidden="true">/</span>
           <Link href="/student/tests">Mock Tests</Link>
           <span aria-hidden="true">/</span>
@@ -227,27 +246,27 @@ export default function StudentTestInstructionsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 border border-indigo-100">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-xs font-bold text-brand-hover border border-line">
                 <Exam size={14} weight="bold" />
                 <span>{test.testType.replace(/_/g, ' ').toUpperCase()}</span>
               </span>
               {test.subjectName && (
-                <span className="inline-flex items-center rounded-lg bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-100">
+                <span className="inline-flex items-center rounded-lg bg-sky-tint px-2.5 py-0.5 text-xs font-semibold text-brand-hover border border-line">
                   {test.subjectName}
                 </span>
               )}
               {test.courseTitle && (
-                <span className="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                <span className="inline-flex items-center rounded-lg bg-paper px-2.5 py-0.5 text-xs font-medium text-ink-secondary">
                   {test.courseTitle}
                 </span>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-2">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight mt-2">
               {test.title}
             </h1>
             {test.description && (
-              <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-ink-secondary mt-1 max-w-2xl leading-relaxed">
                 {test.description}
               </p>
             )}
@@ -261,7 +280,7 @@ export default function StudentTestInstructionsPage() {
                 <span>Opens: {formatScheduleDate(test.availableFrom)}</span>
               </span>
             ) : attemptState === 'in_progress' ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3.5 py-1.5 text-xs font-bold text-sky-700 border border-sky-200 animate-pulse">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3.5 py-1.5 text-xs font-bold text-brand-hover border border-line">
                 <ArrowClockwise size={14} weight="bold" />
                 <span>Attempt In Progress</span>
               </span>
@@ -271,7 +290,7 @@ export default function StudentTestInstructionsPage() {
                 <span>Previously Attempted</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3.5 py-1.5 text-xs font-bold text-indigo-700 border border-indigo-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3.5 py-1.5 text-xs font-bold text-brand-hover border border-line">
                 <Sparkle size={14} weight="bold" />
                 <span>Ready to Attempt</span>
               </span>
@@ -285,39 +304,39 @@ export default function StudentTestInstructionsPage() {
         {/* Left / Main Column (65% width) */}
         <div className="lg:col-span-2 space-y-6">
           {/* 1. Hero 4-Box Test Summary Grid */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
+          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-4">
               Assessment Summary
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
-                <Clock className="h-5 w-5 text-indigo-600 mx-auto" />
-                <p className="text-xs font-medium text-slate-400 mt-1.5">Duration</p>
-                <p className="text-base font-extrabold text-slate-900 mt-0.5">
+              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
+                <Clock className="h-5 w-5 text-brand mx-auto" />
+                <p className="text-xs font-medium text-ink-muted mt-1.5">Duration</p>
+                <p className="text-base font-extrabold text-ink mt-0.5">
                   {test.durationMin !== null ? (test.durationMin + ' Mins') : 'Flexible'}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
-                <BookOpen className="h-5 w-5 text-sky-600 mx-auto" />
-                <p className="text-xs font-medium text-slate-400 mt-1.5">Questions</p>
-                <p className="text-base font-extrabold text-slate-900 mt-0.5">
+              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
+                <BookOpen className="h-5 w-5 text-brand mx-auto" />
+                <p className="text-xs font-medium text-ink-muted mt-1.5">Questions</p>
+                <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.totalQuestions > 0 ? (structure.totalQuestions + ' Qs') : 'Configured'}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
                 <Trophy className="h-5 w-5 text-emerald-600 mx-auto" />
-                <p className="text-xs font-medium text-slate-400 mt-1.5">Total Marks</p>
-                <p className="text-base font-extrabold text-slate-900 mt-0.5">
+                <p className="text-xs font-medium text-ink-muted mt-1.5">Total Marks</p>
+                <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.totalMarks > 0 ? structure.totalMarks : (test.totalMarks || '—')}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
                 <WarningCircle className="h-5 w-5 text-amber-500 mx-auto" />
-                <p className="text-xs font-medium text-slate-400 mt-1.5">Negative Mark</p>
-                <p className="text-base font-extrabold text-slate-900 mt-0.5">
+                <p className="text-xs font-medium text-ink-muted mt-1.5">Negative Mark</p>
+                <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.hasVaryingNegativeMarks
                     ? 'Varies'
                     : test.negativeMarking > 0
@@ -330,12 +349,12 @@ export default function StudentTestInstructionsPage() {
 
           {/* 2. Syllabus / Section Breakdown */}
           {structure.sections && structure.sections.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs">
+            <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
               <div className="flex items-center justify-between mb-3.5">
-                <h2 className="text-sm font-bold text-slate-900">
+                <h2 className="text-sm font-bold text-ink">
                   Exam Sections & Syllabus Coverage
                 </h2>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-ink-muted">
                   {structure.sections.length} Section{structure.sections.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -344,17 +363,17 @@ export default function StudentTestInstructionsPage() {
                 {structure.sections.map((sec, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3.5"
+                    className="flex items-center justify-between rounded-xl border border-line bg-paper/50 p-3.5"
                   >
                     <div>
-                      <span className="text-xs font-bold text-slate-800">
+                      <span className="text-xs font-bold text-ink">
                         {sec.sectionName}
                       </span>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
+                      <p className="text-caption text-ink-muted mt-0.5">
                         {sec.questionCount} Question{sec.questionCount > 1 ? 's' : ''}
                       </p>
                     </div>
-                    <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-extrabold text-indigo-700">
+                    <span className="inline-flex items-center rounded-lg bg-sky-tint px-2.5 py-1 text-xs font-extrabold text-brand-hover">
                       {sec.totalMarks} Marks
                     </span>
                   </div>
@@ -364,11 +383,11 @@ export default function StudentTestInstructionsPage() {
           )}
 
           {/* 3. Marking Scheme Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 mb-3">
+          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
+            <h2 className="text-sm font-bold text-ink mb-3">
               Marking Scheme & Scoring Policy
             </h2>
-            <div className="space-y-2.5 text-xs text-slate-600">
+            <div className="space-y-2.5 text-xs text-ink-secondary">
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
                 <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" weight="bold" />
                 <div>
@@ -385,19 +404,19 @@ export default function StudentTestInstructionsPage() {
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-paper border border-line">
+                <Info className="h-4 w-4 text-ink-muted shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-slate-800">Unattempted Questions: </span>
+                  <span className="font-bold text-ink">Unattempted Questions: </span>
                   <span>0 marks (no negative penalty for questions left blank)</span>
                 </div>
               </div>
 
               {test.passingMarks && (
-                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100">
-                  <Trophy className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" weight="bold" />
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-sky-tint/50 border border-line">
+                  <Trophy className="h-4 w-4 text-brand shrink-0 mt-0.5" weight="bold" />
                   <div>
-                    <span className="font-bold text-indigo-950">Cutoff / Passing Score: </span>
+                    <span className="font-bold text-brand-hover">Cutoff / Passing Score: </span>
                     <span>{test.passingMarks} marks required</span>
                   </div>
                 </div>
@@ -406,39 +425,39 @@ export default function StudentTestInstructionsPage() {
           </div>
 
           {/* 4. Instructions & Guidelines Accordion */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900">
+          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs space-y-4">
+            <h2 className="text-sm font-bold text-ink">
               Exam Instructions & Guidelines
             </h2>
 
-            <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed">
+            <div className="space-y-3.5 text-xs text-ink-secondary leading-relaxed">
               <div className="space-y-1.5">
-                <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
+                <h3 className="font-bold text-ink flex items-center gap-1.5">
                   <span>1. General Guidelines</span>
                 </h3>
-                <ul className="list-disc list-inside space-y-1 pl-1 text-slate-500">
+                <ul className="list-disc list-inside space-y-1 pl-1 text-ink-secondary">
                   <li>The total duration of this test is {test.durationMin ?? 180} minutes.</li>
                   <li>Once started, the timer cannot be paused. The test will automatically submit when time expires.</li>
                   <li>All your selected answers are continuously persisted in the background.</li>
                 </ul>
               </div>
 
-              <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
+              <div className="space-y-1.5 border-t border-line pt-3">
+                <h3 className="font-bold text-ink flex items-center gap-1.5">
                   <span>2. Navigation & Question Palette</span>
                 </h3>
-                <ul className="list-disc list-inside space-y-1 pl-1 text-slate-500">
+                <ul className="list-disc list-inside space-y-1 pl-1 text-ink-secondary">
                   <li>Use the Question Palette on the right to jump directly to any question.</li>
                   <li>You can mark questions as <strong>Marked for Review</strong> to revisit them later before submitting.</li>
                   <li>You can change your selected answer or clear response at any time during the test.</li>
                 </ul>
               </div>
 
-              <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
+              <div className="space-y-1.5 border-t border-line pt-3">
+                <h3 className="font-bold text-ink flex items-center gap-1.5">
                   <span>3. System Integrity & Submission</span>
                 </h3>
-                <ul className="list-disc list-inside space-y-1 pl-1 text-slate-500">
+                <ul className="list-disc list-inside space-y-1 pl-1 text-ink-secondary">
                   <li>Do not refresh or close the browser tab while taking the test.</li>
                   <li>In case of accidental disconnect, returning to this page will allow you to resume your attempt.</li>
                   <li>Click <strong>Submit Test</strong> once you have answered all questions. Instant scorecard and solutions will be available immediately.</li>
@@ -451,30 +470,30 @@ export default function StudentTestInstructionsPage() {
         {/* Right / Sidebar Column (35% width) */}
         <div className="space-y-5 lg:sticky lg:top-4">
           {/* Attempt Status Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-3">
               Your Attempt Status
             </h3>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Attempt Limit</span>
-                <span className="font-bold text-slate-800">
+                <span className="text-ink-secondary">Attempt Limit</span>
+                <span className="font-bold text-ink">
                   {test.attemptLimit ? (test.attemptLimit + ' Max') : 'Unlimited Practice'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Attempts Used</span>
-                <span className="font-bold text-slate-800">
+                <span className="text-ink-secondary">Attempts Used</span>
+                <span className="font-bold text-ink">
                   {attemptSummary.attemptsUsed} attempt{attemptSummary.attemptsUsed === 1 ? '' : 's'}
                 </span>
               </div>
 
               {test.attemptLimit && (
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Attempts Remaining</span>
-                  <span className="font-bold text-indigo-600">
+                  <span className="text-ink-secondary">Attempts Remaining</span>
+                  <span className="font-bold text-brand">
                     {attemptSummary.attemptsRemaining !== null ? attemptSummary.attemptsRemaining : '—'}
                   </span>
                 </div>
@@ -482,12 +501,12 @@ export default function StudentTestInstructionsPage() {
 
               {/* In-Progress Notification */}
               {attemptState === 'in_progress' && (
-                <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-sky-900 mt-2">
+                <div className="rounded-xl bg-sky-tint border border-line p-3 text-xs text-brand-hover mt-2">
                   <div className="flex items-center gap-2 font-bold">
-                    <ArrowClockwise className="h-4 w-4 text-sky-600 animate-spin" />
+                    <ArrowClockwise className="h-4 w-4 text-brand animate-spin" />
                     <span>In-Progress Attempt Found</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-sky-700">
+                  <p className="mt-1 text-caption text-brand-hover">
                     Your saved answers and remaining time will be restored automatically upon resuming.
                   </p>
                 </div>
@@ -502,7 +521,7 @@ export default function StudentTestInstructionsPage() {
                       {latestResult.totalScore} / {latestResult.maxScore} ({latestResult.percentage}%)
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                  <div className="flex items-center justify-between text-caption text-ink-secondary mt-1">
                     <span>Accuracy: {latestResult.accuracy}%</span>
                     <span>{latestResult.correctCount} Correct</span>
                   </div>
@@ -512,38 +531,38 @@ export default function StudentTestInstructionsPage() {
           </div>
 
           {/* System Readiness Check */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">
               System Readiness
             </h3>
 
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-slate-600">
-                  <Desktop className="h-3.5 w-3.5 text-indigo-500" />
+                <span className="flex items-center gap-2 text-ink-secondary">
+                  <Desktop className="h-3.5 w-3.5 text-brand" />
                   <span>Browser Verified</span>
                 </span>
-                <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" weight="bold" /> Compatible
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-slate-600">
-                  <WifiHigh className="h-3.5 w-3.5 text-sky-500" />
+                <span className="flex items-center gap-2 text-ink-secondary">
+                  <WifiHigh className="h-3.5 w-3.5 text-brand" />
                   <span>Network Sync</span>
                 </span>
-                <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" weight="bold" /> Active
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-slate-600">
+                <span className="flex items-center gap-2 text-ink-secondary">
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
                   <span>Autosave Engine</span>
                 </span>
-                <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" weight="bold" /> Ready
                 </span>
               </div>
@@ -551,9 +570,9 @@ export default function StudentTestInstructionsPage() {
           </div>
 
           {/* Agreement Checkbox & Prominent Launch Action */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs space-y-4">
             {attemptState !== 'in_progress' && (
-              <label className="flex items-start gap-2.5 text-xs text-slate-600 cursor-pointer select-none">
+              <label className="flex items-start gap-2.5 text-xs text-ink-secondary cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={hasAgreed}
@@ -561,7 +580,7 @@ export default function StudentTestInstructionsPage() {
                     setHasAgreed(e.target.checked);
                     if (e.target.checked) setStartError(null);
                   }}
-                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                  className="mt-0.5 rounded border-line text-brand focus:ring-brand h-4 w-4"
                 />
                 <span className="leading-snug">
                   I have read and understood all instructions and agree to follow the exam regulations.
@@ -580,7 +599,7 @@ export default function StudentTestInstructionsPage() {
             {isUpcoming ? (
               <button
                 disabled
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-xs font-bold text-slate-400 cursor-not-allowed shadow-none"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
               >
                 <Clock className="h-4 w-4" />
                 <span>Opens Soon ({formatScheduleDate(test.availableFrom)})</span>
@@ -608,7 +627,7 @@ export default function StudentTestInstructionsPage() {
                 <button
                   onClick={handleStartOrResume}
                   disabled={isStarting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
                 >
                   {isStarting ? (
                     <>
@@ -626,12 +645,12 @@ export default function StudentTestInstructionsPage() {
                 <div className="space-y-2">
                   <button
                     disabled
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-xs font-bold text-slate-400 cursor-not-allowed shadow-none"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
                   >
                     <LockKey className="h-4 w-4" />
                     <span>Window Closed (Test Expired)</span>
                   </button>
-                  <p className="text-center text-[11px] text-slate-400">
+                  <p className="text-center text-caption text-ink-muted">
                     The availability window for this test closed on {formatScheduleDate(test.availableUntil) || 'its expiry date'}.
                   </p>
                 </div>
@@ -640,7 +659,7 @@ export default function StudentTestInstructionsPage() {
               <button
                 onClick={handleStartOrResume}
                 disabled={isStarting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
               >
                 {isStarting ? (
                   <>
@@ -665,7 +684,7 @@ export default function StudentTestInstructionsPage() {
             ) : attemptState === 'limit_reached' ? (
               <button
                 disabled
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-xs font-bold text-slate-400 cursor-not-allowed shadow-none"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
               >
                 <span>Attempts Exhausted</span>
               </button>
@@ -673,7 +692,7 @@ export default function StudentTestInstructionsPage() {
               <button
                 onClick={handleStartOrResume}
                 disabled={isStarting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
               >
                 {isStarting ? (
                   <>

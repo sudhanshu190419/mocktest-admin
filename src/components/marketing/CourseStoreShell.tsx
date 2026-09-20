@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -10,9 +11,15 @@ import {
   GraduationCap,
   User,
   SignOut,
+  FilmSlate,
+  CalendarBlank,
+  Trophy,
+  ChartLineUp,
 } from '@phosphor-icons/react';
 import { ButtonLink } from './Button';
 import { useAuth } from '@/context/AuthContext';
+import { ToastProvider } from '@/components/ui/mmt';
+import { StudentBellButton } from '@/components/student/StudentBellButton';
 
 export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -23,15 +30,25 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside or Escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setProfileMenuOpen(false);
       }
     };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setProfileMenuOpen(false);
+        setMenuOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -74,21 +91,40 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
       ]
     : baseLinks;
 
+  const isStudentRoute = pathname.startsWith('/student');
+
+  // PRD §4.2 — measure the sticky header into --shell-offset; any sticky  // element (e.g. the student sub-nav) consumes it. Kills the 65/75/85px  // magic numbers.
+  useEffect(() => {
+    const header = document.querySelector('.store-header');
+    if (!header || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+      const h = header.getBoundingClientRect().height;
+      if (h > 0) {
+        document.documentElement.style.setProperty('--shell-offset', `${Math.round(h + 12)}px`);
+      }
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <>
+    <ToastProvider>
       <a className="store-skip" href="#store-main">
         Skip to content
       </a>
       <header className="store-header">
         <div className="store-container store-header-inner">
-          <Link href="/" className="store-logo" aria-label="MakeMeTopper home">
-            <span className="store-logomark" aria-hidden="true">
-              m<span>t</span>
-            </span>
-            <span>
-              make<span className="store-logo-light">me</span>topper
-              <span className="store-logo-dot">.</span>
-            </span>
+          <Link href="/" className="store-logo flex items-center" aria-label="Make Me Topper home">
+            <Image
+              src="/brand/logo-primary-horizontal.svg"
+              alt="Make Me Topper"
+              width={165}
+              height={38}
+              className="h-8 md:h-9 w-auto object-contain"
+              priority
+            />
           </Link>
           <nav className="store-desktop-nav" aria-label="Main navigation">
             {links.map((link) => (
@@ -103,6 +139,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="store-header-actions">
+            {loggedIn && isStudentRoute && <StudentBellButton />}
             {loggedIn ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -169,6 +206,47 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         <User size={15} weight="duotone" />
                         <span>Profile & Settings</span>
                       </Link>
+                      {isStudentRoute && (
+                        <>
+                          <div className="store-user-dropdown-sep" role="separator" />
+                          <Link
+                            href="/student/recordings"
+                            onClick={() => setProfileMenuOpen(false)}
+                            className="store-user-dropdown-item"
+                            role="menuitem"
+                          >
+                            <FilmSlate size={15} weight="duotone" />
+                            <span>Recordings</span>
+                          </Link>
+                          <Link
+                            href="/student/timetable"
+                            onClick={() => setProfileMenuOpen(false)}
+                            className="store-user-dropdown-item"
+                            role="menuitem"
+                          >
+                            <CalendarBlank size={15} weight="duotone" />
+                            <span>Timetable</span>
+                          </Link>
+                          <Link
+                            href="/student/results"
+                            onClick={() => setProfileMenuOpen(false)}
+                            className="store-user-dropdown-item"
+                            role="menuitem"
+                          >
+                            <Trophy size={15} weight="duotone" />
+                            <span>Results</span>
+                          </Link>
+                          <Link
+                            href="/student/analytics"
+                            onClick={() => setProfileMenuOpen(false)}
+                            className="store-user-dropdown-item"
+                            role="menuitem"
+                          >
+                            <ChartLineUp size={15} weight="duotone" />
+                            <span>Analytics</span>
+                          </Link>
+                        </>
+                      )}
                     </div>
                     <div className="store-user-dropdown-footer">
                       <button
@@ -231,7 +309,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  style={{ textAlign: 'left', color: '#dc2626', marginTop: '6px', fontWeight: 600 }}
+                  style={{ textAlign: 'left', color: 'var(--color-error)', marginTop: '6px', fontWeight: 600 }}
                 >
                   Sign out
                 </button>
@@ -256,10 +334,17 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
               <span className="store-eyebrow">YOUR NEXT CHAPTER</span>
               <Link href="/courses">Explore courses ↗</Link>
               <Link href="/pyq">PYQ packages ↗</Link>
-              <Link href={loggedIn ? '/student/overview' : '/login'}>
-                My learning ↗
-              </Link>
-              <Link href="/login">Student login ↗</Link>
+              {loggedIn ? (
+                <>
+                  <Link href="/student/overview">My learning ↗</Link>
+                  <Link href="/student/doubts">Help & doubts ↗</Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/login">My learning ↗</Link>
+                  <Link href="/login">Student login ↗</Link>
+                </>
+              )}
             </div>
           </div>
           <div className="store-footer-bottom">
@@ -269,6 +354,6 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
-    </>
+    </ToastProvider>
   );
 }

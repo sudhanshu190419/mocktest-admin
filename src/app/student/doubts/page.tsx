@@ -18,6 +18,7 @@ import { useMyDoubts } from '@/hooks/doubt/useDoubt';
 import { StudentDoubtStats } from '@/components/student/doubts/StudentDoubtStats';
 import { StudentDoubtCard } from '@/components/student/doubts/StudentDoubtCard';
 import { StudentAskDoubtModal } from '@/components/student/doubts/StudentAskDoubtModal';
+import { Skeleton, ErrorState, EmptyState } from '@/components/ui/mmt';
 import type { ContextualDoubtParams } from '@/services/student/studentDoubtAcademicService';
 import type { DoubtFilters, DoubtStatus, DoubtResourceType, StudentDoubt } from '@/types/doubt';
 
@@ -176,17 +177,17 @@ function StudentDoubtsHubContent() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <nav className="store-breadcrumb" aria-label="Breadcrumb">
-            <Link href="/student/overview">Student Hub</Link>
+            <Link href="/student/overview">My Learning</Link>
             <span aria-hidden="true">/</span>
             <span>Doubts & Support</span>
           </nav>
           <div className="flex items-center gap-2.5 mt-1">
-            <ChatCircleDots size={28} weight="duotone" style={{ color: 'var(--color-store-blue)' }} />
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <ChatCircleDots size={28} weight="duotone" className="text-brand" />
+            <h1 className="text-2xl sm:text-display font-extrabold text-ink tracking-tight">
               My Academic Doubts
             </h1>
           </div>
-          <p className="student-hero-lead">
+          <p className="text-body text-ink-secondary leading-relaxed">
             Get your academic questions resolved by assigned subject faculty with step-by-step verified explanations.
           </p>
         </div>
@@ -196,17 +197,16 @@ function StudentDoubtsHubContent() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-xs"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-field border border-line bg-surface text-ink-secondary hover:text-ink hover:bg-paper transition-all disabled:opacity-50 shadow-xs"
             title="Refresh doubts"
           >
-            <ArrowsClockwise size={18} className={isFetching ? 'animate-spin text-store-blue' : ''} />
+            <ArrowsClockwise size={18} className={isFetching ? 'animate-spin text-brand' : ''} />
           </button>
 
           <button
             type="button"
             onClick={handleOpenAskModal}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-xs hover:opacity-90 transition-all"
-            style={{ backgroundColor: 'var(--color-store-blue)' }}
+            className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand text-white font-bold text-body shadow-xs hover:bg-brand-hover active:scale-[0.98] transition-all"
           >
             <Plus size={18} weight="bold" />
             <span>Ask a Doubt</span>
@@ -226,14 +226,14 @@ function StudentDoubtsHubContent() {
       />
 
       {/* ─── Filters & Search Toolbar ─────────────────────────────────────── */}
-      <div className="student-card space-y-4">
-        {/* Status Tabs */}
-        <div className="student-filter-strip mb-0 pb-0">
+      <div className="rounded-card border border-line bg-surface p-4 sm:p-5 shadow-card space-y-4">
+        {/* Status Tabs (Vocabulary compliant) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {[
-            { id: 'all', label: 'All Doubts' },
-            { id: 'open', label: 'Open' },
-            { id: 'in_progress', label: 'In Progress' },
-            { id: 'resolved', label: 'Resolved' },
+            { id: 'all', label: `All Doubts (${allDoubts.length})` },
+            { id: 'open', label: `Waiting on Faculty (${openCount})` },
+            { id: 'in_progress', label: `Faculty is on It (${inProgressCount})` },
+            { id: 'resolved', label: `Resolved (${resolvedCount})` },
           ].map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -241,7 +241,11 @@ function StudentDoubtsHubContent() {
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id as StatusTab)}
-                className={`student-filter-btn ${active ? 'active' : ''}`}
+                className={`min-h-[38px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors whitespace-nowrap ${
+                  active
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'bg-paper text-ink-secondary hover:bg-sky-tint'
+                }`}
               >
                 {tab.label}
               </button>
@@ -256,20 +260,20 @@ function StudentDoubtsHubContent() {
             <MagnifyingGlass
               size={16}
               weight="bold"
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted"
             />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search doubts by question title, topic or description..."
-              className="w-full h-10 pl-9 pr-8 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-store-blue focus:bg-white transition-all"
+              className="w-full min-h-[44px] pl-9 pr-8 rounded-field bg-paper border border-line text-body font-medium text-ink placeholder:text-ink-muted outline-none focus:border-brand focus:bg-surface transition-all"
             />
             {searchInput && (
               <button
                 type="button"
                 onClick={() => setSearchInput('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-md"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-ink-muted hover:text-ink-secondary rounded-field"
               >
                 <X size={14} weight="bold" />
               </button>
@@ -285,7 +289,7 @@ function StudentDoubtsHubContent() {
                   setSelectedSubjectId(e.target.value);
                   setPage(1);
                 }}
-                className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 outline-none focus:border-store-blue focus:bg-white transition-all"
+                className="w-full min-h-[44px] px-3 rounded-field bg-paper border border-line text-body font-medium text-ink outline-none focus:border-brand focus:bg-surface transition-all"
               >
                 <option value="">All Subjects</option>
                 {availableSubjects.map((sub) => (
@@ -302,7 +306,7 @@ function StudentDoubtsHubContent() {
             <button
               type="button"
               onClick={handleResetFilters}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors shrink-0"
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 px-3.5 py-2 rounded-field text-body font-bold text-ink-secondary bg-paper hover:bg-sky-tint hover:text-ink transition-colors shrink-0"
             >
               <X size={14} weight="bold" />
               <span>Reset Filters</span>
@@ -317,73 +321,52 @@ function StudentDoubtsHubContent() {
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="student-card animate-pulse space-y-3 h-36"
-            />
+              className="rounded-card border border-line bg-surface p-5 shadow-card space-y-3 h-36 animate-pulse"
+            >
+              <Skeleton className="h-5 w-32 rounded-full" />
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-10 w-full" />
+            </div>
           ))}
         </div>
       ) : isError ? (
-        <div className="student-card border-rose-200 bg-rose-50 p-6 text-center space-y-3">
-          <div className="inline-flex p-2.5 rounded-full bg-rose-100 text-rose-600">
-            <WarningCircle size={24} weight="duotone" />
-          </div>
-          <h3 className="text-sm font-bold text-rose-900">
-            Failed to Load Doubts
-          </h3>
-          <p className="text-xs text-rose-700 max-w-md mx-auto">
-            {error instanceof Error ? error.message : 'An error occurred while loading your doubts.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
+        <ErrorState
+          title="Failed to Load Doubts"
+          detail={error instanceof Error ? error.message : 'An error occurred while loading your doubts.'}
+          onRetry={() => refetch()}
+        />
       ) : doubts.length === 0 ? (
         isFiltered ? (
-          <div className="student-card text-center p-10 space-y-3">
-            <div className="inline-flex p-3 rounded-2xl bg-slate-100 text-slate-400">
-              <Funnel size={28} weight="duotone" />
-            </div>
-            <h3 className="text-base font-extrabold text-slate-900">
-              No Doubts Match Your Filters
-            </h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-              We couldn't find any questions matching your current search or status filters.
-            </p>
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="px-4 py-2 rounded-xl text-white text-xs font-bold shadow-xs transition-colors"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
-            >
-              Clear All Filters
-            </button>
-          </div>
+          <EmptyState
+            icon={Funnel}
+            title="No Doubts Match Your Filters"
+            detail="We couldn't find any questions matching your current search or status filters."
+            action={
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand text-white font-bold text-body shadow-xs hover:bg-brand-hover transition-all"
+              >
+                <span>Clear All Filters</span>
+              </button>
+            }
+          />
         ) : (
-          <div className="student-card text-center p-12 sm:p-16 space-y-4 max-w-lg mx-auto">
-            <div className="inline-flex p-4 rounded-3xl" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
-              <ChatCircleDots size={36} weight="duotone" />
-            </div>
-            <div>
-              <h3 className="text-lg font-extrabold text-slate-900">
-                No Doubts Asked Yet
-              </h3>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Have a question while studying? Submit your doubt with attachments and get detailed faculty solutions.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenAskModal}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-xs hover:opacity-90 transition-all"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
-            >
-              <Plus size={16} weight="bold" />
-              <span>Ask Your First Doubt</span>
-            </button>
-          </div>
+          <EmptyState
+            icon={ChatCircleDots}
+            title="No Doubts Asked Yet"
+            detail="Have a question while studying? Submit your doubt with attachments and get detailed faculty solutions."
+            action={
+              <button
+                type="button"
+                onClick={handleOpenAskModal}
+                className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand text-white font-bold text-body shadow-xs hover:bg-brand-hover transition-all"
+              >
+                <Plus size={16} weight="bold" />
+                <span>Ask Your First Doubt</span>
+              </button>
+            }
+          />
         )
       ) : (
         <div className="space-y-4">
@@ -395,13 +378,13 @@ function StudentDoubtsHubContent() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-              <p className="text-xs font-medium text-slate-500">
-                Showing <span className="font-bold text-slate-800 tabular-nums">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
-                <span className="font-bold text-slate-800 tabular-nums">
+            <div className="flex items-center justify-between pt-4 border-t border-line">
+              <p className="text-caption font-medium text-ink-secondary">
+                Showing <span className="font-bold text-ink tabular-nums">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
+                <span className="font-bold text-ink tabular-nums">
                   {Math.min(page * PAGE_SIZE, paginatedData?.count ?? 0)}
                 </span>{' '}
-                of <span className="font-bold text-slate-800 tabular-nums">{paginatedData?.count ?? 0}</span> doubts
+                of <span className="font-bold text-ink tabular-nums">{paginatedData?.count ?? 0}</span> doubts
               </p>
 
               <div className="flex items-center gap-2">
@@ -409,13 +392,13 @@ function StudentDoubtsHubContent() {
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1 || isFetching}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex min-h-[38px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <CaretLeft size={14} weight="bold" />
                   <span>Prev</span>
                 </button>
 
-                <span className="px-2 text-xs font-bold text-slate-700 tabular-nums">
+                <span className="px-2 text-caption font-bold text-ink tabular-nums">
                   {page} / {totalPages}
                 </span>
 
@@ -423,7 +406,7 @@ function StudentDoubtsHubContent() {
                   type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || isFetching}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex min-h-[38px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <span>Next</span>
                   <CaretRight size={14} weight="bold" />
@@ -449,10 +432,10 @@ export default function StudentDoubtsHubPage() {
     <Suspense
       fallback={
         <div className="store-container space-y-6 pb-12 animate-pulse">
-          <div className="h-8 w-64 bg-slate-200 rounded-lg" />
+          <Skeleton className="h-8 w-64 rounded-field" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-slate-200 rounded-2xl" />
+              <Skeleton key={i} className="h-24 rounded-card" />
             ))}
           </div>
         </div>

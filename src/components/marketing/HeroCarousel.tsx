@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Button, ButtonLink } from './Button';
+import { useAuth } from '@/context/AuthContext';
 
 const SLIDES = [
   {
@@ -187,6 +188,7 @@ function LessonDrawing({ topic }: { topic: (typeof SLIDES)[number]['key'] }) {
 }
 
 export function HeroCarousel() {
+  const { user } = useAuth();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -315,10 +317,15 @@ export function HeroCarousel() {
               <p className="store-eyebrow">{slide.eyebrow}</p>
               <h2>{slide.title}</h2>
               <p className="store-carousel-lead">{slide.copy}</p>
-              <ButtonLink href={slide.href} className="store-enroll-button">
+              <ButtonLink
+                href={slide.key === 'demo' && user ? '/demo-class' : slide.href}
+                className="store-enroll-button"
+              >
                 {slide.cta} <span aria-hidden="true">↗</span>
               </ButtonLink>
-              <p className="store-carousel-note">{slide.note}</p>
+              <p className="store-carousel-note">
+                {slide.key === 'demo' && user ? 'Free interactive live preview' : slide.note}
+              </p>
             </div>
             <div className="store-carousel-art" aria-hidden="true">
               <div className="store-art-heading">

@@ -1,0 +1,452 @@
+{
+  "generatedAt": "2026-09-19T12:23:36.114Z",
+  "base": "http://localhost:3000",
+  "pages": [
+    {
+      "name": "public-home",
+      "url": "/",
+      "finalUrl": "http://localhost:3000/",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "01-public-home.png",
+      "errors": []
+    },
+    {
+      "name": "public-courses",
+      "url": "/courses",
+      "finalUrl": "http://localhost:3000/courses",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "02-public-courses.png",
+      "errors": []
+    },
+    {
+      "name": "public-login",
+      "url": "/login",
+      "finalUrl": "http://localhost:3000/login",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "03-public-login.png",
+      "errors": []
+    },
+    {
+      "name": "public-course-detail",
+      "url": "/courses/da0b6b59-c173-4a19-b83c-53e8f5f42a8f",
+      "finalUrl": "http://localhost:3000/courses/da0b6b59-c173-4a19-b83c-53e8f5f42a8f",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "04-public-course-detail.png",
+      "errors": []
+    },
+    {
+      "name": "public-pyq",
+      "url": "/pyq",
+      "finalUrl": "http://localhost:3000/pyq",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "05-public-pyq.png",
+      "errors": []
+    },
+    {
+      "name": "public-pyq-detail",
+      "url": "/pyq/b1bf1add-620f-4d3f-83b9-42ad4e5a7f26",
+      "finalUrl": "http://localhost:3000/pyq/b1bf1add-620f-4d3f-83b9-42ad4e5a7f26",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "06-public-pyq-detail.png",
+      "errors": []
+    },
+    {
+      "name": "public-demo-class",
+      "url": "/demo-class",
+      "finalUrl": "http://localhost:3000/demo-class",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "07-public-demo-class.png",
+      "errors": []
+    },
+    {
+      "name": "student-courses",
+      "url": "/student/courses",
+      "finalUrl": "http://localhost:3000/student/courses",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "10-student-courses.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-course-detail",
+      "url": "/student/courses/57fe31d6-686c-4f8d-b75a-60db7a2dbcc0",
+      "finalUrl": "http://localhost:3000/student/courses/57fe31d6-686c-4f8d-b75a-60db7a2dbcc0",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "11-student-course-detail.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-classes",
+      "url": "/student/classes",
+      "finalUrl": "http://localhost:3000/student/classes",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "12-student-classes.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-recordings",
+      "url": "/student/recordings",
+      "finalUrl": "http://localhost:3000/student/recordings",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "13-student-recordings.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-timetable",
+      "url": "/student/timetable",
+      "finalUrl": "http://localhost:3000/student/timetable",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "14-student-timetable.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    {
+      "name": "student-doubts",
+      "url": "/student/doubts",
+      "finalUrl": "http://localhost:3000/student/doubts",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "15-student-doubts.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-tests",
+      "url": "/student/tests",
+      "finalUrl": "http://localhost:3000/student/tests",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "17-student-tests.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-results",
+      "url": "/student/results",
+      "finalUrl": "http://localhost:3000/student/results",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "18-student-results.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-analytics",
+      "url": "/student/analytics",
+      "finalUrl": "http://localhost:3000/student/analytics",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "19-student-analytics.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "student-profile",
+      "url": "/student/profile",
+      "finalUrl": "http://localhost:3000/student/profile",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "20-student-profile.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    {
+      "name": "m-student-overview",
+      "url": "/student/overview",
+      "finalUrl": "http://localhost:3000/student/overview",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "21-m-student-overview.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-courses",
+      "url": "/student/courses",
+      "finalUrl": "http://localhost:3000/student/courses",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "22-m-student-courses.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-classes",
+      "url": "/student/classes",
+      "finalUrl": "http://localhost:3000/student/classes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "23-m-student-classes.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-recordings",
+      "url": "/student/recordings",
+      "finalUrl": "http://localhost:3000/student/recordings",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "24-m-student-recordings.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-timetable",
+      "url": "/student/timetable",
+      "finalUrl": "http://localhost:3000/student/timetable",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "25-m-student-timetable.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    {
+      "name": "m-student-doubts",
+      "url": "/student/doubts",
+      "finalUrl": "http://localhost:3000/student/doubts",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "26-m-student-doubts.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-tests",
+      "url": "/student/tests",
+      "finalUrl": "http://localhost:3000/student/tests",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "27-m-student-tests.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-results",
+      "url": "/student/results",
+      "finalUrl": "http://localhost:3000/student/results",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "28-m-student-results.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-analytics",
+      "url": "/student/analytics",
+      "finalUrl": "http://localhost:3000/student/analytics",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "29-m-student-analytics.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()"
+      ]
+    },
+    {
+      "name": "m-student-profile",
+      "url": "/student/profile",
+      "finalUrl": "http://localhost:3000/student/profile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "file": "30-m-student-profile.png",
+      "errors": [
+        "Failed to load resource: the server responded with a status of 406 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    }
+  ],
+  "consoleErrors": {
+    "public-home": [],
+    "public-courses": [],
+    "public-login": [],
+    "public-course-detail": [],
+    "public-pyq": [],
+    "public-pyq-detail": [],
+    "public-demo-class": [],
+    "student-courses": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-course-detail": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-classes": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-recordings": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-timetable": [
+      "Failed to load resource: the server responded with a status of 406 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()"
+    ],
+    "student-doubts": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-tests": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-results": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-analytics": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "student-profile": [
+      "Failed to load resource: the server responded with a status of 406 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()"
+    ],
+    "m-student-overview": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-courses": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-classes": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-recordings": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-timetable": [
+      "Failed to load resource: the server responded with a status of 406 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()"
+    ],
+    "m-student-doubts": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-tests": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-results": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-analytics": [
+      "Failed to load resource: the server responded with a status of 406 ()"
+    ],
+    "m-student-profile": [
+      "Failed to load resource: the server responded with a status of 406 ()",
+      "Failed to load resource: the server responded with a status of 400 ()",
+      "Failed to load resource: the server responded with a status of 400 ()"
+    ]
+  }
+}

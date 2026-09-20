@@ -5,21 +5,21 @@ import Link from 'next/link';
 import {
   Trophy,
   MagnifyingGlass,
-  ArrowClockwise,
-  Sparkle,
   CheckCircle,
   Clock,
-  WarningCircle,
   XCircle,
   BookOpen,
   ArrowRight,
-  Target,
   Exam,
+  ChartBar,
 } from '@phosphor-icons/react';
 import {
   fetchStudentAssignedMockTests,
   type StudentMockTestCardItem,
 } from '@/services/student/studentTestWebService';
+import { formatDate, formatPercent } from '@/lib/format';
+import { getRubricLevel } from '@/lib/rubric';
+import { Button, ButtonLink, EmptyState, ErrorState, Skeleton } from '@/components/ui/mmt';
 
 export default function StudentMyTestResultsPage() {
   const [allTests, setAllTests] = useState<StudentMockTestCardItem[]>([]);
@@ -91,46 +91,6 @@ export default function StudentMyTestResultsPage() {
     });
   }, [completedTests, selectedSubject, searchQuery]);
 
-  // Performance Aggregate Metrics
-  const aggregateMetrics = useMemo(() => {
-    if (completedTests.length === 0) {
-      return { totalTests: 0, avgPercentage: 0, avgAccuracy: 0, totalScoreEarned: 0 };
-    }
-
-    let totalPct = 0;
-    let totalAcc = 0;
-    let totalScore = 0;
-
-    completedTests.forEach((t) => {
-      if (t.latestResult) {
-        totalPct += t.latestResult.percentage || 0;
-        totalAcc += t.latestResult.accuracy || 0;
-        totalScore += t.latestResult.totalScore || 0;
-      }
-    });
-
-    return {
-      totalTests: completedTests.length,
-      avgPercentage: Math.round(totalPct / completedTests.length),
-      avgAccuracy: Math.round(totalAcc / completedTests.length),
-      totalScoreEarned: Math.round(totalScore),
-    };
-  }, [completedTests]);
-
-  const formatResultDate = (isoStr?: string | null) => {
-    if (!isoStr) return null;
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleDateString('en-IN', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return null;
-    }
-  };
-
   const formatTestType = (type: string) => {
     switch (type.toLowerCase()) {
       case 'chapter_test':
@@ -148,17 +108,17 @@ export default function StudentMyTestResultsPage() {
   };
 
   return (
-    <div className="store-container space-y-7 pb-12">
+    <div className="store-container space-y-6 pb-12">
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <nav className="store-breadcrumb" aria-label="Breadcrumb">
-            <Link href="/student/overview">Student Hub</Link>
+            <Link href="/student/overview">My Learning</Link>
             <span aria-hidden="true">/</span>
             <span>Test Results</span>
           </nav>
           <div className="flex items-center gap-3 mt-1">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
               My Test Results
             </h1>
           </div>
@@ -167,59 +127,42 @@ export default function StudentMyTestResultsPage() {
           </p>
         </div>
 
-        {/* Real Summary Metrics Bar */}
-        {completedTests.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]">
-              <CheckCircle className="h-4 w-4" style={{ color: 'var(--color-store-green)' }} weight="bold" />
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Evaluated</p>
-                <p className="text-sm font-extrabold text-slate-900 tabular-nums">{aggregateMetrics.totalTests}</p>
-              </div>
-            </div>
-
-            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sky)' }}>
-              <Sparkle className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
-              <div>
-                <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-blue-dark)' }}>Avg Score</p>
-                <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-ink)' }}>{aggregateMetrics.avgPercentage}%</p>
-              </div>
-            </div>
-
-            <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-lilac)' }}>
-              <Target className="h-4 w-4" style={{ color: 'var(--color-store-violet)' }} weight="bold" />
-              <div>
-                <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-store-violet)' }}>Accuracy</p>
-                <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-violet)' }}>{aggregateMetrics.avgAccuracy}%</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Cross-Link CTA to Full Performance Analytics */}
+        <Link
+          href="/student/analytics"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-sky-tint hover:bg-sky-tint/80 border border-line text-brand-hover font-bold text-xs transition-colors self-start md:self-auto shrink-0 shadow-2xs min-h-[44px]"
+        >
+          <ChartBar size={16} weight="duotone" className="text-brand" />
+          <span>View Performance Analytics</span>
+          <ArrowRight size={14} weight="bold" />
+        </Link>
       </div>
 
       {/* Filter & Search Bar Row */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-line pb-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-ink">
           <span className="student-pill student-pill-sky">
             {filteredResults.length} {filteredResults.length === 1 ? 'Result' : 'Results'}
           </span>
-          <span className="text-slate-400 font-normal">Available for review</span>
+          <span className="text-ink-muted font-normal">Available for review</span>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="relative flex-1 sm:w-64">
-            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
             <input
               type="text"
               placeholder="Search by test title or subject..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:border-store-blue focus:outline-none transition-all"
+              className="w-full rounded-field border border-line bg-surface py-2.5 pl-9 pr-8 text-xs text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none transition-all min-h-[44px]"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink min-h-[44px] min-w-[32px] flex items-center justify-center"
+                aria-label="Clear search"
               >
                 <XCircle size={14} weight="fill" />
               </button>
@@ -230,7 +173,7 @@ export default function StudentMyTestResultsPage() {
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs font-medium text-slate-700 focus:border-store-blue focus:outline-none"
+              className="rounded-field border border-line bg-surface py-2.5 px-3 text-xs font-medium text-ink focus:border-brand focus:outline-none min-h-[44px]"
             >
               <option value="all">All Subjects</option>
               {availableSubjects.map((s) => (
@@ -246,67 +189,46 @@ export default function StudentMyTestResultsPage() {
       {/* Main Content Area */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="student-card animate-pulse space-y-4 h-64"
-            />
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-64 rounded-card" />
           ))}
         </div>
       ) : error ? (
-        <div className="student-card border-rose-200 bg-rose-50/50 p-8 text-center max-w-xl mx-auto my-8 space-y-4">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mx-auto">
-            <WarningCircle size={24} weight="bold" />
-          </div>
-          <h2 className="text-base font-bold text-slate-900">Could Not Load Test Results</h2>
-          <p className="text-xs text-slate-500 leading-relaxed">{error}</p>
-          <button
-            onClick={loadResults}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors shadow-sm"
-          >
-            <ArrowClockwise size={14} weight="bold" />
-            <span>Try Again</span>
-          </button>
-        </div>
+        <ErrorState
+          title="Could Not Load Test Results"
+          detail={error}
+          onRetry={loadResults}
+        />
       ) : filteredResults.length === 0 ? (
-        <div className="student-card text-center p-8 sm:p-12 max-w-xl mx-auto my-8 space-y-4">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl mx-auto" style={{ background: 'var(--color-store-lilac)', color: 'var(--color-store-violet)' }}>
-            <Trophy size={28} weight="duotone" />
-          </div>
-
-          <h2 className="text-base sm:text-lg font-bold text-slate-900">
-            {searchQuery || selectedSubject !== 'all'
-              ? 'No matching results found'
-              : 'No test results available yet'}
-          </h2>
-
-          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-            {searchQuery || selectedSubject !== 'all'
-              ? 'Try resetting your search query or subject filter to view more test scorecards.'
-              : 'Complete your assigned mock tests to view your performance scorecards, accuracy breakdown, and step-by-step verified solutions.'}
-          </p>
-
-          {searchQuery || selectedSubject !== 'all' ? (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedSubject('all');
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors shadow-sm"
-            >
-              <span>Clear Search Filter</span>
-            </button>
-          ) : (
-            <Link
-              href="/student/tests"
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-colors shadow-sm"
-              style={{ backgroundColor: 'var(--color-store-blue)' }}
-            >
-              <Exam size={16} weight="bold" />
-              <span>Browse Assigned Mock Tests</span>
-            </Link>
-          )}
-        </div>
+        searchQuery || selectedSubject !== 'all' ? (
+          <EmptyState
+            title="No matching test results found"
+            detail="Try resetting your search query or subject filter to view more test scorecards."
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedSubject('all');
+                }}
+              >
+                Clear Search Filter
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Trophy}
+            title="No test results available yet"
+            detail="Complete your assigned mock tests to view your performance scorecards, accuracy breakdown, and step-by-step verified solutions."
+            action={
+              <ButtonLink href="/student/tests" size="sm">
+                Browse Assigned Mock Tests
+              </ButtonLink>
+            }
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredResults.map((test) => {
@@ -314,11 +236,12 @@ export default function StudentMyTestResultsPage() {
             const attemptId = res.attemptId || test.attemptSummary.latestAttemptId;
             const resultUrl = `/student/tests/${test.testId}/results/${attemptId}`;
             const reviewUrl = `/student/tests/${test.testId}/results/${attemptId}/review`;
+            const rubric = getRubricLevel(res.percentage);
 
             return (
               <div
                 key={test.testId}
-                className="student-card group flex flex-col justify-between hover:-translate-y-0.5 transition-all duration-200"
+                className="bg-surface border border-line rounded-card p-5 shadow-card hover:border-brand/40 transition-colors flex flex-col justify-between gap-4"
               >
                 <div>
                   {/* Top Badges Row */}
@@ -336,9 +259,9 @@ export default function StudentMyTestResultsPage() {
                     </div>
 
                     {res.submittedAt && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <span className="inline-flex items-center gap-1 text-caption font-semibold text-ink-muted">
                         <Clock size={12} />
-                        <span>{formatResultDate(res.submittedAt)}</span>
+                        <span>{formatDate(res.submittedAt)}</span>
                       </span>
                     )}
                   </div>
@@ -347,41 +270,59 @@ export default function StudentMyTestResultsPage() {
                   <div className="mt-3.5">
                     <Link
                       href={resultUrl}
-                      className="text-base sm:text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-store-blue transition-colors"
+                      className="text-base sm:text-lg font-bold text-ink line-clamp-1 hover:text-brand transition-colors"
                     >
                       {test.title}
                     </Link>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      {test.courseTitle && <span className="font-medium text-slate-600">{test.courseTitle}</span>}
-                      {test.courseTitle && test.batchName && <span className="text-slate-300">•</span>}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-secondary">
+                      {test.courseTitle && <span className="font-medium text-ink-secondary">{test.courseTitle}</span>}
+                      {test.courseTitle && test.batchName && <span className="text-ink-muted">•</span>}
                       {test.batchName && <span>{test.batchName}</span>}
                     </div>
                   </div>
 
                   {/* Performance Result Scorecard Box */}
-                  <div className="mt-4 rounded-xl border border-emerald-100 p-3.5" style={{ background: 'linear-gradient(135deg, var(--color-store-mint) 0%, var(--color-store-white) 80%)' }}>
+                  <div
+                    className={`mt-4 rounded-field border p-3.5 ${
+                      rubric
+                        ? `${rubric.colorClass.bg} ${rubric.colorClass.border}`
+                        : 'bg-mint-tint border-emerald-200'
+                    }`}
+                  >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-store-green)' }}>
+                        <p
+                          className={`text-caption font-bold uppercase tracking-wider ${
+                            rubric ? rubric.colorClass.text : 'text-mint-ink'
+                          }`}
+                        >
                           Total Score
                         </p>
                         <div className="mt-0.5 flex items-baseline gap-1.5">
-                          <span className="text-xl font-extrabold tabular-nums" style={{ color: 'var(--color-store-green)' }}>
+                          <span
+                            className={`text-xl font-extrabold tabular-nums ${
+                              rubric ? rubric.colorClass.text : 'text-mint-ink'
+                            }`}
+                          >
                             {res.totalScore}
                           </span>
-                          <span className="text-xs font-medium text-slate-500">
+                          <span className="text-caption font-medium text-ink-secondary">
                             / {res.maxScore} marks
                           </span>
-                          <span className="student-pill student-pill-mint ml-2">
-                            {res.percentage}%
+                          <span
+                            className={`text-caption font-bold px-2 py-0.5 rounded-full border ml-1.5 ${
+                              rubric ? rubric.colorClass.pill : 'bg-mint-tint text-mint-ink border-emerald-200'
+                            }`}
+                          >
+                            {formatPercent(res.percentage, { forceZero: true })}
                           </span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="text-xs font-bold text-slate-700 block tabular-nums">
-                          {res.accuracy}% Accuracy
+                        <span className="text-xs font-bold text-ink block tabular-nums">
+                          {formatPercent(res.accuracy, { forceZero: true })} Accuracy
                         </span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
+                        <p className="text-caption text-ink-muted mt-0.5">
                           {res.correctCount} Correct • {res.wrongCount} Wrong
                         </p>
                       </div>
@@ -390,41 +331,40 @@ export default function StudentMyTestResultsPage() {
 
                   {/* 3-Column Question Breakdown Grid */}
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-xl p-2" style={{ background: 'var(--color-store-mint)' }}>
-                      <p className="text-[10px] font-bold" style={{ color: 'var(--color-store-green)' }}>Correct</p>
-                      <p className="text-xs font-extrabold mt-0.5 tabular-nums" style={{ color: 'var(--color-store-green)' }}>+{res.correctCount}</p>
+                    <div className="rounded-field bg-mint-tint/60 border border-emerald-100 p-2">
+                      <p className="text-caption font-bold text-mint-ink">Correct</p>
+                      <p className="text-xs font-extrabold mt-0.5 tabular-nums text-mint-ink">+{res.correctCount}</p>
                     </div>
 
-                    <div className="rounded-xl bg-rose-50 border border-rose-100 p-2">
-                      <p className="text-[10px] font-bold text-rose-700">Incorrect</p>
-                      <p className="text-xs font-extrabold text-rose-900 mt-0.5 tabular-nums">-{res.wrongCount}</p>
+                    <div className="rounded-field bg-amber-50/70 border border-amber-200/80 p-2">
+                      <p className="text-caption font-bold text-amber-800">Incorrect</p>
+                      <p className="text-xs font-extrabold text-amber-900 mt-0.5 tabular-nums">-{res.wrongCount}</p>
                     </div>
 
-                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">
-                      <p className="text-[10px] font-bold text-slate-500">Skipped</p>
-                      <p className="text-xs font-extrabold text-slate-700 mt-0.5 tabular-nums">{res.skippedCount}</p>
+                    <div className="rounded-field bg-paper border border-line p-2">
+                      <p className="text-caption font-bold text-ink-secondary">Skipped</p>
+                      <p className="text-xs font-extrabold text-ink mt-0.5 tabular-nums">{res.skippedCount}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Bottom CTA Row */}
-                <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                <div className="mt-2 flex items-center justify-between gap-3 border-t border-line pt-3.5">
                   <Link
                     href={resultUrl}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl text-white px-4 py-2.5 text-xs font-bold shadow-xs hover:opacity-95 transition-all"
-                    style={{ backgroundColor: 'var(--color-store-blue)' }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-field bg-brand hover:bg-brand-hover text-white px-4 py-2.5 text-xs font-bold shadow-2xs transition-colors min-h-[44px]"
                   >
                     <CheckCircle className="h-3.5 w-3.5" weight="bold" />
-                    <span>View Scorecard</span>
+                    <span>View results</span>
                   </Link>
 
                   <Link
                     href={reviewUrl}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-field border border-line bg-surface hover:bg-paper px-3.5 py-2.5 text-xs font-bold text-ink transition-colors min-h-[44px]"
                   >
-                    <BookOpen className="h-3.5 w-3.5" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
+                    <BookOpen className="h-3.5 w-3.5 text-brand" weight="bold" />
                     <span>Solutions</span>
-                    <ArrowRight className="h-3 w-3 text-slate-400" />
+                    <ArrowRight className="h-3 w-3 text-ink-muted" />
                   </Link>
                 </div>
               </div>

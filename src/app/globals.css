@@ -1,5 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+/* MMT Design A tokens — the Tailwind utility bridge for the student
+   experience redesign. Additive over globals; see src/design/tokens.css. */
+@import "../design/tokens.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -61,7 +64,7 @@
   --color-tint-red: #fce8e6;
   --color-tint-amber: #fef7e0;
 
-  --font-display: var(--font-jakarta), var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-jakarta), system-ui, sans-serif;
 
   --radius-field: 12px;
   --radius-card: 16px;

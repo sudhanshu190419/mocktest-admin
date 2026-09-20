@@ -5,6 +5,7 @@ import {
   ChatCircleDots,
   Clock,
   CheckCircle,
+  Hourglass,
 } from '@phosphor-icons/react';
 import type { DoubtStatus } from '@/types/doubt';
 
@@ -35,53 +36,57 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="animate-pulse rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs"
+            className="animate-pulse rounded-card bg-surface p-5 border border-line shadow-card space-y-3"
           >
             <div className="flex items-center justify-between mb-3">
-              <div className="h-4 w-24 bg-slate-100 rounded-md" />
-              <div className="h-9 w-9 bg-slate-100 rounded-xl" />
+              <div className="h-4 w-24 bg-paper rounded-md" />
+              <div className="h-9 w-9 bg-paper rounded-xl" />
             </div>
-            <div className="h-8 w-16 bg-slate-100 rounded-lg mb-1" />
-            <div className="h-3 w-32 bg-slate-100 rounded-md" />
+            <div className="h-8 w-16 bg-paper rounded-lg mb-1" />
+            <div className="h-3 w-32 bg-paper rounded-md" />
           </div>
         ))}
       </div>
     );
   }
 
+  // PRD §7.2: Status vocabulary + "—" when empty
   const statCards = [
     {
       id: 'all' as const,
-      label: 'Total Doubts',
+      label: 'All Doubts',
       count: totalCount,
-      subtitle: 'All submitted queries',
+      displayCount: totalCount > 0 ? totalCount : '—',
+      subtitle: totalCount > 0 ? 'All submitted questions' : 'No doubts submitted yet',
       icon: ChatCircleDots,
-      iconColor: 'text-sky-600',
-      iconBg: 'bg-sky-50 border-sky-100',
-      activeRing: 'ring-2 ring-sky-500/40 border-sky-300 bg-sky-50/20',
-      badgeBg: 'bg-sky-100 text-sky-800',
+      iconColor: 'text-brand',
+      iconBg: 'bg-sky-tint border-line',
+      activeRing: 'ring-2 ring-brand border-brand bg-sky-tint/30',
+      badgeBg: 'bg-sky-tint text-brand-hover',
     },
     {
       id: 'open' as const,
-      label: 'Pending Resolution',
+      label: 'Waiting on Faculty',
       count: pendingCount,
-      subtitle: `${openCount} open • ${inProgressCount} in review`,
-      icon: Clock,
-      iconColor: 'text-amber-600',
-      iconBg: 'bg-amber-50 border-amber-100',
-      activeRing: 'ring-2 ring-amber-500/40 border-amber-300 bg-amber-50/20',
-      badgeBg: 'bg-amber-100 text-amber-800',
+      displayCount: pendingCount > 0 ? pendingCount : '—',
+      subtitle: pendingCount > 0 ? `${openCount} open · ${inProgressCount} faculty is on it` : 'Zero pending replies',
+      icon: Hourglass,
+      iconColor: 'text-sand-ink',
+      iconBg: 'bg-sand border-amber-200',
+      activeRing: 'ring-2 ring-amber-500 border-amber-400 bg-sand/30',
+      badgeBg: 'bg-sand text-sand-ink',
     },
     {
       id: 'resolved' as const,
-      label: 'Resolved Solutions',
+      label: 'Resolved Doubts',
       count: resolvedCount,
-      subtitle: 'Verified faculty answers',
+      displayCount: resolvedCount > 0 ? resolvedCount : '—',
+      subtitle: resolvedCount > 0 ? 'Verified faculty solutions' : 'No resolved doubts yet',
       icon: CheckCircle,
-      iconColor: 'text-emerald-600',
-      iconBg: 'bg-emerald-50 border-emerald-100',
-      activeRing: 'ring-2 ring-emerald-500/40 border-emerald-300 bg-emerald-50/20',
-      badgeBg: 'bg-emerald-100 text-emerald-800',
+      iconColor: 'text-mint-ink',
+      iconBg: 'bg-mint-tint border-emerald-200',
+      activeRing: 'ring-2 ring-emerald-500 border-emerald-400 bg-mint-tint/30',
+      badgeBg: 'bg-mint-tint text-mint-ink',
     },
   ];
 
@@ -106,18 +111,18 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
                 onStatusSelect(card.id);
               }
             }}
-            className={`group relative flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs transition-all duration-200 ${
+            className={`group relative flex min-h-[110px] flex-col justify-between rounded-card border bg-surface p-5 sm:p-6 shadow-card transition-all duration-200 ${
               isSelected
                 ? card.activeRing
-                : 'border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
+                : 'border-line hover:border-line hover:shadow-card-hover'
             } ${onStatusSelect ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-500 tracking-wide uppercase">
+              <span className="text-caption font-bold text-ink-secondary tracking-wide uppercase">
                 {card.label}
               </span>
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl border ${card.iconBg} ${card.iconColor} transition-transform group-hover:scale-105`}
+                className={`flex h-10 w-10 items-center justify-center rounded-field border ${card.iconBg} ${card.iconColor} transition-transform group-hover:scale-105`}
               >
                 <Icon size={22} weight="duotone" />
               </div>
@@ -125,16 +130,16 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight font-sans">
-                  {card.count}
+                <span className="text-2xl sm:text-display font-black text-ink tracking-tight tabular-nums">
+                  {card.displayCount}
                 </span>
-                {totalCount > 0 && card.id !== 'all' && (
-                  <span className="text-[11px] font-semibold text-slate-400">
+                {totalCount > 0 && card.id !== 'all' && card.count > 0 && (
+                  <span className="text-caption font-semibold text-ink-secondary">
                     ({Math.round((card.count / totalCount) * 100)}%)
                   </span>
                 )}
               </div>
-              <p className="text-xs font-medium text-slate-500 leading-snug">
+              <p className="text-caption font-medium text-ink-secondary leading-snug">
                 {card.subtitle}
               </p>
             </div>

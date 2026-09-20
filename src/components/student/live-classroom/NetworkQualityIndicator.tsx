@@ -15,7 +15,7 @@ export const NetworkQualityIndicator: React.FC<NetworkQualityIndicatorProps> = (
 }) => {
   if (isReconnecting) {
     return (
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold backdrop-blur-xs animate-pulse">
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold backdrop-blur-xs">
         <WifiSlash size={13} weight="bold" />
         <span className="hidden sm:inline">Reconnecting...</span>
       </div>

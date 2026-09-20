@@ -1,17 +1,7 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono, Manrope, DM_Sans, Plus_Jakarta_Sans, Inter } from 'next/font/google';
+import { Manrope, DM_Sans, Plus_Jakarta_Sans } from 'next/font/google';
 import Providers from '@/lib/providers';
 import './globals.css';
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
 
 const manrope = Manrope({
   variable: '--font-store-display',
@@ -31,15 +21,14 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   display: 'swap',
 });
 
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin'],
-  display: 'swap',
-});
-
 export const metadata: Metadata = {
-  title: 'MakeMeTopper',
-  description: 'MakeMeTopper learning platform and examination management',
+  title: 'Make Me Topper',
+  description: 'Make Me Topper — Learn. Aspire. Achieve. Live classes, recorded lectures, PYQ practice, and mock test engine.',
+  icons: {
+    icon: '/brand/logo-favicon.svg',
+    shortcut: '/brand/logo-favicon.svg',
+    apple: '/brand/logo-submark.svg',
+  },
 };
 
 export default function RootLayout({
@@ -50,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} ${dmSans.variable} ${plusJakartaSans.variable} ${inter.variable} h-full antialiased`}
+      className={`${manrope.variable} ${dmSans.variable} ${plusJakartaSans.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

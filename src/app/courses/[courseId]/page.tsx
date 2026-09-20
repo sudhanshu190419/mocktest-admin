@@ -66,10 +66,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
       <div className="store-container store-detail-grid">
         <div className="store-detail-content">
           <CourseArtwork stream={course.streamCode} large />
-          <div className="store-art-caption">
-            <span>CURIOUS MINDS. CLEARER CONCEPTS.</span>
-            <span>Comprehensive course curriculum</span>
-          </div>
           <nav className="store-section-nav" aria-label="Course sections">
             <a href="#overview">Overview</a>
             <a href="#curriculum">Curriculum</a>
