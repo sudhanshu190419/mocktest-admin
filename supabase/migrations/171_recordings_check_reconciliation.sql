@@ -1,0 +1,261 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Migration: 171 — Recordings CHECK Reconciliation: storage_or_provider
+--
+-- PostgreSQL 16 | Supabase Compatible | Production Ready | Idempotent
+--
+-- Depends on:
+--   Migration 005 (Domain 04) — created public.recordings and the ORIGINAL
+--                               ck_recordings_storage_or_provider predicate
+--   Migration 072 — recordings.class_id nullability + source_type
+--   Migration 080 — recordings soft-delete columns
+--   Migration 169 — public.recording_status gained 'recording' & 'partial'
+--   Migration 170 — recordings columns / FKs / indexes / title CHECK / RLS
+--
+-- ## Purpose
+--
+-- Reconcile ONLY the existing CHECK constraint:
+--
+--   ck_recordings_storage_or_provider
+--
+-- Old predicate (from migration 005, never changed since):
+--
+--   CHECK (
+--     storage_path IS NOT NULL
+--     OR provider_recording_url IS NOT NULL
+--     OR status IN ('queued','processing')
+--   )
+--
+-- Problem
+-- -------
+-- The old predicate exempts only 'queued' and 'processing'. Two of those
+-- literals no longer describe the application lifecycle:
+--
+--   1. 'queued' is an obsolete legacy enum value. No application code writes
+--      it (recordingService.startRecording/retryRecording write 'recording';
+--      stopRecording and the Egress paths write 'processing'). It is left in
+--      the enum deliberately — see "Legacy 'queued'" below.
+--   2. 'recording' — written by recordingService.startRecording() and
+--      retryRecording() — is NOT exempt, so a row in the live-capture state
+--      with no artifact (correct: no file exists yet) is rejected with
+--      SQLSTATE 23514. The live-class start path could not insert or update.
+--   3. 'failed' — the terminal error state — may legitimately have no
+--      storage artifact, and is not exempt either.
+--   4. 'partial' — a short/incomplete clip — may legitimately have no storage
+--      artifact, and is not exempt either.
+--
+-- New predicate
+-- -------------
+--
+--   CHECK (
+--     storage_path IS NOT NULL
+--     OR provider_recording_url IS NOT NULL
+--     OR status IN ('recording','processing','failed','partial')
+--   )
+--
+-- Meaning per status:
+--
+--   recording  : storage/provider may be NULL (LiveKit Egress is capturing)
+--   processing : storage/provider may be NULL (Egress is exporting to R2)
+--   failed     : storage/provider may be NULL (nothing was produced)
+--   partial    : storage/provider may be NULL (incomplete short clip)
+--   completed  : MUST have storage_path or provider_recording_url
+--
+-- The 'completed' arm is unchanged in intent: this migration preserves, and
+-- never weakens, the requirement that a completed recording owns a real
+-- artifact. recordingService now upholds it application-side as well —
+-- recording-egress-start's reserved R2 key is persisted on the row at start
+-- (storage_bucket + storage_path) and every completion writer refuses to set
+-- 'completed' without an artifact.
+--
+-- Legacy 'queued'
+-- ---------------
+-- The recording_status enum value 'queued' is intentionally NOT removed:
+-- PostgreSQL has no transactional DROP VALUE for enum types, and removing it
+-- is a separate schema decision. It simply is no longer exempt here, so a row
+-- cannot be parked in 'queued' with no artifact. No code path writes 'queued':
+-- the only latent reference is the recordings.status column DEFAULT in
+-- migration 005, and every application writer sets status explicitly.
+--
+-- ## Scope — ONE constraint only
+--
+-- This migration changes ONLY ck_recordings_storage_or_provider (its
+-- predicate, and the constraint comment that is destroyed with it — see
+-- SECTION 3).
+--
+-- It does NOT touch:
+--   • ck_recordings_status_completed   — left exactly as-is; completed_at
+--     remains the successful-completion timestamp and is independent of this
+--     storage/provider rule
+--   • ck_recordings_completed_at
+--   • ck_recordings_storage_pair
+--   • ck_recordings_duration_seconds
+--   • ck_recordings_file_size_bytes
+--   • ck_recordings_segment_number
+--   • ck_recordings_title_length       (added in 170)
+--   • ck_recordings_source_type_class  (added in 072)
+--   • any FOREIGN KEY, UNIQUE constraint, index, RLS policy, trigger, enum
+--     value, or column
+--
+-- ## Transactional safety
+--
+-- The runner wraps this file in a single transaction. DROP CONSTRAINT and
+-- ADD CONSTRAINT are transactional DDL in PostgreSQL 16, so if the ADD fails
+-- the whole migration rolls back and the old constraint (with its original
+-- comment) is restored — the table is never left without a predicate.
+--
+-- ## Idempotency
+--
+-- `drop constraint if exists` followed by a single `add constraint` is
+-- re-run safe: a second execution drops the already-updated definition and
+-- re-adds the identical one.
+--
+-- ## Existing rows
+--
+-- The new predicate is a strict superset of the old one — it exempts more
+-- statuses and removes one that can no longer occur — so no row that
+-- satisfied the old predicate can fail the new one. The constraint is
+-- therefore added fully VALIDATED (no NOT VALID needed), and no backfill is
+-- required. Production public.recordings currently contains 0 rows.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION 1 — Drop the old constraint (idempotent)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+alter table public.recordings
+  drop constraint if exists ck_recordings_storage_or_provider;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION 2 — Recreate it with the reconciled predicate
+--
+-- Only the third disjunction changes: the obsolete 'queued' literal is
+-- replaced by the four statuses the application actually uses while a
+-- recording has no artifact yet.
+--
+-- The first two disjunctions — storage_path / provider_recording_url — are
+-- reproduced verbatim from migration 005.
+--
+-- No NOT VALID: the new predicate is a strict superset of the old one, so
+-- every existing row already satisfies it and full validation can run now.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+alter table public.recordings
+  add constraint ck_recordings_storage_or_provider check (
+    storage_path is not null
+    or provider_recording_url is not null
+    or status in ('recording', 'processing', 'failed', 'partial')
+  );
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION 3 — Restore the constraint comment
+--
+-- DROP CONSTRAINT destroys the comment attached to it (migration 005 had
+-- documented the old predicate here), so the documentation is re-attached to
+-- the recreated constraint. This is part of the same object changed above —
+-- not unrelated cleanup.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+comment on constraint ck_recordings_storage_or_provider on public.recordings is
+  'A completed recording must have storage_path or provider_recording_url. '
+  'Rows in recording/processing/failed/partial may have neither. '
+  'Reconciled in migration 171 (the obsolete queued literal was replaced by '
+  'recording/failed/partial to match the recording_status lifecycle).';
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION 4 — MANUAL VALIDATION SQL
+--
+-- NOT executed by this migration — copy into the Supabase SQL Editor and run
+-- manually after applying 171.
+--
+-- 4a. Confirm the new predicate on ck_recordings_storage_or_provider:
+--
+--     select conname, pg_get_constraintdef(oid)
+--     from pg_constraint
+--     where conrelid = 'public.recordings'::regclass
+--       and conname = 'ck_recordings_storage_or_provider';
+--
+--     Expected (1 row):
+--       CHECK (((storage_path IS NOT NULL) OR (provider_recording_url IS NOT NULL)
+--       OR (status = ANY (ARRAY['recording'::recording_status,
+--                               'processing'::recording_status,
+--                               'failed'::recording_status,
+--                               'partial'::recording_status]))))
+--
+-- 4b. Confirm every other recordings CHECK constraint is still present:
+--
+--     select conname, pg_get_constraintdef(oid)
+--     from pg_constraint
+--     where conrelid = 'public.recordings'::regclass
+--       and contype = 'c'
+--     order by conname;
+--
+--     Expected (9 rows, unchanged apart from the one above):
+--       ck_recordings_completed_at
+--       ck_recordings_duration_seconds
+--       ck_recordings_file_size_bytes
+--       ck_recordings_segment_number
+--       ck_recordings_source_type_class
+--       ck_recordings_status_completed
+--       ck_recordings_storage_or_provider
+--       ck_recordings_storage_pair
+--       ck_recordings_title_length
+--
+-- 4c. Confirm no duplicate constraint exists:
+--
+--     select conname, count(*)
+--     from pg_constraint
+--     where conrelid = 'public.recordings'::regclass
+--       and conname = 'ck_recordings_storage_or_provider'
+--     group by conname
+--     having count(*) > 1;
+--
+--     Expected: 0 rows.
+--
+-- 4d. Confirm no constraint is unvalidated (should be 0 rows):
+--
+--     select conname
+--     from pg_constraint
+--     where conrelid = 'public.recordings'::regclass
+--       and contype = 'c'
+--       and not convalidated;
+--
+--     Expected: 0 rows.
+--
+-- 4e. Confirm the legacy enum value is still present (expected 6 labels):
+--
+--     select enumlabel
+--     from pg_enum
+--     where enumtypid = 'public.recording_status'::regtype
+--     order by enumsortorder;
+--
+--     Expected: queued, processing, completed, failed, recording, partial
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- ROLLBACK SQL (NOT executed by this migration — copy & run manually only if
+-- Migration 171 must be reverted):
+--
+--   alter table public.recordings
+--     drop constraint if exists ck_recordings_storage_or_provider;
+--
+--   alter table public.recordings
+--     add constraint ck_recordings_storage_or_provider check (
+--       storage_path is not null
+--       or provider_recording_url is not null
+--       or status in ('queued', 'processing')
+--     );
+--
+--   comment on constraint ck_recordings_storage_or_provider on public.recordings is
+--     'Completed or failed recordings must have at least storage_path or '
+--     'provider_recording_url. queued/processing rows may have neither.';
+--
+-- CAUTION: the rollback can only succeed while no row violates the OLD
+-- predicate. After 171 is in use, any recording left in 'recording',
+-- 'failed' or 'partial' without an artifact would block the ADD and abort the
+-- rollback. Resolve or delete such rows first (production recordings = 0 at
+-- the time 171 was authored).
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- END OF MIGRATION — 171 Recordings CHECK Reconciliation
+-- ═══════════════════════════════════════════════════════════════════════════════

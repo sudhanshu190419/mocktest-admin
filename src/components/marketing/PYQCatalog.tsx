@@ -5,17 +5,23 @@ import Link from 'next/link';
 import { Card } from './Card';
 import { ButtonLink } from './Button';
 import { CourseArtwork } from './StoreCourseCard';
+import { ArrowRight, CalendarBlank, FileText, Exam } from '@phosphor-icons/react/dist/ssr';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import type { PYQPackage } from '@/types/pyqCatalog';
 import type { ExamStreamCode } from '@/types/learnerGoal';
 
 export function PYQPackageCard({ item }: { item: PYQPackage }) {
+  const streamCode = item.streamCode?.toUpperCase();
+  const isNeet = streamCode === 'NEET' || item.title?.toUpperCase().includes('NEET');
+  const topImage = isNeet ? '/pyq/pyq.png' : null;
+
   return (
     <Card className="store-course-card" interactive>
       <Link href={`/pyq/${item.packageId}`} tabIndex={-1} aria-hidden="true">
         <CourseArtwork
           stream={item.streamCode}
           title={item.subjectBreakdown.map((entry) => entry.subject).slice(0, 2).join('\n')}
+          imageUrl={topImage}
         />
       </Link>
       <div className="store-course-card-body">
@@ -30,14 +36,23 @@ export function PYQPackageCard({ item }: { item: PYQPackage }) {
         </h3>
         <p className="store-card-description">{item.shortDescription}</p>
         <div className="store-course-facts">
-          <span className="tabular-nums">{item.yearRange}</span>
-          <span className="tabular-nums">{item.totalPapers} papers</span>
-          <span className="tabular-nums">{item.totalQuestions} questions</span>
+          <span className="store-fact-item">
+            <CalendarBlank size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span className="tabular-nums">{item.yearRange}</span>
+          </span>
+          <span className="store-fact-item">
+            <FileText size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span className="tabular-nums">{item.totalPapers} papers</span>
+          </span>
+          <span className="store-fact-item">
+            <Exam size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span className="tabular-nums">{item.totalQuestions} questions</span>
+          </span>
         </div>
         <div className="store-card-price">
-          <div>
+          <div className="store-card-price-info">
             <span className="store-small-label">One-time purchase</span>
-            <div>
+            <div className="store-card-price-row">
               <strong className="tabular-nums">
                 {formatCoursePrice(item.discountedPrice, item.currency)}
               </strong>
@@ -47,21 +62,20 @@ export function PYQPackageCard({ item }: { item: PYQPackage }) {
                 </del>
               )}
             </div>
+            <p className="store-monthly-line">
+              <b>{item.accessType}</b> · Online practice
+            </p>
           </div>
-          <span className="store-card-arrow" aria-hidden="true">
-            ↗
-          </span>
+          <Link
+            href={`/pyq/${item.packageId}`}
+            className="store-card-cta store-card-cta-explore"
+          >
+            <span className="store-card-cta-text">View package</span>
+            <span className="store-card-cta-arrow" aria-hidden="true">
+              <ArrowRight size={13} weight="bold" />
+            </span>
+          </Link>
         </div>
-        <p className="store-monthly-line">
-          <b>{item.accessType}</b> · Online practice
-        </p>
-        <ButtonLink
-          href={`/pyq/${item.packageId}`}
-          variant="secondary"
-          className="store-card-button"
-        >
-          View package <span aria-hidden="true">→</span>
-        </ButtonLink>
       </div>
     </Card>
   );

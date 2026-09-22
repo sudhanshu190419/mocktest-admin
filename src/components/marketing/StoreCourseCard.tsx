@@ -1,6 +1,8 @@
+'use client';
+
 import Link from 'next/link';
 import { Card } from './Card';
-import { ButtonLink } from './Button';
+import { ArrowRight, Globe, CalendarBlank, ChartBar } from '@phosphor-icons/react/dist/ssr';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import type { Course } from '@/types/courseCatalog';
 
@@ -8,11 +10,26 @@ export function CourseArtwork({
   stream,
   title,
   large = false,
+  imageUrl,
 }: {
   stream: Course['streamCode'];
   title?: string;
   large?: boolean;
+  imageUrl?: string | null;
 }) {
+  if (imageUrl) {
+    return (
+      <div className={`store-course-card-thumb ${large ? 'store-course-card-thumb-large' : ''}`}>
+        <img
+          src={imageUrl}
+          alt={title || `${stream} Course`}
+          className="store-course-thumb-img"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`course-art art-${stream.toLowerCase()} ${large ? 'art-large' : ''}`}>
       <div className="art-grid" aria-hidden="true" />
@@ -72,11 +89,21 @@ export function CourseArtwork({
 export function StoreCourseCard({ course, isEnrolled = false }: { course: Course; isEnrolled?: boolean }) {
   const price = course.discountedPrice ?? course.originalPrice;
   const monthly = course.plans.find((plan) => plan.billingCycle === 'monthly' && plan.isActive);
+  const STREAM_COVER_IMAGES: Record<string, string> = {
+    NEET: '/course/neet.png',
+    CUET: '/course/cuet.png',
+  };
+  const streamCode = course.streamCode?.toUpperCase();
+  const topImage = STREAM_COVER_IMAGES[streamCode] || course.thumbnailPath || null;
 
   return (
     <Card className="store-course-card" interactive>
       <Link href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`} tabIndex={-1} aria-hidden="true">
-        <CourseArtwork stream={course.streamCode} />
+        <CourseArtwork
+          stream={course.streamCode}
+          title={course.presentation?.displayTitle || course.title}
+          imageUrl={topImage}
+        />
       </Link>
       <div className="store-course-card-body">
         <div className="store-card-meta">
@@ -98,14 +125,23 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
         </h3>
         <p className="store-card-description">{course.shortDescription}</p>
         <div className="store-course-facts">
-          <span>{course.presentation.languageLabel}</span>
-          <span className="tabular-nums">{course.duration} days</span>
-          <span className="capitalize">{course.difficultyLevel}</span>
+          <span className="store-fact-item">
+            <Globe size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span>{course.presentation.languageLabel}</span>
+          </span>
+          <span className="store-fact-item">
+            <CalendarBlank size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span className="tabular-nums">{course.duration} days</span>
+          </span>
+          <span className="store-fact-item">
+            <ChartBar size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <span className="capitalize">{course.difficultyLevel}</span>
+          </span>
         </div>
         <div className="store-card-price">
-          <div>
+          <div className="store-card-price-info">
             <span className="store-small-label">{isEnrolled ? 'Access Status' : 'Full course'}</span>
-            <div>
+            <div className="store-card-price-row">
               {isEnrolled ? (
                 <strong className="text-emerald-700 text-base">Active Enrolled</strong>
               ) : (
@@ -119,24 +155,24 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
                 </>
               )}
             </div>
+            {!isEnrolled && monthly && (
+              <p className="store-monthly-line">
+                or <b className="tabular-nums">{formatCoursePrice(monthly.price, monthly.currencyCode)}</b> / mo
+              </p>
+            )}
           </div>
-          <span className="store-card-arrow" aria-hidden="true">
-            ↗
-          </span>
+          <Link
+            href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`}
+            className={`store-card-cta ${isEnrolled ? 'store-card-cta-enrolled' : 'store-card-cta-explore'}`}
+          >
+            <span className="store-card-cta-text">
+              {isEnrolled ? 'Go to Classroom' : 'Explore Course'}
+            </span>
+            <span className="store-card-cta-arrow" aria-hidden="true">
+              <ArrowRight size={13} weight="bold" />
+            </span>
+          </Link>
         </div>
-        {!isEnrolled && monthly && (
-          <p className="store-monthly-line">
-            or <b className="tabular-nums">{formatCoursePrice(monthly.price, monthly.currencyCode)}</b>{' '}
-            / month with a subscription
-          </p>
-        )}
-        <ButtonLink
-          href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`}
-          variant={isEnrolled ? 'primary' : 'secondary'}
-          className="store-card-button"
-        >
-          {isEnrolled ? 'Go to Classroom' : 'Explore course'} <span aria-hidden="true">→</span>
-        </ButtonLink>
       </div>
     </Card>
   );

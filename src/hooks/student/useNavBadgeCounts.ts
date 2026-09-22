@@ -1,8 +1,18 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import { useMyDoubts } from '@/hooks/doubt/useDoubt';
-import { fetchStudentAssignedMockTests, type StudentMockTestCardItem } from '@/services/student/studentTestWebService';
+import { useAuth } from '@/context/AuthContext';
+import {
+  type StudentMockTestCardItem,
+} from '@/services/student/studentTestWebService';
+import {
+  fetchStudentDashboardPrimary,
+  studentDashboardKeys,
+  type StudentDashboardSummary,
+} from '@/services/student/studentDashboardWebService';
+import { getAssignedTestsQueryOptions } from '@/hooks/student/useStudentAssignedMockTests';
 import { isDueThisWeek } from '@/lib/testCardState';
 
 /**
@@ -12,8 +22,6 @@ import { isDueThisWeek } from '@/lib/testCardState';
  *
  * Shared by the sub-nav and the mobile bottom bar; react-query caches one truth.
  */
-
-const TESTS_STALE_MS = 120_000;
 
 export interface NavBadgeCounts {
   testsDue: number;
@@ -29,19 +37,63 @@ export function useOpenDoubtCount(): number {
 
 /** Tests due this week (§7.3 isDueThisWeek), resilient (0 on error). */
 export function useTestsDueCount(): number {
-  const query = useQuery<{ tests: StudentMockTestCardItem[] }>({
-    queryKey: ['nav-badge-tests-due'],
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  const pathname = usePathname();
+  const isOverviewRoute = pathname === '/student/overview';
+
+  // 1. On /student/overview, share the overview primary query so the badge and
+  // the dashboard stay deduplicated on the same React Query key.
+  const overviewPrimaryQuery = useQuery<{ tests: StudentMockTestCardItem[] }>({
+    queryKey: ['nav-badge-overview-tests', profileId],
     queryFn: async () => {
-      const result = await fetchStudentAssignedMockTests();
-      return { tests: result.tests || [] };
+      const cachedPrimary = queryClient.getQueryData<StudentDashboardSummary>(
+        studentDashboardKeys.overviewPrimary(profileId),
+      );
+      if (cachedPrimary?.assignedMockTests) {
+        return { tests: cachedPrimary.assignedMockTests };
+      }
+
+      try {
+        const primary = await queryClient.fetchQuery({
+          queryKey: studentDashboardKeys.overviewPrimary(profileId),
+          queryFn: fetchStudentDashboardPrimary,
+          staleTime: 30_000,
+        });
+        return { tests: primary.assignedMockTests };
+      } catch {
+        const result = await queryClient.fetchQuery(getAssignedTestsQueryOptions(profileId));
+        return { tests: result.tests || [] };
+      }
     },
-    staleTime: TESTS_STALE_MS,
+    enabled: isOverviewRoute && Boolean(profileId),
+    staleTime: 30_000,
     gcTime: 5 * 60_000,
     retry: 1,
     refetchOnWindowFocus: false,
   });
 
-  const tests = query.data?.tests;
+  // 2. On non-overview routes (/student/tests, /student/analytics, etc.), use the
+  // canonical assigned-tests query. This shares one in-flight request and cache
+  // with /student/tests on cold load, and avoids pulling the overview pipeline.
+  const assignedTestsQuery = useQuery({
+    ...getAssignedTestsQueryOptions(profileId),
+    enabled: !isOverviewRoute && Boolean(profileId),
+    refetchOnWindowFocus: false,
+  });
+
+  if (isOverviewRoute) {
+    const tests = overviewPrimaryQuery.data?.tests;
+    if (!tests) return 0;
+    return tests.filter((t) => isDueThisWeek(t)).length;
+  }
+
+  // On non-overview routes: check if overviewPrimary happens to be cached in memory (Plan A)
+  const cachedPrimary = queryClient.getQueryData<StudentDashboardSummary>(
+    studentDashboardKeys.overviewPrimary(profileId),
+  );
+  const tests = cachedPrimary?.assignedMockTests || assignedTestsQuery.data?.tests;
   if (!tests) return 0;
   return tests.filter((t) => isDueThisWeek(t)).length;
 }

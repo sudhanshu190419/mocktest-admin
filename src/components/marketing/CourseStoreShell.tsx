@@ -15,6 +15,7 @@ import {
   CalendarBlank,
   Trophy,
   ChartLineUp,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import { ButtonLink } from './Button';
 import { useAuth } from '@/context/AuthContext';
@@ -78,22 +79,26 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
     .join('') || 'ST';
 
   const baseLinks = [
-    { href: '/', label: 'Home', current: pathname === '/' },
-    { href: '/courses', label: 'Explore Courses', current: pathname.startsWith('/courses') },
-    { href: '/pyq', label: 'PYQ Packages', current: pathname.startsWith('/pyq') },
-    { href: '/demo-class', label: 'Demo Class', current: pathname.startsWith('/demo-class') },
+    { key: 'nav-home', href: '/', label: 'Home', current: pathname === '/' },
+    { key: 'nav-courses', href: '/courses', label: 'Courses', current: pathname.startsWith('/courses') && !pathname.includes('mock') },
+    { key: 'nav-tests', href: '/courses#home-courses', label: 'Mock Tests', current: pathname.includes('mock') || pathname.includes('test') },
+    { key: 'nav-pyq', href: '/pyq', label: 'PYQ Packages', current: pathname.startsWith('/pyq') },
+    { key: 'nav-live', href: '/demo-class', label: 'Live Classes', current: pathname.startsWith('/demo-class') },
+    { key: 'nav-blog', href: '/blog', label: 'Blog', current: pathname.startsWith('/blog') },
   ];
 
   const links = loggedIn
     ? [
         ...baseLinks,
-        { href: '/student/overview', label: 'My Learning', current: pathname.startsWith('/student') },
+        { key: 'nav-learning', href: '/student/overview', label: 'My Learning', current: pathname.startsWith('/student') },
       ]
     : baseLinks;
 
   const isStudentRoute = pathname.startsWith('/student');
 
-  // PRD §4.2 — measure the sticky header into --shell-offset; any sticky  // element (e.g. the student sub-nav) consumes it. Kills the 65/75/85px  // magic numbers.
+  // PRD §4.2 — measure the sticky header into --shell-offset; any sticky
+  // element (e.g. the student sub-nav) consumes it. Kills the 65/75/85px
+  // magic numbers.
   useEffect(() => {
     const header = document.querySelector('.store-header');
     if (!header || typeof ResizeObserver === 'undefined') return;
@@ -129,7 +134,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
           <nav className="store-desktop-nav" aria-label="Main navigation">
             {links.map((link) => (
               <Link
-                key={link.href}
+                key={link.key}
                 href={link.href}
                 className={link.current ? 'is-current' : undefined}
                 aria-current={link.current ? 'page' : undefined}
@@ -263,14 +268,28 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                 )}
               </div>
             ) : (
-              <ButtonLink
-                href={`/login?next=${encodeURIComponent(pathname)}`}
-                variant="secondary"
-                size="sm"
-                className="store-login"
-              >
-                Log in <span aria-hidden="true">↗</span>
-              </ButtonLink>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600"
+                  aria-label="Search courses and tests"
+                  onClick={() => router.push('/courses')}
+                >
+                  <MagnifyingGlass size={19} weight="bold" />
+                </button>
+                <Link
+                  href={`/login?next=${encodeURIComponent(pathname)}`}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+                >
+                  Log in
+                </Link>
+                <Link
+                  href={`/signup?next=${encodeURIComponent(pathname)}`}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700"
+                >
+                  Get Started <span aria-hidden="true">→</span>
+                </Link>
+              </div>
             )}
             <button
               className="store-menu-toggle"
@@ -290,7 +309,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
           >
             {links.map((link) => (
               <Link
-                key={link.href}
+                key={link.key}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
               >

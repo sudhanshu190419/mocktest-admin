@@ -16,24 +16,15 @@ import {
   CaretUp,
 } from '@phosphor-icons/react';
 import {
-  fetchStudentAssignedMockTests,
-  type StudentMockTestCardItem,
-  type StudentTestsHubSummary,
   type StudentTestFilterTab,
 } from '@/services/student/studentTestWebService';
+import { useStudentAssignedMockTests } from '@/hooks/student/useStudentAssignedMockTests';
 import { StudentTestCard } from '@/components/student/tests/StudentTestCard';
 
 export default function StudentTestsHubPage() {
-  const [tests, setTests] = useState<StudentMockTestCardItem[]>([]);
-  const [, setSummary] = useState<StudentTestsHubSummary>({
-    total: 0,
-    available: 0,
-    inProgress: 0,
-    completed: 0,
-    upcoming: 0,
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error: queryError, refetch } = useStudentAssignedMockTests();
+  const tests = useMemo(() => data?.tests || [], [data?.tests]);
+  const error = data?.error || (queryError instanceof Error ? queryError.message : null);
 
   // Filter & Search State
   const [activeTab, setActiveTab] = useState<StudentTestFilterTab>('all');
@@ -42,49 +33,8 @@ export default function StudentTestsHubPage() {
   const [showExpired, setShowExpired] = useState<boolean>(false);
 
   const loadTests = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await fetchStudentAssignedMockTests();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setTests(data.tests);
-        setSummary(data.summary);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load assigned mock tests');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await fetchStudentAssignedMockTests();
-        if (!isMounted) return;
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setTests(data.tests);
-          setSummary(data.summary);
-        }
-      } catch (err: unknown) {
-        if (!isMounted) return;
-        setError(err instanceof Error ? err.message : 'Failed to load assigned mock tests');
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   // Split into active (current) vs expired tests
   const activeTests = useMemo(() => {

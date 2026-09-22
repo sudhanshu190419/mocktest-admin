@@ -67,7 +67,9 @@ export const liveKitCloudProvider: IRecordingProvider = {
    * 4. Returns the egress_id
    *
    * The Edge Function configures the egress to export to Cloudflare R2
-   * in MP4 format (H.264 video, AAC audio).
+   * in MP4 format (H.264 video, AAC audio), and returns the reserved R2
+   * destination (`storageBucket` / `storagePath`) alongside the egress ID so
+   * the caller can persist the recording's artifact key at start time.
    */
   async startRecording(roomName: string): Promise<ProviderStartResult> {
     const { data, error } = await supabase.functions.invoke(
@@ -91,7 +93,12 @@ export const liveKitCloudProvider: IRecordingProvider = {
       );
     }
 
-    return { egressId: data.egressId };
+    // Pass the reserved R2 destination through verbatim — never derived here.
+    return {
+      egressId: data.egressId,
+      storageBucket: data.storageBucket ?? undefined,
+      storagePath: data.storagePath ?? undefined,
+    };
   },
 
   /**

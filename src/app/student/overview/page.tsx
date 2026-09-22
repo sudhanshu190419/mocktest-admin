@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   VideoCamera,
@@ -23,7 +24,10 @@ import { useOpenDoubtCount } from '@/hooks/student/useNavBadgeCounts';
 import { TestStateCard } from '@/components/student/TestStateCard';
 import { isDueThisWeek } from '@/lib/testCardState';
 import {
-  fetchCompleteStudentDashboard,
+  fetchStudentDashboardPrimary,
+  fetchStudentDashboardSecondary,
+  fetchStudentDashboardShell,
+  studentDashboardKeys,
   type StudentDashboardSummary,
   type StudentEnrolledCourse,
 } from '@/services/student/studentDashboardWebService';
@@ -73,13 +77,68 @@ function courseResumeHref(course: StudentEnrolledCourse, summary: unknown): stri
 
 export default function StudentOverviewPage() {
   const { user, teacherProfile } = useAuth();
-  const [data, setData] = useState<StudentDashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryToken, setRetryToken] = useState(0);
+  const profileId = user?.id ?? null;
+
+  // Shell = the fast first-paint boundary (bootstrap + today's timetable). It
+  // shares ONE bootstrap and ONE timetable request with the primary query via
+  // the service's in-flight shell promise, so this split adds no network work.
+  const shellQuery = useQuery({
+    queryKey: studentDashboardKeys.overviewShell(profileId),
+    queryFn: fetchStudentDashboardShell,
+    staleTime: 30_000,
+    gcTime: 30 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: true,
+  });
+
+  // Primary = everything the first screen needs (bootstrap, tests, live class,
+  // schedule, momentum). Secondary = below-the-fold sections that must never
+  // block the dashboard. React Query caches both for instant repeat visits.
+  const primaryQuery = useQuery({
+    queryKey: studentDashboardKeys.overviewPrimary(profileId),
+    queryFn: fetchStudentDashboardPrimary,
+    staleTime: 30_000,
+    gcTime: 30 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: true,
+  });
+  const secondaryQuery = useQuery({
+    queryKey: studentDashboardKeys.overviewSecondary(profileId),
+    queryFn: fetchStudentDashboardSecondary,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: true,
+  });
+
+  const primaryData = primaryQuery.data ?? null;
+  const secondaryData = secondaryQuery.data ?? null;
+  const data: StudentDashboardSummary | null = useMemo(
+    () => (primaryData ? { ...primaryData, ...(secondaryData ?? {}) } : null),
+    [primaryData, secondaryData],
+  );
+
   const openDoubts = useOpenDoubtCount();
 
-  const todayTimetable = useMemo(() => data?.todayTimetable || [], [data]);
+  const shellData = shellQuery.data ?? null;
+  const shellBootstrap = shellData?.bootstrap ?? null;
+  const shellProfile = shellBootstrap?.profile ?? null;
+  const shellActiveBatches = shellBootstrap?.active_batches || [];
+
+  // Only the fast shell is required for the first screen to be useful; the
+  // aggregate primary payload carries the slower sections.
+  const shellReady = shellData !== null;
+  const primaryReady = primaryData !== null;
+
+  // Today's schedule comes from the shell so it renders before the slower
+  // primary branches finish; once primary resolves it is the same data.
+  const todayTimetable: TimetableSessionItem[] = useMemo(() => {
+    if (primaryData?.todayTimetable && primaryData.todayTimetable.length > 0) {
+      return primaryData.todayTimetable;
+    }
+    return shellData?.todayTimetable || [];
+  }, [primaryData, shellData]);
+
   const nextSession: TimetableSessionItem | null = useMemo(() => {
     if (todayTimetable.length === 0) return null;
     return (
@@ -89,32 +148,16 @@ export default function StudentOverviewPage() {
     );
   }, [todayTimetable]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchCompleteStudentDashboard()
-      .then((result) => {
-        if (!cancelled) {
-          setData(result);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [retryToken]);
+  const retry = () => {
+    void shellQuery.refetch();
+    void primaryQuery.refetch();
+    void secondaryQuery.refetch();
+  };
 
-  const retry = () => setRetryToken((t) => t + 1);
-
-  // ── SKELETON (reference shape per §6) ─────────────────────────────────────
-  if (loading) {
+  // ── SKELETON — only until the fast shell resolves. The slow primary branches
+  // (assigned tests, live classes, content summary) and secondary analytics no
+  // longer block the first screen; their sections show their own skeletons.
+  if (!shellReady && !primaryReady && !shellQuery.isError && !primaryQuery.isError) {
     return (
       <div className="store-container space-y-6">
         <div className="skeleton skeleton-text" style={{ width: '40%', height: 28 }} />
@@ -130,14 +173,18 @@ export default function StudentOverviewPage() {
     );
   }
 
-  // ── ERROR STATE ───────────────────────────────────────────────────────────
-  if (error && !data) {
+  // ── ERROR STATE — nothing at all to render.
+  if (!shellReady && !primaryReady && (shellQuery.isError || primaryQuery.isError)) {
     return (
       <div className="store-container">
         <div className="p-8 rounded-3xl bg-paper border border-line text-center max-w-lg mx-auto my-12">
           <WarningCircle size={40} className="text-apricot-ink mx-auto mb-3" weight="duotone" style={{ color: 'var(--color-apricot-ink)' }} />
           <h3 className="text-base font-bold text-ink mb-1">Couldn&apos;t load your day</h3>
-          <p className="text-xs text-ink-secondary mb-4 leading-relaxed">{error}</p>
+          <p className="text-xs text-ink-secondary mb-4 leading-relaxed">
+            {primaryQuery.error instanceof Error
+              ? primaryQuery.error.message
+              : 'Failed to load dashboard data'}
+          </p>
           <button
             onClick={retry}
             className="px-4 py-2 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-opacity shadow-xs"
@@ -154,6 +201,7 @@ export default function StudentOverviewPage() {
   const now = new Date();
   const rawName =
     data?.profile?.name ||
+    shellProfile?.name ||
     teacherProfile?.name ||
     user?.user_metadata?.full_name ||
     user?.email?.split('@')[0] ||
@@ -162,10 +210,13 @@ export default function StudentOverviewPage() {
   const activeBatch =
     data?.activeBatches && data.activeBatches.length > 0
       ? data.activeBatches[0].name
-      : 'Active Enrolled Batch';
+      : shellActiveBatches.length > 0
+        ? shellActiveBatches[0].name
+        : 'Active Enrolled Batch';
 
   const enrolledCourses = data?.enrolledCourses || [];
-  const weakChapters = data?.weakChapters || [];
+  const secondaryReady = secondaryData !== null || secondaryQuery.isError;
+  const weakChapters = secondaryReady ? data?.weakChapters || [] : null;
   const assignedTests = data?.assignedMockTests || [];
   const liveClass = data?.liveClass;
 
@@ -198,7 +249,12 @@ export default function StudentOverviewPage() {
 
       {/* ═══ 2 — Resume strip (up to 3 one-tap cards) ═══ */}
       <section aria-label="Pick up where you left off" className="today-resume-strip">
-        {resumeTest && (
+        {!primaryReady &&
+          [1, 2, 3].map((i) => (
+            <div key={i} className="skeleton today-resume-card" style={{ height: 112 }} />
+          ))}
+
+        {primaryReady && resumeTest && (
           <Link href={`/student/tests/${resumeTest.testId}`} className="today-resume-card is-primary">
             <span className="today-resume-kicker">
               <ListChecks size={14} weight="bold" />
@@ -211,7 +267,7 @@ export default function StudentOverviewPage() {
           </Link>
         )}
 
-        {!resumeTest && liveClass && (
+        {primaryReady && !resumeTest && liveClass && (
           <Link href="/student/classes" className={`today-resume-card ${liveNow ? 'is-live' : ''}`}>
             <span className="today-resume-kicker">
               <VideoCamera size={14} weight="bold" />
@@ -227,7 +283,7 @@ export default function StudentOverviewPage() {
           </Link>
         )}
 
-        {!resumeTest && !liveClass && nextSession && (
+        {primaryReady && !resumeTest && !liveClass && nextSession && (
           <Link href="/student/timetable" className="today-resume-card">
             <span className="today-resume-kicker">
               <VideoCamera size={14} weight="bold" />
@@ -240,7 +296,7 @@ export default function StudentOverviewPage() {
           </Link>
         )}
 
-        {!resumeTest && !liveClass && !nextSession && resumeCourse && (
+        {primaryReady && !resumeTest && !liveClass && !nextSession && resumeCourse && (
           <Link
             href={courseResumeHref(resumeCourse, data?.courseContentSummary?.[resumeCourse.course_id])}
             className="today-resume-card is-primary"
@@ -256,7 +312,7 @@ export default function StudentOverviewPage() {
           </Link>
         )}
 
-        {!resumeTest && (liveClass || nextSession) && resumeCourse && (
+        {primaryReady && !resumeTest && (liveClass || nextSession) && resumeCourse && (
           <Link
             href={courseResumeHref(resumeCourse, data?.courseContentSummary?.[resumeCourse.course_id])}
             className="today-resume-card"
@@ -272,7 +328,7 @@ export default function StudentOverviewPage() {
           </Link>
         )}
 
-        {!resumeTest && !hasAnyResumePoint && (
+        {primaryReady && !resumeTest && !hasAnyResumePoint && (
           <Link href="/courses" className="today-resume-card is-primary">
             <span className="today-resume-kicker">
               <GraduationCap size={14} weight="bold" />
@@ -376,7 +432,9 @@ export default function StudentOverviewPage() {
           </Link>
         </div>
 
-        {weekTests.length > 0 ? (
+        {!primaryReady ? (
+          <div className="skeleton student-card" style={{ height: 160 }} />
+        ) : weekTests.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {weekTests.map((test) => (
               <TestStateCard key={test.testId} test={test} />
@@ -405,26 +463,30 @@ export default function StudentOverviewPage() {
           </Link>
         </div>
 
-        <div className="today-momentum">
-          <div className="today-momentum-stat">
-            <span className="today-momentum-value tabular-nums">
-              {analytics?.testsAttempted ? analytics.testsAttempted : '—'}
-            </span>
-            <span className="today-momentum-label">Tests you&apos;ve taken</span>
+        {!primaryReady ? (
+          <div className="skeleton student-card" style={{ height: 96 }} />
+        ) : (
+          <div className="today-momentum">
+            <div className="today-momentum-stat">
+              <span className="today-momentum-value tabular-nums">
+                {analytics?.testsAttempted ? analytics.testsAttempted : '—'}
+              </span>
+              <span className="today-momentum-label">Tests you&apos;ve taken</span>
+            </div>
+            <div className="today-momentum-stat">
+              <span className="today-momentum-value tabular-nums">
+                {analytics?.averageScore ? `${analytics.averageScore}%` : '—'}
+              </span>
+              <span className="today-momentum-label">Average score</span>
+            </div>
+            <div className="today-momentum-stat">
+              <span className="today-momentum-value tabular-nums">
+                {openDoubts > 0 ? openDoubts : '—'}
+              </span>
+              <span className="today-momentum-label">Doubts waiting on faculty</span>
+            </div>
           </div>
-          <div className="today-momentum-stat">
-            <span className="today-momentum-value tabular-nums">
-              {analytics?.averageScore ? `${analytics.averageScore}%` : '—'}
-            </span>
-            <span className="today-momentum-label">Average score</span>
-          </div>
-          <div className="today-momentum-stat">
-            <span className="today-momentum-value tabular-nums">
-              {openDoubts > 0 ? openDoubts : '—'}
-            </span>
-            <span className="today-momentum-label">Doubts waiting on faculty</span>
-          </div>
-        </div>
+        )}
       </section>
 
       {/* ═══ 6 — Worth practicing (focus areas, coach voice, one rubric) ═══ */}
@@ -441,7 +503,9 @@ export default function StudentOverviewPage() {
             Chapters scoring under 60% on recent tests. Steady is 60–80%, mastered is 80%+ — lift these and your total moves.
           </p>
 
-          {weakChapters.length > 0 ? (
+          {weakChapters === null ? (
+            <div className="skeleton" style={{ height: 140 }} />
+          ) : weakChapters.length > 0 ? (
             <div className="space-y-2.5">
               {weakChapters.map((chap) => (
                 <div

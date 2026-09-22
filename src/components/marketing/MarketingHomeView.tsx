@@ -3,11 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CourseStoreShell } from './CourseStoreShell';
-import { HeroCarousel } from './HeroCarousel';
+import { HeroSection } from './HeroSection';
 import { StudentHomeHero } from './StudentHomeHero';
 import { StoreCourseCard } from './StoreCourseCard';
 import { PYQPackageCard } from './PYQCatalog';
-import { ButtonLink } from './Button';
+import { AppShowcaseSection } from './AppShowcaseSection';
+import { FreeDemoSection } from './FreeDemoSection';
 import { useAuth } from '@/context/AuthContext';
 import { getCourses } from '@/services/courseCatalogService';
 import { getPYQPackages } from '@/services/pyqCatalogService';
@@ -123,7 +124,7 @@ export function MarketingHomeView() {
               loading={dashboardLoading}
             />
           ) : (
-            <HeroCarousel />
+            <HeroSection />
           )}
 
           <section
@@ -300,22 +301,9 @@ export function MarketingHomeView() {
             </ol>
           </section>
 
-          <section className="store-container store-home-banner" aria-labelledby="home-demo-title">
-            <div>
-              <p className="store-eyebrow">DEMO CLASS · EXPERIENCE</p>
-              <h2 id="home-demo-title">Start with a closer look.</h2>
-              <p>
-                Experience interactive faculty teaching before enrolling. Watch free sample classes by
-                subject.
-              </p>
-            </div>
-            <div className="store-home-banner-action">
-              <ButtonLink href="/demo-class" className="store-enroll-button">
-                Explore demo classes <span aria-hidden="true">↗</span>
-              </ButtonLink>
-              <span>Free online preview.</span>
-            </div>
-          </section>
+          <AppShowcaseSection />
+
+          <FreeDemoSection />
         </main>
       </CourseStoreShell>
     </div>

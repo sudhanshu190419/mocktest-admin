@@ -75,6 +75,8 @@ export interface BatchAttendanceSummary {
 export interface LiveClassAttendanceSummary {
   classId: string;
   date: string;
+  /** Scheduled class duration in minutes (live_classes.duration_min). */
+  durationMin?: number | null;
   title: string;
   totalStudents: number;
   presentCount: number;
@@ -875,6 +877,7 @@ export const attendanceAnalyticsService = {
         return {
           classId: cls.class_id,
           date: cls.scheduled_at,
+          durationMin: cls.duration_min ?? null,
           title: cls.title,
           totalStudents: enrolledStudents.size,
           presentCount: present,
@@ -1569,6 +1572,7 @@ export const attendanceAnalyticsService = {
         return {
           classId: cls.class_id,
           date: cls.scheduled_at,
+          durationMin: cls.duration_min ?? null,
           title: cls.title,
           teacherName: teacherNameMap.get(cls.teacher_id) ?? 'Unknown',
           batchName,

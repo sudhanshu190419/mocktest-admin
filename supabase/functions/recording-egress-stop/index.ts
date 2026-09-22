@@ -76,6 +76,49 @@ function structuredLog(event: string, data: Record<string, unknown>): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Diagnostic-only helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize a value returned by the LiveKit SDK/protobuf layer so it is safe
+ * for JSON.stringify. Protobuf int64 fields (timestamps, durations, sizes)
+ * arrive as `bigint`, which JSON.stringify throws on.
+ *
+ * Diagnostic logging only — never affects business logic.
+ */
+function toLogSafe(value: unknown): string | number | boolean | null | undefined {
+  if (value === null || value === undefined) return value ?? null;
+  if (typeof value === 'bigint') return Number(value);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  return String(value);
+}
+
+/** Loose view of a LiveKit `EgressInfo`, used only for diagnostic logging. */
+interface EgressLogInfo {
+  egressId?: string;
+  roomName?: string;
+  status?: { toString(): string } | string | number;
+  error?: string;
+  details?: string;
+  startedAt?: unknown;
+  endedAt?: unknown;
+  updatedAt?: unknown;
+  fileResults?: EgressLogFile[];
+}
+
+/** Loose view of a LiveKit `FileInfo`, used only for diagnostic logging. */
+interface EgressLogFile {
+  filename?: string;
+  duration?: unknown;
+  size?: unknown;
+  startedAt?: unknown;
+  endedAt?: unknown;
+  status?: { toString(): string } | string | number;
+  error?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -95,21 +138,24 @@ function errorResponse(error: string, status = 400): Response {
  * Validate that the caller is authenticated as a teacher.
  */
 async function authenticateTeacher(
-  supabase: ReturnType<typeof createClient>,
-  authHeader: string | null,
+  callerSupabase: ReturnType<typeof createClient>,
+  adminSupabase: ReturnType<typeof createClient>,
 ): Promise<{ teacherId: string; profileId: string } | { error: string }> {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { error: 'Missing or invalid Authorization header.' };
-  }
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  // Authenticate the actual caller using their JWT.
+  const {
+    data: { user },
+    error: authError,
+  } = await callerSupabase.auth.getUser();
+
   if (authError || !user) {
     return { error: authError?.message ?? 'Authentication failed.' };
   }
 
   const profileId = user.id;
 
-  const { data: teacher, error: teacherError } = await supabase
+  // Use service-role client for the privileged teacher lookup.
+  const { data: teacher, error: teacherError } = await adminSupabase
     .from('teacher_details')
     .select('teacher_id')
     .eq('profile_id', profileId)
@@ -119,7 +165,10 @@ async function authenticateTeacher(
     return { error: 'User is not a registered teacher.' };
   }
 
-  return { teacherId: teacher.teacher_id, profileId };
+  return {
+    teacherId: teacher.teacher_id,
+    profileId,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -158,18 +207,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Step 2: Authenticate
     // ══════════════════════════════════════════════════════════════════
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const authHeader = req.headers.get('Authorization');
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return errorResponse('Server configuration error: missing Supabase credentials.', 500);
-    }
+if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+  return errorResponse(
+    'Server configuration error: missing Supabase credentials.',
+    500,
+  );
+}
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  return errorResponse('Missing or invalid Authorization header.', 403);
+}
 
-    const authResult = await authenticateTeacher(
-      supabase,
-      req.headers.get('Authorization'),
-    );
+// Caller client — carries the logged-in teacher's JWT.
+// Use this ONLY for authentication / identity.
+const callerSupabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    global: {
+      headers: {
+        Authorization: authHeader,
+      },
+    },
+  },
+);
+
+// Admin client — service role for privileged DB operations.
+const supabase = createClient(
+  supabaseUrl,
+  supabaseServiceKey,
+);
+
+const authResult = await authenticateTeacher(
+  callerSupabase,
+  supabase,
+);
 
     if ('error' in authResult) {
       return errorResponse(authResult.error, 403);
@@ -222,11 +298,64 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     try {
       const egressClient = new EgressClient(livekitUrl, livekitApiKey, livekitApiSecret);
-      await egressClient.stopEgress(egressId);
+      const stopInfo = await egressClient.stopEgress(egressId);
+      const stopLogInfo = stopInfo as unknown as EgressLogInfo | undefined;
 
       structuredLog('EGRESS_STOPPED', {
         egressId: egressId.slice(0, 20) + '...',
       });
+
+      structuredLog('EGRESS_STOP_RESPONSE', {
+        egressId,
+        status: stopLogInfo?.status?.toString?.() ?? stopLogInfo?.status,
+        roomName: stopLogInfo?.roomName || null,
+        error: stopLogInfo?.error || null,
+        details: stopLogInfo?.details || null,
+        startedAt: toLogSafe(stopLogInfo?.startedAt) || null,
+        endedAt: toLogSafe(stopLogInfo?.endedAt) || null,
+        updatedAt: toLogSafe(stopLogInfo?.updatedAt) || null,
+        fileResultsCount: stopLogInfo?.fileResults?.length ?? 0,
+      });
+
+      structuredLog('EGRESS_FILE_RESULTS', {
+        egressId,
+        files: (stopLogInfo?.fileResults ?? []).map((file) => ({
+          filename: file.filename || null,
+          duration: toLogSafe(file.duration) || null,
+          size: toLogSafe(file.size) || null,
+          startedAt: toLogSafe(file.startedAt) || null,
+          endedAt: toLogSafe(file.endedAt) || null,
+          status: file.status?.toString?.() ?? file.status ?? null,
+          error: file.error || null,
+        })),
+      });
+
+      // Diagnostic: query LiveKit's view of this egress once, after stop.
+      // listEgress() returns an array of EgressInfo (not a { items } wrapper).
+      try {
+        const statusResponse = await egressClient.listEgress({ egressId });
+        const statusItems = (Array.isArray(statusResponse) ? statusResponse : []) as unknown as EgressLogInfo[];
+
+        structuredLog('EGRESS_STATUS_AFTER_STOP', {
+          egressId,
+          items: statusItems.map((item) => ({
+            egressId: item.egressId,
+            status: item.status?.toString?.() ?? item.status ?? null,
+            roomName: item.roomName || null,
+            error: item.error || null,
+            details: item.details || null,
+            startedAt: toLogSafe(item.startedAt) || null,
+            endedAt: toLogSafe(item.endedAt) || null,
+            updatedAt: toLogSafe(item.updatedAt) || null,
+            fileResultsCount: item.fileResults?.length ?? 0,
+          })),
+        });
+      } catch (statusErr) {
+        structuredLog('EGRESS_STATUS_QUERY_FAILED', {
+          egressId,
+          error: statusErr instanceof Error ? statusErr.message : 'Unknown listEgress error',
+        });
+      }
     } catch (livekitErr) {
       structuredLog('LIVEKIT_STOP_FAILED', {
         error: livekitErr instanceof Error ? livekitErr.message : 'Unknown LiveKit error',

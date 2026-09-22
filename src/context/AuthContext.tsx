@@ -4,6 +4,7 @@ import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/config/supabase';
 import { EMPTY_TEACHER } from '@/data/mockData';
 import { setCachedIdentity, clearTeacherIdentityCache } from '@/services/teacherIdentity';
+import { clearStudentIdCache } from '@/services/student/studentCourseWebService';
 import { auditService } from '@/services/audit/auditService';
 import type { TeacherProfile } from '@/data/mockData';
 import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
@@ -100,6 +101,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Resilience generation counter & in-flight initialization guard
   const initRequestIdRef = useRef<number>(0);
   const initInFlightRef = useRef<Promise<void> | null>(null);
+
+  // Tracks the last authenticated profile whose details were loaded, so the
+  // memoized student-id resolver is cleared only when the identity actually
+  // changes — not on every ordinary profile refresh.
+  const lastAuthenticatedProfileIdRef = useRef<string | null>(null);
 
   // ═══════════════════════════════════════════════════════════════════════
   //  TEMPORARY DEVICE DEBUG LOGGING — remove after diagnosis
@@ -445,6 +451,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loadTeacherProfileDetails = async (userId: string): Promise<void> => {
+    // Identity change guard: never reuse a previous user's memoized student_id.
+    // Runs only when the authenticated identity actually changes, so ordinary
+    // profile refreshes keep the resolver cache warm.
+    if (lastAuthenticatedProfileIdRef.current !== userId) {
+      lastAuthenticatedProfileIdRef.current = userId;
+      clearStudentIdCache();
+    }
+
     // Coalesce concurrent profile loads (e.g. initAuth + onAuthStateChange on page refresh).
     // Both callers await the same in-flight Promise so setLoading(false) is not called
     // while teacherProfile is still null.
@@ -637,6 +651,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deviceEvaluatedRef.current = null;
     // Clear the teacher identity cache so downstream services re-resolve
     clearTeacherIdentityCache();
+    // Clear the memoized student-id resolver so a subsequent login (same or
+    // different user) can never see the previous student's cached id.
+    clearStudentIdCache();
+    lastAuthenticatedProfileIdRef.current = null;
     setLoading(false);
   };
 
@@ -813,6 +831,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setTeacherProfile(null);
           setDeviceStatus('bypass');
           setDeviceInfo(null);
+          // Session cleared (sign-out or expiry): drop memoized student ids.
+          clearStudentIdCache();
+          lastAuthenticatedProfileIdRef.current = null;
         }
       } catch (err) {
         console.warn('[AuthContext] onAuthStateChange handler error:', err);

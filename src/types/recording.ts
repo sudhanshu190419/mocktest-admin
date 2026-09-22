@@ -346,6 +346,14 @@ export interface RecordingWebhookPayload {
   fileSizeBytes?: number;
   /** R2 object key where the recording file was exported (only for completed). */
   storagePath?: string;
+  /**
+   * Provider-hosted URL for the recording (only for completed).
+   *
+   * Alternative to `storagePath` for providers that expose a direct URL
+   * instead of an object key. Either this or `storagePath` satisfies the
+   * artifact requirement for `status='completed'`.
+   */
+  providerRecordingUrl?: string;
   /** Signed URL for playback (only for completed). */
   playbackUrl?: string;
   /** Error message if status is `failed`. */
@@ -377,6 +385,21 @@ export interface RecordingListResponse {
 export interface ProviderStartResult {
   /** LiveKit Egress API identifier. */
   egressId: string;
+  /**
+   * R2 bucket the egress writes the recording file into.
+   *
+   * Returned by `recording-egress-start` along with the reserved object key
+   * so the recordings row can own its artifact before completion. Optional
+   * only for providers that cannot disclose a destination up front.
+   */
+  storageBucket?: string;
+  /**
+   * Exact R2 object key reserved for this egress.
+   *
+   * This is the same key handed to LiveKit's S3 output config — it is never
+   * derived or reconstructed by the application.
+   */
+  storagePath?: string;
 }
 
 /**

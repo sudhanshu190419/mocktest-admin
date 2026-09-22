@@ -33,6 +33,14 @@ import {
   type StudentTestAttemptState,
 } from './studentCourseWebService';
 
+// ─── Query Keys ─────────────────────────────────────────────────────────────
+
+export const studentTestKeys = {
+  all: ['student-tests'] as const,
+  assigned: (profileId?: string | null) =>
+    ['student-tests', 'assigned', profileId] as const,
+};
+
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
 export type StudentTestFilterTab = 'all' | 'assigned' | 'pyq' | 'in_progress' | 'completed' | 'upcoming';
@@ -231,57 +239,161 @@ export async function fetchStudentTestResults(
  * AND all purchased Previous Year Question (PYQ) packages and papers.
  * Fully respects access control and executes batched, bounded queries to eliminate N+1 performance bottlenecks.
  */
+/** Minimal PostgREST response shape used by the discovery fan-out below. */
+type RowsResult<T> = { data?: T[] | null; error?: { message?: string } | null };
+interface BatchIdRow { batch_id?: string | null }
+interface CourseIdRow { course_id?: string | null }
+interface PyqPurchaseRow {
+  package_id?: string | null;
+  pyq_packages?:
+    | Array<{ package_id?: string | null; name?: string | null }>
+    | { package_id?: string | null; name?: string | null }
+    | null;
+}
+
+/**
+ * Optional already-resolved context. When provided, the matching discovery
+ * queries are skipped entirely — callers that already fetched this data (e.g.
+ * the dashboard bootstrap) should pass it to avoid duplicate round trips.
+ * All fields are optional; omitted fields keep the original fallback behavior.
+ */
+export interface AssignedTestsContext {
+  /** Known auth/profile ID — enables a direct lookup (no miss-first probe). */
+  profileId?: string | null;
+  /** Known student_details.student_id — skips student resolution entirely. */
+  studentId?: string | null;
+  /** Known active batch IDs — skips the batch_students query. */
+  batchIds?: string[];
+  /** Known enrolled course IDs — skips the course_enrollments query. */
+  courseIds?: string[];
+  /**
+   * Optional shared `batch_subjects` rows. May be a promise so the dashboard
+   * orchestrator can start ONE request and have both assigned-test and
+   * live-class discovery await the same in-flight result. When provided, the
+   * query is skipped and the same `is_active = true` set is derived locally.
+   */
+  batchSubjects?: PromiseLike<BatchSubjectRow[]> | BatchSubjectRow[] | null;
+}
+
+/**
+ * Raw `batch_subjects` rows shared between assigned-test discovery and
+ * live-class discovery. The shared row set is intentionally UNFILTERED so each
+ * consumer can apply its own predicate exactly as before; `is_active` is
+ * selected so assigned-test discovery can reproduce its previous
+ * `.eq('is_active', true)` server-side filter client-side.
+ */
+export interface BatchSubjectRow {
+  batch_subject_id: string;
+  batch_id?: string | null;
+  subject_id?: string | null;
+  is_active?: boolean | null;
+  subjects?: unknown;
+  batches?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * Single implementation of the `batch_subjects` lookup used by BOTH the
+ * assigned-test branch and the live-class branch of the dashboard. Callers that
+ * already hold the rows (the dashboard orchestrator) pass them in so one
+ * dashboard load issues exactly one `batch_subjects` request.
+ */
+export async function fetchBatchSubjectRowsForBatches(
+  batchIds: string[],
+): Promise<{ rows: BatchSubjectRow[]; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('batch_subjects')
+      .select(`
+        batch_subject_id,
+        batch_id,
+        subject_id,
+        is_active,
+        subjects:subject_id (name, code),
+        batches:batch_id (
+          name,
+          batch_code,
+          course_batches (
+            courses (course_id, title)
+          )
+        )
+      `)
+      .in('batch_id', batchIds);
+
+    if (error) {
+      return { rows: [], error: error.message };
+    }
+
+    return { rows: (data as BatchSubjectRow[]) || [], error: null };
+  } catch (err: any) {
+    console.warn('[studentTestWebService] batch_subjects query exception:', err);
+    return { rows: [], error: err?.message || 'Failed to fetch batch subjects' };
+  }
+}
+
 export async function fetchStudentAssignedMockTests(
-  userId?: string
+  userId?: string,
+  context?: AssignedTestsContext,
 ): Promise<StudentTestsHubData> {
   try {
-    // 1. Resolve student ID
-    const studentId = await resolveCurrentStudentId(userId);
+    // 1. Resolve student ID — reuse pre-resolved context instead of re-querying
+    let studentId = context?.studentId ?? null;
+    if (!studentId) {
+      if (context?.profileId) {
+        // Known profile → single direct lookup (no miss-first student_id probe).
+        const { data: byProfileId } = await supabase
+          .from('student_details')
+          .select('student_id')
+          .eq('profile_id', context.profileId)
+          .maybeSingle();
+        studentId = byProfileId?.student_id ?? null;
+      } else {
+        studentId = await resolveCurrentStudentId(userId);
+      }
+    }
 
-    // 2. Discover active batch IDs and active PYQ purchases
+    // 2. Discover active batch IDs and active PYQ purchases.
+    //    The three sources have no mutual dependencies → they run CONCURRENTLY.
+    //    Pre-resolved context skips the corresponding query entirely.
     let batchIds: string[] = [];
     let purchasedPackageIds: string[] = [];
     const pyqPackageNameMap = new Map<string, string>();
 
+    const contextBatchIds = context?.batchIds?.filter(isUuidString);
+    let contextCourseIds: string[] | null = context?.courseIds
+      ? context.courseIds.filter(isUuidString)
+      : null;
+
     if (studentId) {
-      // Source A: Active batch enrollments
-      const { data: batchStudentRows } = await supabase
-        .from('batch_students')
-        .select('batch_id')
-        .eq('student_id', studentId)
-        .eq('status', 'active');
+      // course_batches depends only on course IDs, so when the caller already
+      // knows them it starts with the discovery wave (runs concurrently).
+      // An empty (but known) course list means "no courses" — skip the query
+      // instead of issuing a pointless empty-IN round trip.
+      const knownCourseBatchesP: PromiseLike<unknown> =
+        contextCourseIds && contextCourseIds.length > 0
+          ? supabase.from('course_batches').select('batch_id').in('course_id', contextCourseIds)
+          : Promise.resolve(null);
 
-      if (batchStudentRows) {
-        batchStudentRows.forEach((r: any) => {
-          if (r.batch_id) batchIds.push(r.batch_id);
-        });
-      }
-
-      // Source B: Direct course enrollments -> batch mappings
-      const { data: courseEnrollRows } = await supabase
-        .from('course_enrollments')
-        .select('course_id')
-        .eq('student_id', studentId)
-        .eq('is_active', true);
-
-      if (courseEnrollRows && courseEnrollRows.length > 0) {
-        const courseIds = courseEnrollRows.map((r: any) => r.course_id).filter(isUuidString);
-        if (courseIds.length > 0) {
-          const { data: courseBatchRows } = await supabase
-            .from('course_batches')
+      // Source A: Active batch enrollments (skipped when context provided)
+      const batchStudentsP: PromiseLike<unknown> = contextBatchIds
+        ? Promise.resolve(null)
+        : supabase
+            .from('batch_students')
             .select('batch_id')
-            .in('course_id', courseIds);
+            .eq('student_id', studentId)
+            .eq('status', 'active');
 
-          if (courseBatchRows) {
-            courseBatchRows.forEach((r: any) => {
-              if (r.batch_id) batchIds.push(r.batch_id);
-            });
-          }
-        }
-      }
+      // Source B: Direct course enrollments → batch mappings (skipped when known)
+      const courseEnrollP: PromiseLike<unknown> = contextCourseIds
+        ? Promise.resolve(null)
+        : supabase
+            .from('course_enrollments')
+            .select('course_id')
+            .eq('student_id', studentId)
+            .eq('is_active', true);
 
       // Source C: Active PYQ package purchases
-      const { data: pyqPurchaseRows, error: pyqErr } = await supabase
+      const pyqPurchasesP: PromiseLike<unknown> = supabase
         .from('student_pyq_purchases')
         .select(`
           package_id,
@@ -294,12 +406,55 @@ export async function fetchStudentAssignedMockTests(
         .eq('student_id', studentId)
         .eq('is_active', true);
 
+      const [batchStudentRows, courseEnrollRows, pyqPurchaseResult, knownCourseBatches] =
+        await Promise.all([batchStudentsP, courseEnrollP, pyqPurchasesP, knownCourseBatchesP]);
+
+      // Source A — batch memberships
+      const batchRows = batchStudentRows as RowsResult<BatchIdRow> | null;
+      if (contextBatchIds) {
+        batchIds.push(...contextBatchIds);
+      } else {
+        (batchRows?.data ?? []).forEach((r) => {
+          if (r.batch_id) batchIds.push(r.batch_id);
+        });
+      }
+
+      // Source B — course enrollments → course IDs (context skips the query)
+      const enrollRows = courseEnrollRows as RowsResult<CourseIdRow> | null;
+      if (!contextCourseIds && (enrollRows?.data?.length ?? 0) > 0) {
+        contextCourseIds = (enrollRows?.data ?? [])
+          .map((r) => r.course_id)
+          .filter((id): id is string => isUuidString(id));
+      }
+
+      // course_batches mapping (already in-flight with the wave when known)
+      let courseBatchResult: unknown = knownCourseBatches;
+      if (courseBatchResult === null || courseBatchResult === undefined) {
+        courseBatchResult =
+          contextCourseIds && contextCourseIds.length > 0
+            ? await supabase
+                .from('course_batches')
+                .select('batch_id')
+                .in('course_id', contextCourseIds)
+            : null;
+      }
+
+      const courseBatchRows = courseBatchResult as RowsResult<BatchIdRow> | null;
+      (courseBatchRows?.data ?? []).forEach((r) => {
+        if (r.batch_id) batchIds.push(r.batch_id);
+      });
+
+      // Source C — PYQ purchases
+      const pyqResult = pyqPurchaseResult as RowsResult<PyqPurchaseRow> | null;
+      const pyqPurchaseRows = pyqResult?.data ?? null;
+      const pyqErr = pyqResult?.error ?? null;
+
       if (pyqErr) {
         console.warn('[studentTestWebService] student_pyq_purchases query warning:', pyqErr);
       }
 
       if (pyqPurchaseRows && pyqPurchaseRows.length > 0) {
-        pyqPurchaseRows.forEach((r: any) => {
+        pyqPurchaseRows.forEach((r) => {
           if (r.package_id) {
             purchasedPackageIds.push(r.package_id);
             const pkg = Array.isArray(r.pyq_packages) ? r.pyq_packages[0] : r.pyq_packages;
@@ -330,32 +485,34 @@ export async function fetchStudentAssignedMockTests(
 
     // ─── 3. Process Batch Assigned Tests ────────────────────────────────────
     if (batchIds.length > 0) {
-      const { data: batchSubjectRows, error: bsErr } = await supabase
-        .from('batch_subjects')
-        .select(`
-          batch_subject_id,
-          batch_id,
-          subject_id,
-          subjects:subject_id (name, code),
-          batches:batch_id (
-            name,
-            batch_code,
-            course_batches (
-              courses (course_id, title)
-            )
-          )
-        `)
-        .in('batch_id', batchIds)
-        .eq('is_active', true);
+      // Reuse the dashboard's shared batch_subjects request when supplied;
+      // otherwise fall back to the standalone query (unchanged behavior).
+      let batchSubjectRows: BatchSubjectRow[] | null = context?.batchSubjects
+        ? await context.batchSubjects
+        : null;
+      let bsErr: string | null = null;
 
-      if (!bsErr && batchSubjectRows && batchSubjectRows.length > 0) {
-        const batchSubjectIds = batchSubjectRows.map((bs: any) => bs.batch_subject_id);
+      if (!batchSubjectRows) {
+        const fetched = await fetchBatchSubjectRowsForBatches(batchIds);
+        batchSubjectRows = fetched.rows;
+        bsErr = fetched.error;
+      }
+
+      // Preserve the original `.eq('is_active', true)` filter exactly — the
+      // shared row set is unfiltered so live-class discovery can keep seeing
+      // every row it saw before.
+      const activeBatchSubjectRows = (batchSubjectRows || []).filter(
+        (bs) => bs?.is_active === true,
+      );
+
+      if (!bsErr && activeBatchSubjectRows.length > 0) {
+        const batchSubjectIds = activeBatchSubjectRows.map((bs) => bs.batch_subject_id);
 
         const subjectNameMap = new Map<string, string>();
         const courseTitleMap = new Map<string, { courseId: string; title: string }>();
         const batchNameMap = new Map<string, string>();
 
-        batchSubjectRows.forEach((bs: any) => {
+        activeBatchSubjectRows.forEach((bs: any) => {
           const s = Array.isArray(bs.subjects) ? bs.subjects[0] : bs.subjects;
           const b = Array.isArray(bs.batches) ? bs.batches[0] : bs.batches;
           if (s?.name) {

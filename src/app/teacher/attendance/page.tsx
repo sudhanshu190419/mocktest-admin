@@ -76,6 +76,29 @@ function AttendanceStatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Format the scheduled live-class time range, e.g. "10:30 AM – 11:30 AM".
+ *
+ * Source: live_classes.scheduled_at (+ duration_min for the end time).
+ * Returns "—" for an invalid date; start time only when duration is missing.
+ */
+function formatClassTimeRange(dateIso: string, durationMin?: number | null): string {
+  const start = new Date(dateIso);
+  if (Number.isNaN(start.getTime())) return '—';
+
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  if (typeof durationMin !== 'number' || !Number.isFinite(durationMin) || durationMin <= 0) {
+    return fmt(start);
+  }
+
+  const end = new Date(start.getTime() + durationMin * 60_000);
+  if (Number.isNaN(end.getTime())) return fmt(start);
+
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 function AttendancePercentBar({ percent }: { percent: number }) {
   const color = percent >= 75 ? 'bg-emerald-500' : percent >= 25 ? 'bg-amber-500' : 'bg-rose-500';
   return (
@@ -610,6 +633,7 @@ export default function TeacherAttendancePage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/30">
                 <th className="px-4 py-3 font-semibold text-gray-500">Date</th>
+                <th className="px-4 py-3 font-semibold text-gray-500">Time</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Live Class</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Students</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Present</th>
@@ -620,7 +644,7 @@ export default function TeacherAttendancePage() {
             <tbody>
               {liveClassAttendance.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
                     No completed live classes found.
                   </td>
                 </tr>
@@ -637,6 +661,9 @@ export default function TeacherAttendancePage() {
                         month: 'short',
                         year: 'numeric',
                       })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-400">
+                      {formatClassTimeRange(cls.date, cls.durationMin)}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{cls.title}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{cls.totalStudents}</td>

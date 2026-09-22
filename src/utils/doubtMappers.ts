@@ -117,18 +117,29 @@ export interface DbSubmitDoubtResult {
   success: boolean;
   doubt_id: string;
   status: string;
+  institute_id?: string;
+  assigned_to?: string | null;
+  recipient_profile_ids?: string[];
 }
 
 /** Raw JSONB result of reply_to_doubt. */
 export interface DbReplyToDoubtResult {
   success: boolean;
   reply_id: string;
+  doubt_id?: string;
+  institute_id?: string;
+  is_teacher?: boolean;
+  recipient_profile_ids?: string[];
 }
 
 /** Raw JSONB result of accept_doubt_answer / resolve_doubt / reopen_doubt / archive_doubt. */
 export interface DbDoubtStatusResult {
   success: boolean;
   status: string;
+  doubt_id?: string;
+  institute_id?: string;
+  student_profile_id?: string | null;
+  teacher_profile_ids?: string[];
 }
 
 /** Raw JSONB result of assign_doubt. */
@@ -137,6 +148,8 @@ export interface DbAssignDoubtResult {
   doubt_id: string;
   assigned_to: string;
   reassigned: boolean;
+  institute_id?: string;
+  teacher_profile_id?: string | null;
 }
 
 /** Raw JSONB result of attach_doubt_file. */

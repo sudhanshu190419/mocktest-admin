@@ -273,12 +273,27 @@ export const recordingService = {
       // ── Call provider to start LiveKit Egress ─────────────────────────
       try {
         const provider = getRecordingProvider();
-        const { egressId } = await provider.startRecording(liveClass.room_name);
+        const providerResult = await provider.startRecording(liveClass.room_name);
+        const { egressId } = providerResult;
 
-        // ── Update recording row with egress ID ─────────────────────────
+        // ── Update recording row with egress ID + reserved R2 artifact ──
+        // The provider (recording-egress-start) reserves the exact R2 object
+        // key it hands to LiveKit's S3 output. Persist it here — together
+        // with its bucket, so ck_recordings_storage_pair stays satisfied —
+        // so the row already owns its artifact when the completion webhook
+        // arrives. Values are persisted verbatim; nothing is derived.
+        const egressUpdate: Record<string, unknown> = {
+          livekit_egress_id: egressId,
+          updated_at: new Date().toISOString(),
+        };
+        if (providerResult.storageBucket && providerResult.storagePath) {
+          egressUpdate.storage_bucket = providerResult.storageBucket;
+          egressUpdate.storage_path = providerResult.storagePath;
+        }
+
         const { error: updateError } = await supabase
           .from('recordings')
-          .update({ livekit_egress_id: egressId, updated_at: new Date().toISOString() })
+          .update(egressUpdate)
           .eq('recording_id', recording.recording_id);
 
         if (updateError) {
@@ -585,7 +600,16 @@ export const recordingService = {
    * Get the current recording status.
    *
    * For active recordings (`recording` or `processing`), polls the
-   * provider for the latest status and updates the DB if changed.
+   * provider for the latest status.
+   *
+   * Polling is METADATA-ONLY and can NEVER finalize a recording to
+   * `completed`: `IRecordingProvider.getRecordingStatus()` returns no
+   * storage location, and `public.recordings` requires an artifact
+   * (`storage_path` or `provider_recording_url`) when `status='completed'`.
+   * A provider-reported completion therefore only refreshes the duration /
+   * file-size metadata and leaves the row in its current active lifecycle
+   * state so an artifact-aware path (the Egress webhook or an upload) can
+   * complete it. A provider-reported failure is still persisted.
    *
    * @param recordingId - The recording UUID.
    */
@@ -609,37 +633,62 @@ export const recordingService = {
           const provider = getRecordingProvider();
           const providerStatus = await provider.getRecordingStatus(recording.livekitEgressId);
 
-          // Determine the mapped status
-          let newStatus: RecordingStatus = recording.status;
-          if (providerStatus.status === 'completed') {
-            newStatus = 'completed';
-          } else if (providerStatus.status === 'failed') {
-            newStatus = 'failed';
-          }
-
-          // Update DB if status changed
-          if (newStatus !== recording.status) {
-            const updates: Record<string, unknown> = {
-              status: newStatus,
-              updated_at: new Date().toISOString(),
-            };
-            if (newStatus === 'completed') {
-              updates.duration_seconds = providerStatus.durationSeconds ?? null;
-              updates.file_size_bytes = providerStatus.fileSizeBytes ?? null;
-            }
-            if (newStatus === 'failed') {
-              updates.error_message = 'Recording failed during processing.';
-            }
-
+          // ── Failure is terminal and needs no artifact ──────────────────
+          if (providerStatus.status === 'failed') {
             await supabase
               .from('recordings')
-              .update(updates)
+              .update({
+                status: 'failed',
+                error_message: 'Recording failed during processing.',
+                updated_at: new Date().toISOString(),
+              })
               .eq('recording_id', recordingId);
+
+            return {
+              success: true,
+              data: { status: 'failed' as RecordingStatus },
+            };
           }
 
+          // ── Provider-reported completion is metadata-only ──────────────
+          // Never write status='completed' here: the provider status contract
+          // carries no storage_path / provider_recording_url, so writing
+          // 'completed' would create an artifact-less row the database
+          // rejects. Refresh what we can trust and keep the row active until
+          // an artifact-aware path finalizes it.
+          if (providerStatus.status === 'completed') {
+            const metadataUpdates: Record<string, unknown> = {};
+
+            if (providerStatus.durationSeconds != null) {
+              metadataUpdates.duration_seconds = providerStatus.durationSeconds;
+            }
+            if (providerStatus.fileSizeBytes != null) {
+              metadataUpdates.file_size_bytes = providerStatus.fileSizeBytes;
+            }
+
+            if (Object.keys(metadataUpdates).length > 0) {
+              metadataUpdates.updated_at = new Date().toISOString();
+
+              await supabase
+                .from('recordings')
+                .update(metadataUpdates)
+                .eq('recording_id', recordingId);
+            }
+
+            return {
+              success: true,
+              data: {
+                status: recording.status,
+                durationSeconds:
+                  providerStatus.durationSeconds ?? recording.durationSeconds ?? undefined,
+              },
+            };
+          }
+
+          // Provider still reports 'active' — nothing to persist yet.
           return {
             success: true,
-            data: { status: newStatus, durationSeconds: providerStatus.durationSeconds },
+            data: { status: recording.status, durationSeconds: recording.durationSeconds ?? undefined },
           };
         } catch {
           // Provider poll failed — return the last known DB status
@@ -930,20 +979,36 @@ export const recordingService = {
 
       try {
         const provider = getRecordingProvider();
-        const { egressId } = await provider.startRecording(liveClass.room_name);
+        const providerResult = await provider.startRecording(liveClass.room_name);
+        const { egressId } = providerResult;
 
         // Update the recording row
         const now = new Date().toISOString();
+        const retryUpdate: Record<string, unknown> = {
+          status: 'recording',
+          livekit_egress_id: egressId,
+          error_message: null,
+          retry_count: recording.retryCount + 1,
+          last_retried_at: now,
+          updated_at: now,
+        };
+
+        // A retry starts a NEW egress with a NEW reserved R2 key, so the
+        // previous attempt's artifact must never be retained: overwrite both
+        // storage columns with the new reservation, or clear the pair when
+        // the provider disclosed none (cleared together to keep
+        // ck_recordings_storage_pair satisfied).
+        if (providerResult.storageBucket && providerResult.storagePath) {
+          retryUpdate.storage_bucket = providerResult.storageBucket;
+          retryUpdate.storage_path = providerResult.storagePath;
+        } else {
+          retryUpdate.storage_bucket = null;
+          retryUpdate.storage_path = null;
+        }
+
         const { error: updateError } = await supabase
           .from('recordings')
-          .update({
-            status: 'recording',
-            livekit_egress_id: egressId,
-            error_message: null,
-            retry_count: recording.retryCount + 1,
-            last_retried_at: now,
-            updated_at: now,
-          })
+          .update(retryUpdate)
           .eq('recording_id', recordingId);
 
         if (updateError) {
@@ -975,6 +1040,12 @@ export const recordingService = {
    * batch_subject_recordings assignment rows for each specified
    * batch_subject_id.
    *
+   * Because the row is created directly as `completed`, an artifact is
+   * mandatory: `input.file.storagePath` must be supplied (public.recordings
+   * requires storage_path or provider_recording_url for `completed`).
+   * Artifact-less uploads are rejected instead of creating an unplayable
+   * `completed` row. `completed_at` is set at insert time.
+   *
    * @param input - Title, optional description, batch_subject_ids, file metadata.
    * @returns The created recording ID and status.
    */
@@ -988,6 +1059,17 @@ export const recordingService = {
       }
       if (!input.batchSubjectIds?.length) {
         return { success: false, error: 'At least one batch_subject_id is required.' };
+      }
+      // An uploaded recording is inserted directly as 'completed', which the
+      // recordings table only permits when an artifact is present
+      // (storage_path or provider_recording_url). Without a file there is
+      // nothing to play back, so reject rather than create a dead row.
+      if (!input.file?.storagePath?.trim()) {
+        return {
+          success: false,
+          error:
+            'A recording file is required. Provide input.file with storageBucket and storagePath.',
+        };
       }
 
       // Validate all batchSubjectIds are valid UUIDs
@@ -1037,6 +1119,8 @@ export const recordingService = {
         recording_type: input.recordingType ?? 'live_class',
         source_type: 'uploaded',
         status: 'completed',
+        // status='completed' requires completed_at (ck_recordings_status_completed).
+        completed_at: new Date().toISOString(),
       };
 
       if (input.file) {
@@ -1379,6 +1463,12 @@ export const recordingService = {
    * This method is idempotent — calling it multiple times with the
    * same egress ID is safe.
    *
+   * An `egress.completed` payload only finalizes the row when a storage
+   * artifact (`storage_path` or `provider_recording_url`) is available -
+   * either supplied by the payload or already present on the row. Without
+   * an artifact the row is left in its current (non-terminal) state and a
+   * deferral error is returned rather than a misleading success.
+   *
    * @param payload - The webhook payload from LiveKit.
    */
   async handleWebhook(
@@ -1392,7 +1482,7 @@ export const recordingService = {
       // Find the recording by egress ID
       const { data: recording, error: findError } = await supabase
         .from('recordings')
-        .select('recording_id, status')
+        .select('recording_id, status, provider_recording_url')
         .eq('livekit_egress_id', payload.livekitEgressId)
         .single();
 
@@ -1408,15 +1498,41 @@ export const recordingService = {
         return { success: true };
       }
 
+      const now = new Date().toISOString();
+
       const updates: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
 
       if (payload.status === 'completed') {
+        // ── Artifact guard ─────────────────────────────────────────────────
+        // public.recordings requires storage_path OR provider_recording_url
+        // to be non-NULL when status='completed'. The webhook payload may not
+        // carry a location, so treat the row's own provider URL as valid too
+        // and NEVER fabricate a path. If no artifact is known, defer: the row
+        // stays in its current state and can be finalized by an
+        // artifact-aware path later.
+        const hasArtifact =
+          Boolean(payload.storagePath) ||
+          Boolean(payload.providerRecordingUrl) ||
+          Boolean(recording.provider_recording_url);
+
+        if (!hasArtifact) {
+          return {
+            success: false,
+            error:
+              'Egress completed without a storage artifact (storagePath / providerRecordingUrl). Recording left in its current processing state.',
+          };
+        }
+
         updates.status = 'completed';
+        updates.completed_at = now;
         updates.duration_seconds = payload.durationSeconds ?? null;
         updates.file_size_bytes = payload.fileSizeBytes ?? null;
         updates.storage_path = payload.storagePath ?? null;
+        if (payload.providerRecordingUrl) {
+          updates.provider_recording_url = payload.providerRecordingUrl;
+        }
         updates.playback_url = payload.playbackUrl ?? null;
         updates.error_message = null;
       } else {

@@ -65,7 +65,18 @@ export default async function CourseDetailPage({ params }: PageProps) {
       </section>
       <div className="store-container store-detail-grid">
         <div className="store-detail-content">
-          <CourseArtwork stream={course.streamCode} large />
+          <CourseArtwork
+            stream={course.streamCode}
+            large
+            title={course.presentation?.displayTitle || course.title}
+            imageUrl={
+              course.streamCode?.toUpperCase() === 'NEET'
+                ? '/course/neet.png'
+                : course.streamCode?.toUpperCase() === 'CUET'
+                ? '/course/cuet.png'
+                : (course.thumbnailPath || null)
+            }
+          />
           <nav className="store-section-nav" aria-label="Course sections">
             <a href="#overview">Overview</a>
             <a href="#curriculum">Curriculum</a>

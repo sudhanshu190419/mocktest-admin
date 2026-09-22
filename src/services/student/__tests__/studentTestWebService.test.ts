@@ -123,6 +123,80 @@ describe('studentTestWebService', () => {
       expect(result.summary.total).toBe(0);
       expect(result.error).toBeNull();
     });
+
+    /** Records table names and returns empty results for the discovery queries. */
+    const mockDiscoveryTables = (tablesQueried: string[]) => {
+      (supabase.from as any).mockImplementation((table: string) => {
+        tablesQueried.push(table);
+        if (table === 'student_details') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { student_id: 'stud-1' } }),
+              }),
+            }),
+          };
+        }
+        if (table === 'batch_subjects') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          };
+        }
+        if (table === 'course_batches') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          };
+        }
+        // student_pyq_purchases
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
+      });
+    };
+
+    it('reuses pre-resolved context and skips batch_students / course_enrollments discovery', async () => {
+      const tablesQueried: string[] = [];
+      mockDiscoveryTables(tablesQueried);
+
+      const result = await fetchStudentAssignedMockTests(undefined, {
+        profileId: 'prof-1',
+        batchIds: ['11111111-1111-4111-8111-111111111111'],
+        courseIds: ['22222222-2222-4222-8222-222222222222'],
+      });
+
+      expect(result.tests).toEqual([]);
+      // The whole point of the context: no repeated discovery round trips.
+      expect(tablesQueried).not.toContain('batch_students');
+      expect(tablesQueried).not.toContain('course_enrollments');
+      // Mapping/assignment queries still run as needed.
+      expect(tablesQueried).toContain('course_batches');
+      expect(tablesQueried).toContain('student_pyq_purchases');
+      expect(tablesQueried).toContain('batch_subjects');
+    });
+
+    it('skips the course_batches query when the known course list is empty', async () => {
+      const tablesQueried: string[] = [];
+      mockDiscoveryTables(tablesQueried);
+
+      const result = await fetchStudentAssignedMockTests(undefined, {
+        profileId: 'prof-1',
+        batchIds: ['11111111-1111-4111-8111-111111111111'],
+        courseIds: [],
+      });
+
+      expect(result.tests).toEqual([]);
+      expect(tablesQueried).not.toContain('course_batches');
+    });
   });
 
   describe('fetchStudentTestInstructions', () => {

@@ -428,6 +428,8 @@ export interface CreateAudienceNotificationInput {
   referenceType?: string | null;
   referenceId?: string | null;
   triggeredBy?: string | null;
+  /** Unique client request ID for broadcast idempotency. */
+  clientRequestId?: string;
   /** The audience to send to. Resolved to recipient IDs internally. */
   audience: NotificationAudience;
   /** Whether to also send push notifications via FCM. */
@@ -441,6 +443,8 @@ export interface SendNotificationResult {
   notificationId: string;
   recipientCount: number;
   pushSent: boolean;
+  isAsync?: boolean;
+  isDuplicate?: boolean;
   pushResults?: {
     successful: number;
     failed: number;

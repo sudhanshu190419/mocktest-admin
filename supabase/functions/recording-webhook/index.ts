@@ -4,7 +4,11 @@
 // Receives webhook events from LiveKit Cloud related to recording (egress)
 // lifecycle. This function handles the following events:
 //
-//   - egress.completed  → Updates recordings row to 'completed'
+//   - egress.completed  → Finalizes the recordings row to 'completed', but
+//                         ONLY when the row already owns a storage artifact
+//                         (storage_path / provider_recording_url). The
+//                         payload carries no artifact location, so
+//                         artifact-less completions stay in processing.
 //   - egress.failed     → Updates recordings row to 'failed'
 //
 // This function does NOT handle participant/room events (those are
@@ -39,30 +43,37 @@ import { WebhookReceiver } from 'npm:livekit-server-sdk@2.8.1';
  *
  * @see https://docs.livekit.io/egress/webhooks/
  */
-interface LiveKitEgressWebhookPayload {
-  /** The event type (e.g. "egress.completed", "egress.failed"). */
-  event: string;
-  /** The egress object with status and metadata. */
-  egress: {
-    /** LiveKit Egress ID. */
-    egress_id: string;
-    /** Current status of the egress. */
-    status: 'EGRESS_STARTING' | 'EGRESS_ACTIVE' | 'EGRESS_ENDING' | 'EGRESS_COMPLETE' | 'EGRESS_FAILED' | 'EGRESS_ABORTED';
-    /** Error string if the egress failed. */
-    error?: string;
-    /** Duration of the egress in seconds (only when complete). */
+interface LiveKitEgressInfo {
+  egressId?: string;
+  egress_id?: string;
+  roomName?: string;
+  room_name?: string;
+  status?: number | string;
+  error?: string;
+  fileResults?: Array<{
+    filename?: string;
     duration?: number;
-  };
-  /** Room info from the egress. */
+    size?: number;
+    location?: string;
+  }>;
+}
+
+interface LiveKitEgressWebhookPayload {
+  /** LiveKit webhook event name. */
+  event: string;
+
+  /** Egress information for egress_* webhook events. */
+  egressInfo?: LiveKitEgressInfo;
+
+  /** Some webhook payloads may also contain room information. */
   room?: {
-    /** Room name that was recorded. */
-    name: string;
-    sid: string;
+    name?: string;
+    sid?: string;
   };
-  /** Unique event ID for idempotency. */
-  id: string;
-  /** Timestamp of the event. */
-  created_at: number;
+
+  id?: string;
+  createdAt?: number;
+  created_at?: number;
 }
 
 interface WebhookSuccessResponse {
@@ -106,6 +117,46 @@ function structuredLog(event: string, data: Record<string, unknown>): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Diagnostic-only helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize a value returned by the LiveKit SDK/protobuf layer so it is safe
+ * for JSON.stringify. Protobuf int64 fields (timestamps, durations, sizes)
+ * arrive as `bigint`, which JSON.stringify throws on.
+ *
+ * Diagnostic logging only — never affects business logic.
+ */
+function toLogSafe(value: unknown): string | number | boolean | null | undefined {
+  if (value === null || value === undefined) return value ?? null;
+  if (typeof value === 'bigint') return Number(value);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  return String(value);
+}
+
+/** Loose view of the egress info on a verified webhook event (diagnostics only). */
+interface WebhookEgressLogInfo {
+  egressId?: string;
+  egress_id?: string;
+  status?: { toString(): string } | string | number;
+  duration?: unknown;
+  error?: string;
+}
+
+/**
+ * Loose view of the verified `WebhookEvent` used only for diagnostic logging.
+ * The proto field is `egress_info` (parsed as `egressInfo`); some payload
+ * shapes may expose it as `egress`, so both are checked.
+ */
+interface WebhookVerifiedLogEvent {
+  event?: string;
+  room?: { name?: string };
+  egress?: WebhookEgressLogInfo;
+  egressInfo?: WebhookEgressLogInfo;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -125,19 +176,26 @@ function errorResponse(error: string, status = 400): Response {
  * Map LiveKit Egress status to our RecordingStatus.
  */
 function mapEgressStatus(
-  livekitStatus: string,
+  livekitStatus: unknown,
 ): 'completed' | 'failed' | null {
-  switch (livekitStatus) {
-    case 'EGRESS_COMPLETE':
-    case 'EGRESS_ENDING':
+  const status =
+    typeof livekitStatus === 'number'
+      ? livekitStatus
+      : Number(livekitStatus);
+
+  switch (status) {
+    case 3: // EGRESS_COMPLETE
       return 'completed';
-    case 'EGRESS_FAILED':
-    case 'EGRESS_ABORTED':
+
+    case 4: // EGRESS_FAILED
+    case 5: // EGRESS_ABORTED
+    case 6: // EGRESS_LIMIT_REACHED
       return 'failed';
+
     default:
       structuredLog('UNRECOGNIZED_EGRESS_STATUS', {
         status: livekitStatus,
-        hint: 'Received an unrecognized LiveKit egress status. This may be a new status added by LiveKit. Recording will not be updated.',
+        hint: 'Received a non-terminal or unrecognized LiveKit egress status. Recording will not be updated.',
       });
       return null;
   }
@@ -150,20 +208,40 @@ function mapEgressStatus(
 /**
  * Handle an egress.completed or egress.failed webhook event.
  *
- * Updates the corresponding recordings row in the database with the
- * final status, duration, file size, and storage path.
+ * Updates the corresponding recordings row with the final status, and —
+ * for completions — the duration and `completed_at`. A completion is only
+ * applied when the row already owns a storage artifact, because
+ * public.recordings requires storage_path or provider_recording_url for
+ * status='completed'.
  */
 async function handleEgressEvent(
   supabase: ReturnType<typeof createClient>,
   payload: LiveKitEgressWebhookPayload,
 ): Promise<string | null> {
-  const egressId = payload.egress?.egress_id;
-  const livekitStatus = payload.egress?.status;
-  const roomName = payload.room?.name;
+  const egressInfo = payload.egressInfo;
 
-  if (!egressId || !livekitStatus) {
-    return 'Missing egress_id or status in webhook payload';
-  }
+const egressId =
+  egressInfo?.egressId ??
+  egressInfo?.egress_id;
+
+const livekitStatus = egressInfo?.status;
+
+const roomName =
+  payload.room?.name ??
+  egressInfo?.roomName ??
+  egressInfo?.room_name;
+
+if (!egressId || livekitStatus === undefined || livekitStatus === null) {
+  structuredLog('EGRESS_WEBHOOK_INVALID', {
+    event: payload.event,
+    hasEgressInfo: Boolean(egressInfo),
+    egressId: egressId ?? null,
+    status: livekitStatus ?? null,
+    roomName: roomName ?? null,
+  });
+
+  return 'Missing egressId or status in webhook payload';
+}
 
   structuredLog('EGRESS_EVENT_RECEIVED', {
     egressId: egressId.slice(0, 20) + '...',
@@ -186,9 +264,18 @@ async function handleEgressEvent(
   // Find the recording by egress ID
   const { data: recording, error: findError } = await supabase
     .from('recordings')
-    .select('recording_id, status')
+    .select('recording_id, status, storage_path, provider_recording_url')
     .eq('livekit_egress_id', egressId)
     .maybeSingle();
+
+  structuredLog('WEBHOOK_RECORDING_LOOKUP', {
+    egressId,
+    found: Boolean(recording),
+    recordingId: recording?.recording_id || null,
+    currentStatus: recording?.status || null,
+    hasStoragePath: Boolean(recording?.storage_path),
+    hasProviderRecordingUrl: Boolean(recording?.provider_recording_url),
+  });
 
   if (findError) {
     return `Database error looking up recording: ${findError.message}`;
@@ -215,24 +302,63 @@ async function handleEgressEvent(
 
   // Build the update payload
   const now = new Date().toISOString();
+
+  if (mappedStatus === 'completed') {
+    // ── Artifact guard ──────────────────────────────────────────────────
+    // public.recordings requires storage_path OR provider_recording_url to
+    // be non-NULL when status='completed'. The LiveKit egress webhook
+    // payload carries no storage/output location, and a path must never be
+    // fabricated from room.name / filePrefix. Complete only when the row
+    // already owns an artifact (for example finalized by an artifact-aware
+    // path); otherwise leave the row in its current state so a later
+    // artifact-aware path can finalize it.
+    const hasArtifact =
+      Boolean(recording.storage_path) || Boolean(recording.provider_recording_url);
+
+    if (!hasArtifact) {
+      structuredLog('EGRESS_COMPLETE_WITHOUT_ARTIFACT', {
+        recordingId: recording.recording_id,
+        egressId: egressId.slice(0, 20) + '...',
+        currentStatus: recording.status,
+        hint: 'Egress completed but no storage_path / provider_recording_url is available. Recording left in its current state for a later artifact-aware finalization.',
+      });
+      return null;
+    }
+  }
+
   const updates: Record<string, unknown> = {
     status: mappedStatus,
     updated_at: now,
   };
 
   if (mappedStatus === 'completed') {
-    // Populate duration from the egress metadata
-    const durationSeconds = payload.egress?.duration;
-    if (durationSeconds && durationSeconds > 0) {
-      updates.duration_seconds = durationSeconds;
-    }
+    // status='completed' requires completed_at (ck_recordings_status_completed)
+    updates.completed_at = now;
 
+    // Populate duration from the egress metadata
+    const durationNanoseconds = egressInfo?.fileResults?.[0]?.duration;
+
+if (
+  typeof durationNanoseconds === 'number' &&
+  durationNanoseconds > 0
+) {
+  updates.duration_seconds = durationNanoseconds / 1_000_000_000;
+}
     // Clear any previous error
     updates.error_message = null;
   } else if (mappedStatus === 'failed') {
-    updates.error_message = payload.egress?.error ?? 'Recording failed during processing.';
+    updates.error_message =
+  egressInfo?.error ?? 'Recording failed during processing.';
     updates.retry_count = 0; // Reset retry count; new retry will increment
   }
+
+  structuredLog('WEBHOOK_COMPLETION_ATTEMPT', {
+    egressId,
+    recordingId: recording?.recording_id || null,
+    mappedStatus,
+    hasStoragePath: Boolean(recording?.storage_path),
+    hasProviderRecordingUrl: Boolean(recording?.provider_recording_url),
+  });
 
   // Update the recordings row
   const { error: updateError } = await supabase
@@ -241,8 +367,22 @@ async function handleEgressEvent(
     .eq('recording_id', recording.recording_id);
 
   if (updateError) {
+    structuredLog('WEBHOOK_DB_UPDATE_FAILED', {
+      egressId,
+      recordingId: recording.recording_id,
+      error: updateError?.message,
+      code: updateError?.code,
+      details: updateError?.details,
+      hint: updateError?.hint,
+    });
     return `Failed to update recording ${recording.recording_id}: ${updateError.message}`;
   }
+
+  structuredLog('WEBHOOK_DB_UPDATE_SUCCESS', {
+    egressId,
+    recordingId: recording.recording_id,
+    newStatus: mappedStatus,
+  });
 
   structuredLog('RECORDING_UPDATED', {
     recordingId: recording.recording_id,
@@ -259,6 +399,15 @@ async function handleEgressEvent(
 // ═══════════════════════════════════════════════════════════════════════════
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  // Diagnostic: log every request before anything else — including before
+  // webhook signature verification. Never logs the Authorization value itself.
+  structuredLog('WEBHOOK_REQUEST_RECEIVED', {
+    method: req.method,
+    contentType: req.headers.get('content-type'),
+    hasAuthorization: Boolean(req.headers.get('authorization')),
+    userAgent: req.headers.get('user-agent'),
+  });
+
   // ── CORS preflight ──────────────────────────────────────────────────
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
@@ -294,6 +443,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const event = await receiver.receive(rawBody, authHeader);
         verifiedPayload = event as unknown as LiveKitEgressWebhookPayload;
 
+        const verifiedLogEvent = event as unknown as WebhookVerifiedLogEvent;
+        const verifiedEgress = verifiedLogEvent.egressInfo ?? verifiedLogEvent.egress;
+        structuredLog('WEBHOOK_VERIFIED', {
+          event: verifiedLogEvent.event || null,
+          egressId: verifiedEgress?.egressId || verifiedEgress?.egress_id || null,
+          egressStatus:
+            verifiedEgress?.status?.toString?.() ??
+            verifiedEgress?.status ??
+            null,
+          roomName: verifiedLogEvent.room?.name || null,
+          duration: toLogSafe(verifiedEgress?.duration) || null,
+          egressError: verifiedEgress?.error || null,
+        });
+
         structuredLog('SIGNATURE_VERIFIED', {
           eventType: verifiedPayload.event,
           egressId: verifiedPayload.egress?.egress_id?.slice(0, 20) + '...',
@@ -303,6 +466,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         structuredLog('SIGNATURE_VERIFICATION_FAILED', {
           error: message,
           hasAuthHeader: !!authHeader,
+        });
+        structuredLog('WEBHOOK_VERIFICATION_FAILED', {
+          error: message,
+          hasAuthorization: Boolean(req.headers.get('authorization')),
         });
         return errorResponse(`Webhook signature verification failed: ${message}`, 401);
       }
@@ -345,15 +512,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const errors: string[] = [];
 
     // We only handle egress-related events
-    if (payload.event?.startsWith('egress.')) {
-      const err = await handleEgressEvent(supabase, payload);
-      if (err) errors.push(err);
-    } else {
-      structuredLog('EVENT_SKIPPED', {
-        event: payload.event,
-        reason: 'Not an egress event. Only egress.* events are handled here.',
-      });
-    }
+   // We only handle egress-related events
+if (
+  payload.event === 'egress_started' ||
+  payload.event === 'egress_updated' ||
+  payload.event === 'egress_ended'
+) {
+  const err = await handleEgressEvent(supabase, payload);
+  if (err) errors.push(err);
+} else {
+  structuredLog('EVENT_SKIPPED', {
+    event: payload.event,
+    reason:
+      'Not an egress event. Only egress_started, egress_updated and egress_ended are handled here.',
+  });
+}
 
     // ══════════════════════════════════════════════════════════════════
     // Step 6: Return response

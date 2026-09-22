@@ -20,6 +20,8 @@ import { makeStore } from '../store';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
 import { initializeTheme } from '@/services/settings/settingsService';
+import { liveKitCloudProvider } from '@/services/recording/providers/liveKitCloudProvider';
+import { setRecordingProvider } from '@/services/recording/recordingService';
 
 // ─── React Query Configuration ──────────────────────────────────────────────
 
@@ -75,6 +77,18 @@ export default function Providers({ children }: ProvidersProps) {
   const queryClient = getQueryClient();
 
   useEffect(() => {
+    // ── Recording provider registration (app bootstrap) ──────────────────
+    // The Recorded Classes Module delegates LiveKit Egress API calls to an
+    // IRecordingProvider registered at bootstrap (see the architecture note
+    // in services/recording/recordingService.ts). Without this, every
+    // recordingService operation that resolves a provider (startRecording,
+    // stopRecording, getRecordingStatus, getPlaybackUrl, retryRecording)
+    // throws RecordingProviderError.
+    //
+    // Idempotent: re-invocation (e.g. React StrictMode double-invoke in dev)
+    // simply overwrites the registry with the same provider instance.
+    setRecordingProvider(liveKitCloudProvider);
+
     initializeTheme();
   }, []);
 

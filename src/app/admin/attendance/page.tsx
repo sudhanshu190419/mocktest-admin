@@ -83,6 +83,30 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Format the scheduled live-class time range, e.g. "10:30 AM – 11:30 AM".
+ *
+ * Source: live_classes.scheduled_at (+ duration_min for the end time).
+ * Returns "—" for an invalid date; start time only when duration is missing.
+ * (Same en-IN / hour12 convention as the Teacher Attendance implementation.)
+ */
+function formatClassTimeRange(dateIso: string, durationMin?: number | null): string {
+  const start = new Date(dateIso);
+  if (Number.isNaN(start.getTime())) return '—';
+
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  if (typeof durationMin !== 'number' || !Number.isFinite(durationMin) || durationMin <= 0) {
+    return fmt(start);
+  }
+
+  const end = new Date(start.getTime() + durationMin * 60_000);
+  if (Number.isNaN(end.getTime())) return fmt(start);
+
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 function PercentBar({ percent }: { percent: number }) {
   const color = percent >= 75 ? 'bg-emerald-500' : percent >= 25 ? 'bg-amber-500' : 'bg-rose-500';
   return (
@@ -320,12 +344,12 @@ export default function AdminAttendancePage() {
       ]);
       downloadCSV('teacher-attendance', headers, rows);
     } else if (activeTab === 'live-class') {
-      const headers = ['Date', 'Teacher', 'Batch', 'Duration (min)', 'Present', 'Partial', 'Absent'];
+      const headers = ['Date', 'Time', 'Teacher', 'Batch', 'Present', 'Partial', 'Absent'];
       const rows = liveClassAttendance.map((c) => [
         new Date(c.date).toLocaleDateString('en-IN'),
+        formatClassTimeRange(c.date, c.durationMin),
         c.teacherName,
         c.batchName,
-        '—',
         String(c.presentCount),
         String(c.partialCount),
         String(c.absentCount),
@@ -656,9 +680,9 @@ export default function AdminAttendancePage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/30">
                 <th className="px-4 py-3 font-semibold text-gray-500">Date</th>
+                <th className="px-4 py-3 font-semibold text-gray-500">Time</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Teacher</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Batch</th>
-                <th className="px-4 py-3 font-semibold text-gray-500">Duration</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Present</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Partial</th>
                 <th className="px-4 py-3 font-semibold text-gray-500">Absent</th>
@@ -681,9 +705,11 @@ export default function AdminAttendancePage() {
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                       {new Date(cls.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-400">
+                      {formatClassTimeRange(cls.date, cls.durationMin)}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{cls.teacherName}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{cls.batchName}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">—</td>
                     <td className="px-4 py-3 font-medium text-emerald-600">{cls.presentCount}</td>
                     <td className="px-4 py-3 font-medium text-amber-600">{cls.partialCount}</td>
                     <td className="px-4 py-3 font-medium text-rose-600">{cls.absentCount}</td>

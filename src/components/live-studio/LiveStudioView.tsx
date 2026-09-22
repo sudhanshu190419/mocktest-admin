@@ -31,6 +31,7 @@ import {
   Microphone,
   CircleNotch,
   ChatCircleDots,
+  Presentation,
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
 import { useSendAudienceNotification } from '@/hooks/notification/useSendNotification';
@@ -326,10 +327,54 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
   // LiveKit hooks can access the Room context.
 
   /**
-   * Renders all active camera tracks inside the video stage.
+   * Renders the video stage: a published screen share takes priority over
+   * the camera grid, with the camera demoted to a picture-in-picture tile.
    */
   function VideoStageContent(): React.JSX.Element {
-    const cameraTracks = useTracks([Track.Source.Camera]);
+    const tracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
+
+    // The teacher's own share wins; otherwise any publisher's share is shown.
+    // Everything is derived from LiveKit's track publications, so the browser's
+    // native "Stop sharing" clears the share from the stage automatically.
+    const screenShareTrack =
+      tracks.find((t) => t.source === Track.Source.ScreenShare && t.participant.isLocal) ??
+      tracks.find((t) => t.source === Track.Source.ScreenShare);
+    const cameraTracks = tracks.filter((t) => t.source === Track.Source.Camera);
+    const primaryCameraTrack =
+      cameraTracks.find((t) => t.participant.isLocal) ?? cameraTracks[0];
+
+    // ── Screen share active: share fills the stage, camera as PiP ───────
+    if (screenShareTrack) {
+      const isLocalShare = screenShareTrack.participant.isLocal;
+
+      return (
+        <>
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            {/* object-contain: documents, PDFs and slides are never cropped */}
+            <VideoTrack
+              trackRef={screenShareTrack}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </div>
+
+          {/* Small sharing indicator — clear of the other stage corners */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-bold text-blue-100">
+            <Presentation size={15} weight="bold" />
+            <span>{isLocalShare ? 'You are sharing your screen' : 'Screen sharing'}</span>
+          </div>
+
+          {/* Camera picture-in-picture (bottom-right; teacher label is bottom-left) */}
+          {primaryCameraTrack && (
+            <div className="absolute bottom-6 right-6 z-20 w-44 sm:w-56 aspect-video rounded-2xl overflow-hidden border border-white/10 ring-2 ring-white/20 shadow-2xl">
+              <VideoTrack
+                trackRef={primaryCameraTrack}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          )}
+        </>
+      );
+    }
 
     if (cameraTracks.length === 0) {
       return (
@@ -494,7 +539,13 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
         </div>
 
         {/* ── Control Bar (inside LiveKitRoom for useLocalParticipant) ── */}
-        <ControlBar onEndClass={endClass} onCloseStudio={handleClose} isEnding={state.isEnding} />
+        <ControlBar
+          onEndClass={endClass}
+          onCloseStudio={handleClose}
+          isEnding={state.isEnding}
+          recordingClassId={state.classId ?? undefined}
+          recordingClassTitle={state.title}
+        />
       </LiveKitRoom>
     );
   }

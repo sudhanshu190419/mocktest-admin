@@ -53,7 +53,11 @@
 // ============================================================================
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { sendPushNotification } from '../_shared/pushNotification.ts';
+import { sendPushNotification, sendBulkPushNotification } from '../_shared/pushNotification.ts';
+
+declare const EdgeRuntime: {
+  waitUntil?: (promise: Promise<unknown>) => void;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -67,6 +71,8 @@ type NotificationType =
   | 'live_class_reminder' | 'live_class_started' | 'content_approved'
   | 'content_rejected'
   | 'subscription_expiring' | 'subscription_expired' | 'batch_assigned'
+  | 'doubt_assigned' | 'doubt_submitted' | 'doubt_answered' | 'doubt_follow_up'
+  | 'doubt_resolved' | 'doubt_reopened' | 'doubt_unassigned'
   | 'custom';
 
 type NotificationPriority = 'low' | 'normal' | 'high' | 'critical';
@@ -95,6 +101,9 @@ interface DispatchRequest {
   data?: Record<string, string>;
   audience: NotificationAudience;
   sendPush?: boolean;
+  pushOnly?: boolean;
+  clientRequestId?: string;
+  isAsync?: boolean;
 }
 
 interface DispatchSuccessResponse {
@@ -103,6 +112,8 @@ interface DispatchSuccessResponse {
   totalRecipients: number;
   successfulPushes: number;
   failedPushes: number;
+  isAsync?: boolean;
+  isDuplicate?: boolean;
 }
 
 interface DispatchErrorResponse {
@@ -122,7 +133,10 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const CHUNK_SIZE = 100;
+const PAGE_SIZE = 1000;
+const RECIPIENT_CHUNK_SIZE = 500;
+const ASYNC_PUSH_THRESHOLD = 200;
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Logging
@@ -170,7 +184,7 @@ function errorResponse(error: string, status = 400): Response {
 async function authenticateCaller(
   supabase: ReturnType<typeof createClient>,
   authHeader: string | null,
-): Promise<{ profileId: string; role: 'admin' | 'teacher'; instituteId: string } | { error: string }> {
+): Promise<{ profileId: string; role: 'admin' | 'teacher' | 'student'; instituteId: string } | { error: string }> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { error: 'Missing or invalid Authorization header.' };
   }
@@ -199,7 +213,9 @@ async function authenticateCaller(
   if (profileError || !profile) {
     // Fallback: try to get role from user metadata
     const metadataRole = user.user_metadata?.role as string | undefined;
-    const role = metadataRole === 'admin' ? 'admin' : 'teacher';
+    const role = (metadataRole === 'admin' || metadataRole === 'teacher' || metadataRole === 'student')
+      ? metadataRole
+      : 'teacher';
 
     structuredLog('AUTH_PROFILE_FALLBACK', {
       userId: user.id,
@@ -214,7 +230,6 @@ async function authenticateCaller(
     };
   }
 
-  // Determine role — only 'admin' or 'teacher' can send notifications
   const dbRole = profile.role as string;
 
   structuredLog('ROLE_RESOLUTION', {
@@ -224,13 +239,13 @@ async function authenticateCaller(
     instituteId: profile.institute_id,
   });
 
-  if (dbRole !== 'admin' && dbRole !== 'teacher') {
-    return { error: 'Only admins and teachers can send notifications.' };
+  if (dbRole !== 'admin' && dbRole !== 'teacher' && dbRole !== 'student') {
+    return { error: 'Only admins, teachers, and students can send notifications.' };
   }
 
   return {
     profileId: profile.profile_id as string,
-    role: dbRole as 'admin' | 'teacher',
+    role: dbRole as 'admin' | 'teacher' | 'student',
     instituteId: profile.institute_id as string ?? '',
   };
 }
@@ -244,12 +259,29 @@ async function authenticateCaller(
  * Returns null if allowed, or an error string if denied.
  */
 function validatePermissions(
-  role: 'admin' | 'teacher',
+  role: 'admin' | 'teacher' | 'student',
   audienceType: NotificationAudienceType,
+  eventType?: NotificationType,
+  referenceType?: string | null,
 ): string | null {
   if (role === 'admin') {
     // Admin can target any audience
     return null;
+  }
+
+  const isDoubtEvent =
+    referenceType === 'student_doubt' ||
+    (typeof eventType === 'string' && eventType.startsWith('doubt_'));
+
+  if (role === 'student') {
+    if (
+      isDoubtEvent &&
+      audienceType === 'specific_teachers' &&
+      (eventType === 'doubt_submitted' || eventType === 'doubt_follow_up' || eventType === 'doubt_assigned')
+    ) {
+      return null;
+    }
+    return 'Students are only permitted to send notifications for doubts to teachers.';
   }
 
   // Teacher restrictions
@@ -261,6 +293,9 @@ function validatePermissions(
     case 'teachers':
       return 'Teachers cannot send notifications to other teachers.';
     case 'specific_teachers':
+      if (isDoubtEvent) {
+        return null; // Allowed for doubt acknowledgement / routing
+      }
       return 'Teachers cannot send notifications to other teachers.';
     case 'batch':
     case 'specific_students':
@@ -271,18 +306,99 @@ function validatePermissions(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Step 4: Resolve Audience
+// Step 4: Resolve Audience (Paginated & Deterministic)
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Deterministically fetch all profiles for an institute (and optional role)
+ * in pages of PAGE_SIZE until exhaustion. Eliminates the PostgREST 1,000-row ceiling.
+ */
+async function fetchAllProfilesPaginated(
+  supabase: ReturnType<typeof createClient>,
+  instituteId: string,
+  role?: 'student' | 'teacher',
+): Promise<string[] | { error: string }> {
+  const profileIds: string[] = [];
+  let from = 0;
+
+  while (true) {
+    let query = supabase
+      .from('profiles')
+      .select('profile_id')
+      .eq('institute_id', instituteId)
+      .order('profile_id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (role) {
+      query = query.eq('role', role);
+    }
+
+    const { data, error } = await query;
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) break;
+
+    for (const row of data) {
+      if (row.profile_id) {
+        profileIds.push(row.profile_id as string);
+      }
+    }
+
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return profileIds;
+}
+
+/**
+ * Deterministically fetch all enrolled student profiles for a batch
+ * in pages of PAGE_SIZE until exhaustion.
+ */
+async function fetchBatchStudentsPaginated(
+  supabase: ReturnType<typeof createClient>,
+  batchId: string,
+): Promise<string[] | { error: string }> {
+  const profileIds: string[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('batch_students')
+      .select(`
+        student_details!inner(
+          profile_id
+        )
+      `)
+      .eq('batch_id', batchId)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) break;
+
+    for (const bs of data) {
+      const details = (bs as Record<string, unknown>).student_details as Record<string, unknown>;
+      if (details?.profile_id) {
+        profileIds.push(details.profile_id as string);
+      }
+    }
+
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return Array.from(new Set(profileIds));
+}
 
 /**
  * Resolve an audience descriptor to actual profile IDs.
  * Enforces backend permissions — teachers can only access their own batches.
+ * Fully paginated to support thousands of recipients without silent truncation.
  */
 async function resolveAudience(
   supabase: ReturnType<typeof createClient>,
   instituteId: string,
   audience: NotificationAudience,
-  role: 'admin' | 'teacher',
+  role: 'admin' | 'teacher' | 'student',
   callerProfileId: string,
 ): Promise<string[] | { error: string }> {
   const { type, batchId, recipientIds } = audience;
@@ -292,41 +408,21 @@ async function resolveAudience(
     // All Users (admin only)
     // ═════════════════════════════════════════════════════════════════
     case 'all_users': {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('profile_id')
-        .eq('institute_id', instituteId);
-
-      if (error) return { error: error.message };
-      return (data ?? []).map((p: Record<string, unknown>) => p.profile_id as string);
+      return await fetchAllProfilesPaginated(supabase, instituteId);
     }
 
     // ═════════════════════════════════════════════════════════════════
     // All Students (admin only)
     // ═════════════════════════════════════════════════════════════════
     case 'students': {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('profile_id')
-        .eq('institute_id', instituteId)
-        .eq('role', 'student');
-
-      if (error) return { error: error.message };
-      return (data ?? []).map((p: Record<string, unknown>) => p.profile_id as string);
+      return await fetchAllProfilesPaginated(supabase, instituteId, 'student');
     }
 
     // ═════════════════════════════════════════════════════════════════
     // All Teachers (admin only)
     // ═════════════════════════════════════════════════════════════════
     case 'teachers': {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('profile_id')
-        .eq('institute_id', instituteId)
-        .eq('role', 'teacher');
-
-      if (error) return { error: error.message };
-      return (data ?? []).map((p: Record<string, unknown>) => p.profile_id as string);
+      return await fetchAllProfilesPaginated(supabase, instituteId, 'teacher');
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -337,12 +433,6 @@ async function resolveAudience(
 
       // Teacher validation: verify batch is assigned
       if (role === 'teacher') {
-        // ── Map profile_id → teacher_id ────────────────────────────────
-        // callerProfileId is profiles.profile_id (auth.uid()), but
-        // batch_subject_teachers.teacher_id FK references
-        // teacher_details.teacher_id, NOT profiles.profile_id.  Query
-        // teacher_details to get the correct teacher_id before validating
-        // batch assignment.
         const { data: teacherRow, error: teacherError } = await supabase
           .from('teacher_details')
           .select('teacher_id')
@@ -354,11 +444,6 @@ async function resolveAudience(
 
         const teacherId = teacherRow.teacher_id;
 
-        // ── Authoritative assignment check ──────────────────────────────
-        // The teacher must hold at least one batch_subject_teachers row
-        // whose batch_subject belongs to the target batch. Mirrors
-        // teacherService.validateBatchForTeacher. The `batch_teachers`
-        // legacy table is NOT used — it is no longer populated.
         const { data: assignment, error: assignError } = await supabase
           .from('batch_subject_teachers')
           .select('batch_subject_id, batch_subjects!inner(batch_id)')
@@ -370,23 +455,7 @@ async function resolveAudience(
         if (!assignment || assignment.length === 0) return { error: 'You are not assigned to this batch.' };
       }
 
-      // Get students enrolled in this batch via student_details join
-      const { data: batchStudents, error: batchError } = await supabase
-        .from('batch_students')
-        .select(`
-          student_details!inner(
-            profile_id
-          )
-        `)
-        .eq('batch_id', batchId);
-
-      if (batchError) return { error: batchError.message };
-      return (batchStudents ?? [])
-        .map((bs: Record<string, unknown>) => {
-          const details = (bs as Record<string, unknown>).student_details as Record<string, unknown>;
-          return details?.profile_id as string;
-        })
-        .filter(Boolean);
+      return await fetchBatchStudentsPaginated(supabase, batchId);
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -399,10 +468,6 @@ async function resolveAudience(
 
       // Teacher: validate students belong to their batches
       if (role === 'teacher') {
-        // ── Map profile_id → teacher_id ────────────────────────────────
-        // Same reason as the 'batch' case above: batch_subject_teachers.
-        // teacher_id references teacher_details.teacher_id, not
-        // profiles.profile_id.
         const { data: teacherRow, error: teacherError } = await supabase
           .from('teacher_details')
           .select('teacher_id')
@@ -414,9 +479,6 @@ async function resolveAudience(
 
         const teacherId = teacherRow.teacher_id;
 
-        // ── Authoritative assignment lookup ─────────────────────────────
-        // Resolve the teacher's batches via batch_subject_teachers →
-        // batch_subjects (the legacy batch_teachers table is not used).
         const { data: teacherBatches, error: tbError } = await supabase
           .from('batch_subject_teachers')
           .select('batch_subjects!inner(batch_id)')
@@ -465,7 +527,7 @@ async function resolveAudience(
         }
       }
 
-      return recipientIds;
+      return Array.from(new Set(recipientIds));
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -475,7 +537,7 @@ async function resolveAudience(
       if (!recipientIds || recipientIds.length === 0) {
         return { error: 'recipientIds is required for specific_teachers audience.' };
       }
-      return recipientIds;
+      return Array.from(new Set(recipientIds));
     }
 
     default:
@@ -489,7 +551,7 @@ async function resolveAudience(
 
 /**
  * Create a notification event row and recipient rows.
- *
+ * Uses larger chunk sizes (500) and ON CONFLICT handling for fast, idempotent writes.
  * Returns the notification_id and the actual number of recipients inserted.
  */
 async function createNotificationWithRecipients(
@@ -505,6 +567,7 @@ async function createNotificationWithRecipients(
     referenceId: string | null;
     priority?: NotificationPriority;
     recipientIds: string[];
+    clientRequestId?: string | null;
   },
 ): Promise<{ notificationId: string; inserted: number } | { error: string }> {
   const {
@@ -517,18 +580,14 @@ async function createNotificationWithRecipients(
     referenceType,
     referenceId,
     recipientIds,
+    clientRequestId,
   } = params;
 
-  // ── Create notification event row ─────────────────────────────────
-  // NOTE: dispatched_at is intentionally NOT set here.
-  // The column has default null, and the check constraint
-  //   ck_notifications_dispatched_at (dispatched_at is null or dispatched_at >= created_at)
-  // requires dispatched_at >= created_at. Setting a JavaScript-generated
-  // timestamp would violate this because created_at is set by PostgreSQL
-  // via default now() and runs AFTER the JavaScript timestamp is generated.
-  //
-  // This matches the pattern used by complete-course-purchase and
-  // complete-pyq-purchase (see their createCommerceNotification functions).
+  // For custom broadcasts, if referenceType/referenceId are empty and clientRequestId is provided,
+  // use referenceType = 'custom_broadcast' and referenceId = clientRequestId for idempotency indexing.
+  const resolvedRefType = referenceType ?? (clientRequestId ? 'custom_broadcast' : null);
+  const resolvedRefId = referenceId ?? (clientRequestId ? clientRequestId : null);
+
   const dbRecord: Record<string, unknown> = {
     institute_id: instituteId,
     template_id: null,
@@ -537,8 +596,8 @@ async function createNotificationWithRecipients(
     channel: channel ?? 'in_app',
     event_type: eventType,
     triggered_by: triggeredBy ?? null,
-    reference_type: referenceType ?? null,
-    reference_id: referenceId ?? null,
+    reference_type: resolvedRefType,
+    reference_id: resolvedRefId,
     total_recipients: recipientIds.length,
   };
 
@@ -558,7 +617,7 @@ async function createNotificationWithRecipients(
 
   const notificationId = notifData.notification_id as string;
 
-  // ── Insert recipient rows in chunks ───────────────────────────────
+  // ── Insert recipient rows in chunks of RECIPIENT_CHUNK_SIZE (500) ───
   const recipientRows = recipientIds.map((profileId) => ({
     notification_id: notificationId,
     profile_id: profileId,
@@ -570,15 +629,15 @@ async function createNotificationWithRecipients(
 
   let totalInserted = 0;
 
-  for (let i = 0; i < recipientRows.length; i += CHUNK_SIZE) {
-    const chunk = recipientRows.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < recipientRows.length; i += RECIPIENT_CHUNK_SIZE) {
+    const chunk = recipientRows.slice(i, i + RECIPIENT_CHUNK_SIZE);
     const { error: recipError } = await supabase
       .from('notification_recipients')
-      .insert(chunk);
+      .upsert(chunk, { onConflict: 'notification_id,profile_id', ignoreDuplicates: true });
 
     if (recipError) {
       structuredLog('RECIPIENT_CHUNK_INSERT_FAILED', {
-        chunkIndex: i / CHUNK_SIZE,
+        chunkIndex: i / RECIPIENT_CHUNK_SIZE,
         error: recipError.message,
       });
       // Continue with remaining chunks — partial insert is acceptable
@@ -605,62 +664,6 @@ async function createNotificationWithRecipients(
   return { notificationId, inserted: totalInserted };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Step 7: Send Push Notifications
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Dispatch push notifications to all recipients via FCM.
- *
- * Uses the existing _shared/pushNotification.ts infrastructure.
- * Errors are caught and counted — never thrown.
- */
-async function dispatchPushToRecipients(
-  supabase: ReturnType<typeof createClient>,
-  recipientIds: string[],
-  title: string,
-  body: string,
-  referenceType?: string | null,
-  referenceId?: string | null,
-  customData?: Record<string, string>,
-): Promise<{ successful: number; failed: number }> {
-  let successful = 0;
-  let failed = 0;
-
-  const data: Record<string, string> = { ...(customData ?? {}) };
-  if (referenceType) data.referenceType = referenceType;
-  if (referenceId) data.referenceId = referenceId;
-  data.type = 'admin_notification';
-
-  for (const profileId of recipientIds) {
-    try {
-      const result = await sendPushNotification(supabase, {
-        profileId,
-        title,
-        body,
-        data: Object.keys(data).length > 0 ? data : undefined,
-      });
-
-      successful += result.successful;
-      failed += result.failed;
-
-      structuredLog('PUSH_TO_RECIPIENT', {
-        profileId,
-        totalDevices: result.totalDevices,
-        successful: result.successful,
-        failed: result.failed,
-      });
-    } catch (err) {
-      failed++;
-      structuredLog('PUSH_TO_RECIPIENT_FAILED', {
-        profileId,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  }
-
-  return { successful, failed };
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Handler
@@ -782,7 +785,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         : null,
     });
 
-    const permissionError = validatePermissions(callerRole, body.audience.type);
+    const permissionError = validatePermissions(
+      callerRole,
+      body.audience.type,
+      body.eventType,
+      body.referenceType,
+    );
 
     if (permissionError) {
       structuredLog('PERMISSION_DENIED', {
@@ -797,6 +805,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
       callerRole,
       audienceType: body.audience.type,
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // Step 3.5: Idempotency Check (for Admin custom broadcasts)
+    // ══════════════════════════════════════════════════════════════════
+    const clientRequestId =
+      body.clientRequestId ||
+      (body.referenceType === 'custom_broadcast' ? body.referenceId : null);
+
+    if (clientRequestId) {
+      const { data: existing, error: existingError } = await adminClient
+        .from('notifications')
+        .select('notification_id, total_recipients, created_at')
+        .eq('institute_id', instituteId)
+        .eq('reference_type', 'custom_broadcast')
+        .eq('reference_id', clientRequestId)
+        .maybeSingle();
+
+      if (!existingError && existing) {
+        structuredLog('IDEMPOTENT_REQUEST_IGNORED', {
+          clientRequestId,
+          notificationId: existing.notification_id,
+          totalRecipients: existing.total_recipients,
+        });
+
+        return jsonResponse({
+          success: true,
+          notificationId: existing.notification_id,
+          totalRecipients: existing.total_recipients,
+          successfulPushes: 0,
+          failedPushes: 0,
+          isDuplicate: true,
+        });
+      }
+    }
 
     // ══════════════════════════════════════════════════════════════════
     // Step 4: Resolve Audience
@@ -825,52 +867,136 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
 
     // ══════════════════════════════════════════════════════════════════
-    // Step 5–6: Create Notification + Recipients
+    // Step 5–6: Create Notification + Recipients (Skipped if pushOnly)
     // ══════════════════════════════════════════════════════════════════
-    const notifResult = await createNotificationWithRecipients(adminClient, {
-      instituteId,
-      title: body.title,
-      body: body.body,
-      eventType: body.eventType,
-      channel: body.channel ?? 'in_app',
-      triggeredBy: body.triggeredBy ?? callerProfileId,
-      referenceType: body.referenceType ?? null,
-      referenceId: body.referenceId ?? null,
-      priority: body.priority,
-      recipientIds,
-    });
+    let notificationId = '';
+    let insertedRecipients = recipientIds.length;
 
-    if ('error' in notifResult) {
-      return errorResponse(notifResult.error, 500);
+    if (!body.pushOnly) {
+      const notifResult = await createNotificationWithRecipients(adminClient, {
+        instituteId,
+        title: body.title,
+        body: body.body,
+        eventType: body.eventType,
+        channel: body.channel ?? 'in_app',
+        triggeredBy: body.triggeredBy ?? callerProfileId,
+        referenceType: body.referenceType ?? null,
+        referenceId: body.referenceId ?? null,
+        priority: body.priority,
+        recipientIds,
+        clientRequestId,
+      });
+
+      if ('error' in notifResult) {
+        return errorResponse(notifResult.error, 500);
+      }
+
+      notificationId = notifResult.notificationId;
+      insertedRecipients = notifResult.inserted;
     }
 
-    const { notificationId } = notifResult;
-
     // ══════════════════════════════════════════════════════════════════
-    // Step 7: Send Push Notifications
+    // Step 7: Push Delivery (Synchronous or Background Fan-Out)
     // ══════════════════════════════════════════════════════════════════
     let successfulPushes = 0;
     let failedPushes = 0;
 
     if (body.sendPush && recipientIds.length > 0) {
-      const pushResult = await dispatchPushToRecipients(
-        adminClient,
-        recipientIds,
-        body.title,
-        body.body,
-        body.referenceType,
-        body.referenceId,
-        body.data,
-      );
+      const pushData: Record<string, string> = { ...(body.data ?? {}) };
+      if (body.referenceType) pushData.referenceType = body.referenceType;
+      if (body.referenceId) pushData.referenceId = body.referenceId;
+      pushData.type = 'admin_notification';
 
-      successfulPushes = pushResult.successful;
-      failedPushes = pushResult.failed;
+      const shouldRunAsync = recipientIds.length > ASYNC_PUSH_THRESHOLD || body.isAsync === true;
 
-      structuredLog('PUSH_DISPATCH_COMPLETE', {
-        notificationId,
-        successful: successfulPushes,
-        failed: failedPushes,
-      });
+      if (shouldRunAsync) {
+        // ── Phase 2: Asynchronous background push execution ──────────────
+        const targetNotifId = notificationId;
+
+        const asyncPushTask = (async () => {
+          structuredLog('ASYNC_PUSH_STARTED', {
+            notificationId: targetNotifId,
+            recipientCount: recipientIds.length,
+          });
+
+          try {
+            const pushResult = await sendBulkPushNotification(adminClient, {
+              profileIds: recipientIds,
+              title: body.title,
+              body: body.body,
+              data: pushData,
+              concurrency: 25,
+            });
+
+            if (targetNotifId) {
+              await adminClient
+                .from('notifications')
+                .update({ dispatched_at: new Date().toISOString() })
+                .eq('notification_id', targetNotifId);
+            }
+
+            structuredLog('ASYNC_PUSH_COMPLETED', {
+              notificationId: targetNotifId,
+              successful: pushResult.successful,
+              failed: pushResult.failed,
+              totalDevices: pushResult.totalDevices,
+            });
+          } catch (err) {
+            structuredLog('ASYNC_PUSH_FAILED', {
+              notificationId: targetNotifId,
+              error: err instanceof Error ? err.message : 'Unknown push error',
+            });
+          }
+        })();
+
+        if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+          EdgeRuntime.waitUntil(asyncPushTask);
+        } else {
+          asyncPushTask.catch((err) => {
+            console.error('[dispatch-notification] Background push unhandled error:', err);
+          });
+        }
+
+        structuredLog('ASYNC_DISPATCH_HANDOFF', {
+          notificationId,
+          totalRecipients: insertedRecipients,
+          isAsync: true,
+        });
+
+        return jsonResponse({
+          success: true,
+          notificationId,
+          totalRecipients: insertedRecipients,
+          successfulPushes: 0,
+          failedPushes: 0,
+          isAsync: true,
+        });
+      } else {
+        // ── Synchronous push execution for moderate audiences (<= 200) ────
+        const pushResult = await sendBulkPushNotification(adminClient, {
+          profileIds: recipientIds,
+          title: body.title,
+          body: body.body,
+          data: pushData,
+          concurrency: 25,
+        });
+
+        successfulPushes = pushResult.successful;
+        failedPushes = pushResult.failed;
+
+        if (notificationId) {
+          await adminClient
+            .from('notifications')
+            .update({ dispatched_at: new Date().toISOString() })
+            .eq('notification_id', notificationId);
+        }
+
+        structuredLog('SYNC_PUSH_COMPLETE', {
+          notificationId,
+          successful: successfulPushes,
+          failed: failedPushes,
+        });
+      }
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -878,7 +1004,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // ══════════════════════════════════════════════════════════════════
     structuredLog('DISPATCH_COMPLETE', {
       notificationId,
-      totalRecipients: notifResult.inserted,
+      totalRecipients: insertedRecipients,
       successfulPushes,
       failedPushes,
     });
@@ -886,9 +1012,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({
       success: true,
       notificationId,
-      totalRecipients: notifResult.inserted,
+      totalRecipients: insertedRecipients,
       successfulPushes,
       failedPushes,
+      isAsync: false,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

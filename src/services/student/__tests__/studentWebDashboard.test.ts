@@ -4,6 +4,8 @@ import path from 'path';
 import { getPostLoginDestination } from '@/lib/auth/routing';
 import {
   fetchCompleteStudentDashboard,
+  fetchStudentDashboardPrimary,
+  fetchStudentDashboardShell,
 } from '@/services/student/studentDashboardWebService';
 import { supabase } from '@/config/supabase';
 import * as testWebService from '@/services/student/studentTestWebService';
@@ -329,5 +331,95 @@ describe('Student Dashboard Analytics & Data Contract Functional Tests', () => {
     expect(dashboard.weakChapters[0].chapter_name).toBe('Fluid Mechanics');
     expect(dashboard.subjectAnalytics).toHaveLength(1);
     expect(dashboard.subjectAnalytics[0].subject_name).toBe('Physics');
+  });
+
+  /** Chainable Supabase mock shared by the Plan B structural tests below. */
+  const installDiscoveryMocks = (
+    tableCalls: Record<string, number>,
+    rpcCalls: Record<string, number>,
+    batchSubjectRow: unknown,
+  ) => {
+    vi.spyOn(supabase, 'rpc').mockImplementation(((name: string) => {
+      rpcCalls[name] = (rpcCalls[name] || 0) + 1;
+      if (name === 'get_home_screen_bootstrap') {
+        return {
+          data: {
+            profile: { profile_id: 'p-shared', name: 'Shared Student', role: 'student' },
+            active_batches: [{ batch_id: '11111111-1111-4111-8111-111111111111', name: 'Batch One' }],
+            enrolled_courses: [],
+          },
+          error: null,
+        } as any;
+      }
+      if (name === 'get_student_score_trend') return { data: [], error: null } as any;
+      if (name === 'get_courses_content_summary') return { data: {}, error: null } as any;
+      return { data: null, error: null } as any;
+    }) as any);
+
+    vi.spyOn(supabase, 'from').mockImplementation(((table: string) => {
+      tableCalls[table] = (tableCalls[table] || 0) + 1;
+      const result =
+        table === 'batch_subjects' && batchSubjectRow
+          ? { data: [batchSubjectRow], error: null }
+          : table === 'student_details'
+            ? { data: { student_id: 's-shared' }, error: null }
+            : { data: [], error: null };
+      const chain: any = {
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue(result),
+        single: vi.fn().mockResolvedValue(result),
+        then: (resolve: any) => Promise.resolve(result).then(resolve),
+      };
+      return chain;
+    }) as any);
+  };
+
+  it('shares ONE batch_subjects request between assigned-test and live-class discovery', async () => {
+    const tableCalls: Record<string, number> = {};
+    const rpcCalls: Record<string, number> = {};
+
+    installDiscoveryMocks(tableCalls, rpcCalls, {
+      batch_subject_id: 'bs-1',
+      batch_id: '11111111-1111-4111-8111-111111111111',
+      subject_id: '22222222-2222-4222-8222-222222222222',
+      is_active: true,
+      subjects: { name: 'Physics', code: 'PHY' },
+      batches: {
+        name: 'Batch One',
+        batch_code: 'B1',
+        course_batches: [{ courses: { course_id: 'c-1', title: 'Physics Course' } }],
+      },
+    });
+
+    const summary = await fetchStudentDashboardPrimary();
+
+    // ONE batch_subjects request serves BOTH branches, and bootstrap is consumed
+    // once from the shared shell.
+    expect(tableCalls['batch_subjects']).toBe(1);
+    expect(rpcCalls['get_home_screen_bootstrap']).toBe(1);
+    // Branches still resolve to the expected (empty) dashboard shape.
+    expect(summary.assignedMockTests).toEqual([]);
+    expect(summary.liveClass).toBeNull();
+    expect(summary.profile?.profile_id).toBe('p-shared');
+  });
+
+  it('coalesces concurrent dashboard shell fetches into a single bootstrap request', async () => {
+    const tableCalls: Record<string, number> = {};
+    const rpcCalls: Record<string, number> = {};
+    installDiscoveryMocks(tableCalls, rpcCalls, null);
+
+    const [first, second] = await Promise.all([
+      fetchStudentDashboardShell(),
+      fetchStudentDashboardShell(),
+    ]);
+
+    expect(rpcCalls['get_home_screen_bootstrap']).toBe(1);
+    expect(first).toBe(second);
   });
 });

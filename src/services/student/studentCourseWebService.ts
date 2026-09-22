@@ -185,11 +185,80 @@ export interface SubjectLearningWorkspaceData {
 
 // ─── Student Resolution & Viewing History Helpers ───────────────────────────
 
+// ─── Student ID resolution memoization ──────────────────────────────────────
+
+/**
+ * `profile_id → student_details.student_id` mappings are stable for a session,
+ * so successful resolutions are memoized briefly to avoid repeating the same
+ * lookup across student services.
+ *
+ * The resolver argument is deliberately ambiguous — it may already be a
+ * student_id or a profile_id — so entries are keyed by the RAW argument and
+ * never normalised. The no-argument (session) path uses a stable 'session' key.
+ */
+const STUDENT_ID_CACHE_TTL_MS = 5 * 60 * 1000;
+const resolvedStudentIdCache = new Map<string, { studentId: string; expiresAt: number }>();
+const inFlightStudentIdResolutions = new Map<string, Promise<string | null>>();
+
+/**
+ * Clears the memoized student-id resolutions.
+ * Call on sign-out and whenever the authenticated identity changes so that one
+ * student's id can never be served to another in the same browser session.
+ */
+export function clearStudentIdCache(): void {
+  resolvedStudentIdCache.clear();
+  inFlightStudentIdResolutions.clear();
+}
+
 /**
  * Resolves the authenticated student's student_details.student_id.
  * Queries student_details by profile_id = auth.uid() or passed userId.
+ *
+ * Memoized (5 min TTL) with in-flight Promise deduplication. Only successful
+ * (non-null) resolutions are cached; the underlying fallback order is
+ * unchanged — see resolveCurrentStudentIdUncached below.
  */
 export async function resolveCurrentStudentId(userIdOrStudentId?: string | null): Promise<string | null> {
+  const cacheKey =
+    userIdOrStudentId && isUuidString(userIdOrStudentId) ? userIdOrStudentId : 'session';
+
+  const cached = resolvedStudentIdCache.get(cacheKey);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      return cached.studentId;
+    }
+    resolvedStudentIdCache.delete(cacheKey);
+  }
+
+  const inFlight = inFlightStudentIdResolutions.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const resolution = (async (): Promise<string | null> => {
+    try {
+      const studentId = await resolveCurrentStudentIdUncached(userIdOrStudentId);
+      if (studentId) {
+        resolvedStudentIdCache.set(cacheKey, {
+          studentId,
+          expiresAt: Date.now() + STUDENT_ID_CACHE_TTL_MS,
+        });
+      }
+      return studentId;
+    } finally {
+      inFlightStudentIdResolutions.delete(cacheKey);
+    }
+  })();
+
+  inFlightStudentIdResolutions.set(cacheKey, resolution);
+  return resolution;
+}
+
+/**
+ * Uncached resolution — the original implementation, executed in the exact
+ * existing order: student_id → profile_id → active auth session.
+ */
+async function resolveCurrentStudentIdUncached(userIdOrStudentId?: string | null): Promise<string | null> {
   if (userIdOrStudentId && isUuidString(userIdOrStudentId)) {
     // Check if it's already a student_id
     const { data: byStudentId } = await supabase

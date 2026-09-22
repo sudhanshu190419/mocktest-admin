@@ -66,6 +66,8 @@ export default function AdminCreateNotificationPage() {
       return;
     }
 
+    const clientRequestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
+
     const payload = {
       instituteId,
       title: title.trim(),
@@ -74,8 +76,9 @@ export default function AdminCreateNotificationPage() {
       priority,
       channel: 'in_app' as const,
       triggeredBy: user?.id ?? null,
-      referenceType: null,
-      referenceId: null,
+      referenceType: clientRequestId ? 'custom_broadcast' : null,
+      referenceId: clientRequestId ?? null,
+      clientRequestId,
       audience: {
         type: audienceType,
         batchId: audienceType === 'batch' ? selectedBatch : undefined,

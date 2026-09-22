@@ -6,7 +6,14 @@
 # valid Supabase JWT Authorization header.
 # =============================================================================
 
+# Edge Runtime Configuration (for local background task testing)
+[edge_runtime]
+policy = "per_worker"
+
 [functions.razorpay-webhook]
+verify_jwt = false
+
+[functions.recording-webhook]
 verify_jwt = false
 
 # Admin Identity — secure admin account creation (super admin only).

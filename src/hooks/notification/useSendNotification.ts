@@ -43,6 +43,8 @@ interface DispatchResponse {
   totalRecipients: number;
   successfulPushes: number;
   failedPushes: number;
+  isAsync?: boolean;
+  isDuplicate?: boolean;
   error?: string;
 }
 
@@ -97,6 +99,7 @@ export function useSendAudienceNotification() {
       }
 
       const token = session.access_token;
+      const clientRequestId = input.clientRequestId || (input.referenceType === 'custom_broadcast' ? input.referenceId ?? undefined : undefined);
 
       // ── Log outgoing request (masked token) ──────────────────────────
       console.group('[useSendAudienceNotification]');
@@ -110,6 +113,7 @@ export function useSendAudienceNotification() {
         eventType: input.eventType,
         audienceType: input.audience.type,
         sendPush: input.sendPush,
+        clientRequestId,
       });
       console.groupEnd();
 
@@ -132,6 +136,7 @@ export function useSendAudienceNotification() {
             triggeredBy: input.triggeredBy ?? null,
             referenceType: input.referenceType ?? null,
             referenceId: input.referenceId ?? null,
+            clientRequestId,
             audience: {
               type: input.audience.type,
               batchId: input.audience.batchId,
@@ -151,7 +156,9 @@ export function useSendAudienceNotification() {
       return {
         notificationId: data.notificationId,
         recipientCount: data.totalRecipients,
-        pushSent: data.successfulPushes > 0 || data.failedPushes > 0,
+        pushSent: (input.sendPush && (data.successfulPushes > 0 || data.failedPushes > 0 || !!data.isAsync)) || false,
+        isAsync: data.isAsync,
+        isDuplicate: data.isDuplicate,
         pushResults: {
           successful: data.successfulPushes,
           failed: data.failedPushes,

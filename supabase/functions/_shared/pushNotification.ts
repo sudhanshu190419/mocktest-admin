@@ -108,6 +108,32 @@ const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
  */
 const TOKEN_LIFETIME_SECONDS = 3600;
 
+/** Default maximum concurrent FCM requests in the worker pool. */
+const DEFAULT_CONCURRENCY = 25;
+
+/** Maximum retries for transient FCM errors (429, 5xx). */
+const MAX_RETRIES = 2;
+
+/** Base backoff delay in milliseconds. */
+const BASE_BACKOFF_MS = 500;
+
+/** Bulk profile query chunk size when querying device_tokens. Reduced to 50 to prevent HTTP 414 URI Too Long. */
+const TOKEN_LOOKUP_CHUNK_SIZE = 50;
+
+/** Chunk size for deactivating invalid device tokens. */
+const DEACTIVATE_CHUNK_SIZE = 100;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// In-Memory OAuth Token Cache
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CachedOAuthToken {
+  token: string;
+  expiresAt: number; // Unix timestamp in ms
+}
+
+let cachedOAuthToken: CachedOAuthToken | null = null;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Structured Logging
 // ═══════════════════════════════════════════════════════════════════════════
@@ -286,14 +312,45 @@ async function getAccessToken(
   return tokenData.access_token;
 }
 
+/**
+ * Obtain an OAuth 2.0 access token, reusing cached token if valid for > 60s.
+ */
+async function getCachedAccessToken(
+  serviceAccount: FirebaseServiceAccount,
+): Promise<string> {
+  const now = Date.now();
+  if (cachedOAuthToken && now < cachedOAuthToken.expiresAt - 60_000) {
+    return cachedOAuthToken.token;
+  }
+
+  const token = await getAccessToken(serviceAccount);
+  cachedOAuthToken = {
+    token,
+    expiresAt: now + TOKEN_LIFETIME_SECONDS * 1000,
+  };
+  return token;
+}
+
+/** Helper sleep function for backoff. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // FCM v1 Send
 // ═══════════════════════════════════════════════════════════════════════════
 
+interface SendDeviceResult {
+  success: boolean;
+  invalidToken: boolean;
+  isTransient: boolean;
+  httpStatus: number;
+}
+
 /**
  * Send a push notification to a single device via FCM HTTP v1 API.
  *
- * @returns An object indicating success and whether the token is invalid.
+ * @returns An object indicating success, whether the token is invalid, and if the error is transient.
  */
 async function sendToDevice(
   accessToken: string,
@@ -302,7 +359,7 @@ async function sendToDevice(
   title: string,
   body: string,
   data?: Record<string, string>,
-): Promise<{ success: boolean; invalidToken: boolean }> {
+): Promise<SendDeviceResult> {
   // ── Build the FCM v1 message ─────────────────────────────────────────
   const message: Record<string, unknown> = {
     token: fcmToken,
@@ -319,16 +376,6 @@ async function sendToDevice(
 
   const url = FCM_V1_ENDPOINT.replace('{projectId}', projectId);
   const fcmTokenPrefix = fcmToken.slice(0, 20);
-
-  // ── Log the outgoing request ─────────────────────────────────────────
-  structuredLog('FCM_REQUEST_START', {
-    fcmTokenPrefix,
-    requestUrl: url,
-    projectId,
-    notificationTitle: title,
-    notificationBody: body,
-    dataKeys: data ? Object.keys(data) : [],
-  });
 
   const response = await fetch(url, {
     method: 'POST',
@@ -364,75 +411,350 @@ async function sendToDevice(
     }
   }
 
-  // ── Log the response ─────────────────────────────────────────────────
-  structuredLog('FCM_RESPONSE', {
-    fcmTokenPrefix,
-    httpStatus: response.status,
-    ok: response.ok,
-    errorStatus: response.ok ? undefined : errorStatus,
-    errorMessage: response.ok ? undefined : errorMessage,
-    responseBodyTruncated: responseBody.slice(0, 500),
-  });
-
   // ── Success ──────────────────────────────────────────────────────────
   if (response.ok) {
-    return { success: true, invalidToken: false };
+    return { success: true, invalidToken: false, isTransient: false, httpStatus: response.status };
   }
 
-  // ── Determine if the token is invalid and should be deactivated. ─────
-  //
-  // FCM error codes that mean the token is permanently invalid:
-  //   UNREGISTERED     — The token was removed from Firebase (app uninstalled,
-  //                      token revoked, etc.). HTTP 404.
-  //   INVALID_ARGUMENT — The token is malformed or not a valid FCM token.
-  //                      HTTP 400.
-  //   THIRD_PARTY_AUTH_ERROR — The token was invalidated by Firebase Auth.
+  // ── Determine if the token is permanently invalid ────────────────────
   const isInvalid =
     response.status === 404 ||
     errorStatus === 'UNREGISTERED' ||
     errorStatus === 'INVALID_ARGUMENT' ||
     errorStatus === 'THIRD_PARTY_AUTH_ERROR' ||
-    errorMessage.toLowerCase().includes('registration token');
+    errorMessage.toLowerCase().includes('registration token') ||
+    errorMessage.toLowerCase().includes('not a valid fcm registration token');
 
-  return { success: false, invalidToken: isInvalid };
+  // ── Determine if error is transient (can be retried with backoff) ─────
+  const isTransient =
+    response.status === 429 ||
+    response.status === 500 ||
+    response.status === 502 ||
+    response.status === 503 ||
+    response.status === 504 ||
+    errorStatus === 'RESOURCE_EXHAUSTED' ||
+    errorStatus === 'UNAVAILABLE';
+
+  structuredLog('FCM_RESPONSE_ERROR', {
+    fcmTokenPrefix,
+    httpStatus: response.status,
+    errorStatus,
+    errorMessage,
+    isInvalid,
+    isTransient,
+  });
+
+  return { success: false, invalidToken: isInvalid, isTransient, httpStatus: response.status };
+}
+
+/**
+ * Send to device with bounded exponential backoff retry for transient errors.
+ */
+async function sendToDeviceWithRetry(
+  accessToken: string,
+  projectId: string,
+  fcmToken: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Promise<{ success: boolean; invalidToken: boolean }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await sendToDevice(accessToken, projectId, fcmToken, title, body, data);
+      if (res.success) {
+        return { success: true, invalidToken: false };
+      }
+
+      if (res.invalidToken) {
+        // Permanent failure — do NOT retry
+        return { success: false, invalidToken: true };
+      }
+
+      if (!res.isTransient) {
+        // Non-transient non-token error (e.g. 403 Forbidden / invalid project setup)
+        return { success: false, invalidToken: false };
+      }
+
+      // Transient failure (429, 5xx) — retry if attempts remain
+      if (attempt < MAX_RETRIES) {
+        const jitter = Math.floor(Math.random() * 200);
+        const delayMs = BASE_BACKOFF_MS * Math.pow(2, attempt) + jitter;
+        structuredLog('FCM_RETRY_BACKOFF', {
+          fcmTokenPrefix: fcmToken.slice(0, 20),
+          attempt: attempt + 1,
+          delayMs,
+        });
+        await sleep(delayMs);
+      }
+    } catch (err) {
+      if (attempt < MAX_RETRIES) {
+        const jitter = Math.floor(Math.random() * 200);
+        const delayMs = BASE_BACKOFF_MS * Math.pow(2, attempt) + jitter;
+        await sleep(delayMs);
+      } else {
+        structuredLog('FCM_FETCH_FAILED_PERMANENT', {
+          fcmTokenPrefix: fcmToken.slice(0, 20),
+          error: err instanceof Error ? err.message : 'Fetch error',
+        });
+        return { success: false, invalidToken: false };
+      }
+    }
+  }
+
+  return { success: false, invalidToken: false };
+}
+
+/**
+ * Load and validate Firebase service account JSON from environment.
+ */
+function loadServiceAccount(): FirebaseServiceAccount | null {
+  const serviceAccountJson = Deno.env.get('FCM_SERVICE_ACCOUNT_JSON');
+  if (!serviceAccountJson) {
+    structuredLog('PUSH_CONFIG_ERROR', {
+      error: 'FCM_SERVICE_ACCOUNT_JSON environment secret is not configured',
+    });
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(serviceAccountJson) as FirebaseServiceAccount;
+    if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
+      structuredLog('PUSH_CONFIG_ERROR', {
+        error: 'FCM_SERVICE_ACCOUNT_JSON is missing required fields (project_id, client_email, private_key)',
+      });
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    structuredLog('PUSH_CONFIG_ERROR', {
+      error: 'FCM_SERVICE_ACCOUNT_JSON is not valid JSON',
+      message: err instanceof Error ? err.message : 'Parse error',
+    });
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Public API
+// Public API — Bulk Push Dispatch
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface BulkPushNotificationParams {
+  profileIds: string[];
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  concurrency?: number;
+}
+
+export interface BulkPushNotificationResult {
+  totalProfiles: number;
+  totalDevices: number;
+  successful: number;
+  failed: number;
+  invalidTokens: string[];
+}
+
+/**
+ * Dispatch push notifications to hundreds or thousands of recipients in bulk.
+ *
+ * Performance characteristics:
+ *   1. Resolves active device tokens for all profileIds in chunks of 500.
+ *   2. Caches Google OAuth access token across all devices and recipients.
+ *   3. Runs a bounded worker pool (default 25 concurrent requests) to prevent
+ *      socket exhaustion or FCM rate limiting.
+ *   4. Retries transient failures (429/5xx) with exponential backoff & jitter.
+ *   5. Batch deactivates invalid tokens in device_tokens.
+ *   6. Never throws — always returns a structured BulkPushNotificationResult.
+ */
+export async function sendBulkPushNotification(
+  supabase: ReturnType<typeof createClient>,
+  params: BulkPushNotificationParams,
+): Promise<BulkPushNotificationResult> {
+  const { profileIds, title, body, data, concurrency = DEFAULT_CONCURRENCY } = params;
+
+  const result: BulkPushNotificationResult = {
+    totalProfiles: profileIds.length,
+    totalDevices: 0,
+    successful: 0,
+    failed: 0,
+    invalidTokens: [],
+  };
+
+  if (profileIds.length === 0) {
+    return result;
+  }
+
+  structuredLog('BULK_PUSH_START', {
+    totalProfiles: profileIds.length,
+    title,
+    bodyLength: body.length,
+    concurrency,
+  });
+
+  // ── Step 1: Load Firebase service account ────────────────────────────
+  const serviceAccount = loadServiceAccount();
+  if (!serviceAccount) {
+    result.failed = profileIds.length;
+    return result;
+  }
+
+  const projectId = serviceAccount.project_id;
+
+  // ── Step 2: Obtain cached OAuth access token ─────────────────────────
+  let accessToken: string;
+  try {
+    accessToken = await getCachedAccessToken(serviceAccount);
+  } catch (err) {
+    structuredLog('BULK_PUSH_AUTH_ERROR', {
+      error: err instanceof Error ? err.message : 'Failed to obtain OAuth access token',
+    });
+    result.failed = profileIds.length;
+    return result;
+  }
+
+  // ── Step 3: Bulk lookup active device tokens in chunks of 500 ────────
+  interface DeviceTask {
+    profileId: string;
+    token_id: string;
+    fcm_token: string;
+  }
+  const deviceTasks: DeviceTask[] = [];
+
+  for (let i = 0; i < profileIds.length; i += TOKEN_LOOKUP_CHUNK_SIZE) {
+    const chunk = profileIds.slice(i, i + TOKEN_LOOKUP_CHUNK_SIZE);
+    const { data: tokens, error: queryError } = await supabase
+      .from('device_tokens')
+      .select('token_id, profile_id, fcm_token, platform')
+      .in('profile_id', chunk)
+      .eq('is_active', true);
+
+    if (queryError) {
+      result.failed += chunk.length;
+      structuredLog('BULK_TOKEN_LOOKUP_FAILED', {
+        chunkIndex: i / TOKEN_LOOKUP_CHUNK_SIZE,
+        error: queryError.message,
+      });
+      continue;
+    }
+
+    if (tokens && tokens.length > 0) {
+      for (const row of tokens) {
+        if (row.fcm_token) {
+          deviceTasks.push({
+            profileId: row.profile_id as string,
+            token_id: row.token_id as string,
+            fcm_token: row.fcm_token as string,
+          });
+        }
+      }
+    }
+  }
+
+  result.totalDevices = deviceTasks.length;
+
+  if (deviceTasks.length === 0) {
+    structuredLog('BULK_PUSH_NO_ACTIVE_DEVICES', { totalProfiles: profileIds.length });
+    return result;
+  }
+
+  structuredLog('BULK_PUSH_DEVICES_RESOLVED', {
+    totalProfiles: profileIds.length,
+    totalDevices: deviceTasks.length,
+  });
+
+  // ── Step 4: Controlled Concurrency Worker Pool ────────────────────────
+  const concurrencyLimit = Math.max(1, Math.min(concurrency, 50));
+  let cursor = 0;
+  const invalidTokenIds: string[] = [];
+  const invalidFcmTokens: string[] = [];
+
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= deviceTasks.length) break;
+
+      const task = deviceTasks[idx];
+      try {
+        const sendResult = await sendToDeviceWithRetry(
+          accessToken,
+          projectId,
+          task.fcm_token,
+          title,
+          body,
+          data,
+        );
+
+        if (sendResult.success) {
+          result.successful++;
+        } else {
+          result.failed++;
+          if (sendResult.invalidToken) {
+            invalidTokenIds.push(task.token_id);
+            invalidFcmTokens.push(task.fcm_token);
+          }
+        }
+      } catch (err) {
+        result.failed++;
+        structuredLog('WORKER_TASK_ERROR', {
+          profileId: task.profileId,
+          error: err instanceof Error ? err.message : 'Unexpected task error',
+        });
+      }
+    }
+  }
+
+  const workerCount = Math.min(concurrencyLimit, deviceTasks.length);
+  const workers: Promise<void>[] = [];
+  for (let w = 0; w < workerCount; w++) {
+    workers.push(worker());
+  }
+
+  await Promise.all(workers);
+
+  result.invalidTokens = invalidFcmTokens;
+
+  // ── Step 5: Bulk deactivate invalid tokens in chunks ─────────────────
+  if (invalidTokenIds.length > 0) {
+    for (let i = 0; i < invalidTokenIds.length; i += DEACTIVATE_CHUNK_SIZE) {
+      const chunk = invalidTokenIds.slice(i, i + DEACTIVATE_CHUNK_SIZE);
+      const { error: deactivateError } = await supabase
+        .from('device_tokens')
+        .update({ is_active: false })
+        .in('token_id', chunk);
+
+      if (deactivateError) {
+        structuredLog('BULK_TOKEN_DEACTIVATE_FAILED', {
+          error: deactivateError.message,
+          count: chunk.length,
+        });
+      }
+    }
+    structuredLog('BULK_TOKENS_DEACTIVATED', { count: invalidTokenIds.length });
+  }
+
+  structuredLog('BULK_PUSH_COMPLETE', {
+    totalProfiles: result.totalProfiles,
+    totalDevices: result.totalDevices,
+    successful: result.successful,
+    failed: result.failed,
+    invalidTokensCount: result.invalidTokens.length,
+  });
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Public API — Single Recipient Push Dispatch (100% Backward Compatible)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Send a push notification to all active devices belonging to a user.
  *
- * This is the single entry point for push notification delivery. It:
- *   1. Queries device_tokens for the user's active devices
- *   2. Obtains an OAuth 2.0 access token from the Firebase service account
- *   3. Sends the notification to every active device via FCM v1 API
- *   4. Marks invalid/unregistered tokens as inactive in the database
- *   5. Returns a structured result summary
+ * Maintained for backward-compatibility with existing callers (e.g.
+ * subscription-lifecycle, complete-course-purchase).
  *
- * Usage:
- * ```ts
- * import { sendPushNotification } from '../_shared/pushNotification.ts';
- * import { createClient } from 'jsr:@supabase/supabase-js@2';
- *
- * const supabase = createClient(url, serviceRoleKey);
- * const result = await sendPushNotification(supabase, {
- *   profileId: 'user-uuid',
- *   title: 'New Course Available',
- *   body: 'Check out the new Physics course!',
- *   data: { screen: 'course', courseId: 'abc-123' },
- * });
- *
- * console.log(result); // { totalDevices, successful, failed, invalidTokens }
- * ```
- *
+ * Benefits from cached OAuth access token and retry backoff.
  * NEVER throws — always returns a PushNotificationResult.
- *
- * @param supabase  An authenticated Supabase client (service_role recommended
- *                  for bypassing RLS when deactivating tokens).
- * @param params    The notification parameters.
- * @returns A structured summary of the delivery attempt.
  */
 export async function sendPushNotification(
   supabase: ReturnType<typeof createClient>,
@@ -440,7 +762,6 @@ export async function sendPushNotification(
 ): Promise<PushNotificationResult> {
   const { profileId, title, body, data } = params;
 
-  // ── Log the start of the push operation ──────────────────────────────
   structuredLog('PUSH_SEND_START', {
     profileId,
     title,
@@ -448,7 +769,6 @@ export async function sendPushNotification(
     hasData: data != null && Object.keys(data).length > 0,
   });
 
-  // ── Initialise the result with zeros ─────────────────────────────────
   const result: PushNotificationResult = {
     totalDevices: 0,
     successful: 0,
@@ -457,9 +777,7 @@ export async function sendPushNotification(
   };
 
   try {
-    // ══════════════════════════════════════════════════════════════════
-    // Step 1: Query active device tokens for this user
-    // ══════════════════════════════════════════════════════════════════
+    // ── Step 1: Query active device tokens for this user ────────────────
     const { data: tokens, error: queryError } = await supabase
       .from('device_tokens')
       .select('token_id, fcm_token, platform')
@@ -470,178 +788,64 @@ export async function sendPushNotification(
       structuredLog('PUSH_FAILED', {
         profileId,
         error: queryError.message,
-        details: (queryError as { details?: unknown })?.details ?? null,
-        hint: (queryError as { hint?: unknown })?.hint ?? null,
       });
-      // Return zeros — no devices could be queried
       return result;
     }
 
-    // No active devices found — nothing to send
     if (!tokens || tokens.length === 0) {
       structuredLog('DEVICE_TOKENS_FOUND', { profileId, count: 0 });
       return result;
     }
 
     result.totalDevices = tokens.length;
-    structuredLog('DEVICE_TOKENS_FOUND', {
-      profileId,
-      count: tokens.length,
-    });
 
-    // ── Log per-token details for debugging ──────────────────────────
-    for (const token of tokens) {
-      structuredLog('DEVICE_TOKEN_DETAIL', {
-        profileId,
-        tokenId: token.token_id,
-        platform: token.platform,
-        isActive: true,
-        fcmTokenPrefix: token.fcm_token.slice(0, 20),
-      });
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // Step 2: Load Firebase service account from environment
-    // ══════════════════════════════════════════════════════════════════
-    const serviceAccountJson = Deno.env.get('FCM_SERVICE_ACCOUNT_JSON');
-
-    if (!serviceAccountJson) {
-      structuredLog('PUSH_FAILED', {
-        profileId,
-        error: 'FCM_SERVICE_ACCOUNT_JSON environment secret is not configured',
-        hint: 'Set the FCM_SERVICE_ACCOUNT_JSON secret with the full Firebase service account JSON.',
-      });
-      result.failed = tokens.length;
-      return result;
-    }
-
-    let serviceAccount: FirebaseServiceAccount;
-    try {
-      serviceAccount = JSON.parse(serviceAccountJson) as FirebaseServiceAccount;
-    } catch (parseErr) {
-      structuredLog('PUSH_FAILED', {
-        profileId,
-        error: 'FCM_SERVICE_ACCOUNT_JSON is not valid JSON',
-        message: parseErr instanceof Error ? parseErr.message : 'Parse error',
-      });
-      result.failed = tokens.length;
-      return result;
-    }
-
-    if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
-      structuredLog('PUSH_FAILED', {
-        profileId,
-        error: 'FCM_SERVICE_ACCOUNT_JSON is missing required fields',
-        hint: 'Ensure project_id, client_email, and private_key are present.',
-      });
+    // ── Step 2: Load service account ───────────────────────────────────
+    const serviceAccount = loadServiceAccount();
+    if (!serviceAccount) {
       result.failed = tokens.length;
       return result;
     }
 
     const projectId = serviceAccount.project_id;
 
-    // ══════════════════════════════════════════════════════════════════
-    // Step 3: Obtain OAuth 2.0 access token
-    // ══════════════════════════════════════════════════════════════════
+    // ── Step 3: Obtain cached OAuth access token ────────────────────────
     let accessToken: string;
-
-    structuredLog('FIREBASE_AUTH_START', {
-      profileId,
-      projectId,
-    });
-
     try {
-      accessToken = await getAccessToken(serviceAccount);
-
-      structuredLog('FIREBASE_AUTH_SUCCESS', {
-        profileId,
-        projectId,
-      });
+      accessToken = await getCachedAccessToken(serviceAccount);
     } catch (err) {
       structuredLog('PUSH_FAILED', {
         profileId,
         error: err instanceof Error ? err.message : 'Failed to obtain OAuth access token',
-        stack: err instanceof Error ? err.stack : undefined,
       });
       result.failed = tokens.length;
       return result;
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // Step 4: Send to every active device independently
-    // ══════════════════════════════════════════════════════════════════
-    const deviceTokens = tokens as DeviceTokenRow[];
+    // ── Step 4: Send to each active device with retry ───────────────────
+    for (const device of tokens as DeviceTokenRow[]) {
+      const sendResult = await sendToDeviceWithRetry(
+        accessToken,
+        projectId,
+        device.fcm_token,
+        title,
+        body,
+        data,
+      );
 
-    for (const device of deviceTokens) {
-      const tokenLogSuffix = device.fcm_token.slice(0, 16) + '...';
-
-      try {
-        const sendResult = await sendToDevice(
-          accessToken,
-          projectId,
-          device.fcm_token,
-          title,
-          body,
-          data,
-        );
-
-        if (sendResult.success) {
-          result.successful++;
-          structuredLog('PUSH_SENT', {
-            profileId,
-            fcmTokenPrefix: tokenLogSuffix,
-          });
-        } else if (sendResult.invalidToken) {
-          // ── Invalid token — mark inactive in database ───────────
+      if (sendResult.success) {
+        result.successful++;
+      } else {
+        result.failed++;
+        if (sendResult.invalidToken) {
           result.invalidTokens.push(device.fcm_token);
-          result.failed++;
-
-          const { error: updateError } = await supabase
+          await supabase
             .from('device_tokens')
             .update({ is_active: false })
             .eq('token_id', device.token_id);
-
-          if (updateError) {
-            structuredLog('TOKEN_MARKED_INACTIVE', {
-              profileId,
-              fcmTokenPrefix: tokenLogSuffix,
-              error: updateError.message,
-              status: 'db_update_failed',
-            });
-          } else {
-            structuredLog('TOKEN_MARKED_INACTIVE', {
-              profileId,
-              fcmTokenPrefix: tokenLogSuffix,
-              status: 'marked_inactive',
-            });
-          }
-        } else {
-          // ── Transient failure (rate limit, server error, etc.) ──
-          // Do NOT mark the token as inactive — the token itself is valid.
-          result.failed++;
-          structuredLog('PUSH_FAILED', {
-            profileId,
-            fcmTokenPrefix: tokenLogSuffix,
-            error: 'FCM v1 API returned an error',
-            hint: 'Token remains active — the failure may be transient.',
-          });
         }
-      } catch (err) {
-        // ── Unexpected error during fetch or processing ───────────
-        // Do NOT mark the token as inactive.
-        result.failed++;
-        structuredLog('PUSH_FAILED', {
-          profileId,
-          fcmTokenPrefix: tokenLogSuffix,
-          error: err instanceof Error ? err.message : 'Unknown error during push delivery',
-          stack: err instanceof Error ? err.stack : undefined,
-        });
       }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // Step 5: Log summary
-    // ══════════════════════════════════════════════════════════════════
     structuredLog('PUSH_SUMMARY', {
       profileId,
       totalDevices: result.totalDevices,
@@ -650,15 +854,13 @@ export async function sendPushNotification(
       invalidTokensCount: result.invalidTokens.length,
     });
   } catch (err) {
-    // ── Catastrophic catch-all — NEVER throw ──────────────────────────
-    // This is a safety net for unexpected errors in the outer try block.
     structuredLog('PUSH_FAILED', {
       profileId,
       error: err instanceof Error ? err.message : 'Unknown error in sendPushNotification',
-      stack: err instanceof Error ? err.stack : undefined,
       context: 'outer_catch_all',
     });
   }
 
   return result;
 }
+

@@ -447,7 +447,78 @@ export async function getDoubtAssignableTeachers(params: {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Writes (migration-117 RPCs only)
+//  Push notification helper (dispatch-notification)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Asynchronously dispatch FCM push notifications for doubt events.
+ * Notification failure must never fail the doubt action itself.
+ * Does not log student PII.
+ */
+async function dispatchDoubtPush(params: {
+  instituteId?: string;
+  doubtId: string;
+  eventType:
+    | 'doubt_assigned'
+    | 'doubt_submitted'
+    | 'doubt_answered'
+    | 'doubt_follow_up'
+    | 'doubt_resolved'
+    | 'doubt_reopened';
+  title: string;
+  body: string;
+  audienceType: 'specific_teachers' | 'specific_students';
+  recipientIds: string[];
+}): Promise<void> {
+  try {
+    if (!params.recipientIds || params.recipientIds.length === 0) return;
+
+    let instituteId = params.instituteId;
+    if (!instituteId) {
+      const { data: userRes } = await supabase.auth.getUser();
+      if (userRes.user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('institute_id')
+          .eq('profile_id', userRes.user.id)
+          .maybeSingle();
+        instituteId = profile?.institute_id;
+      }
+    }
+    if (!instituteId) {
+      console.warn('[DoubtService] Missing instituteId for push dispatch');
+      return;
+    }
+
+    const { error } = await supabase.functions.invoke('dispatch-notification', {
+      body: {
+        instituteId,
+        title: params.title,
+        body: params.body,
+        eventType: params.eventType,
+        priority: 'normal',
+        channel: 'in_app',
+        referenceType: 'student_doubt',
+        referenceId: params.doubtId,
+        audience: {
+          type: params.audienceType,
+          recipientIds: params.recipientIds,
+        },
+        pushOnly: true,
+        sendPush: true,
+      },
+    });
+
+    if (error) {
+      console.warn('[DoubtService] Push dispatch failed:', error.message || error);
+    }
+  } catch (err) {
+    console.warn('[DoubtService] Push dispatch error:', err instanceof Error ? err.message : err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Writes (migration-117 & 168 RPCs)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -481,7 +552,21 @@ export async function submitDoubt(
       return { success: false, error: doubtErrorMessage(extractErrorMessage(error)) };
     }
 
-    return { success: true, data: mapSubmitDoubtResult(data as DbSubmitDoubtResult) };
+    const raw = data as DbSubmitDoubtResult;
+    if (raw?.recipient_profile_ids && raw.recipient_profile_ids.length > 0) {
+      const isAssigned = !!raw.assigned_to;
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: raw.doubt_id,
+        eventType: isAssigned ? 'doubt_assigned' : 'doubt_submitted',
+        title: isAssigned ? 'A doubt has been assigned to you' : 'New Doubt Submitted',
+        body: `A student submitted a doubt: "${params.title.slice(0, 80)}"`,
+        audienceType: 'specific_teachers',
+        recipientIds: raw.recipient_profile_ids,
+      });
+    }
+
+    return { success: true, data: mapSubmitDoubtResult(raw) };
   } catch (err) {
     return { success: false, error: doubtErrorMessage(extractErrorMessage(err)) };
   }
@@ -510,7 +595,23 @@ export async function replyToDoubt(
       return { success: false, error: doubtErrorMessage(extractErrorMessage(error)) };
     }
 
-    return { success: true, data: mapReplyToDoubtResult(data as DbReplyToDoubtResult) };
+    const raw = data as DbReplyToDoubtResult;
+    if (raw?.recipient_profile_ids && raw.recipient_profile_ids.length > 0) {
+      const isTeacher = raw.is_teacher ?? true;
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: params.doubtId,
+        eventType: isTeacher ? 'doubt_answered' : 'doubt_follow_up',
+        title: isTeacher ? 'Doubt Answered' : 'Student Follow-up on Doubt',
+        body: isTeacher
+          ? `A teacher replied to your doubt: "${params.replyText.slice(0, 80)}"`
+          : `Student replied to doubt: "${params.replyText.slice(0, 80)}"`,
+        audienceType: isTeacher ? 'specific_students' : 'specific_teachers',
+        recipientIds: raw.recipient_profile_ids,
+      });
+    }
+
+    return { success: true, data: mapReplyToDoubtResult(raw) };
   } catch (err) {
     return { success: false, error: doubtErrorMessage(extractErrorMessage(err)) };
   }
@@ -564,7 +665,20 @@ export async function resolveDoubt(
       return { success: false, error: doubtErrorMessage(extractErrorMessage(error)) };
     }
 
-    return { success: true, data: mapDoubtStatusResult(data as DbDoubtStatusResult) };
+    const raw = data as DbDoubtStatusResult;
+    if (raw?.student_profile_id) {
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: params.doubtId,
+        eventType: 'doubt_resolved',
+        title: 'Doubt Resolved',
+        body: 'Your doubt has been resolved.',
+        audienceType: 'specific_students',
+        recipientIds: [raw.student_profile_id],
+      });
+    }
+
+    return { success: true, data: mapDoubtStatusResult(raw) };
   } catch (err) {
     return { success: false, error: doubtErrorMessage(extractErrorMessage(err)) };
   }
@@ -590,7 +704,32 @@ export async function reopenDoubt(
       return { success: false, error: doubtErrorMessage(extractErrorMessage(error)) };
     }
 
-    return { success: true, data: mapDoubtStatusResult(data as DbDoubtStatusResult) };
+    const raw = data as DbDoubtStatusResult;
+    if (raw?.student_profile_id) {
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: params.doubtId,
+        eventType: 'doubt_reopened',
+        title: 'Doubt Reopened',
+        body: 'An administrator reopened your resolved doubt.',
+        audienceType: 'specific_students',
+        recipientIds: [raw.student_profile_id],
+      });
+    }
+
+    if (raw?.teacher_profile_ids && raw.teacher_profile_ids.length > 0) {
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: params.doubtId,
+        eventType: 'doubt_reopened',
+        title: 'Doubt Reopened',
+        body: 'An administrator reopened a resolved doubt you were handling.',
+        audienceType: 'specific_teachers',
+        recipientIds: raw.teacher_profile_ids,
+      });
+    }
+
+    return { success: true, data: mapDoubtStatusResult(raw) };
   } catch (err) {
     return { success: false, error: doubtErrorMessage(extractErrorMessage(err)) };
   }
@@ -617,7 +756,20 @@ export async function assignDoubt(
       return { success: false, error: doubtErrorMessage(extractErrorMessage(error)) };
     }
 
-    return { success: true, data: mapAssignDoubtResult(data as DbAssignDoubtResult) };
+    const raw = data as DbAssignDoubtResult;
+    if (raw?.teacher_profile_id) {
+      void dispatchDoubtPush({
+        instituteId: raw.institute_id,
+        doubtId: params.doubtId,
+        eventType: 'doubt_assigned',
+        title: 'Doubt Assigned',
+        body: 'An academic admin assigned a student doubt to you.',
+        audienceType: 'specific_teachers',
+        recipientIds: [raw.teacher_profile_id],
+      });
+    }
+
+    return { success: true, data: mapAssignDoubtResult(raw) };
   } catch (err) {
     return { success: false, error: doubtErrorMessage(extractErrorMessage(err)) };
   }

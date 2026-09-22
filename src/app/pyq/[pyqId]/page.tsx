@@ -71,6 +71,7 @@ export default async function PYQDetailPage({ params }: PageProps) {
             stream={item.streamCode}
             title={item.subjectBreakdown.map((entry) => entry.subject).slice(0, 2).join('\n')}
             large
+            imageUrl={(item.streamCode?.toUpperCase() === 'NEET' || item.title?.toUpperCase().includes('NEET')) ? '/pyq/pyq.png' : null}
           />
           <nav className="store-section-nav" aria-label="Package sections">
             <a href="#pyq-overview">Overview</a>
