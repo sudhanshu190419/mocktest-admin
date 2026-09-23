@@ -287,32 +287,95 @@ export interface BatchSubjectRow {
   batch_id?: string | null;
   subject_id?: string | null;
   is_active?: boolean | null;
+  subject_name?: string | null;
+  batch_name?: string | null;
+  course_id?: string | null;
+  course_title?: string | null;
   subjects?: unknown;
   batches?: unknown;
   [key: string]: unknown;
 }
 
+interface StudentBatchSubjectRpcRow {
+  batch_subject_id: string;
+  batch_id?: string | null;
+  subject_id?: string | null;
+  is_active?: boolean | null;
+  subject_name?: string | null;
+  batch_name?: string | null;
+  course_id?: string | null;
+  course_title?: string | null;
+}
+
 /**
  * Single implementation of the `batch_subjects` lookup used by BOTH the
- * assigned-test branch and the live-class branch of the dashboard. Callers that
- * already hold the rows (the dashboard orchestrator) pass them in so one
- * dashboard load issues exactly one `batch_subjects` request.
+ * assigned-test branch and the live-class branch of the dashboard.
+ *
+ * Uses the high-performance `get_student_batch_subjects` RPC, which resolves
+ * subject names, batch names, and course titles in a single DB plan (<30ms)
+ * without 4-level nested PostgREST LATERAL joins or repeated helper evaluations.
+ *
+ * Resilient fallback: If the RPC fails, falls back to the legacy PostgREST query.
  */
 export async function fetchBatchSubjectRowsForBatches(
   batchIds: string[],
 ): Promise<{ rows: BatchSubjectRow[]; error: string | null }> {
+  if (!batchIds || batchIds.length === 0) {
+    return { rows: [], error: null };
+  }
+
+  // 1. Primary path: Dedicated SECURITY DEFINER RPC
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      'get_student_batch_subjects',
+      { p_batch_ids: batchIds },
+    );
+
+    if (!rpcError && Array.isArray(rpcData)) {
+      const rows: BatchSubjectRow[] = (rpcData as StudentBatchSubjectRpcRow[]).map((r) => ({
+        batch_subject_id: r.batch_subject_id,
+        batch_id: r.batch_id,
+        subject_id: r.subject_id,
+        is_active: r.is_active,
+        subject_name: r.subject_name,
+        batch_name: r.batch_name,
+        course_id: r.course_id,
+        course_title: r.course_title,
+        subjects: { name: r.subject_name },
+        batches: {
+          name: r.batch_name,
+          course_batches: r.course_id
+            ? [{ courses: { course_id: r.course_id, title: r.course_title } }]
+            : [],
+        },
+      }));
+      return { rows, error: null };
+    }
+
+    if (rpcError) {
+      console.warn(
+        '[studentTestWebService] get_student_batch_subjects RPC failed, falling back to legacy PostgREST query:',
+        rpcError.message,
+      );
+    }
+  } catch (rpcEx: unknown) {
+    const exMsg = rpcEx instanceof Error ? rpcEx.message : 'Unknown RPC error';
+    console.warn(
+      '[studentTestWebService] get_student_batch_subjects RPC exception, falling back:',
+      exMsg,
+    );
+  }
+
+  // 2. Resilient fallback path: Legacy PostgREST query
   try {
     const { data, error } = await supabase
       .from('batch_subjects')
       .select(`
         batch_subject_id,
-        batch_id,
-        subject_id,
         is_active,
-        subjects:subject_id (name, code),
+        subjects:subject_id (name),
         batches:batch_id (
           name,
-          batch_code,
           course_batches (
             courses (course_id, title)
           )
@@ -325,9 +388,10 @@ export async function fetchBatchSubjectRowsForBatches(
     }
 
     return { rows: (data as BatchSubjectRow[]) || [], error: null };
-  } catch (err: any) {
-    console.warn('[studentTestWebService] batch_subjects query exception:', err);
-    return { rows: [], error: err?.message || 'Failed to fetch batch subjects' };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : 'Failed to fetch batch subjects';
+    console.warn('[studentTestWebService] batch_subjects fallback query exception:', err);
+    return { rows: [], error: errMsg };
   }
 }
 

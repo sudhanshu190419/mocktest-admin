@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
-import { useMyDoubts } from '@/hooks/doubt/useDoubt';
+import { useMyDoubtCount } from '@/hooks/doubt/useDoubt';
 import { useAuth } from '@/context/AuthContext';
 import {
   type StudentMockTestCardItem,
@@ -14,6 +14,8 @@ import {
 } from '@/services/student/studentDashboardWebService';
 import { getAssignedTestsQueryOptions } from '@/hooks/student/useStudentAssignedMockTests';
 import { isDueThisWeek } from '@/lib/testCardState';
+
+import type { DoubtStatus } from '@/types/doubt';
 
 /**
  * PRD C6 — badge counts for the nav surfaces:
@@ -28,11 +30,12 @@ export interface NavBadgeCounts {
   openDoubts: number;
 }
 
-/** Open + in-progress doubts via server count on two targeted page-1 queries. */
+const OPEN_DOUBT_STATUSES: DoubtStatus[] = ['open', 'in_progress'];
+
+/** Open + in-progress doubts via one count-only server request. */
 export function useOpenDoubtCount(): number {
-  const open = useMyDoubts({ status: 'open' }, { page: 1, pageSize: 1 });
-  const inProgress = useMyDoubts({ status: 'in_progress' }, { page: 1, pageSize: 1 });
-  return (open.data?.count ?? 0) + (inProgress.data?.count ?? 0);
+  const query = useMyDoubtCount(OPEN_DOUBT_STATUSES);
+  return query.data ?? 0;
 }
 
 /** Tests due this week (§7.3 isDueThisWeek), resilient (0 on error). */

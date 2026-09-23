@@ -417,6 +417,9 @@ export async function fetchStudentDashboardShell(): Promise<StudentDashboardShel
 // ─── Query keys (shared: overview page + nav badge hooks) ──────────────────
 
 export const studentDashboardKeys = {
+  /** Fast composite bootstrap payload (profile, enrolled courses, active batches, stream). */
+  bootstrap: (profileId?: string | null) =>
+    ['student-dashboard', 'bootstrap', profileId || 'anon'] as const,
   /** Fast bootstrap + today's timetable — lets the first screen paint early. */
   overviewShell: (profileId?: string | null) =>
     ['student-dashboard', 'overview', profileId || 'anon', 'shell'] as const,

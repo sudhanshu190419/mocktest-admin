@@ -137,21 +137,22 @@ describe('2. Student Notification Web Service Layer', () => {
     expect(res.data[1].href).toBe('/student/doubts/d-999');
   });
 
-  it('fetchStudentUnreadNotificationCount queries exact unread count for current user', async () => {
-    vi.spyOn(supabase, 'from').mockReturnValue({
+  it('fetchStudentUnreadNotificationCount queries exact unread count for current user without calling auth.getUser()', async () => {
+    const getUserSpy = vi.spyOn(supabase.auth, 'getUser');
+    const mockQueryBuilder: any = {
       select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockImplementation((col: string, val: any) => {
-        if (col === 'is_read' && val === false) {
-          return Promise.resolve({ count: 4, error: null });
-        }
-        return {
-          eq: vi.fn().mockResolvedValue({ count: 4, error: null }),
-        };
-      }),
-    } as any);
+      eq: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ count: 4, error: null }),
+    };
 
-    const unread = await fetchStudentUnreadNotificationCount();
+    vi.spyOn(supabase, 'from').mockReturnValue(mockQueryBuilder);
+
+    const unread = await fetchStudentUnreadNotificationCount('usr-student-1');
     expect(unread).toBe(4);
+    expect(mockQueryBuilder.eq).toHaveBeenCalledWith('is_read', false);
+    expect(mockQueryBuilder.eq).toHaveBeenCalledWith('profile_id', 'usr-student-1');
+    // Confirms auth.getUser() was NOT called
+    expect(getUserSpy).not.toHaveBeenCalled();
   });
 
   it('markStudentNotificationAsRead updates is_read flag on notification_recipients', async () => {

@@ -25,10 +25,10 @@
 const brand = {
   /** Primary brand green — trust, growth, success. */
   green: '#155215',
-  /** Primary brand blue — primary CTA, authority. */
-  blue: '#194080',
+  /** Primary brand blue (Sky Blue) — primary CTA, authority. */
+  blue: '#0284C7',
   /** Deep positive / success accent. */
-  successBlue: '#092F6E',
+  successBlue: '#0284C7',
 } as const;
 
 // ═════════════════════════════════════════════════════════════════
@@ -115,8 +115,8 @@ export const palette = {
   slate800: '#1E293B',
   slate900: '#0F172A',
   green: '#155215',
-  blue: '#194080',
-  successBlue: '#092F6E',
+  blue: '#0284C7',
+  successBlue: '#0284C7',
   red500: '#DC2626',
   amber400: '#F59E0B',
 } as const;

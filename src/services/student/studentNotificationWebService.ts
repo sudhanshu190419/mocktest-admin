@@ -406,17 +406,23 @@ export async function fetchStudentNotifications(
 
 /**
  * Fetches the unread notification count for the authenticated student.
+ * Scoped by profileId (when provided) and protected by RLS (profile_id = auth.uid()).
+ * Does not call supabase.auth.getUser() to prevent redundant /auth/v1/user network requests.
  */
-export async function fetchStudentUnreadNotificationCount(): Promise<number> {
+export async function fetchStudentUnreadNotificationCount(
+  profileId?: string | null
+): Promise<number> {
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) return 0;
-
-    const { count, error } = await supabase
+    let query = supabase
       .from('notification_recipients')
       .select('*', { count: 'exact', head: true })
-      .eq('profile_id', userData.user.id)
       .eq('is_read', false);
+
+    if (profileId) {
+      query = query.eq('profile_id', profileId);
+    }
+
+    const { count, error } = await query;
 
     if (error) {
       console.warn('[studentNotificationWebService] fetchStudentUnreadNotificationCount error:', error);

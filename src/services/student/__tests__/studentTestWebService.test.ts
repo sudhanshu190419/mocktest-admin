@@ -4,6 +4,7 @@ import {
   fetchStudentAssignedMockTests,
   fetchStudentTestInstructions,
   initializeStudentTestAttempt,
+  fetchBatchSubjectRowsForBatches,
 } from '../studentTestWebService';
 import { supabase } from '@/config/supabase';
 
@@ -289,6 +290,87 @@ describe('studentTestWebService', () => {
         p_institute_id: '22222222-2222-4222-8222-222222222222',
         p_attempt_limit: 3,
       });
+    });
+  });
+
+  describe('fetchBatchSubjectRowsForBatches', () => {
+    it('returns empty array when batchIds is empty without querying', async () => {
+      const res = await fetchBatchSubjectRowsForBatches([]);
+      expect(res.rows).toEqual([]);
+      expect(res.error).toBeNull();
+      expect(supabase.rpc).not.toHaveBeenCalled();
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it('uses get_student_batch_subjects RPC on primary path and maps correctly', async () => {
+      const mockRpcData = [
+        {
+          batch_subject_id: 'bs-1',
+          batch_id: 'batch-1',
+          is_active: true,
+          subject_id: 'sub-1',
+          subject_name: 'Physics',
+          batch_name: 'NEET 2026',
+          course_id: 'course-1',
+          course_title: 'Complete NEET Physics',
+        },
+      ];
+
+      (supabase.rpc as any).mockResolvedValue({
+        data: mockRpcData,
+        error: null,
+      });
+
+      const res = await fetchBatchSubjectRowsForBatches(['batch-1']);
+      expect(supabase.rpc).toHaveBeenCalledWith('get_student_batch_subjects', {
+        p_batch_ids: ['batch-1'],
+      });
+      expect(res.rows.length).toBe(1);
+      expect(res.rows[0].batch_subject_id).toBe('bs-1');
+      expect(res.rows[0].subject_name).toBe('Physics');
+      expect(res.rows[0].batch_name).toBe('NEET 2026');
+      expect(res.rows[0].course_id).toBe('course-1');
+      expect(res.rows[0].course_title).toBe('Complete NEET Physics');
+      // Compatibility structures
+      expect(res.rows[0].subjects).toEqual({ name: 'Physics' });
+      expect((res.rows[0].batches as any).name).toBe('NEET 2026');
+      expect((res.rows[0].batches as any).course_batches[0].courses).toEqual({
+        course_id: 'course-1',
+        title: 'Complete NEET Physics',
+      });
+    });
+
+    it('falls back to legacy PostgREST query when RPC returns an error', async () => {
+      (supabase.rpc as any).mockResolvedValue({
+        data: null,
+        error: { message: 'function get_student_batch_subjects() does not exist' },
+      });
+
+      const legacyData = [
+        {
+          batch_subject_id: 'bs-legacy-1',
+          is_active: true,
+          subjects: { name: 'Chemistry' },
+          batches: {
+            name: 'Batch A',
+            course_batches: [{ courses: { course_id: 'c-legacy', title: 'Chemistry Course' } }],
+          },
+        },
+      ];
+
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: legacyData, error: null }),
+        }),
+      });
+
+      const res = await fetchBatchSubjectRowsForBatches(['batch-1']);
+      expect(supabase.rpc).toHaveBeenCalledWith('get_student_batch_subjects', {
+        p_batch_ids: ['batch-1'],
+      });
+      expect(supabase.from).toHaveBeenCalledWith('batch_subjects');
+      expect(res.rows.length).toBe(1);
+      expect(res.rows[0].batch_subject_id).toBe('bs-legacy-1');
     });
   });
 });

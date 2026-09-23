@@ -80,6 +80,7 @@ export interface Course {
   trending: boolean;
   status: CourseStatus;
   deletedAt: string | null;
+  publishedAt?: string | null;
   sortOrder: number;
   presentation: CoursePresentation;
   plans: SubscriptionPlan[];

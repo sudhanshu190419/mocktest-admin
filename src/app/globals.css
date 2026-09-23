@@ -12,11 +12,11 @@
 }
 
 @theme {
-  --color-primary-100: #eff4ff;
-  --color-primary-700: #113f8c;
-  --color-primary-800: #092f6e;
-  --color-primary-900: #051d45;
-  --color-navy-800: #194080;
+  --color-primary-100: #e0f2fe;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #0284c7;
+  --color-primary-900: #0c4a6e;
+  --color-navy-800: #0284c7;
   --color-surface: #ffffff;
   --color-border-subtle: rgba(226, 232, 240, 0.6);
   --color-text-primary: #0f172a;

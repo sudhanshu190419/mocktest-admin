@@ -50,6 +50,7 @@ import type {
   AttachDoubtFileResult,
   DoubtFilters,
   DoubtListScope,
+  DoubtStatus,
   DoubtTeacherOption,
   ReplyToDoubtInput,
   ReplyToDoubtResult,
@@ -248,6 +249,54 @@ export async function getMyDoubts(
   pagination?: PaginationParams,
 ): Promise<ApiResponse<PaginatedResponse<StudentDoubt>>> {
   return queryDoubts('student', filters, pagination);
+}
+
+export type DoubtCountFilters = Omit<DoubtFilters, 'status'> & {
+  status?: DoubtStatus | DoubtStatus[];
+  statuses?: DoubtStatus[];
+};
+
+/**
+ * Student's own doubt COUNT only (RLS: "Students have full access to their own
+ * doubts"). Issues a single `HEAD` request with `count: 'exact'` so PostgREST
+ * returns only the count — no doubt rows and no embedded joins.
+ *
+ * Intended for nav badges, which display a number and must not hydrate the
+ * full doubt projection. Security scope is identical to `getMyDoubts`: the
+ * authenticated client + RLS decide which rows are counted; the client never
+ * sends identity or institute filters.
+ *
+ * @param filters - Accepts a single `status` or an array of statuses in `status` or `statuses`.
+ */
+export async function countMyDoubts(
+  filters?: DoubtCountFilters,
+): Promise<ApiResponse<number>> {
+  try {
+    let query = supabase
+      .from('student_doubts')
+      .select('doubt_id', { count: 'exact', head: true });
+
+    const rawStatus = filters?.statuses ?? filters?.status;
+    if (Array.isArray(rawStatus) && rawStatus.length > 0) {
+      if (rawStatus.length === 1) {
+        query = query.eq('status', rawStatus[0]);
+      } else {
+        query = query.in('status', rawStatus);
+      }
+    } else if (typeof rawStatus === 'string') {
+      query = query.eq('status', rawStatus);
+    }
+
+    const { count, error } = await query;
+
+    if (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    return { success: true, data: count ?? 0 };
+  } catch (err) {
+    return { success: false, error: extractErrorMessage(err) };
+  }
 }
 
 /** Teacher doubt inbox (RLS: institute-scoped + routing/specialization). */
@@ -848,6 +897,7 @@ function sanitizeSearchTerm(term: string): string {
 /** Service object (matches the `xxxService` convention). */
 export const doubtService = {
   getMyDoubts,
+  countMyDoubts,
   getTeacherDoubts,
   getAdminDoubts,
   getTeacherDoubtSubjects,

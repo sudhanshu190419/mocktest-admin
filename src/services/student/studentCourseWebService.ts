@@ -489,15 +489,17 @@ export async function fetchStudentTestAttempts(
 }
 
 /**
- * BATCHED Query for Real Question Counts from mock_test_questions.
- * Used as an accurate fallback when get_courses_content_summary is unavailable.
+ * LEGACY question-count path: raw read of public.mock_test_questions.
+ *
+ * Retained ONLY as application-level resilience while the new RPC rolls out.
+ * Under the deployed student RLS policy this evaluates the entitlement helpers
+ * once per question row, which is exactly the cost
+ * get_mock_test_question_counts removes — so it must never be the normal path.
  */
-export async function fetchMockTestQuestionCounts(testIds: string[]): Promise<Map<string, number>> {
+async function fetchMockTestQuestionCountsLegacy(
+  validTestIds: string[]
+): Promise<Map<string, number>> {
   const countMap = new Map<string, number>();
-  if (!testIds || testIds.length === 0) return countMap;
-
-  const validTestIds = testIds.filter(isUuidString);
-  if (validTestIds.length === 0) return countMap;
 
   try {
     const { data, error } = await supabase
@@ -506,7 +508,7 @@ export async function fetchMockTestQuestionCounts(testIds: string[]): Promise<Ma
       .in('test_id', validTestIds);
 
     if (error) {
-      console.warn('[studentCourseWebService] fetchMockTestQuestionCounts error:', error);
+      console.warn('[studentCourseWebService] fetchMockTestQuestionCounts legacy error:', error);
       return countMap;
     }
 
@@ -515,10 +517,67 @@ export async function fetchMockTestQuestionCounts(testIds: string[]): Promise<Ma
       countMap.set(row.test_id, current + 1);
     });
   } catch (err) {
-    console.warn('[studentCourseWebService] Error counting mock test questions:', err);
+    console.warn('[studentCourseWebService] Error counting mock test questions (legacy):', err);
   }
 
   return countMap;
+}
+
+/**
+ * BATCHED Query for Real Question Counts from mock_test_questions.
+ *
+ * Normal path calls the batched `get_mock_test_question_counts` RPC (migration
+ * 172), which resolves the test-visibility authorization once per DISTINCT
+ * test instead of once per question row. Used as an accurate fallback when
+ * get_courses_content_summary is unavailable.
+ *
+ * Row semantics are unchanged: the returned Map only carries test ids that
+ * have at least one readable question row. Unpublished / cross-institute /
+ * non-entitled / zero-question tests are absent, so callers keep their existing
+ * `?? fallback` (e.g. paperMetadata.total_questions).
+ *
+ * If the RPC is unavailable (not yet deployed) or fails, this falls back to the
+ * legacy table query so a student's test list is never dropped because the
+ * optimization failed.
+ */
+export async function fetchMockTestQuestionCounts(testIds: string[]): Promise<Map<string, number>> {
+  const countMap = new Map<string, number>();
+  if (!testIds || testIds.length === 0) return countMap;
+
+  const validTestIds = [...new Set(testIds.filter(isUuidString))];
+  if (validTestIds.length === 0) return countMap;
+
+  try {
+    const { data, error } = await supabase.rpc('get_mock_test_question_counts', {
+      p_test_ids: validTestIds,
+    });
+
+    if (error) {
+      console.warn(
+        '[studentCourseWebService] get_mock_test_question_counts RPC failed, falling back to legacy count query:',
+        error
+      );
+      return fetchMockTestQuestionCountsLegacy(validTestIds);
+    }
+
+    (data || []).forEach((row: any) => {
+      const testId = row?.test_id;
+      const rawCount = row?.question_count;
+      const questionCount = typeof rawCount === 'number' ? rawCount : Number(rawCount);
+
+      if (typeof testId === 'string' && isUuidString(testId) && Number.isFinite(questionCount)) {
+        countMap.set(testId, questionCount);
+      }
+    });
+
+    return countMap;
+  } catch (err) {
+    console.warn(
+      '[studentCourseWebService] Unexpected error calling get_mock_test_question_counts, falling back to legacy count query:',
+      err
+    );
+    return fetchMockTestQuestionCountsLegacy(validTestIds);
+  }
 }
 
 // ─── Subject Helper Utilities ───────────────────────────────────────────────

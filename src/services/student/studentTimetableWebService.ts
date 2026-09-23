@@ -92,16 +92,12 @@ interface DbLiveClassRow {
 }
 
 interface DbMockTestRow {
-  assignment_id: string;
   batch_subject_id: string;
   test_id: string;
   available_from?: string | null;
-  available_until?: string | null;
   mock_tests?: {
-    test_id: string;
     title: string;
-    duration_minutes: number;
-    total_marks: number;
+    duration_min: number;
     subjects?: { name: string } | { name: string }[] | null;
   } | null;
   batch_subjects?: {
@@ -118,10 +114,26 @@ function pickFirst<T>(val: T | T[] | null | undefined): T | null {
 //  Data Fetchers
 // ═══════════════════════════════════════════════════════════════════════════
 
+interface RpcTimetableSlotRow {
+  timetable_slot_id: string;
+  batch_subject_id: string;
+  batch_id: string;
+  batch_name: string;
+  subject_id: string;
+  subject_name: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  valid_from: string;
+  valid_until: string;
+  status: 'active' | 'paused' | 'cancelled' | string;
+}
+
 /**
- * Fetch all active recurring timetable slots accessible to the authenticated student
+ * Legacy PostgREST fallback for fetching student timetable slots.
+ * Executed only if the get_student_timetable_slots RPC fails or returns unusable data.
  */
-export async function fetchStudentTimetableSlots(): Promise<RawTimetableSlot[]> {
+async function fetchStudentTimetableSlotsLegacy(): Promise<RawTimetableSlot[]> {
   try {
     const { data, error } = await supabase
       .from('timetable_slots')
@@ -150,7 +162,7 @@ export async function fetchStudentTimetableSlots(): Promise<RawTimetableSlot[]> 
       .eq('status', 'active');
 
     if (error) {
-      console.warn('[studentTimetableWebService] fetchStudentTimetableSlots error:', error.message);
+      console.warn('[studentTimetableWebService] fetchStudentTimetableSlotsLegacy error:', error.message);
       return [];
     }
 
@@ -180,8 +192,54 @@ export async function fetchStudentTimetableSlots(): Promise<RawTimetableSlot[]> 
       };
     });
   } catch (err) {
-    console.warn('[studentTimetableWebService] fetchStudentTimetableSlots catch:', err);
+    console.warn('[studentTimetableWebService] fetchStudentTimetableSlotsLegacy catch:', err);
     return [];
+  }
+}
+
+/**
+ * Fetch all active recurring timetable slots accessible to the authenticated student.
+ * Primary path: calls public.get_student_timetable_slots RPC.
+ * Fallback path: falls back to legacy PostgREST query on error.
+ */
+export async function fetchStudentTimetableSlots(batchIds?: string[]): Promise<RawTimetableSlot[]> {
+  try {
+    const rpcParams: { p_batch_ids?: string[] } = {};
+    if (batchIds && batchIds.length > 0) {
+      rpcParams.p_batch_ids = batchIds;
+    }
+
+    const { data, error } = await supabase.rpc('get_student_timetable_slots', rpcParams);
+
+    if (error) {
+      console.warn('[studentTimetableWebService] get_student_timetable_slots RPC failed, using legacy fallback:', error.message);
+      return await fetchStudentTimetableSlotsLegacy();
+    }
+
+    if (!Array.isArray(data)) {
+      console.warn('[studentTimetableWebService] get_student_timetable_slots returned non-array, using legacy fallback');
+      return await fetchStudentTimetableSlotsLegacy();
+    }
+
+    return (data as RpcTimetableSlotRow[]).map((row) => ({
+      timetable_slot_id: row.timetable_slot_id,
+      institute_id: '',
+      teacher_id: '',
+      batch_subject_id: row.batch_subject_id,
+      day_of_week: Number(row.day_of_week),
+      start_time: row.start_time,
+      end_time: row.end_time,
+      valid_from: row.valid_from,
+      valid_until: row.valid_until,
+      status: (row.status as 'active' | 'paused' | 'cancelled') || 'active',
+      teacher_name: null,
+      batch_name: row.batch_name || null,
+      batch_id: row.batch_id || null,
+      subject_name: row.subject_name || null,
+    }));
+  } catch (err) {
+    console.warn('[studentTimetableWebService] fetchStudentTimetableSlots catch, using legacy fallback:', err);
+    return await fetchStudentTimetableSlotsLegacy().catch(() => []);
   }
 }
 
@@ -338,19 +396,15 @@ export async function fetchStudentScheduledMockTests(
     const { data, error } = await supabase
       .from('batch_subject_mock_tests')
       .select(`
-        assignment_id,
         batch_subject_id,
         test_id,
         available_from,
-        available_until,
         mock_tests (
-          test_id,
           title,
-          duration_minutes,
-          total_marks,
+          duration_min,
           subjects:subjects!fk_mock_tests_subject ( name )
         ),
-        batch_subjects!fk_batch_subject_mock_tests_batch_subject (
+        batch_subjects!fk_bsmt_batch_subject (
           batch_id
         )
       `)
@@ -368,16 +422,16 @@ export async function fetchStudentScheduledMockTests(
       const mt = row.mock_tests;
       const subject = pickFirst(mt?.subjects);
       return {
-        assignment_id: row.assignment_id,
+        assignment_id: row.test_id,
         test_id: row.test_id,
         batch_subject_id: row.batch_subject_id,
         batch_id: row.batch_subjects?.batch_id || null,
         available_from: row.available_from,
-        available_until: row.available_until,
+        available_until: null,
         title: mt?.title || 'Mock Test',
         subject_name: subject?.name || 'Full Syllabus',
-        duration_minutes: mt?.duration_minutes || 180,
-        total_marks: mt?.total_marks || 300,
+        duration_minutes: mt?.duration_min || 180,
+        total_marks: 300,
       };
     });
   } catch {
@@ -396,9 +450,10 @@ export async function fetchTimetableForRange(
   startDate: string,
   endDate: string,
   now: Date = new Date(),
+  batchIds?: string[],
 ): Promise<{ sessions: TimetableSessionItem[]; grouped: Record<string, TimetableSessionItem[]> }> {
   // 1. Fetch slots
-  const slots = await fetchStudentTimetableSlots();
+  const slots = await fetchStudentTimetableSlots(batchIds);
   const slotIds = slots.map((s) => s.timetable_slot_id);
 
   // 2. Parallel fetch of plans, concrete classes, and mock tests
@@ -428,9 +483,10 @@ export async function fetchTimetableForRange(
  */
 export async function fetchTodayTimetable(
   now: Date = new Date(),
+  batchIds?: string[],
 ): Promise<{ sessions: TimetableSessionItem[]; todayStr: string }> {
   const todayStr = formatDateToIsoDate(now);
-  const { sessions } = await fetchTimetableForRange(todayStr, todayStr, now);
+  const { sessions } = await fetchTimetableForRange(todayStr, todayStr, now, batchIds);
   return { sessions, todayStr };
 }
 

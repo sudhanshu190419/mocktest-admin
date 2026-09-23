@@ -71,4 +71,15 @@ describe('doubtKeys', () => {
     expect(listKey[0]).toBe(doubtKeys.all()[0]);
     expect(detailKey[0]).toBe(doubtKeys.all()[0]);
   });
+
+  it('builds role-scoped count keys for single and multiple statuses', () => {
+    expect(doubtKeys.count('student', 'open')).toEqual(['doubts', 'count', 'student', 'open']);
+    expect(doubtKeys.count('student', ['open', 'in_progress'])).toEqual([
+      'doubts',
+      'count',
+      'student',
+      'open,in_progress',
+    ]);
+    expect(doubtKeys.count('student')).toEqual(['doubts', 'count', 'student', 'all']);
+  });
 });

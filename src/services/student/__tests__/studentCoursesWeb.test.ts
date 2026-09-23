@@ -208,26 +208,86 @@ describe('Student Course Web Service & Progress Logic', () => {
   });
 
   describe('4. Mock Test Questions & Real Specification Safety', () => {
-    it('accurately counts questions from mock_test_questions in a batched lookup', async () => {
-      const testIdA = '22222222-2222-4222-8222-222222222222';
-      const testIdB = '33333333-3333-4333-8333-333333333333';
+    const testIdA = '22222222-2222-4222-8222-222222222222';
+    const testIdB = '33333333-3333-4333-8333-333333333333';
 
-      const mockRows = [
-        { test_id: testIdA },
-        { test_id: testIdA },
-        { test_id: testIdA },
-        { test_id: testIdB },
-      ];
+    it('uses the batched get_mock_test_question_counts RPC for the normal path', async () => {
+      const rpcSpy = vi.spyOn(supabase, 'rpc').mockResolvedValueOnce({
+        data: [
+          { test_id: testIdA, question_count: 30 },
+          { test_id: testIdB, question_count: 5 },
+        ],
+        error: null,
+      } as any);
+      const fromSpy = vi.spyOn(supabase, 'from');
+
+      const countMap = await fetchMockTestQuestionCounts([testIdA, testIdB]);
+
+      expect(rpcSpy).toHaveBeenCalledWith('get_mock_test_question_counts', {
+        p_test_ids: [testIdA, testIdB],
+      });
+      expect(fromSpy).not.toHaveBeenCalled();
+      expect(countMap.get(testIdA)).toBe(30);
+      expect(countMap.get(testIdB)).toBe(5);
+    });
+
+    it('deduplicates duplicate ids and drops non-UUIDs before calling the RPC', async () => {
+      const rpcSpy = vi
+        .spyOn(supabase, 'rpc')
+        .mockResolvedValueOnce({ data: [], error: null } as any);
+
+      await fetchMockTestQuestionCounts([testIdA, testIdA, 'not-a-uuid']);
+
+      expect(rpcSpy).toHaveBeenCalledWith('get_mock_test_question_counts', {
+        p_test_ids: [testIdA],
+      });
+    });
+
+    it('does not fabricate a count for ids the RPC omits (PYQ fallback preserved)', async () => {
+      vi.spyOn(supabase, 'rpc').mockResolvedValueOnce({
+        data: [{ test_id: testIdA, question_count: 30 }],
+        error: null,
+      } as any);
+
+      const countMap = await fetchMockTestQuestionCounts([testIdA, testIdB]);
+
+      expect(countMap.get(testIdA)).toBe(30);
+      expect(countMap.has(testIdB)).toBe(false);
+      // Callers keep their existing `?? paperMetadata.total_questions` fallback.
+      expect(countMap.get(testIdB) ?? 42).toBe(42);
+    });
+
+    it('falls back to the legacy table query when the RPC errors', async () => {
+      const rpcSpy = vi.spyOn(supabase, 'rpc').mockResolvedValueOnce({
+        data: null,
+        error: { message: 'function public.get_mock_test_question_counts(uuid[]) does not exist' },
+      } as any);
 
       vi.spyOn(supabase, 'from').mockReturnValueOnce({
         select: vi.fn().mockReturnValueOnce({
-          in: vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }),
+          in: vi.fn().mockResolvedValueOnce({
+            data: [{ test_id: testIdA }, { test_id: testIdA }, { test_id: testIdB }],
+            error: null,
+          }),
         }),
       } as any);
 
       const countMap = await fetchMockTestQuestionCounts([testIdA, testIdB]);
-      expect(countMap.get(testIdA)).toBe(3);
+
+      expect(rpcSpy).toHaveBeenCalled();
+      expect(countMap.get(testIdA)).toBe(2);
       expect(countMap.get(testIdB)).toBe(1);
+    });
+
+    it('makes no request for empty or non-UUID input', async () => {
+      const rpcSpy = vi.spyOn(supabase, 'rpc');
+      const fromSpy = vi.spyOn(supabase, 'from');
+
+      expect((await fetchMockTestQuestionCounts([])).size).toBe(0);
+      expect((await fetchMockTestQuestionCounts(['not-a-uuid', ''])).size).toBe(0);
+
+      expect(rpcSpy).not.toHaveBeenCalled();
+      expect(fromSpy).not.toHaveBeenCalled();
     });
 
     it('preserves null duration and marks without inventing arbitrary numbers', () => {

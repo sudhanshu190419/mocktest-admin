@@ -14,6 +14,16 @@ import {
   type RawConcreteClass,
   type RawMockTestAssignment,
 } from '@/utils/studentTimetableProjector';
+import { fetchStudentTimetableSlots } from '../studentTimetableWebService';
+import { supabase } from '@/config/supabase';
+
+// Mock Supabase client
+vi.mock('@/config/supabase', () => ({
+  supabase: {
+    rpc: vi.fn(),
+    from: vi.fn(),
+  },
+}));
 
 describe('studentTimetableProjector — Unified Projection Engine', () => {
   const fixedNow = new Date('2026-09-16T10:15:00Z'); // Wednesday, 10:15
@@ -464,5 +474,141 @@ describe('studentTimetableProjector — Unified Projection Engine', () => {
       expect(s.durationMin).toBe(120);
       expect(s.title).toBe('Real Scheduled Mock Test 100 Qs');
     });
+  });
+});
+
+describe('studentTimetableWebService — RPC & Legacy Fallback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetches timetable slots using get_student_timetable_slots RPC when successful', async () => {
+    const mockRpcData = [
+      {
+        timetable_slot_id: 'slot-1',
+        batch_subject_id: 'bs-1',
+        batch_id: 'batch-1',
+        batch_name: 'NEET Batch A',
+        subject_id: 'sub-1',
+        subject_name: 'Physics',
+        day_of_week: 1,
+        start_time: '09:00:00',
+        end_time: '10:30:00',
+        valid_from: '2026-04-01',
+        valid_until: '2027-03-31',
+        status: 'active',
+      },
+    ];
+
+    (supabase.rpc as any).mockResolvedValueOnce({ data: mockRpcData, error: null });
+
+    const slots = await fetchStudentTimetableSlots(['batch-1']);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('get_student_timetable_slots', {
+      p_batch_ids: ['batch-1'],
+    });
+    expect(slots.length).toBe(1);
+    expect(slots[0]).toEqual({
+      timetable_slot_id: 'slot-1',
+      institute_id: '',
+      teacher_id: '',
+      batch_subject_id: 'bs-1',
+      day_of_week: 1,
+      start_time: '09:00:00',
+      end_time: '10:30:00',
+      valid_from: '2026-04-01',
+      valid_until: '2027-03-31',
+      status: 'active',
+      teacher_name: null,
+      batch_name: 'NEET Batch A',
+      batch_id: 'batch-1',
+      subject_name: 'Physics',
+    });
+  });
+
+  it('falls back to legacy PostgREST query when RPC returns an error', async () => {
+    (supabase.rpc as any).mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function get_student_timetable_slots does not exist' },
+    });
+
+    const mockLegacyData = [
+      {
+        timetable_slot_id: 'slot-legacy-1',
+        institute_id: 'inst-1',
+        teacher_id: 'teach-1',
+        batch_subject_id: 'bs-1',
+        day_of_week: 2,
+        start_time: '11:00:00',
+        end_time: '12:00:00',
+        valid_from: '2026-04-01',
+        valid_until: '2027-03-31',
+        status: 'active',
+        teacher_details: {
+          teacher_id: 'teach-1',
+          profiles: { name: 'Dr. HC Verma' },
+        },
+        batch_subjects: {
+          batch_subject_id: 'bs-1',
+          batch_id: 'batch-1',
+          batches: { name: 'NEET Batch A' },
+          subjects: { name: 'Physics' },
+        },
+      },
+    ];
+
+    (supabase.from as any).mockReturnValueOnce({
+      select: vi.fn().mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValueOnce({ data: mockLegacyData, error: null }),
+      }),
+    });
+
+    const slots = await fetchStudentTimetableSlots();
+
+    expect(supabase.rpc).toHaveBeenCalledWith('get_student_timetable_slots', {});
+    expect(supabase.from).toHaveBeenCalledWith('timetable_slots');
+    expect(slots.length).toBe(1);
+    expect(slots[0].timetable_slot_id).toBe('slot-legacy-1');
+    expect(slots[0].subject_name).toBe('Physics');
+    expect(slots[0].batch_name).toBe('NEET Batch A');
+    expect(slots[0].teacher_name).toBe('Dr. HC Verma');
+  });
+
+  it('falls back to legacy query when RPC throws an exception', async () => {
+    (supabase.rpc as any).mockRejectedValueOnce(new Error('Network failure'));
+
+    const mockLegacyData = [
+      {
+        timetable_slot_id: 'slot-legacy-2',
+        institute_id: 'inst-1',
+        teacher_id: 'teach-1',
+        batch_subject_id: 'bs-2',
+        day_of_week: 3,
+        start_time: '14:00:00',
+        end_time: '15:00:00',
+        valid_from: '2026-04-01',
+        valid_until: '2027-03-31',
+        status: 'active',
+        teacher_details: null,
+        batch_subjects: {
+          batch_subject_id: 'bs-2',
+          batch_id: 'batch-1',
+          batches: { name: 'NEET Batch A' },
+          subjects: { name: 'Chemistry' },
+        },
+      },
+    ];
+
+    (supabase.from as any).mockReturnValueOnce({
+      select: vi.fn().mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValueOnce({ data: mockLegacyData, error: null }),
+      }),
+    });
+
+    const slots = await fetchStudentTimetableSlots();
+
+    expect(slots.length).toBe(1);
+    expect(slots[0].timetable_slot_id).toBe('slot-legacy-2');
+    expect(slots[0].subject_name).toBe('Chemistry');
   });
 });

@@ -21,6 +21,7 @@ import { ButtonLink } from './Button';
 import { useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/components/ui/mmt';
 import { StudentBellButton } from '@/components/student/StudentBellButton';
+import { SiteFooter } from './SiteFooter';
 
 export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -338,41 +339,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
         )}
       </header>
       {children}
-      <footer className="store-footer">
-        <div className="store-container">
-          <div className="store-footer-top">
-            <div>
-              <Link href="/" className="store-footer-wordmark">
-                Small steps.
-                <br />
-                Bigger possibilities<span>.</span>
-              </Link>
-              <p>A little more clarity. A little more confidence. Every day.</p>
-            </div>
-            <div className="store-footer-links">
-              <span className="store-eyebrow">YOUR NEXT CHAPTER</span>
-              <Link href="/courses">Explore courses ↗</Link>
-              <Link href="/pyq">PYQ packages ↗</Link>
-              {loggedIn ? (
-                <>
-                  <Link href="/student/overview">My learning ↗</Link>
-                  <Link href="/student/doubts">Help & doubts ↗</Link>
-                </>
-              ) : (
-                <>
-                  <Link href="/login">My learning ↗</Link>
-                  <Link href="/login">Student login ↗</Link>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="store-footer-bottom">
-            <span>MakeMeTopper</span>
-            <span>Online Learning Platform</span>
-            <a href="#store-main">Back to top ↑</a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </ToastProvider>
   );
 }

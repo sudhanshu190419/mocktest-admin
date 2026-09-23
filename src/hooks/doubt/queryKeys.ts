@@ -18,7 +18,7 @@
  * @module hooks/doubt/queryKeys
  */
 
-import type { DoubtFilters, DoubtListScope } from '@/types/doubt';
+import type { DoubtFilters, DoubtListScope, DoubtStatus } from '@/types/doubt';
 import type { PaginationParams } from '@/types/academic';
 
 export const doubtKeys = {
@@ -40,6 +40,14 @@ export const doubtKeys = {
     filters?: DoubtFilters,
     pagination?: PaginationParams,
   ) => [...doubtKeys.lists(), scope, filters, pagination] as const,
+
+  /**
+   * Key for a role-scoped, status-scoped doubt COUNT (nav badges). Kept
+   * separate from `list` so a count-only request never shares a cache entry
+   * with a query that hydrates full doubt rows + embeds.
+   */
+  count: (scope: DoubtListScope, status?: DoubtFilters['status'] | DoubtStatus[] | string) =>
+    [...doubtKeys.all(), 'count', scope, Array.isArray(status) ? status.join(',') : (status ?? 'all')] as const,
 
   /** Key for every doubt detail query (broad invalidation). */
   details: () => [...doubtKeys.all(), 'detail'] as const,

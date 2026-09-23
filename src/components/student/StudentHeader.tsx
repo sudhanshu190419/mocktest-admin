@@ -57,7 +57,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
   useEffect(() => {
     let mounted = true;
     async function loadCount() {
-      const count = await fetchStudentUnreadNotificationCount();
+      const count = await fetchStudentUnreadNotificationCount(user?.id);
       if (mounted) {
         setLiveUnreadCount(count);
       }
@@ -66,7 +66,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.id]);
 
   // Synchronize when prop changes
   useEffect(() => {

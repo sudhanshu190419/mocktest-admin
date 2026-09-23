@@ -495,16 +495,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Clear any stale identity cache before re-resolving
       clearTeacherIdentityCache();
 
-      if (profileData && profileData.role !== 'teacher') {
-        console.warn(`User role is ${profileData?.role}, not teacher!`);
+      const isTeacherRole = profileData?.role === 'teacher';
+      if (profileData && !isTeacherRole) {
+        console.warn(`User role is ${profileData.role}, not teacher!`);
       }
 
-      // Fetch teacher_details domain table
-      const { data: teacherData, error: teacherErr } = await supabase
-        .from('teacher_details')
-        .select('*')
-        .eq('profile_id', userId)
-        .single();
+      // Fetch teacher_details domain table — ONLY for teacher profiles.
+      // Non-teacher roles (student / admin / user) legitimately have no
+      // teacher_details row, and querying with .single() emitted a spurious
+      // HTTP 406 (PGRST116, "no rows returned") on every student session.
+      // maybeSingle() treats "no row" as a valid result while still surfacing
+      // genuine query errors (which are logged below and fall through to the
+      // same safe fallback as before).
+      const teacherResult = isTeacherRole
+        ? await supabase
+            .from('teacher_details')
+            .select('*')
+            .eq('profile_id', userId)
+            .maybeSingle()
+        : null;
+
+      const teacherData = teacherResult?.data ?? null;
+      const teacherErr = teacherResult?.error ?? null;
+
+      if (teacherErr) {
+        console.warn('Error fetching teacher details:', teacherErr.message);
+      }
 
       const baseProfile = EMPTY_TEACHER;
 

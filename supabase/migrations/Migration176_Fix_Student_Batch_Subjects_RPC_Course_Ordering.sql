@@ -1,0 +1,263 @@
+-- ============================================================================
+-- Migration: 176 — Fix Student Batch Subjects RPC Course Ordering
+--
+-- PostgreSQL 16 | Supabase Compatible | Production Ready
+--
+-- Fixes migration 175:
+--   - course_batches does not have created_at
+--   - courses.created_at is the available timestamp
+--
+-- Preserves:
+--   - student authentication
+--   - institute isolation
+--   - active student batch restriction
+--   - permanent course purchase entitlement
+--   - subscription/content entitlement
+--   - published/non-deleted course filtering
+--   - non-deleted subjects
+--   - active batch subjects
+--   - deterministic course selection
+--   - existing function signature / response structure
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_student_batch_subjects(
+  p_batch_ids uuid[] DEFAULT NULL
+)
+RETURNS TABLE (
+  batch_subject_id uuid,
+  batch_id uuid,
+  is_active boolean,
+  subject_id uuid,
+  subject_name text,
+  batch_name text,
+  course_id uuid,
+  course_title text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id      uuid;
+  v_student_id   uuid;
+  v_institute_id uuid;
+  v_today        date;
+BEGIN
+  -- ==========================================================================
+  -- 1. Caller authentication check
+  -- ==========================================================================
+  v_user_id := auth.uid();
+
+  IF v_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- ==========================================================================
+  -- 2. Resolve student and institute
+  --
+  -- student_details does not contain account_status in the deployed schema.
+  -- ==========================================================================
+  SELECT
+    sd.student_id,
+    p.institute_id
+  INTO
+    v_student_id,
+    v_institute_id
+  FROM public.student_details sd
+  JOIN public.profiles p
+    ON p.profile_id = sd.profile_id
+  WHERE sd.profile_id = v_user_id
+  LIMIT 1;
+
+  -- Fail closed if no valid student profile/institute is found.
+  IF v_student_id IS NULL OR v_institute_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  v_today := (now() AT TIME ZONE 'utc')::date;
+
+  -- ==========================================================================
+  -- 3. Return authorized batch subjects
+  -- ==========================================================================
+  RETURN QUERY
+  WITH student_active_batches AS (
+
+    -- ------------------------------------------------------------------------
+    -- Student's active batch assignments
+    -- ------------------------------------------------------------------------
+    SELECT
+      bs_enroll.batch_id
+    FROM public.batch_students bs_enroll
+    JOIN public.batches b
+      ON b.batch_id = bs_enroll.batch_id
+    WHERE bs_enroll.student_id = v_student_id
+      AND bs_enroll.status = 'active'
+      AND b.institute_id = v_institute_id
+      AND b.deleted_at IS NULL
+      AND (
+        p_batch_ids IS NULL
+        OR array_length(p_batch_ids, 1) IS NULL
+        OR bs_enroll.batch_id = ANY(p_batch_ids)
+      )
+  ),
+
+  student_entitled_courses AS (
+
+    -- ------------------------------------------------------------------------
+    -- A. Subscription/content-access entitlement
+    -- ------------------------------------------------------------------------
+    SELECT
+      ss.course_id
+    FROM public.student_subscriptions ss
+    WHERE ss.student_id = v_student_id
+      AND (
+        -- Active subscription
+        (
+          ss.status = 'active'
+          AND (
+            ss.end_date >= v_today
+            OR (
+              ss.grace_end_date IS NOT NULL
+              AND ss.grace_end_date >= v_today
+            )
+            OR (
+              ss.content_access_end_date IS NOT NULL
+              AND ss.content_access_end_date >= v_today
+            )
+          )
+        )
+
+        OR
+
+        -- Grace subscription
+        (
+          ss.status = 'grace'
+          AND (
+            (
+              ss.grace_end_date IS NOT NULL
+              AND ss.grace_end_date >= v_today
+            )
+            OR (
+              ss.content_access_end_date IS NOT NULL
+              AND ss.content_access_end_date >= v_today
+            )
+          )
+        )
+
+        OR
+
+        -- Expired subscription with remaining content-access window
+        (
+          ss.status = 'expired'
+          AND ss.content_access_end_date IS NOT NULL
+          AND ss.content_access_end_date >= v_today
+        )
+      )
+
+    UNION
+
+    -- ------------------------------------------------------------------------
+    -- B. Permanent course purchase entitlement
+    -- ------------------------------------------------------------------------
+    SELECT
+      ce.course_id
+    FROM public.course_enrollments ce
+    WHERE ce.student_id = v_student_id
+      AND ce.enrollment_type = 'purchase'
+      AND ce.is_active = true
+      AND ce.revoked_at IS NULL
+      AND (
+        ce.expires_at IS NULL
+        OR ce.expires_at >= now()
+      )
+  ),
+
+  batch_course_map AS (
+
+    -- ------------------------------------------------------------------------
+    -- Resolve one deterministic entitled course per batch.
+    --
+    -- course_batches does not have created_at in the deployed schema.
+    -- Therefore ordering uses courses.created_at.
+    -- course_id is used as a stable tie-breaker.
+    -- ------------------------------------------------------------------------
+    SELECT DISTINCT ON (cb.batch_id)
+      cb.batch_id,
+      cb.course_id,
+      c.title AS course_title
+    FROM public.course_batches cb
+    JOIN student_entitled_courses sec
+      ON sec.course_id = cb.course_id
+    JOIN public.courses c
+      ON c.course_id = cb.course_id
+    WHERE cb.institute_id = v_institute_id
+      AND c.institute_id = v_institute_id
+      AND c.status = 'published'
+      AND c.deleted_at IS NULL
+    ORDER BY
+      cb.batch_id,
+      c.created_at ASC NULLS LAST,
+      cb.course_id
+  )
+
+  -- ==========================================================================
+  -- Final batch-subject result
+  -- ==========================================================================
+  SELECT
+    bs.batch_subject_id,
+    bs.batch_id,
+    bs.is_active,
+    bs.subject_id,
+    COALESCE(s.name, 'General Subject') AS subject_name,
+    COALESCE(b.name, 'Batch') AS batch_name,
+    bcm.course_id,
+    bcm.course_title
+  FROM public.batch_subjects bs
+
+  JOIN student_active_batches sab
+    ON sab.batch_id = bs.batch_id
+
+  JOIN public.batches b
+    ON b.batch_id = bs.batch_id
+
+  JOIN public.subjects s
+    ON s.subject_id = bs.subject_id
+    AND s.deleted_at IS NULL
+
+  LEFT JOIN batch_course_map bcm
+    ON bcm.batch_id = bs.batch_id
+
+  WHERE bs.institute_id = v_institute_id
+    AND bs.is_active = true
+
+  ORDER BY
+    bs.batch_id,
+    bs.sort_order ASC NULLS LAST,
+    bs.created_at ASC NULLS LAST;
+
+END;
+$$;
+
+-- ============================================================================
+-- Documentation
+-- ============================================================================
+
+COMMENT ON FUNCTION public.get_student_batch_subjects(uuid[]) IS
+  'Returns authorized batch subjects with subject, batch, and course metadata for the authenticated student. SECURITY DEFINER; enforces institute isolation, active batch assignment, subscription or permanent ownership entitlement, published courses, active batch subjects, and non-deleted subjects.';
+
+-- ============================================================================
+-- Permissions
+-- ============================================================================
+
+REVOKE ALL
+ON FUNCTION public.get_student_batch_subjects(uuid[])
+FROM PUBLIC;
+
+REVOKE ALL
+ON FUNCTION public.get_student_batch_subjects(uuid[])
+FROM anon;
+
+GRANT EXECUTE
+ON FUNCTION public.get_student_batch_subjects(uuid[])
+TO authenticated;

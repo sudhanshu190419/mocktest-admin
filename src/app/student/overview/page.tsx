@@ -233,22 +233,22 @@ export default function StudentOverviewPage() {
   const analytics = data?.analytics;
 
   return (
-    <div className="store-container space-y-7 pb-12">
+    <div className="store-container space-y-7 pb-12" suppressHydrationWarning>
 
       {/* ═══ 1 — Greeting (compact, time-of-day aware) ═══ */}
-      <header className="today-greeting">
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
+      <header className="today-greeting" suppressHydrationWarning>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink" suppressHydrationWarning>
           {getGreeting(now)}, {firstName}.
         </h1>
-        <div className="today-greeting-meta">
-          <span>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        <div className="today-greeting-meta" suppressHydrationWarning>
+          <span suppressHydrationWarning>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</span>
           <span className="opacity-40">•</span>
           <span>{activeBatch}</span>
         </div>
       </header>
 
       {/* ═══ 2 — Resume strip (up to 3 one-tap cards) ═══ */}
-      <section aria-label="Pick up where you left off" className="today-resume-strip">
+      <section aria-label="Pick up where you left off" className="today-resume-strip" suppressHydrationWarning>
         {!primaryReady &&
           [1, 2, 3].map((i) => (
             <div key={i} className="skeleton today-resume-card" style={{ height: 112 }} />
@@ -274,7 +274,7 @@ export default function StudentOverviewPage() {
               <span>{liveNow ? 'Live now' : 'Next class today'}</span>
             </span>
             <span className="today-resume-title">{liveClass.subject_name}</span>
-            <span className="today-resume-cta">
+            <span className="today-resume-cta" suppressHydrationWarning>
               {liveNow
                 ? 'Join classroom'
                 : new Date(liveClass.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}

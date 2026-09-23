@@ -3,32 +3,32 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import { StudentNotificationCenter } from '@/components/student/StudentNotificationCenter';
-import { fetchStudentNotifications } from '@/services/student/studentNotificationWebService';
+import { fetchStudentUnreadNotificationCount } from '@/services/student/studentNotificationWebService';
 
 /**
  * PRD §10.5 — notification bell for the shell header.
- * Unread dot from a cheap 1-item fetch (60s cache); the panel itself
+ * Unread dot from a count-only server request (60s cache); the panel itself
  * (StudentNotificationCenter) loads the full list on open.
  */
 export function StudentBellButton() {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
   const [isOpen, setIsOpen] = useState(false);
   const [localUnread, setLocalUnread] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const { data } = useQuery<{ unreadCount: number }>({
+  const { data } = useQuery<number>({
     queryKey: ['student-notification-unread'],
-    queryFn: async () => {
-      const res = await fetchStudentNotifications({ pageSize: 1 });
-      return { unreadCount: res.unreadCount ?? 0 };
-    },
+    queryFn: () => fetchStudentUnreadNotificationCount(profileId),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
   });
 
-  const unreadCount = localUnread ?? data?.unreadCount ?? 0;
+  const unreadCount = localUnread ?? data ?? 0;
 
   // Close on outside click / Escape
   useEffect(() => {

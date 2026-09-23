@@ -43,6 +43,7 @@ import type {
   AssignDoubtResult,
   DoubtFilters,
   DoubtListScope,
+  DoubtStatus,
   DoubtTeacherOption,
   ReplyToDoubtInput,
   ReplyToDoubtResult,
@@ -87,6 +88,27 @@ function useDoubtList(
 /** The student's own doubts (RLS: own rows only). */
 export function useMyDoubts(filters?: DoubtFilters, pagination?: PaginationParams) {
   return useDoubtList('student', filters, pagination);
+}
+
+/**
+ * The student's own doubt count for a single status or multiple statuses (nav badge).
+ *
+ * Count-only: a `HEAD` request with `count: 'exact'` that never hydrates doubt
+ * rows or embeds. Uses its own query key (`doubtKeys.count`) so the badge query
+ * and the hydrated list query cache independently and cannot overwrite each
+ * other's data. RLS scope is identical to `useMyDoubts`.
+ */
+export function useMyDoubtCount(status: DoubtStatus | DoubtStatus[]) {
+  return useQuery<number>({
+    queryKey: doubtKeys.count('student', status),
+    queryFn: async () => {
+      const result = await doubtService.countMyDoubts({ status });
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to count doubts.');
+      }
+      return result.data!;
+    },
+  });
 }
 
 /** Teacher doubt inbox (RLS: institute-scoped + routing/specialization). */

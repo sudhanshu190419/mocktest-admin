@@ -16,8 +16,8 @@
 /* ── 1. Palette (private names) ──────────────────────────────────── */
 :root {
   /* Brand */
-  --brand: #2458d3;
-  --brand-hover: #1943a6;
+  --brand: #0284c7;
+  --brand-hover: #0369a1;
 
   /* Ink (text) */
   --ink: #152b45;
@@ -29,7 +29,7 @@
   --line: #d9e3ed;
 
   /* Tints (each with its accessible ink pair) */
-  --tint-sky: #dcecf8;      --tint-sky-ink: #1943a6;
+  --tint-sky: #dcecf8;      --tint-sky-ink: #0369a1;
   --tint-mint: #dcefe8;     --tint-mint-ink: #285e50;
   --tint-apricot: #ffd7b7;  --tint-apricot-ink: #7c4c26;
   --tint-lilac: #e9e6f6;    --tint-lilac-ink: #57507d;

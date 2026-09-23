@@ -16,7 +16,7 @@ const FEATURES = [
   {
     title: 'Live Teaching Experience',
     icon: <Broadcast size={18} weight="fill" />,
-    box: 'bg-blue-50 text-[#2458d3]',
+    box: 'bg-sky-50 text-[#0284c7]',
   },
   {
     title: 'Real Exam Questions',
@@ -95,7 +95,7 @@ export function FreeDemoSection() {
             <div className="mt-8">
               <Link
                 href="/demo-class"
-                className="inline-flex min-h-[48px] w-full items-center justify-center gap-3 rounded-[10px] bg-[#2458d3] px-6 text-[13.5px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(36,88,211,0.7)] transition-all duration-200 hover:bg-[#1943a6] hover:shadow-[0_14px_28px_-10px_rgba(36,88,211,0.75)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2458d3] sm:w-auto"
+                className="inline-flex min-h-[48px] w-full items-center justify-center gap-3 rounded-[10px] bg-[#0284c7] px-6 text-[13.5px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(2,132,199,0.7)] transition-all duration-200 hover:bg-[#0369a1] hover:shadow-[0_14px_28px_-10px_rgba(2,132,199,0.75)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0284c7] sm:w-auto"
               >
                 Get Free Demo Class
                 <ArrowRight size={15} weight="bold" aria-hidden="true" />
@@ -182,7 +182,7 @@ export function FreeDemoSection() {
             </span>
 
             <span
-              className="pointer-events-none absolute bottom-6 left-6 hidden max-w-[150px] rotate-2 text-[15px] leading-snug text-[#2458d3] sm:block lg:text-[17px]"
+              className="pointer-events-none absolute bottom-6 left-6 hidden max-w-[150px] rotate-2 text-[15px] leading-snug text-[#0284c7] sm:block lg:text-[17px]"
               style={HAND_FONT}
             >
               No Commitment,
