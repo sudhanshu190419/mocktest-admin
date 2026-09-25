@@ -44,7 +44,7 @@ export function PYQPackageCard({
             {item.streamCode === 'FOUNDATION' ? 'Foundation' : item.streamCode}
           </span>
           {isPurchased ? (
-            <span className="px-2 py-0.5 rounded text-caption font-bold bg-amber-100 text-amber-900">
+            <span className="px-2 py-0.5 rounded text-caption font-bold bg-emerald-100 text-emerald-800">
               Purchased ✓
             </span>
           ) : (
@@ -52,7 +52,7 @@ export function PYQPackageCard({
           )}
         </div>
         <h3>
-          <Link href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`}>{item.title}</Link>
+          <Link href={isPurchased ? `/pyq/${item.packageId}` : `/pyq/${item.packageId}`}>{item.title}</Link>
         </h3>
         <p className="store-card-description">{item.shortDescription}</p>
         <div className="store-course-facts">
@@ -74,7 +74,7 @@ export function PYQPackageCard({
             <span className="store-small-label">{isPurchased ? 'Access Status' : 'One-time purchase'}</span>
             <div className="store-card-price-row">
               {isPurchased ? (
-                <strong className="text-amber-800 text-base">Active Package</strong>
+                <strong className="text-emerald-700 text-base">Active Package</strong>
               ) : (
                 <>
                   <strong className="tabular-nums">
@@ -93,11 +93,11 @@ export function PYQPackageCard({
             </p>
           </div>
           <Link
-            href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`}
+            href={isPurchased ? `/pyq/${item.packageId}` : `/pyq/${item.packageId}`}
             className={`store-card-cta ${isPurchased ? 'store-card-cta-enrolled' : 'store-card-cta-explore'}`}
           >
             <span className="store-card-cta-text">
-              {isPurchased ? 'Start Tests' : 'View Package'}
+              {isPurchased ? 'Continue Practice' : 'View Package'}
             </span>
             <span className="store-card-cta-arrow" aria-hidden="true">
               <IconArrowRight size={13} />

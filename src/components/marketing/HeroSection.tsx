@@ -5,9 +5,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   IconLibrary,
-  IconFileText,
+  IconTest,
+  IconPyq,
   IconVideo,
   IconArrowRight,
+  IconSpark,
 } from '@/components/icons/student-icons';
 import heroImg from '../../../public/hero.png';
 
@@ -41,13 +43,14 @@ export function HeroSection() {
         <div className="grid items-center gap-8 lg:min-h-[500px] xl:min-h-[540px] lg:grid-cols-12 lg:gap-8">
           {/* Left Column: Copy, CTAs, Features */}
           <div className="lg:col-span-7 xl:col-span-7 2xl:col-span-7">
-            <p className="mb-4 text-xs font-bold uppercase tracking-[0.2em] text-blue-600 sm:mb-5 sm:text-[13px]">
-              YOUR EXAM SUCCESS PARTNER
-            </p>
+            <div className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full bg-sky-50 border border-blue-100 text-blue-600 text-xs font-bold uppercase tracking-wider sm:mb-5">
+              <IconSpark size={13} />
+              <span>YOUR EXAM SUCCESS PARTNER</span>
+            </div>
 
             <h1
               id="hero-title"
-              className="mb-5 text-4xl font-extrabold leading-[1.1] tracking-[-0.035em] text-slate-900 sm:mb-6 sm:text-5xl lg:text-[54px] xl:text-[62px]"
+              className="mb-5 text-4xl font-extrabold leading-[1.1] tracking-[-0.035em] text-slate-900 sm:mb-6 sm:text-5xl lg:text-[54px] xl:text-[62px] font-display"
             >
               Learn Today.
               <br />
@@ -93,7 +96,7 @@ export function HeroSection() {
               </Link>
 
               <Link
-                href="/courses#home-courses"
+                href="/courses"
                 className="group inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/95 px-7 py-3.5 text-sm sm:text-[15px] font-semibold text-slate-800 shadow-sm backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50/90 hover:shadow-md hover:shadow-slate-200/50 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/50"
               >
                 <span>Try a Free Mock Test</span>
@@ -103,8 +106,8 @@ export function HeroSection() {
             {/* 4 Feature Row */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-5 pt-2 max-w-[620px]">
               {/* Expert-Led Courses */}
-              <div className="flex flex-col">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 shadow-sm">
+              <Link href="/courses" className="flex flex-col group transition-transform hover:-translate-y-0.5">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 shadow-sm transition-colors group-hover:bg-indigo-100">
                   <IconLibrary size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
@@ -113,12 +116,12 @@ export function HeroSection() {
                 <span className="mt-1 text-[11px] leading-tight text-slate-500 sm:text-[12px]">
                   Learn from the best
                 </span>
-              </div>
+              </Link>
 
               {/* Mock Tests */}
-              <div className="flex flex-col">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm">
-                  <IconFileText size={22} />
+              <Link href="/courses#home-courses" className="flex flex-col group transition-transform hover:-translate-y-0.5">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm transition-colors group-hover:bg-amber-100">
+                  <IconTest size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   Mock Tests
@@ -126,12 +129,12 @@ export function HeroSection() {
                 <span className="mt-1 text-[11px] leading-tight text-slate-500 sm:text-[12px]">
                   Practice. Analyze. Improve.
                 </span>
-              </div>
+              </Link>
 
               {/* PYQ Packages */}
-              <div className="flex flex-col">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-600 shadow-sm">
-                  <IconFileText size={22} />
+              <Link href="/pyq" className="flex flex-col group transition-transform hover:-translate-y-0.5">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-600 shadow-sm transition-colors group-hover:bg-sky-100">
+                  <IconPyq size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   PYQ Packages
@@ -139,11 +142,11 @@ export function HeroSection() {
                 <span className="mt-1 text-[11px] leading-tight text-slate-500 sm:text-[12px]">
                   Past papers, bigger possibilities.
                 </span>
-              </div>
+              </Link>
 
               {/* Live Classes */}
-              <div className="flex flex-col">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 shadow-sm">
+              <Link href="/demo-class" className="flex flex-col group transition-transform hover:-translate-y-0.5">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 shadow-sm transition-colors group-hover:bg-emerald-100">
                   <IconVideo size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
@@ -152,7 +155,7 @@ export function HeroSection() {
                 <span className="mt-1 text-[11px] leading-tight text-slate-500 sm:text-[12px]">
                   Interact. Ask. Learn.
                 </span>
-              </div>
+              </Link>
             </div>
           </div>
 

@@ -171,7 +171,7 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
             className={`store-card-cta ${isEnrolled ? 'store-card-cta-enrolled' : 'store-card-cta-explore'}`}
           >
             <span className="store-card-cta-text">
-              {isEnrolled ? 'Go to Classroom' : 'Explore Course'}
+              {isEnrolled ? 'Go to Course' : 'Explore Course'}
             </span>
             <span className="store-card-cta-arrow" aria-hidden="true">
               <IconArrowRight size={13} />

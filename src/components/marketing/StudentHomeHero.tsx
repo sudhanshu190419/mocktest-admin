@@ -20,6 +20,8 @@ import type {
 } from '@/services/student/studentDashboardWebService';
 import type { StudentPyqPurchaseItem } from '@/hooks/student/useStudentPyqPurchases';
 
+import { HeroSection } from './HeroSection';
+
 export interface StudentHomeHeroData {
   enrolledCourses?: StudentEnrolledCourse[];
   pyqPurchases?: StudentPyqPurchaseItem[];
@@ -59,77 +61,9 @@ export function StudentHomeHero({
     );
   }
 
-  // 2. Guest Variant
+  // 2. Guest Variant — restored HeroSection with hero.png, high-impact typography, and feature badges
   if (isGuest || !studentName) {
-    return (
-      <section className="relative overflow-hidden bg-white pt-8 pb-12 sm:pt-12 sm:pb-16 lg:pt-12 lg:pb-20" aria-labelledby="hero-title">
-        <div className="store-container">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-tint border border-line text-brand text-caption font-bold tracking-wide mb-5">
-              <IconSpark size={14} />
-              <span>YOUR EXAM PREPARATION PARTNER</span>
-            </div>
-            <h1
-              id="hero-title"
-              className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-ink tracking-tight leading-tight font-display mb-4"
-            >
-              Learn with structure. <br />
-              <span className="text-brand">Practise with intent.</span>
-            </h1>
-            <p className="text-base sm:text-lg text-ink-secondary leading-relaxed max-w-2xl mb-8">
-              Expert-led classroom programs, chapter tests, full mock tests, and verified past year question papers for NEET, JEE, CUET & Foundation.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 mb-10">
-              <Link
-                href="/courses"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-button bg-brand hover:bg-brand-hover text-white font-bold text-sm shadow-xs transition-colors"
-              >
-                <span>Explore Courses</span>
-                <IconArrowRight size={14} />
-              </Link>
-              <Link
-                href="/pyq"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-button bg-paper hover:bg-sky-tint text-ink border border-line font-bold text-sm transition-colors"
-              >
-                <span>PYQ Packages</span>
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-line">
-              <div className="flex flex-col gap-1">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-field bg-sky-tint text-brand mb-1">
-                  <IconLibrary size={18} />
-                </span>
-                <span className="text-xs font-bold text-ink">Structured Batches</span>
-                <span className="text-caption text-ink-muted">Complete syllabus</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-field bg-sky-tint text-brand mb-1">
-                  <IconTest size={18} />
-                </span>
-                <span className="text-xs font-bold text-ink">Mock Tests</span>
-                <span className="text-caption text-ink-muted">Real exam engine</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-field bg-sky-tint text-brand mb-1">
-                  <IconPyq size={18} />
-                </span>
-                <span className="text-xs font-bold text-ink">Past Year Papers</span>
-                <span className="text-caption text-ink-muted">Detailed solutions</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-field bg-sky-tint text-brand mb-1">
-                  <IconPlay size={18} />
-                </span>
-                <span className="text-xs font-bold text-ink">Live Classes</span>
-                <span className="text-caption text-ink-muted">Interactive faculty</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
+    return <HeroSection />;
   }
 
   // 3. Variant: Logged in with Both Courses & PYQ

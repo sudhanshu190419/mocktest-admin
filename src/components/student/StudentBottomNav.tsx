@@ -13,6 +13,8 @@ import {
 import { useNavBadgeCounts } from '@/hooks/student/useNavBadgeCounts';
 import { isExamEnginePath } from '@/lib/routes';
 
+import { useAuth } from '@/context/AuthContext';
+
 /**
  * PRD §4.1 — persistent mobile bottom bar (<1024px for logged-in students).
  * 5 primary destinations: Home · Courses · Tests · PYQ · Me
@@ -27,7 +29,7 @@ interface BottomNavItemConfig {
   matches: (pathname: string) => boolean;
 }
 
-const bottomNavItems: BottomNavItemConfig[] = [
+export const bottomNavItems: BottomNavItemConfig[] = [
   {
     label: 'Home',
     href: '/',
@@ -68,8 +70,42 @@ const bottomNavItems: BottomNavItemConfig[] = [
   },
 ];
 
+export const guestBottomNavItems: BottomNavItemConfig[] = [
+  {
+    label: 'Home',
+    href: '/',
+    icon: IconHome,
+    matches: (pathname: string) => pathname === '/',
+  },
+  {
+    label: 'Courses',
+    href: '/courses',
+    icon: IconLibrary,
+    matches: (pathname: string) => pathname === '/courses' || pathname.startsWith('/courses/'),
+  },
+  {
+    label: 'Tests',
+    href: '/login?next=/student/tests',
+    icon: IconTest,
+    matches: (pathname: string) => pathname.startsWith('/student/tests'),
+  },
+  {
+    label: 'PYQ',
+    href: '/pyq',
+    icon: IconPyq,
+    matches: (pathname: string) => pathname === '/pyq' || pathname.startsWith('/pyq/'),
+  },
+  {
+    label: 'Sign In',
+    href: '/login',
+    icon: IconUser,
+    matches: (pathname: string) => pathname === '/login' || pathname === '/signup',
+  },
+];
+
 export function StudentBottomNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const { testsDue } = useNavBadgeCounts();
 
   // Distraction-free surfaces: exam engine + runner + live room
@@ -82,16 +118,18 @@ export function StudentBottomNav() {
     return null;
   }
 
+  const items = user ? bottomNavItems : guestBottomNavItems;
+
   return (
     <nav className="student-bottom-nav" aria-label="Primary mobile navigation">
-      {bottomNavItems.map((item) => {
+      {items.map((item) => {
         const isActive = item.matches(pathname);
         const Icon = item.icon;
-        const count = item.badge === 'tests' ? testsDue : 0;
+        const count = user && item.badge === 'tests' ? testsDue : 0;
 
         return (
           <Link
-            key={item.href}
+            key={item.label}
             href={item.href}
             className={`student-bottomnav-item ${isActive ? 'is-active' : ''}`}
             aria-current={isActive ? 'page' : undefined}

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CourseStoreShell } from './CourseStoreShell';
+import { HeroSection } from './HeroSection';
 import { StudentHomeHero } from './StudentHomeHero';
 import { StoreCourseCard } from './StoreCourseCard';
 import { PYQPackageCard } from './PYQCatalog';
@@ -93,7 +94,7 @@ export function MarketingHomeView() {
   });
 
   // React Query: Student PYQ purchases
-  const { purchases: pyqPurchases, isLoading: pyqPurchasesLoading } = useStudentPyqPurchases(profileId);
+  const { purchases: pyqPurchases, purchasedPackageIds = [], isLoading: pyqPurchasesLoading } = useStudentPyqPurchases(profileId);
 
   const bootstrapData = bootstrapResult?.data ?? null;
   const enrolledCourses: StudentEnrolledCourse[] = bootstrapData?.enrolled_courses || [];
@@ -358,7 +359,10 @@ export function MarketingHomeView() {
                     >
                       {featuredPyq.map((item) => (
                         <div key={item.packageId} className="store-carousel-slide-item">
-                          <PYQPackageCard item={item} />
+                          <PYQPackageCard
+                            item={item}
+                            isPurchased={purchasedPackageIds.includes(item.packageId)}
+                          />
                         </div>
                       ))}
                     </div>
@@ -366,7 +370,11 @@ export function MarketingHomeView() {
                 ) : (
                   <div className="store-related-grid">
                     {featuredPyq.map((item) => (
-                      <PYQPackageCard key={item.packageId} item={item} />
+                      <PYQPackageCard
+                        key={item.packageId}
+                        item={item}
+                        isPurchased={purchasedPackageIds.includes(item.packageId)}
+                      />
                     ))}
                   </div>
                 )
