@@ -41,7 +41,7 @@ export const ResultHero: React.FC<ResultHeroProps> = ({
   });
 
   return (
-    <div className="bg-gradient-to-br bg-ink bg-ink bg-ink text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-ink/60 relative overflow-hidden">
+    <div className="bg-gradient-to-br bg-ink bg-ink bg-ink text-white rounded-sheet p-6 sm:p-8 shadow-xl border border-ink/60 relative overflow-hidden">
       {/* Decorative ambient gradients */}
       <div className="absolute -top-24 -right-24 w-72 h-72 bg-brand/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-brand/10 rounded-full blur-3xl pointer-events-none" />
@@ -90,7 +90,7 @@ export const ResultHero: React.FC<ResultHeroProps> = ({
         <div className="flex items-center gap-4 sm:gap-6 self-start md:self-auto flex-wrap">
           {/* Rank Badge */}
           {rank !== null && (
-            <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl bg-ink/80 border border-ink shadow-inner min-w-[80px]">
+            <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-card bg-ink/80 border border-ink shadow-inner min-w-[80px]">
               <div className="flex items-center gap-1 text-amber-400 text-xs font-bold uppercase tracking-wider">
                 <Trophy size={16} weight="fill" />
                 <span>Rank</span>
@@ -101,7 +101,7 @@ export const ResultHero: React.FC<ResultHeroProps> = ({
 
           {/* Percentile Badge */}
           {percentile !== null && (
-            <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl bg-ink/80 border border-ink shadow-inner min-w-[80px]">
+            <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-card bg-ink/80 border border-ink shadow-inner min-w-[80px]">
               <div className="flex items-center gap-1 text-sky-ink text-xs font-bold uppercase tracking-wider">
                 <Medal size={16} weight="fill" />
                 <span>Percentile</span>
@@ -111,7 +111,7 @@ export const ResultHero: React.FC<ResultHeroProps> = ({
           )}
 
           {/* Overall Score Box */}
-          <div className="flex flex-col items-center justify-center px-5 py-4 rounded-2xl bg-gradient-to-b bg-brand bg-brand-hover text-white shadow-lg shadow-card border border-brand/30 min-w-[120px]">
+          <div className="flex flex-col items-center justify-center px-5 py-4 rounded-card bg-gradient-to-b bg-brand bg-brand-hover text-white shadow-lg shadow-card border border-brand/30 min-w-[120px]">
             <span className="text-caption font-bold tracking-widest text-brand uppercase">
               Total Score
             </span>

@@ -64,7 +64,7 @@
   --color-tint-red: #fce8e6;
   --color-tint-amber: #fef7e0;
 
-  --font-display: var(--font-jakarta), system-ui, sans-serif;
+  --font-display: var(--font-store-display), system-ui, sans-serif;
 
   --radius-field: 12px;
   --radius-card: 16px;
@@ -90,6 +90,12 @@ body {
   padding: 0;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* ── Unified Single Focus Ring Treatment (§2.5) ── */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus, #0284c7);
+  outline-offset: 2px;
 }
 
 /* Double-Bezel Nested Architecture (Doppelrand) */

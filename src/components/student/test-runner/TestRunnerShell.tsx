@@ -3,14 +3,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  WarningCircle,
-  ShieldWarning,
-  ArrowsOut,
-  X,
-  SquaresFour,
-  CheckCircle,
-  BookmarkSimple,
-} from '@phosphor-icons/react';
+  IconWarning,
+  IconSpark,
+  IconClose,
+  IconLayers,
+  IconCheckCircle,
+  IconBookmark,
+} from '@/components/icons/student-icons';
 import type { TestRunnerSessionData, RunnerQuestion } from '@/services/student/studentTestWebService';
 import {
   submitAndEvaluateMockAttempt,
@@ -593,7 +592,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
       {showFullscreenWarning && !isSubmitted && (
         <div className="bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between text-caption text-amber-900 font-medium">
           <div className="flex items-center gap-2">
-            <WarningCircle size={16} weight="fill" className="text-amber-600" />
+            <IconWarning size={16} className="text-amber-600" />
             <span>Fullscreen was exited. For an optimal testing experience, please remain in fullscreen.</span>
           </div>
           <button
@@ -601,7 +600,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
             onClick={toggleFullscreen}
             className="flex items-center gap-1 text-brand hover:text-brand-hover font-bold underline cursor-pointer"
           >
-            <ArrowsOut size={14} weight="bold" />
+            <IconSpark size={14} />
             <span>Re-enter Fullscreen</span>
           </button>
         </div>
@@ -610,7 +609,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
       {showTabWarning && !isSubmitted && (
         <div className="bg-sky-tint border-b border-line px-4 py-2 flex items-center justify-between text-caption text-ink font-medium">
           <div className="flex items-center gap-2">
-            <ShieldWarning size={16} weight="fill" className="text-brand" />
+            <IconWarning size={16} className="text-brand" />
             <span>
               Tab switch detected ({tabSwitchCount} {tabSwitchCount === 1 ? 'time' : 'times'}). Your exam progress was synced securely.
             </span>
@@ -621,7 +620,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
             className="text-ink-secondary hover:text-ink cursor-pointer"
             aria-label="Dismiss tab warning"
           >
-            <X size={14} weight="bold" />
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -629,7 +628,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
       {multiTabWarning && !isSubmitted && (
         <div className="bg-red-500/20 border-b border-red-500/40 px-4 py-2 flex items-center justify-between text-caption text-red-900 font-medium">
           <div className="flex items-center gap-2">
-            <WarningCircle size={16} weight="fill" className="text-red-600" />
+            <IconWarning size={16} className="text-red-600" />
             <span>Multiple tabs detected for this test attempt. Please keep only one tab open to avoid conflicts.</span>
           </div>
           <button
@@ -638,7 +637,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
             className="text-ink-secondary hover:text-ink cursor-pointer"
             aria-label="Dismiss multi-tab warning"
           >
-            <X size={14} weight="bold" />
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -654,11 +653,11 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
       <div className="lg:hidden bg-white border-b border-line px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-3 text-caption">
           <div className="flex items-center gap-1 text-mint-ink font-semibold">
-            <CheckCircle size={14} weight="fill" className="text-emerald-600" />
+            <IconCheckCircle size={14} className="text-emerald-600" />
             <span>{answeredCount} Ans</span>
           </div>
           <div className="flex items-center gap-1 text-lilac-ink font-semibold">
-            <BookmarkSimple size={14} weight="fill" className="text-purple-600" />
+            <IconBookmark size={14} className="text-purple-600" />
             <span>{markedCount} Marked</span>
           </div>
           <div className="flex items-center gap-1 text-ink-secondary">
@@ -671,7 +670,7 @@ export const TestRunnerShell: React.FC<TestRunnerShellProps> = ({ sessionData })
           onClick={() => setIsMobilePaletteOpen(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-paper hover:bg-sky-tint text-ink rounded-field text-caption font-bold border border-line cursor-pointer transition-colors"
         >
-          <SquaresFour size={16} weight="bold" className="text-brand" />
+          <IconLayers size={16} className="text-brand" />
           <span>Palette</span>
         </button>
       </div>

@@ -135,12 +135,12 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         {/* Top Badges Row */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-paper px-3 py-1 text-xs font-bold text-ink">
+            <span className="inline-flex min-h-[24px] items-center gap-1.5 rounded-full bg-paper px-3 py-1 text-xs font-bold text-ink">
               <Exam className="h-3.5 w-3.5 text-brand" />
               {formatTestType(testType)}
             </span>
             {subjectName && (
-              <span className="inline-flex items-center rounded-lg bg-sky-tint px-2.5 py-0.5 text-xs font-semibold text-brand-hover border border-line">
+              <span className="inline-flex min-h-[24px] items-center rounded-field bg-sky-tint px-2.5 py-0.5 text-xs font-semibold text-brand-hover border border-line">
                 {subjectName}
               </span>
             )}
@@ -182,7 +182,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         {latestResult && attemptState === 'submitted' && (
           <Link
             href={resultHref}
-            className="mt-4 block rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 to-white p-3 hover:border-emerald-300 transition-colors"
+            className="mt-4 block rounded-field border border-emerald-100 bg-gradient-to-r from-emerald-50/60 to-white p-3 hover:border-emerald-300 transition-colors"
           >
             <div className="flex items-center justify-between">
               <div>
@@ -196,7 +196,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
                   <span className="text-xs font-medium text-ink-secondary">
                     / {latestResult.maxScore} marks
                   </span>
-                  <span className="ml-2 inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-caption font-bold text-emerald-800">
+                  <span className="ml-2 inline-flex min-h-[24px] items-center rounded-field bg-emerald-100 px-1.5 py-0.5 text-caption font-bold text-emerald-800">
                     {latestResult.percentage}% Score
                   </span>
                 </div>
@@ -215,7 +215,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
 
         {/* In-Progress Notification banner */}
         {attemptState === 'in_progress' && (
-          <div className="mt-4 rounded-xl border border-line bg-sky-tint/70 p-3">
+          <div className="mt-4 rounded-field border border-line bg-sky-tint/70 p-3">
             <div className="flex items-center gap-2">
               <ArrowClockwise className="h-4 w-4 text-brand animate-spin" />
               <p className="text-xs font-bold text-brand-hover">
@@ -230,7 +230,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
 
         {/* 4-Column Metric Grid */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-line pt-3 text-center">
-          <div className="rounded-xl bg-paper p-2.5">
+          <div className="rounded-field bg-paper p-2.5">
             <Clock className="h-3.5 w-3.5 text-ink-muted mx-auto" />
             <p className="text-caption font-medium text-ink-muted mt-1">Duration</p>
             <p className="text-xs font-bold text-ink mt-0.5">
@@ -238,7 +238,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
             </p>
           </div>
 
-          <div className="rounded-xl bg-paper p-2.5">
+          <div className="rounded-field bg-paper p-2.5">
             <BookOpen className="h-3.5 w-3.5 text-brand mx-auto" />
             <p className="text-caption font-medium text-ink-muted mt-1">Questions</p>
             <p className="text-xs font-bold text-ink mt-0.5">
@@ -246,7 +246,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
             </p>
           </div>
 
-          <div className="rounded-xl bg-paper p-2.5">
+          <div className="rounded-field bg-paper p-2.5">
             <Trophy className="h-3.5 w-3.5 text-emerald-500 mx-auto" />
             <p className="text-caption font-medium text-ink-muted mt-1">Max Marks</p>
             <p className="text-xs font-bold text-ink mt-0.5">
@@ -254,7 +254,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
             </p>
           </div>
 
-          <div className="rounded-xl bg-paper p-2.5">
+          <div className="rounded-field bg-paper p-2.5">
             <WarningCircle className="h-3.5 w-3.5 text-amber-500 mx-auto" />
             <p className="text-caption font-medium text-ink-muted mt-1">Negative</p>
             <p className="text-xs font-bold text-ink mt-0.5">
@@ -264,7 +264,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         </div>
 
         {/* Assigned & Expiry Date Row */}
-        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper/80 px-3 py-2 text-caption border border-line">
+        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 rounded-field bg-paper/80 px-3 py-2 text-caption border border-line">
           <div className="flex items-center gap-1.5 text-ink-secondary">
             <CalendarBlank className="h-3.5 w-3.5 text-ink-muted shrink-0" />
             <span className="text-ink-muted font-medium">Assigned:</span>
@@ -283,7 +283,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
 
         {/* Schedule metadata footer if upcoming */}
         {availableFrom && isUpcoming && (
-          <div className="mt-3 flex items-center gap-1.5 text-caption text-amber-700 bg-amber-50/60 rounded-lg px-2.5 py-1.5 border border-amber-100">
+          <div className="mt-3 flex items-center gap-1.5 text-caption text-amber-700 bg-amber-50/60 rounded-field px-2.5 py-1.5 border border-amber-100">
             <CalendarBlank className="h-3.5 w-3.5 shrink-0" />
             <span>Opens: {formatDateTime(availableFrom)}</span>
           </div>
@@ -301,7 +301,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         {isUpcoming ? (
           <button
             disabled
-            className="inline-flex items-center gap-1.5 rounded-xl bg-paper px-4 py-2 text-xs font-bold text-ink-muted cursor-not-allowed"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-paper px-4 py-2 text-xs font-bold text-ink-muted cursor-not-allowed"
           >
             <Clock className="h-3.5 w-3.5" />
             <span>Opens Soon</span>
@@ -312,21 +312,21 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
               <div className="flex items-center gap-2">
                 <Link
                   href={resultHref}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98] transition-all"
                 >
                   <CheckCircle className="h-3.5 w-3.5" weight="bold" />
                   <span>View results</span>
                 </Link>
                 <Link
                   href={`${resultHref}/review`}
-                  className="inline-flex items-center gap-1 rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold text-ink hover:bg-paper transition-colors"
+                  className="inline-flex min-h-[44px] items-center gap-1 rounded-field border border-line bg-white px-3 py-2 text-xs font-semibold text-ink hover:bg-paper transition-colors"
                 >
                   <span>Review</span>
                   <ArrowRight className="h-3 w-3 text-ink-muted" />
                 </Link>
               </div>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-800">
+              <span className="inline-flex items-center gap-1.5 rounded-field bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-800">
                 <Clock className="h-3.5 w-3.5 text-amber-600" />
                 <span>Evaluation Pending</span>
               </span>
@@ -334,7 +334,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
           ) : attemptState === 'in_progress' ? (
             <Link
               href={targetHref}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
             >
               <ArrowClockwise className="h-3.5 w-3.5" weight="bold" />
               <span>Resume</span>
@@ -342,7 +342,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
           ) : (
             <button
               disabled
-              className="inline-flex items-center gap-1.5 rounded-xl bg-paper px-4 py-2 text-xs font-bold text-ink-muted cursor-not-allowed"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-paper px-4 py-2 text-xs font-bold text-ink-muted cursor-not-allowed"
             >
               <LockKey className="h-3.5 w-3.5" />
               <span>Window Closed</span>
@@ -351,7 +351,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         ) : attemptState === 'in_progress' ? (
           <Link
             href={targetHref}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
           >
             <ArrowClockwise className="h-3.5 w-3.5" weight="bold" />
             <span>Resume</span>
@@ -360,7 +360,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
           <div className="flex items-center gap-2">
             <Link
               href={resultHref}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98] transition-all"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98] transition-all"
             >
               <CheckCircle className="h-3.5 w-3.5" weight="bold" />
               <span>View results</span>
@@ -368,7 +368,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
             {attemptSummary.canAttempt && (
               <Link
                 href={targetHref}
-                className="inline-flex items-center gap-1 rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold text-ink hover:bg-paper transition-colors"
+                className="inline-flex min-h-[44px] items-center gap-1 rounded-field border border-line bg-white px-3 py-2 text-xs font-semibold text-ink hover:bg-paper transition-colors"
               >
                 <span>Retake</span>
                 <ArrowRight className="h-3 w-3 text-ink-muted" />
@@ -378,7 +378,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         ) : attemptState === 'limit_reached' ? (
           <Link
             href={resultHref}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-paper px-4 py-2 text-xs font-bold text-ink-secondary hover:bg-sky-tint transition-colors"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field bg-paper px-4 py-2 text-xs font-bold text-ink-secondary hover:bg-sky-tint transition-colors"
           >
             <span>View results</span>
             <ArrowRight className="h-3.5 w-3.5" />
@@ -386,7 +386,7 @@ export const StudentTestCard: React.FC<StudentTestCardProps> = ({ test, onSelect
         ) : (
           <Link
             href={targetHref}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-hover active:scale-[0.98] transition-all"
           >
             <PlayCircle className="h-4 w-4" weight="bold" />
             <span>Start Test</span>

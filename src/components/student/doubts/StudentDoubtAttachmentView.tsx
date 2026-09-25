@@ -62,7 +62,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
 
   if (unavailable) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-xl bg-paper px-2.5 py-1 text-caption font-medium text-ink-muted">
+      <span className="inline-flex items-center gap-1.5 rounded-field bg-paper px-2.5 py-1 text-caption font-medium text-ink-muted">
         Attachment unavailable
       </span>
     );
@@ -76,7 +76,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
         type="button"
         onClick={open}
         title="View image"
-        className="group relative overflow-hidden rounded-2xl border border-line shadow-xs hover:border-line transition-all"
+        className="group relative overflow-hidden rounded-card border border-line shadow-xs hover:border-line transition-all"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -96,7 +96,7 @@ export function StudentDoubtAttachmentView({ attachment, compact = false }: Stud
       type="button"
       onClick={open}
       disabled={loading}
-      className="inline-flex items-center gap-2 rounded-xl bg-paper border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-sky-tint hover:text-brand-hover hover:border-line transition-all disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-field bg-paper border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-sky-tint hover:text-brand-hover hover:border-line transition-all disabled:opacity-50"
     >
       <span>{label === 'PDF Document' ? '📄' : '📎'}</span>
       <span>{label}</span>

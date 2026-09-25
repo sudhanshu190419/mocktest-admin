@@ -19,8 +19,8 @@ export const ClassEndedState: React.FC<ClassEndedStateProps> = ({
 }) => {
   return (
     <div className="min-h-[75vh] flex items-center justify-center p-4">
-      <div className="max-w-lg w-full p-8 sm:p-10 rounded-3xl bg-ink border border-ink text-center text-white space-y-5 shadow-2xl">
-        <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
+      <div className="max-w-lg w-full p-8 sm:p-10 rounded-sheet bg-ink border border-ink text-center text-white space-y-5 shadow-2xl">
+        <div className="w-16 h-16 rounded-sheet bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
           <CheckCircle size={32} weight="fill" />
         </div>
 
@@ -43,7 +43,7 @@ export const ClassEndedState: React.FC<ClassEndedStateProps> = ({
         <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             href="/student/classes"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-ink hover:bg-ink text-white font-bold text-xs transition-colors border border-ink"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-card bg-ink hover:bg-ink text-white font-bold text-xs transition-colors border border-ink"
           >
             <ArrowLeft size={14} weight="bold" />
             <span>Return to Classes</span>
@@ -52,7 +52,7 @@ export const ClassEndedState: React.FC<ClassEndedStateProps> = ({
           {hasRecording && (
             <Link
               href="/student/recordings"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-lg shadow-card"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-card bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-lg shadow-card"
             >
               <Play size={14} weight="fill" />
               <span>Watch Recording</span>

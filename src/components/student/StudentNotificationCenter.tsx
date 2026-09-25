@@ -3,22 +3,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Bell,
-  CheckCircle,
-  X,
-  Check,
-  Exam,
-  VideoCamera,
-  BookOpen,
-  Receipt,
-  GraduationCap,
-  Sparkle,
-  Info,
-  Clock,
-  ArrowRight,
-  WarningCircle,
-  CircleNotch
-} from '@phosphor-icons/react';
+  IconTest,
+  IconCheck,
+  IconPlay,
+  IconLibrary,
+  IconGraduationCap,
+  IconBag,
+  IconSpark,
+  IconWarning,
+  IconClose,
+  IconArrowRight,
+  IconRefresh,
+  IconDoubt,
+} from '@/components/icons/student-icons';
 import {
   fetchStudentNotifications,
   markStudentNotificationAsRead,
@@ -140,50 +137,50 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
     switch (type) {
       case 'mock-test':
         return {
-          icon: <Exam size={16} weight="duotone" className="text-purple-600" />,
-          bg: 'bg-purple-50 border-purple-100',
+          icon: <IconTest size={16} className="text-brand" />,
+          bg: 'bg-sky-tint border-line',
           label: 'Mock Test',
         };
       case 'result':
         return {
-          icon: <CheckCircle size={16} weight="duotone" className="text-emerald-600" />,
+          icon: <IconCheck size={16} className="text-emerald-600" />,
           bg: 'bg-emerald-50 border-emerald-100',
           label: 'Result',
         };
       case 'live-class':
         return {
-          icon: <VideoCamera size={16} weight="duotone" className="text-rose-600" />,
-          bg: 'bg-rose-50 border-rose-100',
+          icon: <IconPlay size={16} className="text-brand" />,
+          bg: 'bg-sky-tint border-line',
           label: 'Live Class',
         };
       case 'course':
         return {
-          icon: <BookOpen size={16} weight="duotone" className="text-brand" />,
+          icon: <IconLibrary size={16} className="text-brand" />,
           bg: 'bg-sky-tint border-line',
           label: 'Course',
         };
       case 'doubt':
         return {
-          icon: <GraduationCap size={16} weight="duotone" className="text-brand" />,
+          icon: <IconDoubt size={16} className="text-brand" />,
           bg: 'bg-sky-tint border-line',
           label: 'Doubt',
         };
       case 'payment':
         return {
-          icon: <Receipt size={16} weight="duotone" className="text-amber-600" />,
-          bg: 'bg-amber-50 border-amber-100',
+          icon: <IconBag size={16} className="text-amber-700" />,
+          bg: 'bg-amber-50 border-amber-200',
           label: 'Payment',
         };
       case 'announcement':
         return {
-          icon: <Sparkle size={16} weight="duotone" className="text-violet-600" />,
-          bg: 'bg-violet-50 border-violet-100',
+          icon: <IconSpark size={16} className="text-brand" />,
+          bg: 'bg-sky-tint border-line',
           label: 'Announcement',
         };
       case 'system':
       default:
         return {
-          icon: <Info size={16} weight="duotone" className="text-ink-secondary" />,
+          icon: <IconWarning size={16} className="text-ink-secondary" />,
           bg: 'bg-paper border-line',
           label: 'System',
         };
@@ -217,7 +214,7 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
       role="dialog"
       aria-label="Student Notification Center"
       aria-modal="true"
-      className="fixed inset-x-3 top-18 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 z-50 w-auto sm:w-[420px] rounded-3xl bg-white border border-line/90 shadow-2xl shadow-card overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[600px] animate-fadeIn"
+      className="fixed inset-x-3 top-18 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 z-50 w-auto sm:w-[420px] rounded-sheet bg-white border border-line/90 shadow-2xl shadow-card overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[600px] animate-fadeIn"
     >
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="p-4 sm:p-5 border-b border-line flex items-center justify-between bg-paper/70">
@@ -238,9 +235,9 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
               className="text-caption font-bold text-brand hover:text-brand-hover hover:underline flex items-center gap-1 disabled:opacity-50"
             >
               {markingAll ? (
-                <CircleNotch size={12} className="animate-spin" />
+                <IconRefresh size={12} className="animate-spin" />
               ) : (
-                <Check size={12} weight="bold" />
+                <IconCheck size={12} />
               )}
               <span>Mark all read</span>
             </button>
@@ -251,7 +248,7 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
             aria-label="Close notification center"
             className="p-1 rounded-lg text-ink-muted hover:text-ink hover:bg-sky-tint/60 transition-colors"
           >
-            <X size={16} weight="bold" />
+            <IconClose size={16} />
           </button>
         </div>
       </div>
@@ -268,7 +265,7 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as FilterTab)}
-            className={`px-3 py-1 rounded-xl text-caption font-bold whitespace-nowrap transition-all ${
+            className={`px-3 py-1 rounded-field text-caption font-bold whitespace-nowrap transition-all ${
               activeTab === tab.id
                 ? 'bg-brand text-white shadow-xs'
                 : 'bg-paper/70 text-ink-secondary hover:bg-paper hover:text-ink'
@@ -285,8 +282,8 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
           /* Loading Skeletons */
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="p-3 rounded-2xl bg-paper animate-pulse flex gap-3">
-                <div className="h-9 w-9 rounded-xl bg-sky-tint shrink-0" />
+              <div key={i} className="p-3 rounded-card bg-paper animate-pulse flex gap-3">
+                <div className="h-9 w-9 rounded-field bg-sky-tint shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 w-3/4 bg-sky-tint rounded" />
                   <div className="h-2.5 w-full bg-paper rounded" />
@@ -297,12 +294,12 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
         ) : error ? (
           /* Error State */
           <div className="p-8 text-center space-y-3">
-            <WarningCircle size={32} weight="duotone" className="text-red-500 mx-auto" />
+            <IconWarning size={32} className="text-red-500 mx-auto" />
             <p className="text-xs font-bold text-ink">Failed to load notifications</p>
             <p className="text-caption text-ink-secondary max-w-xs mx-auto">{error}</p>
             <button
               onClick={loadNotifications}
-              className="px-3.5 py-1.5 rounded-xl bg-brand text-white font-bold text-xs hover:bg-brand-hover transition-colors shadow-xs"
+              className="px-3.5 py-1.5 rounded-field bg-brand text-white font-bold text-xs hover:bg-brand-hover transition-colors shadow-xs"
             >
               Retry
             </button>
@@ -310,8 +307,8 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
         ) : notifications.length === 0 ? (
           /* Empty State */
           <div className="p-10 text-center space-y-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 mx-auto shadow-xs">
-              <CheckCircle size={24} weight="duotone" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-card bg-emerald-50 text-emerald-600 mx-auto shadow-xs">
+              <IconCheck size={24} />
             </div>
             <h4 className="text-xs font-extrabold text-ink">{"You're all caught up."}</h4>
             <p className="text-caption text-ink-secondary max-w-xs mx-auto leading-relaxed">
@@ -334,7 +331,7 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
               >
                 {/* Category Icon */}
                 <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-2xl shrink-0 border ${config.bg} shadow-xs`}
+                  className={`flex h-9 w-9 items-center justify-center rounded-card shrink-0 border ${config.bg} shadow-xs`}
                 >
                   {config.icon}
                 </div>
@@ -370,7 +367,7 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
                   {!n.isRead ? (
                     <span className="h-2 w-2 rounded-full bg-brand ring-4 ring-line" />
                   ) : (
-                    <ArrowRight size={13} className="text-ink-muted" />
+                    <IconArrowRight size={13} className="text-ink-muted" />
                   )}
                 </div>
               </button>
@@ -388,3 +385,4 @@ export const StudentNotificationCenter: React.FC<StudentNotificationCenterProps>
     </div>
   );
 };
+

@@ -56,7 +56,7 @@ export const ReviewHeader: React.FC<ReviewHeaderProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/student/tests/${testId}/results/${attemptId}`}
-            className="p-2 rounded-xl bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-field bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors cursor-pointer"
             title="Back to Scorecard"
           >
             <ArrowLeft size={18} weight="bold" />

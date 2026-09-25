@@ -3,18 +3,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Exam,
-  MagnifyingGlass,
-  ArrowClockwise,
-  Sparkle,
-  CheckCircle,
-  Clock,
-  WarningCircle,
-  XCircle,
-  LockKey,
-  CaretDown,
-  CaretUp,
-} from '@phosphor-icons/react';
+  IconTest,
+  IconSearch,
+  IconRefresh,
+  IconSpark,
+  IconCheckCircle,
+  IconClock,
+  IconWarning,
+  IconXCircle,
+  IconLock,
+  IconChevronDown,
+  IconChevronUp,
+} from '@/components/icons/student-icons';
 import {
   type StudentTestFilterTab,
 } from '@/services/student/studentTestWebService';
@@ -156,7 +156,7 @@ export default function StudentTestsHubPage() {
         {/* Real Summary Metrics Bar */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]">
-            <Sparkle className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
+            <IconSpark className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} />
             <div>
               <p className="text-caption font-bold text-ink-muted uppercase">Available</p>
               <p className="text-sm font-extrabold text-ink tabular-nums">{activeTabCounts.all}</p>
@@ -164,7 +164,7 @@ export default function StudentTestsHubPage() {
           </div>
 
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sky)' }}>
-            <ArrowClockwise className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} weight="bold" />
+            <IconRefresh className="h-4 w-4" style={{ color: 'var(--color-store-blue)' }} />
             <div>
               <p className="text-caption font-bold uppercase" style={{ color: 'var(--color-store-blue-dark)' }}>In Progress</p>
               <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-ink)' }}>{activeTabCounts.inProgress}</p>
@@ -172,7 +172,7 @@ export default function StudentTestsHubPage() {
           </div>
 
           <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-mint)' }}>
-            <CheckCircle className="h-4 w-4" style={{ color: 'var(--color-store-green)' }} weight="bold" />
+            <IconCheckCircle className="h-4 w-4" style={{ color: 'var(--color-store-green)' }} />
             <div>
               <p className="text-caption font-bold uppercase" style={{ color: 'var(--color-store-green)' }}>Completed</p>
               <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--color-store-green)' }}>{activeTabCounts.completed}</p>
@@ -181,7 +181,7 @@ export default function StudentTestsHubPage() {
 
           {activeTabCounts.upcoming > 0 && (
             <div className="student-card p-3 flex items-center gap-2 min-w-[100px]" style={{ background: 'var(--color-store-sand)' }}>
-              <Clock className="h-4 w-4 text-amber-600" weight="bold" />
+              <IconClock className="h-4 w-4 text-amber-600" />
               <div>
                 <p className="text-caption font-bold text-amber-700 uppercase">Upcoming</p>
                 <p className="text-sm font-extrabold text-amber-950 tabular-nums">{activeTabCounts.upcoming}</p>
@@ -247,20 +247,20 @@ export default function StudentTestsHubPage() {
         {/* Search Input & Subject Filter */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="relative flex-1 sm:w-64">
-            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
+            <IconSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
             <input
               type="text"
               placeholder="Search tests, subjects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-line bg-white py-2 pl-9 pr-8 text-xs text-ink placeholder:text-ink-muted focus:border-store-blue focus:outline-none transition-all"
+              className="w-full min-h-[44px] rounded-field border border-line bg-white py-2 pl-9 pr-8 text-xs text-ink placeholder:text-ink-muted focus:border-store-blue focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink-secondary"
               >
-                <XCircle size={14} weight="fill" />
+                <IconXCircle size={14} />
               </button>
             )}
           </div>
@@ -269,7 +269,7 @@ export default function StudentTestsHubPage() {
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="rounded-xl border border-line bg-white py-2 px-3 text-xs font-medium text-ink focus:border-store-blue focus:outline-none"
+              className="rounded-field border border-line bg-white py-2 px-3 min-h-[44px] text-xs font-medium text-ink focus:border-store-blue focus:outline-none"
             >
               <option value="all">All Subjects</option>
               {availableSubjects.map((s) => (
@@ -295,22 +295,22 @@ export default function StudentTestsHubPage() {
       ) : error ? (
         <div className="student-card border-rose-200 bg-rose-50/50 p-8 text-center max-w-xl mx-auto my-8 space-y-4">
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mx-auto">
-            <WarningCircle size={24} weight="bold" />
+            <IconWarning size={24} />
           </div>
           <h2 className="text-base font-bold text-ink">Could Not Load Mock Tests</h2>
           <p className="text-xs text-ink-secondary leading-relaxed">{error}</p>
           <button
             onClick={loadTests}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors shadow-sm"
+            className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-field bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors shadow-sm"
           >
-            <ArrowClockwise size={14} weight="bold" />
+            <IconRefresh size={14} />
             <span>Try Again</span>
           </button>
         </div>
       ) : filteredTests.length === 0 ? (
         <div className="student-card text-center p-8 sm:p-12 max-w-xl mx-auto my-8 space-y-4">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl mx-auto" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
-            <Exam size={28} weight="duotone" />
+          <div className="inline-flex items-center justify-center h-14 w-14 rounded-field mx-auto" style={{ background: 'var(--color-store-sky)', color: 'var(--color-store-blue)' }}>
+            <IconTest size={28} />
           </div>
 
           <h2 className="text-base sm:text-lg font-bold text-ink">
@@ -332,14 +332,14 @@ export default function StudentTestsHubPage() {
                 setSearchQuery('');
                 setSelectedSubject('all');
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-ink text-white font-bold text-xs hover:bg-ink transition-colors shadow-sm"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-field bg-ink text-white font-bold text-xs hover:bg-ink transition-colors shadow-sm"
             >
               <span>Clear All Filters</span>
             </button>
           ) : (
             <Link
               href="/student/courses"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-colors shadow-sm"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-field text-white font-bold text-xs hover:opacity-90 transition-colors shadow-sm"
               style={{ backgroundColor: 'var(--color-store-blue)' }}
             >
               <span>Explore My Courses</span>
@@ -360,8 +360,8 @@ export default function StudentTestsHubPage() {
           <div className="student-card p-6" style={{ background: 'var(--color-store-paper)' }}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start sm:items-center gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-tint text-ink">
-                  <LockKey className="h-5 w-5" weight="bold" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-field bg-sky-tint text-ink">
+                  <IconLock className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -378,10 +378,10 @@ export default function StudentTestsHubPage() {
 
               <button
                 onClick={() => setShowExpired((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white border border-line px-4 py-2.5 text-xs font-bold text-ink hover:bg-paper transition-all shadow-xs shrink-0"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-white border border-line px-4 py-2.5 text-xs font-bold text-ink hover:bg-paper transition-all shadow-xs shrink-0"
               >
                 <span>{showExpired ? 'Hide Expired Tests' : 'View Expired Tests'}</span>
-                {showExpired ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />}
+                {showExpired ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
               </button>
             </div>
 

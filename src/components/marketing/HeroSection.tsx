@@ -4,12 +4,11 @@ import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  BookOpen,
-  ClipboardText,
-  FileText,
-  VideoCamera,
-  ArrowRight,
-} from '@phosphor-icons/react';
+  IconLibrary,
+  IconFileText,
+  IconVideo,
+  IconArrowRight,
+} from '@/components/icons/student-icons';
 import heroImg from '../../../public/hero.png';
 
 export function HeroSection() {
@@ -89,7 +88,7 @@ export function HeroSection() {
 
                 {/* Sleek pill arrow container with smooth hover glide */}
                 <span className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-all duration-300 ease-out group-hover:translate-x-1 group-hover:bg-white group-hover:text-blue-600">
-                  <ArrowRight size={13} weight="bold" />
+                  <IconArrowRight size={13} />
                 </span>
               </Link>
 
@@ -106,7 +105,7 @@ export function HeroSection() {
               {/* Expert-Led Courses */}
               <div className="flex flex-col">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 shadow-sm">
-                  <BookOpen size={22} weight="fill" />
+                  <IconLibrary size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   Expert-Led Courses
@@ -119,7 +118,7 @@ export function HeroSection() {
               {/* Mock Tests */}
               <div className="flex flex-col">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm">
-                  <ClipboardText size={22} weight="fill" />
+                  <IconFileText size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   Mock Tests
@@ -132,7 +131,7 @@ export function HeroSection() {
               {/* PYQ Packages */}
               <div className="flex flex-col">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-600 shadow-sm">
-                  <FileText size={22} weight="fill" />
+                  <IconFileText size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   PYQ Packages
@@ -145,7 +144,7 @@ export function HeroSection() {
               {/* Live Classes */}
               <div className="flex flex-col">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 shadow-sm">
-                  <VideoCamera size={22} weight="fill" />
+                  <IconVideo size={22} />
                 </div>
                 <span className="text-[13px] font-bold leading-snug text-slate-900 sm:text-[14px]">
                   Live Classes

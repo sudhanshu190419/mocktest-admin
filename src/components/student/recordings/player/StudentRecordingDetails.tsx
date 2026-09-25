@@ -122,7 +122,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       </div>
 
       {/* ── Instructor & Action Card ──────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-neutral-200/80 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-card bg-white border border-neutral-200/80 shadow-sm">
         {/* Teacher Info */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-full bg-gradient-to-tr bg-brand bg-sky-tint flex items-center justify-center text-white font-bold text-sm shadow-md shadow-card">
@@ -146,7 +146,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
         <div className="flex items-center gap-2">
           <Link
             href={askDoubtUrl}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-tint hover:bg-sky-tint text-brand-hover text-xs font-semibold border border-line transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-field bg-sky-tint hover:bg-sky-tint text-brand-hover text-xs font-semibold border border-line transition-colors shadow-sm"
           >
             <Question className="w-4 h-4 text-brand" />
             <span>Ask a Doubt</span>
@@ -154,7 +154,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
 
           <Link
             href="/student/classes"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-field bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-colors"
           >
             <BookOpen className="w-4 h-4 text-neutral-500" />
             <span>All Classes</span>
@@ -163,7 +163,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       </div>
 
       {/* ── Description & Notes ──────────────────────────────────── */}
-      <div className="p-5 rounded-2xl bg-white border border-neutral-200/80 shadow-sm space-y-3">
+      <div className="p-5 rounded-card bg-white border border-neutral-200/80 shadow-sm space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-400">
           <Info className="w-4 h-4 text-brand" />
           <span>Class Overview & Topics Covered</span>
@@ -181,7 +181,7 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
       </div>
 
       {/* ── Keyboard Shortcuts Legend ─────────────────────────────── */}
-      <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/60 text-neutral-600 text-xs space-y-2.5">
+      <div className="p-4 rounded-card bg-neutral-50 border border-neutral-200/60 text-neutral-600 text-xs space-y-2.5">
         <div className="flex items-center gap-2 font-semibold text-neutral-800">
           <Keyboard className="w-4 h-4 text-neutral-500" />
           <span>Player Keyboard Shortcuts</span>

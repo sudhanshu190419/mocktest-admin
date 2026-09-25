@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { getPostLoginDestination } from '@/lib/auth/routing';
 import { MarketingHomeView } from '@/components/marketing/MarketingHomeView';
-import { CircleNotch } from '@phosphor-icons/react';
+import { IconRefresh } from '@/components/icons/student-icons';
 
 /**
  * Home page — multi-state root:
@@ -37,10 +37,10 @@ export default function Home() {
 
   if (redirected && teacherProfile && (teacherProfile.role === 'admin' || teacherProfile.role === 'teacher')) {
     return (
-      <div className="min-h-screen w-full bg-[#f3f8fc] flex items-center justify-center">
+      <div className="min-h-screen w-full bg-paper flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <CircleNotch size={28} className="animate-spin text-blue-600" />
-          <p className="text-xs font-semibold text-slate-500 font-display">
+          <IconRefresh size={28} className="animate-spin text-brand" />
+          <p className="text-xs font-semibold text-ink-muted font-display">
             Redirecting to management portal...
           </p>
         </div>

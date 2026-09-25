@@ -18,22 +18,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  Exam,
-  Clock,
-  BookOpen,
-  Trophy,
-  WarningCircle,
-  PlayCircle,
-  ArrowClockwise,
-  CheckCircle,
-  ShieldCheck,
-  Sparkle,
-  Info,
-  LockKey,
-  Desktop,
-  WifiHigh,
-} from '@phosphor-icons/react';
+  IconArrowLeft,
+  IconTest,
+  IconClock,
+  IconFileText,
+  IconTrophy,
+  IconWarning,
+  IconPlayCircle,
+  IconRefresh,
+  IconCheckCircle,
+  IconCheck,
+  IconSpark,
+  IconInfo,
+  IconLock,
+  IconVideo,
+  IconWifi,
+} from '@/components/icons/student-icons';
 import {
   fetchStudentTestInstructions,
   initializeStudentTestAttempt,
@@ -166,16 +166,16 @@ export default function StudentTestInstructionsPage() {
     return (
       <div className="space-y-6 max-w-6xl mx-auto py-2 animate-pulse">
         <div className="h-4 w-36 bg-sky-tint rounded-md" />
-        <div className="h-8 w-2/3 bg-sky-tint rounded-xl" />
+        <div className="h-8 w-2/3 bg-sky-tint rounded-field" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
           <div className="lg:col-span-2 space-y-4">
-            <div className="h-44 bg-paper rounded-2xl" />
-            <div className="h-32 bg-paper rounded-2xl" />
-            <div className="h-64 bg-paper rounded-2xl" />
+            <div className="h-44 bg-paper rounded-card" />
+            <div className="h-32 bg-paper rounded-card" />
+            <div className="h-64 bg-paper rounded-card" />
           </div>
           <div className="space-y-4">
-            <div className="h-60 bg-paper rounded-2xl" />
-            <div className="h-40 bg-paper rounded-2xl" />
+            <div className="h-60 bg-paper rounded-card" />
+            <div className="h-40 bg-paper rounded-card" />
           </div>
         </div>
       </div>
@@ -186,8 +186,8 @@ export default function StudentTestInstructionsPage() {
   if (error || !data) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center space-y-4">
-        <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-rose-50 text-rose-600 mx-auto">
-          <WarningCircle size={28} weight="bold" />
+        <div className="inline-flex items-center justify-center h-14 w-14 rounded-card bg-rose-50 text-rose-600 mx-auto">
+          <IconWarning size={28} />
         </div>
         <h2 className="text-lg sm:text-xl font-bold text-ink">
           Cannot Access Test
@@ -198,14 +198,14 @@ export default function StudentTestInstructionsPage() {
         <div className="pt-4 flex items-center justify-center gap-3">
           <Link
             href="/student/tests"
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-ink hover:bg-ink text-white font-bold text-xs transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-field bg-ink hover:bg-ink text-white font-bold text-xs transition-colors shadow-sm"
           >
-            <ArrowLeft size={14} weight="bold" />
+            <IconArrowLeft size={14} />
             <span>Back to Mock Tests Hub</span>
           </Link>
           <button
             onClick={loadInstructions}
-            className="px-4 py-2.5 rounded-xl border border-line bg-white hover:bg-paper text-ink font-bold text-xs transition-colors"
+            className="px-4 py-2.5 rounded-field border border-line bg-white hover:bg-paper text-ink font-bold text-xs transition-colors"
           >
             Retry
           </button>
@@ -247,7 +247,7 @@ export default function StudentTestInstructionsPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-xs font-bold text-brand-hover border border-line">
-                <Exam size={14} weight="bold" />
+                <IconTest size={14} />
                 <span>{test.testType.replace(/_/g, ' ').toUpperCase()}</span>
               </span>
               {test.subjectName && (
@@ -276,22 +276,22 @@ export default function StudentTestInstructionsPage() {
           <div>
             {isUpcoming ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-800 border border-amber-200">
-                <Clock size={14} weight="bold" />
+                <IconClock size={14} />
                 <span>Opens: {formatScheduleDate(test.availableFrom)}</span>
               </span>
             ) : attemptState === 'in_progress' ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3.5 py-1.5 text-xs font-bold text-brand-hover border border-line">
-                <ArrowClockwise size={14} weight="bold" />
+                <IconRefresh size={14} />
                 <span>Attempt In Progress</span>
               </span>
             ) : attemptState === 'submitted' ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-bold text-emerald-700 border border-emerald-200">
-                <CheckCircle size={14} weight="bold" />
+                <IconCheckCircle size={14} />
                 <span>Previously Attempted</span>
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3.5 py-1.5 text-xs font-bold text-brand-hover border border-line">
-                <Sparkle size={14} weight="bold" />
+                <IconSpark size={14} />
                 <span>Ready to Attempt</span>
               </span>
             )}
@@ -304,37 +304,37 @@ export default function StudentTestInstructionsPage() {
         {/* Left / Main Column (65% width) */}
         <div className="lg:col-span-2 space-y-6">
           {/* 1. Hero 4-Box Test Summary Grid */}
-          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
+          <div className="rounded-card border border-line bg-white p-5 sm:p-6 shadow-xs">
             <h2 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-4">
               Assessment Summary
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
-                <Clock className="h-5 w-5 text-brand mx-auto" />
+              <div className="rounded-field border border-line bg-paper/70 p-3.5">
+                <IconClock className="h-5 w-5 text-brand mx-auto" />
                 <p className="text-xs font-medium text-ink-muted mt-1.5">Duration</p>
                 <p className="text-base font-extrabold text-ink mt-0.5">
                   {test.durationMin !== null ? (test.durationMin + ' Mins') : 'Flexible'}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
-                <BookOpen className="h-5 w-5 text-brand mx-auto" />
+              <div className="rounded-field border border-line bg-paper/70 p-3.5">
+                <IconFileText className="h-5 w-5 text-brand mx-auto" />
                 <p className="text-xs font-medium text-ink-muted mt-1.5">Questions</p>
                 <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.totalQuestions > 0 ? (structure.totalQuestions + ' Qs') : 'Configured'}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
-                <Trophy className="h-5 w-5 text-emerald-600 mx-auto" />
+              <div className="rounded-field border border-line bg-paper/70 p-3.5">
+                <IconTrophy className="h-5 w-5 text-emerald-600 mx-auto" />
                 <p className="text-xs font-medium text-ink-muted mt-1.5">Total Marks</p>
                 <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.totalMarks > 0 ? structure.totalMarks : (test.totalMarks || '—')}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-line bg-paper/70 p-3.5">
-                <WarningCircle className="h-5 w-5 text-amber-500 mx-auto" />
+              <div className="rounded-field border border-line bg-paper/70 p-3.5">
+                <IconWarning className="h-5 w-5 text-amber-500 mx-auto" />
                 <p className="text-xs font-medium text-ink-muted mt-1.5">Negative Mark</p>
                 <p className="text-base font-extrabold text-ink mt-0.5">
                   {structure.hasVaryingNegativeMarks
@@ -349,7 +349,7 @@ export default function StudentTestInstructionsPage() {
 
           {/* 2. Syllabus / Section Breakdown */}
           {structure.sections && structure.sections.length > 0 && (
-            <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
+            <div className="rounded-card border border-line bg-white p-5 sm:p-6 shadow-xs">
               <div className="flex items-center justify-between mb-3.5">
                 <h2 className="text-sm font-bold text-ink">
                   Exam Sections & Syllabus Coverage
@@ -363,7 +363,7 @@ export default function StudentTestInstructionsPage() {
                 {structure.sections.map((sec, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between rounded-xl border border-line bg-paper/50 p-3.5"
+                    className="flex items-center justify-between rounded-field border border-line bg-paper/50 p-3.5"
                   >
                     <div>
                       <span className="text-xs font-bold text-ink">
@@ -383,29 +383,29 @@ export default function StudentTestInstructionsPage() {
           )}
 
           {/* 3. Marking Scheme Card */}
-          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs">
+          <div className="rounded-card border border-line bg-white p-5 sm:p-6 shadow-xs">
             <h2 className="text-sm font-bold text-ink mb-3">
               Marking Scheme & Scoring Policy
             </h2>
             <div className="space-y-2.5 text-xs text-ink-secondary">
-              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
-                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" weight="bold" />
+              <div className="flex items-start gap-2.5 p-3 rounded-field bg-emerald-50/50 border border-emerald-100">
+                <IconCheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-emerald-950">Correct Answers: </span>
                   <span>{correctText}</span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50/50 border border-rose-100">
-                <WarningCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" weight="bold" />
+              <div className="flex items-start gap-2.5 p-3 rounded-field bg-rose-50/50 border border-rose-100">
+                <IconWarning className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-rose-950">Incorrect Answers: </span>
                   <span>{negativeText}</span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-paper border border-line">
-                <Info className="h-4 w-4 text-ink-muted shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 rounded-field bg-paper border border-line">
+                <IconInfo className="h-4 w-4 text-ink-muted shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-ink">Unattempted Questions: </span>
                   <span>0 marks (no negative penalty for questions left blank)</span>
@@ -413,8 +413,8 @@ export default function StudentTestInstructionsPage() {
               </div>
 
               {test.passingMarks && (
-                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-sky-tint/50 border border-line">
-                  <Trophy className="h-4 w-4 text-brand shrink-0 mt-0.5" weight="bold" />
+                <div className="flex items-start gap-2.5 p-3 rounded-field bg-sky-tint/50 border border-line">
+                  <IconTrophy className="h-4 w-4 text-brand shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold text-brand-hover">Cutoff / Passing Score: </span>
                     <span>{test.passingMarks} marks required</span>
@@ -425,7 +425,7 @@ export default function StudentTestInstructionsPage() {
           </div>
 
           {/* 4. Instructions & Guidelines Accordion */}
-          <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="rounded-card border border-line bg-white p-5 sm:p-6 shadow-xs space-y-4">
             <h2 className="text-sm font-bold text-ink">
               Exam Instructions & Guidelines
             </h2>
@@ -470,7 +470,7 @@ export default function StudentTestInstructionsPage() {
         {/* Right / Sidebar Column (35% width) */}
         <div className="space-y-5 lg:sticky lg:top-4">
           {/* Attempt Status Card */}
-          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs">
+          <div className="rounded-card border border-line bg-white p-5 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-3">
               Your Attempt Status
             </h3>
@@ -501,9 +501,9 @@ export default function StudentTestInstructionsPage() {
 
               {/* In-Progress Notification */}
               {attemptState === 'in_progress' && (
-                <div className="rounded-xl bg-sky-tint border border-line p-3 text-xs text-brand-hover mt-2">
+                <div className="rounded-field bg-sky-tint border border-line p-3 text-xs text-brand-hover mt-2">
                   <div className="flex items-center gap-2 font-bold">
-                    <ArrowClockwise className="h-4 w-4 text-brand animate-spin" />
+                    <IconRefresh className="h-4 w-4 text-brand animate-spin" />
                     <span>In-Progress Attempt Found</span>
                   </div>
                   <p className="mt-1 text-caption text-brand-hover">
@@ -514,7 +514,7 @@ export default function StudentTestInstructionsPage() {
 
               {/* Latest Result Snippet (If previously completed) */}
               {latestResult && attemptState === 'submitted' && (
-                <div className="rounded-xl bg-emerald-50/60 border border-emerald-200 p-3 text-xs mt-2">
+                <div className="rounded-field bg-emerald-50/60 border border-emerald-200 p-3 text-xs mt-2">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-950">Previous Score</span>
                     <span className="font-extrabold text-emerald-800">
@@ -531,7 +531,7 @@ export default function StudentTestInstructionsPage() {
           </div>
 
           {/* System Readiness Check */}
-          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs space-y-3">
+          <div className="rounded-card border border-line bg-white p-5 shadow-xs space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">
               System Readiness
             </h3>
@@ -539,38 +539,38 @@ export default function StudentTestInstructionsPage() {
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-ink-secondary">
-                  <Desktop className="h-3.5 w-3.5 text-brand" />
+                  <IconVideo className="h-3.5 w-3.5 text-brand" />
                   <span>Browser Verified</span>
                 </span>
                 <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" weight="bold" /> Compatible
+                  <IconCheckCircle className="h-3 w-3" /> Compatible
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-ink-secondary">
-                  <WifiHigh className="h-3.5 w-3.5 text-brand" />
+                  <IconWifi className="h-3.5 w-3.5 text-brand" />
                   <span>Network Sync</span>
                 </span>
                 <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" weight="bold" /> Active
+                  <IconCheckCircle className="h-3 w-3" /> Active
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-ink-secondary">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                  <IconCheck className="h-3.5 w-3.5 text-emerald-500" />
                   <span>Autosave Engine</span>
                 </span>
                 <span className="text-caption font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" weight="bold" /> Ready
+                  <IconCheckCircle className="h-3 w-3" /> Ready
                 </span>
               </div>
             </div>
           </div>
 
           {/* Agreement Checkbox & Prominent Launch Action */}
-          <div className="rounded-2xl border border-line bg-white p-5 shadow-xs space-y-4">
+          <div className="rounded-card border border-line bg-white p-5 shadow-xs space-y-4">
             {attemptState !== 'in_progress' && (
               <label className="flex items-start gap-2.5 text-xs text-ink-secondary cursor-pointer select-none">
                 <input
@@ -589,8 +589,8 @@ export default function StudentTestInstructionsPage() {
             )}
 
             {startError && (
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-700 flex items-start gap-1.5">
-                <WarningCircle size={14} className="shrink-0 mt-0.5" weight="bold" />
+              <div className="rounded-field bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-700 flex items-start gap-1.5">
+                <IconWarning size={14} className="shrink-0 mt-0.5" />
                 <span>{startError}</span>
               </div>
             )}
@@ -599,9 +599,9 @@ export default function StudentTestInstructionsPage() {
             {isUpcoming ? (
               <button
                 disabled
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
               >
-                <Clock className="h-4 w-4" />
+                <IconClock className="h-4 w-4" />
                 <span>Opens Soon ({formatScheduleDate(test.availableFrom)})</span>
               </button>
             ) : isExpired ? (
@@ -609,17 +609,17 @@ export default function StudentTestInstructionsPage() {
                 latestResult?.isReleased ? (
                   <button
                     onClick={handleStartOrResume}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all"
                   >
-                    <CheckCircle className="h-4 w-4" weight="bold" />
+                    <IconCheckCircle className="h-4 w-4" />
                     <span>View Full Result & Solutions</span>
                   </button>
                 ) : (
                   <button
                     disabled
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-50 border border-amber-200 py-3 text-xs font-bold text-amber-800 cursor-not-allowed shadow-none"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-amber-50 border border-amber-200 py-3 text-xs font-bold text-amber-800 cursor-not-allowed shadow-none"
                   >
-                    <Clock className="h-4 w-4 text-amber-600" />
+                    <IconClock className="h-4 w-4 text-amber-600" />
                     <span>Evaluation Pending</span>
                   </button>
                 )
@@ -627,16 +627,16 @@ export default function StudentTestInstructionsPage() {
                 <button
                   onClick={handleStartOrResume}
                   disabled={isStarting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
                 >
                   {isStarting ? (
                     <>
-                      <ArrowClockwise className="h-4 w-4 animate-spin" />
+                      <IconRefresh className="h-4 w-4 animate-spin" />
                       <span>Connecting to Exam Runner...</span>
                     </>
                   ) : (
                     <>
-                      <ArrowClockwise className="h-4 w-4" weight="bold" />
+                      <IconRefresh className="h-4 w-4" />
                       <span>Resume Active Attempt</span>
                     </>
                   )}
@@ -645,9 +645,9 @@ export default function StudentTestInstructionsPage() {
                 <div className="space-y-2">
                   <button
                     disabled
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
                   >
-                    <LockKey className="h-4 w-4" />
+                    <IconLock className="h-4 w-4" />
                     <span>Window Closed (Test Expired)</span>
                   </button>
                   <p className="text-center text-caption text-ink-muted">
@@ -659,16 +659,16 @@ export default function StudentTestInstructionsPage() {
               <button
                 onClick={handleStartOrResume}
                 disabled={isStarting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
               >
                 {isStarting ? (
                   <>
-                    <ArrowClockwise className="h-4 w-4 animate-spin" />
+                    <IconRefresh className="h-4 w-4 animate-spin" />
                     <span>Connecting to Exam Runner...</span>
                   </>
                 ) : (
                   <>
-                    <ArrowClockwise className="h-4 w-4" weight="bold" />
+                    <IconRefresh className="h-4 w-4" />
                     <span>Resume Test Attempt</span>
                   </>
                 )}
@@ -676,15 +676,15 @@ export default function StudentTestInstructionsPage() {
             ) : attemptState === 'submitted' && !attemptSummary.canAttempt ? (
               <button
                 onClick={handleStartOrResume}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all"
               >
-                <CheckCircle className="h-4 w-4" weight="bold" />
+                <IconCheckCircle className="h-4 w-4" />
                 <span>View Full Result & Solutions</span>
               </button>
             ) : attemptState === 'limit_reached' ? (
               <button
                 disabled
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-paper py-3 text-xs font-bold text-ink-muted cursor-not-allowed shadow-none"
               >
                 <span>Attempts Exhausted</span>
               </button>
@@ -692,16 +692,16 @@ export default function StudentTestInstructionsPage() {
               <button
                 onClick={handleStartOrResume}
                 disabled={isStarting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-field bg-brand hover:bg-brand-hover active:scale-[0.98] py-3 text-xs font-bold text-white shadow-md transition-all disabled:opacity-60"
               >
                 {isStarting ? (
                   <>
-                    <ArrowClockwise className="h-4 w-4 animate-spin" />
+                    <IconRefresh className="h-4 w-4 animate-spin" />
                     <span>Initializing Attempt...</span>
                   </>
                 ) : (
                   <>
-                    <PlayCircle className="h-4 w-4" weight="bold" />
+                    <IconPlayCircle className="h-4 w-4" />
                     <span>{attemptState === 'submitted' ? 'Retake Test' : 'Start Test Now'}</span>
                   </>
                 )}

@@ -1,13 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Button } from './Button';
 import { Card } from './Card';
+import { useAuth } from '@/context/AuthContext';
+import { useStudentPyqPurchases } from '@/hooks/student/useStudentPyqPurchases';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import { PaymentModal } from './PaymentModal';
 import type { PYQPackage } from '@/types/pyqCatalog';
 
 export function PYQPricing({ item }: { item: PYQPackage }) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  const { purchasedPackageIds } = useStudentPyqPurchases(profileId);
+  const isPurchased = purchasedPackageIds.includes(item.packageId);
+
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const price = item.discountedPrice;
   const formatPrice = (value: number) => formatCoursePrice(value, item.currency);
@@ -31,23 +39,50 @@ export function PYQPricing({ item }: { item: PYQPackage }) {
         <p className="store-pricing-intro">
           A single one-time price — full lifetime access to all papers in this package.
         </p>
+
+        {isPurchased && (
+          <div className="p-4 rounded-field bg-amber-50 border border-amber-200 text-amber-900 my-4">
+            <span className="text-caption font-extrabold uppercase tracking-wide text-amber-800">Package Owned</span>
+            <p className="text-xs font-bold text-amber-950 mt-0.5">
+              You own full lifetime access to this paper package.
+            </p>
+          </div>
+        )}
+
         <div className="store-price-display">
-          <span className="store-small-label">One-time purchase</span>
+          <span className="store-small-label">{isPurchased ? 'Access Status' : 'One-time purchase'}</span>
           <div>
-            <strong className="tabular-nums">{formatPrice(price)}</strong>
-            {savings > 0 && (
-              <del className="tabular-nums">{formatPrice(item.originalPrice)}</del>
+            {isPurchased ? (
+              <strong className="text-amber-800">Active Package</strong>
+            ) : (
+              <>
+                <strong className="tabular-nums">{formatPrice(price)}</strong>
+                {savings > 0 && (
+                  <del className="tabular-nums">{formatPrice(item.originalPrice)}</del>
+                )}
+                {savings > 0 && <em className="store-save-tag">{savings}% off</em>}
+              </>
             )}
-            {savings > 0 && <em className="store-save-tag">{savings}% off</em>}
           </div>
           <p>{item.accessType} · Complete Package</p>
         </div>
-        <Button
-          className="store-enroll-button"
-          onClick={() => setPaymentModalOpen(true)}
-        >
-          Enroll in package <span aria-hidden="true">↗</span>
-        </Button>
+
+        {isPurchased ? (
+          <Link
+            href="/student/tests"
+            className="store-enroll-button inline-flex items-center justify-center text-center font-bold"
+          >
+            Start Practice Tests <span aria-hidden="true">→</span>
+          </Link>
+        ) : (
+          <Button
+            className="store-enroll-button"
+            onClick={() => setPaymentModalOpen(true)}
+          >
+            Purchase Package <span aria-hidden="true">↗</span>
+          </Button>
+        )}
+
         <div className="store-included">
           <h3>Package features</h3>
           <ul>
@@ -60,19 +95,32 @@ export function PYQPricing({ item }: { item: PYQPackage }) {
           </ul>
         </div>
       </Card>
-      <a
-        href="#pyq-pricing"
-        className="store-mobile-enroll"
-        onClick={(e) => {
-          e.preventDefault();
-          setPaymentModalOpen(true);
-        }}
-      >
-        <span>
-          One-time <strong className="tabular-nums">{formatPrice(price)}</strong>
-        </span>
-        <b>Enroll now ↑</b>
-      </a>
+
+      {isPurchased ? (
+        <Link
+          href="/student/tests"
+          className="store-mobile-enroll"
+        >
+          <span>
+            Status: <strong className="text-amber-800">Purchased</strong>
+          </span>
+          <b>Start Tests →</b>
+        </Link>
+      ) : (
+        <a
+          href="#pyq-pricing"
+          className="store-mobile-enroll"
+          onClick={(e) => {
+            e.preventDefault();
+            setPaymentModalOpen(true);
+          }}
+        >
+          <span>
+            One-time <strong className="tabular-nums">{formatPrice(price)}</strong>
+          </span>
+          <b>Buy Package ↑</b>
+        </a>
+      )}
 
       {/* Unified Razorpay Payment Modal */}
       <PaymentModal
@@ -91,4 +139,5 @@ export function PYQPricing({ item }: { item: PYQPackage }) {
     </>
   );
 }
+
 

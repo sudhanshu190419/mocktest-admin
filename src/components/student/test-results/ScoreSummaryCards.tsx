@@ -33,7 +33,7 @@ export const ScoreSummaryCards: React.FC<ScoreSummaryCardsProps> = ({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
       {/* 1. Correct */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200/80 shadow-xs flex flex-col justify-between">
+      <div className="bg-white rounded-card p-4 sm:p-5 border border-emerald-200/80 shadow-xs flex flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Correct</span>
           <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -47,7 +47,7 @@ export const ScoreSummaryCards: React.FC<ScoreSummaryCardsProps> = ({
       </div>
 
       {/* 2. Incorrect */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-rose-200/80 shadow-xs flex flex-col justify-between">
+      <div className="bg-white rounded-card p-4 sm:p-5 border border-rose-200/80 shadow-xs flex flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">Incorrect</span>
           <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
@@ -61,7 +61,7 @@ export const ScoreSummaryCards: React.FC<ScoreSummaryCardsProps> = ({
       </div>
 
       {/* 3. Skipped */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-line shadow-xs flex flex-col justify-between">
+      <div className="bg-white rounded-card p-4 sm:p-5 border border-line shadow-xs flex flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-ink uppercase tracking-wider">Skipped</span>
           <div className="p-1.5 bg-paper text-ink-secondary rounded-lg">
@@ -75,7 +75,7 @@ export const ScoreSummaryCards: React.FC<ScoreSummaryCardsProps> = ({
       </div>
 
       {/* 4. Accuracy */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-line/80 shadow-xs flex flex-col justify-between col-span-1">
+      <div className="bg-white rounded-card p-4 sm:p-5 border border-line/80 shadow-xs flex flex-col justify-between col-span-1">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-brand-hover uppercase tracking-wider">Accuracy</span>
           <div className="p-1.5 bg-sky-tint text-brand rounded-lg">
@@ -91,7 +91,7 @@ export const ScoreSummaryCards: React.FC<ScoreSummaryCardsProps> = ({
       </div>
 
       {/* 5. Total Time */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200/80 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1">
+      <div className="bg-white rounded-card p-4 sm:p-5 border border-amber-200/80 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Time Taken</span>
           <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">

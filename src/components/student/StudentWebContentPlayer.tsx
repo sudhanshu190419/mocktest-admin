@@ -292,7 +292,7 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
               href={signedUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field border border-line bg-surface px-2.5 py-1.5 text-caption font-semibold text-ink hover:bg-paper"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-field border border-line bg-surface px-2.5 py-1.5 text-caption font-semibold text-ink hover:bg-paper"
               title="Open in new tab"
             >
               <ArrowSquareOut className="h-3.5 w-3.5" weight="bold" />
@@ -303,7 +303,7 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
             <a
               href={signedUrl}
               download
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field bg-sky-tint px-2.5 py-1.5 text-caption font-semibold text-brand-hover border border-line hover:bg-sky-tint"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-field bg-sky-tint px-2.5 py-1.5 text-caption font-semibold text-brand-hover border border-line hover:bg-sky-tint"
             >
               <DownloadSimple className="h-3.5 w-3.5" weight="bold" />
               <span className="hidden sm:inline">Save PDF</span>
@@ -313,7 +313,7 @@ export const StudentWebContentPlayer: React.FC<StudentWebContentPlayerProps> = (
             type="button"
             onClick={handleMarkComplete}
             disabled={isMarkingComplete}
-            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-field px-3 py-1.5 text-caption font-bold transition-colors ${
+            className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-field px-3 py-1.5 text-caption font-bold transition-colors ${
               isCompleted
                 ? 'bg-mint-tint text-mint-ink border border-emerald-200'
                 : 'border border-line bg-surface text-ink hover:border-emerald-500 hover:text-emerald-700'

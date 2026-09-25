@@ -3,16 +3,16 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  ChatText,
-  Paperclip,
-  User,
-  CalendarBlank,
-  CaretRight,
-  VideoCamera,
-  FileText,
-  Exam,
-  ArrowsClockwise,
-} from '@phosphor-icons/react';
+  IconDoubt,
+  IconPaperclip,
+  IconUser,
+  IconCalendar,
+  IconChevronRight,
+  IconVideo,
+  IconFileText,
+  IconTest,
+  IconRefresh,
+} from '@/components/icons/student-icons';
 import type { StudentDoubt, DoubtStatus, DoubtResourceType } from '@/types/doubt';
 import { getSubjectColor, getSubjectEmoji } from '@/services/student/studentCourseWebService';
 
@@ -46,15 +46,15 @@ function getResourceBadge(type: DoubtResourceType | null) {
   if (!type) return null;
   switch (type) {
     case 'live_class':
-      return { label: 'Live Class', icon: VideoCamera, color: 'text-brand-hover bg-sky-tint border-line' };
+      return { label: 'Live Class', icon: IconVideo, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'content':
-      return { label: 'Study Material', icon: FileText, color: 'text-brand-hover bg-sky-tint border-line' };
+      return { label: 'Study Material', icon: IconFileText, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'question':
-      return { label: 'Test Question', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
+      return { label: 'Test Question', icon: IconTest, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'mock_test':
-      return { label: 'Mock Test', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
+      return { label: 'Mock Test', icon: IconTest, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'pyq_paper':
-      return { label: 'PYQ Paper', icon: FileText, color: 'text-mint-ink bg-mint-tint border-emerald-200' };
+      return { label: 'PYQ Paper', icon: IconFileText, color: 'text-mint-ink bg-mint-tint border-emerald-200' };
     default:
       return null;
   }
@@ -146,14 +146,14 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-field text-caption font-bold border ${resourceBadge.color}`}
               >
-                <resourceBadge.icon size={12} weight="bold" />
+                <resourceBadge.icon size={12} />
                 <span>{resourceBadge.label}</span>
               </span>
             )}
 
             {doubt.reopenedCount > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-field text-caption font-bold bg-sand text-sand-ink border border-amber-200">
-                <ArrowsClockwise size={11} weight="bold" />
+                <IconRefresh size={11} />
                 <span>Reopened ({doubt.reopenedCount}/3)</span>
               </span>
             )}
@@ -194,14 +194,14 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
               replyCount > 0 ? 'text-brand-hover' : 'text-ink-muted'
             }`}
           >
-            <ChatText size={15} weight={replyCount > 0 ? 'fill' : 'regular'} />
+            <IconDoubt size={15} />
             <span>{replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'No replies yet'}</span>
           </span>
 
           {/* Attachments Indicator */}
           {attachmentCount > 0 && (
             <span className="inline-flex items-center gap-1 text-ink-secondary font-medium" title={`${attachmentCount} attached file(s)`}>
-              <Paperclip size={14} weight="bold" />
+              <IconPaperclip size={14} />
               <span>{attachmentCount}</span>
             </span>
           )}
@@ -209,7 +209,7 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
           {/* Assigned Faculty */}
           {doubt.assignedTeacherName && (
             <span className="inline-flex items-center gap-1 text-ink-secondary font-medium truncate max-w-[140px]" title={`Assigned Faculty: ${doubt.assignedTeacherName}`}>
-              <User size={13} weight="bold" className="text-ink-muted shrink-0" />
+              <IconUser size={13} className="text-ink-muted shrink-0" />
               <span className="truncate">{doubt.assignedTeacherName}</span>
             </span>
           )}
@@ -218,10 +218,10 @@ export const StudentDoubtCard: React.FC<StudentDoubtCardProps> = ({ doubt }) => 
         {/* Date + Action Icon */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="inline-flex items-center gap-1 text-caption text-ink-muted font-medium">
-            <CalendarBlank size={13} />
+            <IconCalendar size={13} />
             <span>{formatRelativeDate(doubt.createdAt)}</span>
           </span>
-          <CaretRight size={14} weight="bold" className="text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
+          <IconChevronRight size={14} className="text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </Link>

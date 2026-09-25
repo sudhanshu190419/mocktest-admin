@@ -19,11 +19,10 @@ import React, { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  WarningCircle,
-  ArrowLeft,
-  ArrowsClockwise,
-  Spinner,
-} from '@phosphor-icons/react';
+  IconWarning,
+  IconArrowLeft,
+  IconRefresh,
+} from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import {
   fetchStudentRecordingById,
@@ -142,9 +141,9 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
           <div className="h-4 w-36 bg-neutral-200 dark:bg-neutral-800 rounded animate-pulse" />
 
           {/* Video Player Skeleton */}
-          <div className="w-full aspect-video bg-neutral-900 rounded-2xl flex flex-col items-center justify-center gap-3 shadow-2xl border border-neutral-800 animate-pulse">
-            <Spinner className="w-8 h-8 animate-spin text-brand" />
-            <span className="text-xs text-neutral-400 font-medium">
+          <div className="w-full aspect-video bg-paper rounded-card flex flex-col items-center justify-center gap-3 shadow-card border border-line animate-pulse">
+            <IconRefresh className="w-8 h-8 animate-spin text-brand" />
+            <span className="text-xs text-ink-muted font-medium">
               Loading recorded session...
             </span>
           </div>
@@ -152,11 +151,11 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
           {/* Details Skeleton */}
           <div className="space-y-4">
             <div className="flex gap-2">
-              <div className="h-6 w-20 bg-neutral-200 dark:bg-neutral-800 rounded-lg animate-pulse" />
-              <div className="h-6 w-28 bg-neutral-200 dark:bg-neutral-800 rounded-lg animate-pulse" />
+              <div className="h-6 w-20 bg-paper rounded-lg animate-pulse" />
+              <div className="h-6 w-28 bg-paper rounded-lg animate-pulse" />
             </div>
-            <div className="h-8 w-3/4 bg-neutral-200 dark:bg-neutral-800 rounded-xl animate-pulse" />
-            <div className="h-20 w-full bg-neutral-200 dark:bg-neutral-800 rounded-2xl animate-pulse" />
+            <div className="h-8 w-3/4 bg-paper rounded-field animate-pulse" />
+            <div className="h-20 w-full bg-paper rounded-card animate-pulse" />
           </div>
         </div>
       </div>
@@ -166,17 +165,17 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
   // ── Error / Unauthorized State ─────────────────────────────────────────
   if (errorMessage || !recording) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center p-4 sm:p-6">
-        <div className="max-w-md w-full bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 text-center shadow-xl space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 mx-auto flex items-center justify-center text-red-600 dark:text-red-400 shadow-sm">
-            <WarningCircle className="w-8 h-8" weight="fill" />
+      <div className="min-h-screen bg-sand flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full bg-surface rounded-sheet border border-line p-8 text-center shadow-card space-y-5">
+          <div className="w-16 h-16 rounded-card bg-rose-50 border border-rose-200 mx-auto flex items-center justify-center text-rose-600 shadow-xs">
+            <IconWarning className="w-8 h-8" />
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
+            <h2 className="text-lg font-bold text-ink">
               Recorded Class Unavailable
             </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <p className="text-xs text-ink-secondary leading-relaxed">
               {errorMessage || 'This recording is either not found or you are not enrolled in the corresponding batch.'}
             </p>
           </div>
@@ -184,17 +183,17 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
           <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
             <button
               onClick={loadRecordingData}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-semibold transition-colors"
+              className="w-full inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 rounded-field bg-paper hover:bg-sky-tint text-ink text-xs font-semibold border border-line transition-colors"
             >
-              <ArrowsClockwise className="w-4 h-4" />
+              <IconRefresh className="w-4 h-4" />
               <span>Retry</span>
             </button>
 
             <Link
               href="/student/recordings"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand text-white text-xs font-semibold shadow-md shadow-card transition-colors"
+              className="w-full inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-semibold shadow-xs transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <IconArrowLeft className="w-4 h-4" />
               <span>All Recordings</span>
             </Link>
           </div>

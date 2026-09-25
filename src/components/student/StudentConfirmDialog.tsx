@@ -68,10 +68,10 @@ export function StudentConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="student-confirm-title"
-        className="relative z-10 w-full max-w-md rounded-3xl bg-white border border-line/90 p-6 sm:p-7 shadow-2xl shadow-card animate-fadeIn"
+        className="relative z-10 w-full max-w-md rounded-sheet bg-white border border-line/90 p-6 sm:p-7 shadow-2xl shadow-card animate-fadeIn"
       >
         <div className="flex items-start gap-4">
-          <span className="w-10 h-10 rounded-2xl bg-paper border border-line flex items-center justify-center shrink-0">
+          <span className="w-10 h-10 rounded-card bg-paper border border-line flex items-center justify-center shrink-0">
             {iconMap[variant]}
           </span>
           <div className="flex-1">
@@ -94,7 +94,7 @@ export function StudentConfirmDialog({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="px-4 py-2.5 rounded-xl border border-line text-ink hover:bg-paper text-xs font-semibold transition-colors disabled:opacity-50"
+            className="px-4 py-2.5 rounded-field border border-line text-ink hover:bg-paper text-xs font-semibold transition-colors disabled:opacity-50"
           >
             {cancelLabel}
           </button>
@@ -102,7 +102,7 @@ export function StudentConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50 ${confirmStyles[variant]}`}
+            className={`px-4 py-2.5 rounded-field text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50 ${confirmStyles[variant]}`}
           >
             {loading ? (
               <>

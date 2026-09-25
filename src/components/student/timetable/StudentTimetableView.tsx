@@ -3,20 +3,19 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Calendar,
-  Clock,
-  VideoCamera,
-  CaretLeft,
-  CaretRight,
-  ArrowsClockwise,
-  Broadcast,
-  CheckCircle,
-  FileText,
-  Play,
-  ArrowRight,
-  CalendarCheck,
-  Sparkle,
-} from '@phosphor-icons/react';
+  IconCalendar,
+  IconClock,
+  IconVideo,
+  IconChevronLeft,
+  IconChevronRight,
+  IconRefresh,
+  IconCheckCircle,
+  IconFileText,
+  IconPlay,
+  IconArrowRight,
+  IconCalendarCheck,
+  IconSpark,
+} from '@/components/icons/student-icons';
 import {
   fetchTodayTimetable,
   fetchWeekTimetable,
@@ -317,7 +316,7 @@ export function StudentTimetableView() {
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-field border border-line bg-surface hover:bg-paper text-ink font-bold text-xs shadow-2xs transition-colors disabled:opacity-50 min-h-[44px]"
             title="Refresh Schedule"
           >
-            <ArrowsClockwise size={14} weight="bold" className={isRefreshing ? 'animate-spin' : ''} />
+            <IconRefresh size={14} className={isRefreshing ? 'animate-spin' : ''} />
             <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
@@ -336,7 +335,7 @@ export function StudentTimetableView() {
                 : 'text-ink-secondary hover:text-ink hover:bg-paper'
             }`}
           >
-            <Clock size={14} weight="duotone" />
+            <IconClock size={14} />
             <span>TODAY</span>
             {todaySessions.length > 0 && (
               <span
@@ -358,7 +357,7 @@ export function StudentTimetableView() {
                 : 'text-ink-secondary hover:text-ink hover:bg-paper'
             }`}
           >
-            <Calendar size={14} weight="duotone" />
+            <IconCalendar size={14} />
             <span>WEEK</span>
           </button>
 
@@ -371,7 +370,7 @@ export function StudentTimetableView() {
                 : 'text-ink-secondary hover:text-ink hover:bg-paper'
             }`}
           >
-            <CalendarCheck size={14} weight="duotone" />
+            <IconCalendarCheck size={14} />
             <span>MONTH</span>
           </button>
 
@@ -384,7 +383,7 @@ export function StudentTimetableView() {
                 : 'text-ink-secondary hover:text-ink hover:bg-paper'
             }`}
           >
-            <Sparkle size={14} weight="duotone" />
+            <IconSpark size={14} />
             <span>ANNUAL YEAR</span>
           </button>
         </div>
@@ -429,7 +428,7 @@ export function StudentTimetableView() {
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="space-y-2">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-200/70 text-rose-800 text-xs font-bold tracking-wider uppercase">
-                        <Broadcast size={14} weight="fill" className="text-rose-600" />
+                        <IconVideo size={14} className="text-rose-600" />
                         <span>Class Is Live Right Now</span>
                       </div>
                       <h2 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
@@ -452,9 +451,9 @@ export function StudentTimetableView() {
                         href={liveSessionNow.classId ? `/student/classes/${liveSessionNow.classId}/room` : '/student/classes'}
                         className="px-6 py-3 rounded-field bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-card inline-flex items-center gap-2 min-h-[44px]"
                       >
-                        <VideoCamera size={18} weight="fill" />
+                        <IconVideo size={18} />
                         <span>Join Live Classroom</span>
-                        <ArrowRight size={14} weight="bold" />
+                        <IconArrowRight size={14} />
                       </Link>
                     </div>
                   </div>
@@ -463,7 +462,7 @@ export function StudentTimetableView() {
                 <div className="p-5 sm:p-6 rounded-card bg-sky-tint border border-line text-ink shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="inline-flex items-center gap-1.5 text-xs font-bold text-brand">
-                      <Clock size={14} weight="bold" />
+                      <IconClock size={14} />
                       <span>Next Scheduled Session Today</span>
                     </div>
                     <h3 className="text-lg font-bold text-ink">
@@ -534,7 +533,7 @@ export function StudentTimetableView() {
                     className="p-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shadow-2xs"
                     title="Previous Week"
                   >
-                    <CaretLeft size={16} weight="bold" />
+                    <IconChevronLeft size={16} />
                   </button>
                   <span className="text-sm font-bold text-ink px-2">
                     {weekDays[0]?.fullDate} — {weekDays[6]?.fullDate}
@@ -545,7 +544,7 @@ export function StudentTimetableView() {
                     className="p-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shadow-2xs"
                     title="Next Week"
                   >
-                    <CaretRight size={16} weight="bold" />
+                    <IconChevronRight size={16} />
                   </button>
                 </div>
 
@@ -649,7 +648,7 @@ export function StudentTimetableView() {
                     className="p-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shadow-2xs"
                     title="Previous Month"
                   >
-                    <CaretLeft size={16} weight="bold" />
+                    <IconChevronLeft size={16} />
                   </button>
                   <h2 className="text-lg font-extrabold text-ink px-2">
                     {new Date(monthYear, monthNumber - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}
@@ -660,7 +659,7 @@ export function StudentTimetableView() {
                     className="p-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shadow-2xs"
                     title="Next Month"
                   >
-                    <CaretRight size={16} weight="bold" />
+                    <IconChevronRight size={16} />
                   </button>
                 </div>
 
@@ -781,7 +780,7 @@ export function StudentTimetableView() {
               <div className="p-6 sm:p-7 rounded-card bg-surface border border-line shadow-card flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-tint border border-line text-xs font-bold text-brand">
-                    <Sparkle size={14} weight="duotone" />
+                    <IconSpark size={14} />
                     <span>Complete Academic Year Timetable</span>
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
@@ -949,12 +948,12 @@ function SessionCard({ session }: { session: TimetableSessionItem }) {
             </span>
           ) : isCompleted ? (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-caption font-bold">
-              <CheckCircle size={12} weight="fill" />
+              <IconCheckCircle size={12} />
               Completed
             </span>
           ) : isUpcoming ? (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-tint text-brand-hover text-caption font-bold border border-line">
-              <Clock size={12} weight="bold" />
+              <IconClock size={12} />
               Upcoming
             </span>
           ) : (
@@ -986,7 +985,7 @@ function SessionCard({ session }: { session: TimetableSessionItem }) {
       <div className="pt-3 border-t border-line flex items-center justify-between gap-3 text-xs">
         <div className="space-y-0.5">
           <div className="flex items-center gap-1.5 font-bold text-ink">
-            <Clock size={14} weight="bold" className="text-ink-muted" />
+            <IconClock size={14} className="text-ink-muted" />
             <span>{session.timeSlot}</span>
             <span className="text-ink-muted font-normal">({session.duration})</span>
           </div>
@@ -1001,7 +1000,7 @@ function SessionCard({ session }: { session: TimetableSessionItem }) {
               href={session.classId ? `/student/classes/${session.classId}/room` : '/student/classes'}
               className="px-4 py-2.5 rounded-field bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-2xs min-h-[44px]"
             >
-              <VideoCamera size={14} weight="fill" />
+              <IconVideo size={14} />
               <span>Join</span>
             </Link>
           ) : isCompleted ? (
@@ -1009,7 +1008,7 @@ function SessionCard({ session }: { session: TimetableSessionItem }) {
               href="/student/classes"
               className="px-3.5 py-2 rounded-field border border-line bg-sky-tint hover:bg-sky-tint/80 text-brand-hover font-bold text-xs transition-colors inline-flex items-center gap-1 min-h-[44px] shadow-2xs"
             >
-              <Play size={12} weight="fill" />
+              <IconPlay size={12} />
               <span>Watch</span>
             </Link>
           ) : isTest ? (
@@ -1017,7 +1016,7 @@ function SessionCard({ session }: { session: TimetableSessionItem }) {
               href={session.testId ? `/student/tests/${session.testId}` : '/student/tests'}
               className="px-3.5 py-2 rounded-field bg-brand hover:bg-brand-hover text-white font-bold text-xs transition-colors inline-flex items-center gap-1 min-h-[44px] shadow-2xs"
             >
-              <FileText size={12} weight="bold" />
+              <IconFileText size={12} />
               <span>Test Details</span>
             </Link>
           ) : null}

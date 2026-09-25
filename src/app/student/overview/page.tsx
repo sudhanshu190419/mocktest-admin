@@ -4,21 +4,21 @@ import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  VideoCamera,
-  BookOpen,
-  Exam,
-  ArrowRight,
-  CalendarCheck,
-  Lightning,
-  Play,
-  GraduationCap,
-  WarningCircle,
-  CheckCircle,
-  CalendarBlank,
-  ChatCircleDots,
-  PlayCircle,
-  ListChecks,
-} from '@phosphor-icons/react';
+  IconVideo,
+  IconLibrary,
+  IconTest,
+  IconArrowRight,
+  IconCalendarCheck,
+  IconLightning,
+  IconPlay,
+  IconGraduationCap,
+  IconWarning,
+  IconCheckCircle,
+  IconCalendar,
+  IconDoubt,
+  IconPlayCircle,
+  IconCheckList,
+} from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useOpenDoubtCount } from '@/hooks/student/useNavBadgeCounts';
 import { TestStateCard } from '@/components/student/TestStateCard';
@@ -177,8 +177,8 @@ export default function StudentOverviewPage() {
   if (!shellReady && !primaryReady && (shellQuery.isError || primaryQuery.isError)) {
     return (
       <div className="store-container">
-        <div className="p-8 rounded-3xl bg-paper border border-line text-center max-w-lg mx-auto my-12">
-          <WarningCircle size={40} className="text-apricot-ink mx-auto mb-3" weight="duotone" style={{ color: 'var(--color-apricot-ink)' }} />
+        <div className="p-8 rounded-sheet bg-paper border border-line text-center max-w-lg mx-auto my-12">
+          <IconWarning size={40} className="mx-auto mb-3" style={{ color: 'var(--color-apricot-ink)' }} />
           <h3 className="text-base font-bold text-ink mb-1">Couldn&apos;t load your day</h3>
           <p className="text-xs text-ink-secondary mb-4 leading-relaxed">
             {primaryQuery.error instanceof Error
@@ -187,7 +187,7 @@ export default function StudentOverviewPage() {
           </p>
           <button
             onClick={retry}
-            className="px-4 py-2 rounded-xl text-white font-bold text-xs hover:opacity-90 transition-opacity shadow-xs"
+            className="px-4 py-2 min-h-[44px] inline-flex items-center justify-center rounded-field text-white font-bold text-xs hover:opacity-90 transition-opacity shadow-xs"
             style={{ backgroundColor: 'var(--color-brand)' }}
           >
             Try Again
@@ -257,12 +257,12 @@ export default function StudentOverviewPage() {
         {primaryReady && resumeTest && (
           <Link href={`/student/tests/${resumeTest.testId}`} className="today-resume-card is-primary">
             <span className="today-resume-kicker">
-              <ListChecks size={14} weight="bold" />
+              <IconCheckList size={14} />
               <span>Test in progress</span>
             </span>
             <span className="today-resume-title">{resumeTest.title}</span>
             <span className="today-resume-cta">
-              Resume now <ArrowRight size={14} weight="bold" />
+              Resume now <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -270,7 +270,7 @@ export default function StudentOverviewPage() {
         {primaryReady && !resumeTest && liveClass && (
           <Link href="/student/classes" className={`today-resume-card ${liveNow ? 'is-live' : ''}`}>
             <span className="today-resume-kicker">
-              <VideoCamera size={14} weight="bold" />
+              <IconVideo size={14} />
               <span>{liveNow ? 'Live now' : 'Next class today'}</span>
             </span>
             <span className="today-resume-title">{liveClass.subject_name}</span>
@@ -278,7 +278,7 @@ export default function StudentOverviewPage() {
               {liveNow
                 ? 'Join classroom'
                 : new Date(liveClass.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
-              <ArrowRight size={14} weight="bold" />
+              <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -286,12 +286,12 @@ export default function StudentOverviewPage() {
         {primaryReady && !resumeTest && !liveClass && nextSession && (
           <Link href="/student/timetable" className="today-resume-card">
             <span className="today-resume-kicker">
-              <VideoCamera size={14} weight="bold" />
+              <IconVideo size={14} />
               <span>Next class today</span>
             </span>
             <span className="today-resume-title">{nextSession.subject}</span>
             <span className="today-resume-cta">
-              {nextSession.timeSlot} <ArrowRight size={14} weight="bold" />
+              {nextSession.timeSlot} <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -302,12 +302,12 @@ export default function StudentOverviewPage() {
             className="today-resume-card is-primary"
           >
             <span className="today-resume-kicker">
-              <PlayCircle size={14} weight="bold" />
+              <IconPlayCircle size={14} />
               <span>Continue learning</span>
             </span>
             <span className="today-resume-title">{resumeCourse.title}</span>
             <span className="today-resume-cta">
-              Pick up where you left off <ArrowRight size={14} weight="bold" />
+              Pick up where you left off <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -318,12 +318,12 @@ export default function StudentOverviewPage() {
             className="today-resume-card"
           >
             <span className="today-resume-kicker">
-              <PlayCircle size={14} weight="bold" />
+              <IconPlayCircle size={14} />
               <span>Continue learning</span>
             </span>
             <span className="today-resume-title">{resumeCourse.title}</span>
             <span className="today-resume-cta">
-              Pick up <ArrowRight size={14} weight="bold" />
+              Pick up <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -331,12 +331,12 @@ export default function StudentOverviewPage() {
         {primaryReady && !resumeTest && !hasAnyResumePoint && (
           <Link href="/courses" className="today-resume-card is-primary">
             <span className="today-resume-kicker">
-              <GraduationCap size={14} weight="bold" />
+              <IconGraduationCap size={14} />
               <span>Start your day</span>
             </span>
             <span className="today-resume-title">Explore courses & mock tests</span>
             <span className="today-resume-cta">
-              Browse catalog <ArrowRight size={14} weight="bold" />
+              Browse catalog <IconArrowRight size={14} />
             </span>
           </Link>
         )}
@@ -347,10 +347,10 @@ export default function StudentOverviewPage() {
         <section className="student-live-hero border-emerald-300">
           <div className="flex items-start sm:items-center gap-4">
             <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl shrink-0 text-white shadow-md"
+              className="flex h-12 w-12 items-center justify-center rounded-field shrink-0 text-white shadow-md"
               style={{ backgroundColor: 'var(--color-success)' }}
             >
-              <VideoCamera size={24} weight="duotone" />
+              <IconVideo size={24} />
             </div>
             <div className="space-y-1">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-caption font-extrabold text-white uppercase tracking-wider" style={{ backgroundColor: 'var(--color-success)' }}>
@@ -367,10 +367,10 @@ export default function StudentOverviewPage() {
             <div className="ml-auto shrink-0">
               <Link
                 href="/student/classes"
-                className="w-full sm:w-auto px-5 py-3 rounded-xl font-extrabold text-xs tracking-wide shadow-md flex items-center justify-center gap-2 text-white transition-all"
+                className="w-full sm:w-auto min-h-[44px] px-5 py-3 rounded-field font-extrabold text-xs tracking-wide shadow-md flex items-center justify-center gap-2 text-white transition-all"
                 style={{ backgroundColor: 'var(--color-success)' }}
               >
-                <Play size={16} weight="fill" />
+                <IconPlay size={16} />
                 <span>Join Now</span>
               </Link>
             </div>
@@ -382,7 +382,7 @@ export default function StudentOverviewPage() {
       <section>
         <div className="student-section-header">
           <h2 className="flex items-center gap-2">
-            <CalendarBlank size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <IconCalendar size={18} style={{ color: 'var(--color-brand)' }} />
             <span>Today&apos;s schedule</span>
           </h2>
           <Link href="/student/timetable" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
@@ -408,8 +408,8 @@ export default function StudentOverviewPage() {
         ) : (
           <div className="student-card flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'var(--color-sky-tint)', color: 'var(--color-sky-ink)' }}>
-                <CalendarCheck size={22} weight="duotone" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-field" style={{ background: 'var(--color-sky-tint)', color: 'var(--color-sky-ink)' }}>
+                <IconCalendarCheck size={22} />
               </div>
               <div>
                 <p className="text-xs font-bold text-ink">Nothing scheduled today</p>
@@ -424,7 +424,7 @@ export default function StudentOverviewPage() {
       <section>
         <div className="student-section-header">
           <h2 className="flex items-center gap-2">
-            <Exam size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <IconTest size={18} style={{ color: 'var(--color-brand)' }} />
             <span>This week&apos;s tests</span>
           </h2>
           <Link href="/student/tests" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
@@ -442,7 +442,7 @@ export default function StudentOverviewPage() {
           </div>
         ) : (
           <div className="student-card text-center p-8">
-            <CheckCircle size={36} className="mx-auto mb-2" weight="duotone" style={{ color: 'var(--color-mint-ink)' }} />
+            <IconCheckCircle size={36} className="mx-auto mb-2" style={{ color: 'var(--color-mint-ink)' }} />
             <h3 className="text-sm font-bold text-ink mb-1">No tests due this week</h3>
             <p className="text-caption text-ink-secondary">
               New tests assigned to your batch will show up here.
@@ -455,7 +455,7 @@ export default function StudentOverviewPage() {
       <section>
         <div className="student-section-header">
           <h2 className="flex items-center gap-2">
-            <Lightning size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <IconLightning size={18} style={{ color: 'var(--color-brand)' }} />
             <span>Momentum</span>
           </h2>
           <Link href="/student/analytics" className="text-xs font-bold hover:underline" style={{ color: 'var(--color-brand)' }}>
@@ -493,7 +493,7 @@ export default function StudentOverviewPage() {
       <section>
         <div className="student-section-header">
           <h2 className="flex items-center gap-2">
-            <BookOpen size={18} weight="bold" style={{ color: 'var(--color-brand)' }} />
+            <IconLibrary size={18} style={{ color: 'var(--color-brand)' }} />
             <span>Worth practicing</span>
           </h2>
         </div>
@@ -510,7 +510,7 @@ export default function StudentOverviewPage() {
               {weakChapters.map((chap) => (
                 <div
                   key={chap.chapter_id}
-                  className="p-3 rounded-2xl bg-white/90 border border-line flex items-center justify-between"
+                  className="p-3 rounded-field bg-white/90 border border-line flex items-center justify-between"
                 >
                   <div>
                     <span className="text-caption font-bold uppercase text-ink-muted tracking-wider block">
@@ -532,7 +532,7 @@ export default function StudentOverviewPage() {
               ))}
             </div>
           ) : (
-            <div className="p-4 rounded-2xl bg-white/70 border border-line text-center space-y-1.5">
+            <div className="p-4 rounded-field bg-white/70 border border-line text-center space-y-1.5">
               <p className="text-xs font-bold text-ink">No weak areas identified yet</p>
               <p className="text-caption text-ink-secondary leading-normal">
                 Take a mock test and we&apos;ll point out exactly what to practice.
@@ -542,7 +542,7 @@ export default function StudentOverviewPage() {
 
           <div className="flex items-center justify-between pt-1">
             <span className="text-caption text-ink-secondary flex items-center gap-1.5">
-              <ChatCircleDots size={14} />
+              <IconDoubt size={14} />
               Stuck on a topic?
             </span>
             <Link

@@ -1,8 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Button } from './Button';
 import { Card } from './Card';
+import { useAuth } from '@/context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import {
+  fetchStudentBootstrap,
+  studentDashboardKeys,
+  type StudentEnrolledCourse,
+} from '@/services/student/studentDashboardWebService';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import { PaymentModal } from './PaymentModal';
 import type { Course } from '@/types/courseCatalog';
@@ -15,6 +23,21 @@ const cycleLabels: Record<string, string> = {
 };
 
 export function CoursePricing({ course }: { course: Course }) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+
+  const { data: bootstrapResult } = useQuery({
+    queryKey: studentDashboardKeys.bootstrap(profileId),
+    queryFn: () => fetchStudentBootstrap(),
+    enabled: !!profileId,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const enrolledCourses: StudentEnrolledCourse[] = bootstrapResult?.data?.enrolled_courses || [];
+  const isEnrolled = enrolledCourses.some((c) => c.course_id === course.courseId);
+
   const plans = course.plans.filter((plan) => plan.isActive);
   const [mode, setMode] = useState<'purchase' | 'subscription'>('purchase');
   const [planId, setPlanId] = useState(
@@ -41,19 +64,30 @@ export function CoursePricing({ course }: { course: Course }) {
         </div>
         <h2>Your way to learn.</h2>
         <p className="store-pricing-intro">One course. Choose the access that suits you.</p>
-        <div className="store-payment-toggle" role="group" aria-label="Payment type">
-          <button onClick={() => setMode('purchase')} aria-pressed={mode === 'purchase'}>
-            Buy full course
-          </button>
-          <button
-            onClick={() => setMode('subscription')}
-            aria-pressed={mode === 'subscription'}
-            disabled={plans.length === 0}
-          >
-            Subscribe
-          </button>
-        </div>
-        {mode === 'subscription' && plans.length > 0 && (
+
+        {isEnrolled ? (
+          <div className="p-4 rounded-field bg-emerald-50 border border-emerald-200 text-emerald-900 my-4">
+            <span className="text-caption font-extrabold uppercase tracking-wide text-emerald-700">Access Granted</span>
+            <p className="text-xs font-bold text-emerald-950 mt-0.5">
+              You are currently enrolled in this course batch.
+            </p>
+          </div>
+        ) : (
+          <div className="store-payment-toggle" role="group" aria-label="Payment type">
+            <button onClick={() => setMode('purchase')} aria-pressed={mode === 'purchase'}>
+              Buy full course
+            </button>
+            <button
+              onClick={() => setMode('subscription')}
+              aria-pressed={mode === 'subscription'}
+              disabled={plans.length === 0}
+            >
+              Subscribe
+            </button>
+          </div>
+        )}
+
+        {!isEnrolled && mode === 'subscription' && plans.length > 0 && (
           <fieldset className="store-plan-options">
             <legend className="sr-only">Choose subscription duration</legend>
             {plans.map((plan) => (
@@ -76,33 +110,55 @@ export function CoursePricing({ course }: { course: Course }) {
             ))}
           </fieldset>
         )}
+
         <div className="store-price-display">
           <span className="store-small-label">
-            {mode === 'purchase'
+            {isEnrolled
+              ? 'Enrollment Status'
+              : mode === 'purchase'
               ? 'One-time purchase'
               : selectedPlan
               ? `${cycleLabels[selectedPlan.billingCycle] || selectedPlan.name} plan price`
               : 'No subscription plans'}
           </span>
           <div>
-            <strong className="tabular-nums">{formatPrice(price)}</strong>
-            {mode === 'purchase' && price < course.originalPrice && (
-              <del className="tabular-nums">{formatPrice(course.originalPrice)}</del>
+            {isEnrolled ? (
+              <strong className="text-emerald-700">Active Access</strong>
+            ) : (
+              <>
+                <strong className="tabular-nums">{formatPrice(price)}</strong>
+                {mode === 'purchase' && price < course.originalPrice && (
+                  <del className="tabular-nums">{formatPrice(course.originalPrice)}</del>
+                )}
+              </>
             )}
           </div>
           <p>
-            {mode === 'purchase'
+            {isEnrolled
+              ? 'You have active access to all lessons, live classes, and chapter tests.'
+              : mode === 'purchase'
               ? 'Permanent course ownership. One payment.'
               : 'Access to this course for the selected period.'}
           </p>
         </div>
-        <Button
-          className="store-enroll-button"
-          onClick={() => setPaymentModalOpen(true)}
-          disabled={!canPreview}
-        >
-          Enroll in {mode === 'purchase' ? 'course' : 'plan'} <span aria-hidden="true">↗</span>
-        </Button>
+
+        {isEnrolled ? (
+          <Link
+            href={`/student/courses/${course.courseId}`}
+            className="store-enroll-button inline-flex items-center justify-center text-center font-bold"
+          >
+            Go to Classroom <span aria-hidden="true">→</span>
+          </Link>
+        ) : (
+          <Button
+            className="store-enroll-button"
+            onClick={() => setPaymentModalOpen(true)}
+            disabled={!canPreview}
+          >
+            Enroll in {mode === 'purchase' ? 'course' : 'plan'} <span aria-hidden="true">↗</span>
+          </Button>
+        )}
+
         <div className="store-included">
           <h3>{mode === 'purchase' ? 'Your learning essentials' : 'Included with this plan'}</h3>
           <ul>
@@ -124,22 +180,35 @@ export function CoursePricing({ course }: { course: Course }) {
           </ul>
         </div>
       </Card>
-      <a
-        href="#course-pricing"
-        className="store-mobile-enroll"
-        onClick={(e) => {
-          e.preventDefault();
-          setPaymentModalOpen(true);
-        }}
-      >
-        <span>
-          From{' '}
-          <strong className="tabular-nums">
-            {formatPrice(course.discountedPrice ?? course.originalPrice)}
-          </strong>
-        </span>
-        <b>Enroll now ↑</b>
-      </a>
+
+      {isEnrolled ? (
+        <Link
+          href={`/student/courses/${course.courseId}`}
+          className="store-mobile-enroll"
+        >
+          <span>
+            Status: <strong className="text-emerald-700">Enrolled</strong>
+          </span>
+          <b>Go to Classroom →</b>
+        </Link>
+      ) : (
+        <a
+          href="#course-pricing"
+          className="store-mobile-enroll"
+          onClick={(e) => {
+            e.preventDefault();
+            setPaymentModalOpen(true);
+          }}
+        >
+          <span>
+            From{' '}
+            <strong className="tabular-nums">
+              {formatPrice(course.discountedPrice ?? course.originalPrice)}
+            </strong>
+          </span>
+          <b>Enroll now ↑</b>
+        </a>
+      )}
 
       {/* Unified Razorpay Payment Modal */}
       <PaymentModal
@@ -167,4 +236,5 @@ export function CoursePricing({ course }: { course: Course }) {
     </>
   );
 }
+
 

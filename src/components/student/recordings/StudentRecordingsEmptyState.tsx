@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { FilmSlate, MagnifyingGlass } from '@phosphor-icons/react';
+import { IconFilm, IconSearch } from '@/components/icons/student-icons';
 
 interface StudentRecordingsEmptyStateProps {
   isFiltered?: boolean;
@@ -14,9 +14,9 @@ export const StudentRecordingsEmptyState: React.FC<StudentRecordingsEmptyStatePr
 }) => {
   if (isFiltered) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 sm:p-12 rounded-3xl bg-white border border-line text-center max-w-md mx-auto my-8 shadow-xs">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 mb-3 border border-amber-200">
-          <MagnifyingGlass size={26} weight="bold" />
+      <div className="flex flex-col items-center justify-center p-8 sm:p-12 rounded-sheet bg-white border border-line text-center max-w-md mx-auto my-8 shadow-xs">
+        <div className="flex h-14 w-14 items-center justify-center rounded-card bg-amber-50 text-amber-600 mb-3 border border-amber-200">
+          <IconSearch size={26} />
         </div>
         <h3 className="text-base font-extrabold text-ink">No matching recorded classes</h3>
         <p className="mt-1 text-xs text-ink-secondary max-w-xs leading-relaxed">
@@ -26,7 +26,7 @@ export const StudentRecordingsEmptyState: React.FC<StudentRecordingsEmptyStatePr
           <button
             type="button"
             onClick={onResetFilters}
-            className="mt-4 px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs"
+            className="mt-4 px-4 py-2 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs"
           >
             Clear All Filters
           </button>
@@ -36,9 +36,9 @@ export const StudentRecordingsEmptyState: React.FC<StudentRecordingsEmptyStatePr
   }
 
   return (
-    <div className="flex flex-col items-center justify-center p-8 sm:p-12 rounded-3xl bg-white border border-line text-center max-w-md mx-auto my-8 shadow-xs">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-tint text-brand mb-3 border border-line">
-        <FilmSlate size={26} weight="duotone" />
+    <div className="flex flex-col items-center justify-center p-8 sm:p-12 rounded-sheet bg-white border border-line text-center max-w-md mx-auto my-8 shadow-xs">
+      <div className="flex h-14 w-14 items-center justify-center rounded-card bg-sky-tint text-brand mb-3 border border-line">
+        <IconFilm size={26} />
       </div>
       <h3 className="text-base font-extrabold text-ink">No recorded classes yet</h3>
       <p className="mt-1 text-xs text-ink-secondary max-w-xs leading-relaxed">

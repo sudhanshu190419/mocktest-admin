@@ -16,10 +16,10 @@ export const ResultActions: React.FC<ResultActionsProps> = ({
   canRetake = false,
 }) => {
   return (
-    <div className="flex items-center justify-between gap-4 flex-wrap bg-white rounded-2xl p-4 sm:p-5 border border-line shadow-sm">
+    <div className="flex items-center justify-between gap-4 flex-wrap bg-white rounded-card p-4 sm:p-5 border border-line shadow-sm">
       <Link
         href="/student/tests"
-        className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-ink hover:text-ink hover:bg-paper transition-colors"
+        className="flex items-center gap-2 px-4 py-2.5 rounded-field font-bold text-xs sm:text-sm text-ink hover:text-ink hover:bg-paper transition-colors"
       >
         <ArrowLeft size={16} weight="bold" />
         <span>Back to Tests</span>
@@ -29,7 +29,7 @@ export const ResultActions: React.FC<ResultActionsProps> = ({
         {canRetake && (
           <Link
             href={`/student/tests/${testId}`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-paper hover:bg-sky-tint text-ink transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-field font-bold text-xs sm:text-sm bg-paper hover:bg-sky-tint text-ink transition-colors"
           >
             <ArrowCounterClockwise size={16} weight="bold" />
             <span>Retake Test</span>
@@ -38,7 +38,7 @@ export const ResultActions: React.FC<ResultActionsProps> = ({
 
         <Link
           href={`/student/tests/${testId}/results/${attemptId}/review`}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-brand hover:bg-brand-hover text-white shadow-md shadow-card transition-all cursor-pointer"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-field font-bold text-xs sm:text-sm bg-brand hover:bg-brand-hover text-white shadow-md shadow-card transition-all cursor-pointer"
         >
           <BookOpen size={18} weight="bold" />
           <span>Review Detailed Solutions</span>

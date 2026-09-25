@@ -12,10 +12,10 @@ export const SubjectBreakdown: React.FC<SubjectBreakdownProps> = ({ sections }) 
   if (!sections || sections.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
+    <div className="bg-white rounded-sheet p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-sky-tint text-brand rounded-xl">
+          <div className="p-2 bg-sky-tint text-brand rounded-field">
             <ChartBar size={20} weight="bold" />
           </div>
           <div>
@@ -30,7 +30,7 @@ export const SubjectBreakdown: React.FC<SubjectBreakdownProps> = ({ sections }) 
           return (
             <div
               key={sec.subjectId || idx}
-              className="p-5 rounded-2xl bg-paper border border-line/80 flex flex-col justify-between gap-4"
+              className="p-5 rounded-card bg-paper border border-line/80 flex flex-col justify-between gap-4"
             >
               {/* Header */}
               <div className="flex items-center justify-between">

@@ -34,6 +34,23 @@
   --tint-apricot: #ffd7b7;  --tint-apricot-ink: #7c4c26;
   --tint-lilac: #e9e6f6;    --tint-lilac-ink: #57507d;
   --tint-sand: #f7e9d7;     --tint-sand-ink: #854d0e;
+
+  /* Focus */
+  --color-focus: var(--brand);
+
+  /* Section Spacing */
+  --space-section: 72px;
+  --space-section-mobile: 48px;
+
+  /* Explicit CSS Font Size Floor & Scale */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --fs-hero: 40px;
 }
 
 /* ── 2. Tailwind v4 utility bridge (additive tokens only) ───────── */

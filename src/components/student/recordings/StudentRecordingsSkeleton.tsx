@@ -10,7 +10,7 @@ export const StudentRecordingsSkeleton: React.FC = () => {
       {placeholders.map((_, i) => (
         <div
           key={i}
-          className="flex flex-col justify-between rounded-3xl bg-white border border-line p-0 overflow-hidden shadow-xs"
+          className="flex flex-col justify-between rounded-sheet bg-white border border-line p-0 overflow-hidden shadow-xs"
         >
           <div className="h-40 w-full bg-sky-tint" />
           <div className="p-5 space-y-4">
@@ -22,7 +22,7 @@ export const StudentRecordingsSkeleton: React.FC = () => {
               <div className="h-3 bg-paper rounded-md w-2/3" />
               <div className="h-3 bg-paper rounded-md w-1/2" />
             </div>
-            <div className="h-9 bg-paper rounded-2xl w-full pt-1" />
+            <div className="h-9 bg-paper rounded-card w-full pt-1" />
           </div>
         </div>
       ))}

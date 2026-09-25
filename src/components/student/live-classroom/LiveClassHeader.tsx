@@ -65,7 +65,7 @@ export const LiveClassHeader: React.FC<LiveClassHeaderProps> = ({
         <button
           type="button"
           onClick={onLeaveClass}
-          className="p-2 rounded-xl bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors border border-ink/60 shrink-0"
+          className="p-2 rounded-field bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors border border-ink/60 shrink-0"
           title="Exit Classroom"
         >
           <ArrowLeft size={16} weight="bold" />
@@ -112,7 +112,7 @@ export const LiveClassHeader: React.FC<LiveClassHeaderProps> = ({
           <button
             type="button"
             onClick={onToggleFullscreen}
-            className="p-2 rounded-xl bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors border border-ink/60"
+            className="p-2 rounded-field bg-ink hover:bg-ink text-ink-muted hover:text-white transition-colors border border-ink/60"
             title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
           >

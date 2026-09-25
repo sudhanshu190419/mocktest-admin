@@ -155,7 +155,7 @@ export const LiveClassChatPanel: React.FC<LiveClassChatPanelProps> = ({
                 </div>
 
                 <div
-                  className={`px-3 py-2 rounded-2xl max-w-[85%] text-xs leading-relaxed ${
+                  className={`px-3 py-2 rounded-card max-w-[85%] text-xs leading-relaxed ${
                     isMe
                       ? 'bg-brand text-white rounded-tr-xs'
                       : isTeacher
@@ -181,7 +181,7 @@ export const LiveClassChatPanel: React.FC<LiveClassChatPanelProps> = ({
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder="Type your question..."
             maxLength={300}
-            className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-ink border border-ink text-xs text-white placeholder:text-ink-muted focus:outline-hidden focus:ring-2 focus:ring-brand/40 focus:border-brand transition-all"
+            className="w-full pl-3.5 pr-10 py-2.5 rounded-field bg-ink border border-ink text-xs text-white placeholder:text-ink-muted focus:outline-hidden focus:ring-2 focus:ring-brand/40 focus:border-brand transition-all"
           />
 
           <button

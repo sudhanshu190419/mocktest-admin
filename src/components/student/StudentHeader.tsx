@@ -100,7 +100,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         {onToggleMobile && (
           <button
             onClick={onToggleMobile}
-            className="lg:hidden p-2 rounded-xl text-ink-secondary hover:bg-paper transition-colors"
+            className="lg:hidden p-2 rounded-field text-ink-secondary hover:bg-paper transition-colors"
             aria-label="Toggle navigation"
           >
             <List size={22} weight="bold" />
@@ -111,7 +111,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         {onToggleSidebar && (
           <button
             onClick={onToggleSidebar}
-            className="hidden lg:flex items-center justify-center p-2 rounded-xl text-ink-secondary hover:text-ink hover:bg-paper transition-colors"
+            className="hidden lg:flex items-center justify-center p-2 rounded-field text-ink-secondary hover:text-ink hover:bg-paper transition-colors"
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -172,7 +172,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
             aria-label={`Notifications${liveUnreadCount > 0 ? `, ${liveUnreadCount} unread` : ''}`}
             aria-expanded={notificationCenterOpen}
             aria-haspopup="dialog"
-            className={`relative p-2 rounded-xl transition-colors ${
+            className={`relative p-2 rounded-field transition-colors ${
               notificationCenterOpen
                 ? 'bg-sky-tint text-brand-hover'
                 : 'text-ink-secondary hover:bg-paper hover:text-ink'
@@ -200,9 +200,9 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2.5 p-1 rounded-2xl hover:bg-paper/70 transition-colors"
+            className="flex items-center gap-2.5 p-1 rounded-card hover:bg-paper/70 transition-colors"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br bg-brand bg-brand-hover text-xs font-bold text-white shadow-xs font-display">
+            <div className="flex h-9 w-9 items-center justify-center rounded-field bg-gradient-to-br bg-brand bg-brand-hover text-xs font-bold text-white shadow-xs font-display">
               {studentInitials}
             </div>
             <div className="hidden sm:block text-left">
@@ -218,7 +218,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
 
           {/* Dropdown Menu */}
           {dropdownOpen && (
-            <div className="absolute right-0 top-12 z-50 w-56 rounded-2xl bg-white p-1.5 border border-line shadow-xl shadow-card animate-fadeIn font-body">
+            <div className="absolute right-0 top-12 z-50 w-56 rounded-card bg-white p-1.5 border border-line shadow-xl shadow-card animate-fadeIn font-body">
               <div className="p-2.5 border-b border-line mb-1">
                 <p className="text-xs font-bold text-ink leading-tight font-display">{studentName}</p>
                 <p className="text-caption text-ink-secondary truncate">{user?.email}</p>
@@ -228,7 +228,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/student/profile"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-field hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <User size={16} />
                   <span>My Profile</span>
@@ -237,7 +237,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/student/courses"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-field hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <BookOpen size={16} />
                   <span>Enrolled Courses</span>
@@ -246,7 +246,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/courses"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-field hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <Sparkle size={16} />
                   <span>Explore Courses ↗</span>
@@ -255,7 +255,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                 <Link
                   href="/pyq"
                   onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-xl hover:bg-sky-tint hover:text-brand-hover transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink rounded-field hover:bg-sky-tint hover:text-brand-hover transition-colors"
                 >
                   <GraduationCap size={16} />
                   <span>PYQ Store ↗</span>
@@ -269,7 +269,7 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
                     await signOut();
                     window.location.href = '/';
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-600 rounded-xl hover:bg-rose-50 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-600 rounded-field hover:bg-rose-50 transition-colors"
                 >
                   <SignOut size={16} />
                   <span>Sign Out</span>

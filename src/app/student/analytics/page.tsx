@@ -3,33 +3,25 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  ArrowClockwise,
-  ChartBar,
-  Target,
-  Trophy,
-  Percent,
-  ClipboardText,
-  TrendUp,
-  TrendDown,
-  MagnifyingGlass,
-  BookOpen,
-  Funnel,
-  Clock,
-  Sparkle,
-  ArrowRight,
-  Atom,
-  Flask,
-  Dna,
-  Calculator,
-  Scroll,
-  Globe,
-  Coins,
-  Laptop,
-  Newspaper,
-  CheckCircle,
-  WarningCircle,
-  Exam,
-} from '@phosphor-icons/react';
+  IconRefresh,
+  IconChartBar,
+  IconTarget,
+  IconTrophy,
+  IconFileText,
+  IconTrendUp,
+  IconTrendDown,
+  IconSearch,
+  IconLibrary,
+  IconFilter,
+  IconClock,
+  IconSpark,
+  IconArrowRight,
+  IconCheckCircle,
+  IconWarning,
+  IconTest,
+  IconCalculator,
+  IconPercent,
+} from '@/components/icons/student-icons';
 import {
   useStudentDashboardSummary,
   useStudentScoreTrend,
@@ -50,21 +42,13 @@ import { formatDate, formatPercent, ordinal } from '@/lib/format';
 import { getRubricLevel, isWorthPracticing, isMastered } from '@/lib/rubric';
 import { Button, ButtonLink, EmptyState, ErrorState, Skeleton } from '@/components/ui/mmt';
 
-// ─── Phosphor Subject Icon Selector (No Emoji) ──────────────────────────────
+// ─── Subject Icon Selector (Vector Icons) ───────────────────────────────────
 
 function getSubjectIconComponent(subjectName: string): React.ElementType {
   const name = subjectName.toLowerCase();
-  if (name.includes('phys')) return Atom;
-  if (name.includes('chem')) return Flask;
-  if (name.includes('bio') || name.includes('botan') || name.includes('zool')) return Dna;
-  if (name.includes('math')) return Calculator;
-  if (name.includes('eng') || name.includes('lang') || name.includes('lit')) return BookOpen;
-  if (name.includes('hist') || name.includes('civic') || name.includes('polity')) return Scroll;
-  if (name.includes('geo')) return Globe;
-  if (name.includes('econ') || name.includes('commerc')) return Coins;
-  if (name.includes('comp') || name.includes('tech') || name.includes('it') || name.includes('cs')) return Laptop;
-  if (name.includes('gk') || name.includes('general') || name.includes('current')) return Newspaper;
-  return BookOpen;
+  if (name.includes('math') || name.includes('calc')) return IconCalculator;
+  if (name.includes('phys') || name.includes('chem') || name.includes('bio') || name.includes('sci')) return IconSpark;
+  return IconLibrary;
 }
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
@@ -90,7 +74,7 @@ function MetricCard({
       <div className="flex items-center justify-between gap-2 mb-3">
         <span className="text-caption font-bold text-ink-muted uppercase tracking-wider">{title}</span>
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-field ${iconBg} ${iconColor}`}>
-          <IconComponent size={20} weight="duotone" />
+          <IconComponent size={20} />
         </div>
       </div>
       <div>
@@ -176,7 +160,7 @@ function ScoreTrendCard({
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-field bg-sky-tint text-brand">
-              <ChartBar size={18} weight="duotone" />
+              <IconChartBar size={18} />
             </div>
             <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Score Trajectory Trend
@@ -209,7 +193,7 @@ function ScoreTrendCard({
                       : 'bg-amber-100 text-amber-800'
                   }`}
                 >
-                  {stats.delta >= 0 ? <TrendUp size={10} weight="bold" /> : <TrendDown size={10} weight="bold" />}
+                  {stats.delta >= 0 ? <IconTrendUp size={10} /> : <IconTrendDown size={10} />}
                   {Math.abs(stats.delta)}%
                 </span>
               )}
@@ -229,7 +213,7 @@ function ScoreTrendCard({
         />
       ) : !trendData || trendData.length === 0 ? (
         <EmptyState
-          icon={ClipboardText}
+          icon={IconFileText}
           title="No Test Trend Available Yet"
           detail="Complete and submit mock tests to unlock your interactive score trajectory and accuracy curves."
           action={
@@ -242,7 +226,7 @@ function ScoreTrendCard({
         <div className="p-6 rounded-field bg-paper border border-line space-y-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-field bg-mint-tint text-mint-ink border border-emerald-200">
-              <CheckCircle size={22} weight="duotone" />
+              <IconCheckCircle size={22} />
             </div>
             <div>
               <span className="text-caption font-bold text-brand-hover uppercase tracking-wider">Initial Test Attempt</span>
@@ -452,7 +436,7 @@ function SubjectPerformanceSection({
           <div>
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-field bg-sky-tint text-brand">
-                <BookOpen size={18} weight="duotone" />
+                <IconLibrary size={18} />
               </div>
               <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
                 Subject-wise Accuracy & Performance
@@ -468,12 +452,13 @@ function SubjectPerformanceSection({
           {/* Test Selector Dropdown */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-field bg-paper border border-line text-xs font-bold text-ink-secondary min-h-[44px]">
-              <Funnel size={14} weight="bold" className="text-brand" />
+              <IconFilter size={14} className="text-brand" />
               <span>Scope:</span>
               <select
                 value={selectedTestId || 'overall'}
                 onChange={(e) => onSelectTest(e.target.value === 'overall' ? null : e.target.value)}
                 disabled={isAttemptedTestsLoading}
+                aria-label="Analytics scope filter"
                 className="bg-transparent font-bold text-ink focus:outline-none cursor-pointer pr-2"
               >
                 <option value="overall">
@@ -500,7 +485,7 @@ function SubjectPerformanceSection({
                   : 'bg-paper hover:bg-sky-tint/80 text-ink border border-line'
               }`}
             >
-              <ChartBar size={14} weight={selectedTestId === null ? 'fill' : 'regular'} />
+              <IconChartBar size={14} />
               <span>Overall ({attemptedTests.length})</span>
             </button>
 
@@ -516,7 +501,7 @@ function SubjectPerformanceSection({
                       : 'bg-paper hover:bg-sky-tint/80 text-ink border border-line'
                   }`}
                 >
-                  <Clock size={14} weight={isSelected ? 'fill' : 'regular'} />
+                  <IconClock size={14} />
                   <span className="truncate">{test.testName}</span>
                 </button>
               );
@@ -540,7 +525,7 @@ function SubjectPerformanceSection({
         />
       ) : !subjects || subjects.length === 0 ? (
         <EmptyState
-          icon={BookOpen}
+          icon={IconLibrary}
           title={selectedTestId ? 'No Questions Recorded for This Test' : 'No Subject Performance Data Yet'}
           detail={
             selectedTestId
@@ -572,7 +557,7 @@ function SubjectPerformanceSection({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-field bg-sky-tint text-brand">
-                      <SubjectIcon size={22} weight="duotone" />
+                      <SubjectIcon size={22} />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-ink">{sub.subjectName}</h3>
@@ -624,7 +609,7 @@ function SubjectPerformanceSection({
                       {sub.skipped > 0 && (
                         <div
                           style={{ flex: sub.skipped }}
-                          className="h-full bg-slate-300 transition-all duration-300"
+                          className="h-full bg-line transition-all duration-300"
                           title={`Skipped: ${sub.skipped}`}
                         />
                       )}
@@ -722,7 +707,7 @@ function ChapterPerformanceSection({
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-field bg-sky-tint text-brand">
-              <ClipboardText size={18} weight="duotone" />
+              <IconFileText size={18} />
             </div>
             <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Chapter-wise Breakdown
@@ -739,6 +724,7 @@ function ChapterPerformanceSection({
             value={selectedSubjectId}
             onChange={(e) => setSelectedSubjectId(e.target.value)}
             className="px-3 py-2 text-xs font-bold rounded-field bg-paper border border-line text-ink focus:outline-none focus:border-brand min-h-[44px]"
+            aria-label="Filter chapters by subject"
           >
             <option value="all">All Subjects</option>
             {subjects?.map((s) => (
@@ -749,13 +735,14 @@ function ChapterPerformanceSection({
           </select>
 
           <div className="relative">
-            <MagnifyingGlass
+            <IconSearch
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none"
             />
             <input
               type="text"
               placeholder="Search chapters..."
+              aria-label="Search chapters"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-8 pr-3 py-2 text-xs rounded-field bg-paper border border-line text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand w-36 sm:w-48 min-h-[44px]"
@@ -819,7 +806,7 @@ function ChapterPerformanceSection({
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                   <div className="w-24 sm:w-32 hidden sm:block">
-                    <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-line rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
                           rubric ? rubric.colorClass.bar : 'bg-brand'
@@ -890,7 +877,7 @@ function TargetedFocusSection({
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-field bg-amber-50 text-amber-600">
-              <Sparkle size={18} weight="duotone" />
+              <IconSpark size={18} />
             </div>
             <h2 className="text-base sm:text-lg font-extrabold text-ink tracking-tight">
               Targeted Syllabus Recommendations
@@ -912,7 +899,7 @@ function TargetedFocusSection({
                 : 'text-ink-secondary hover:text-ink'
             }`}
           >
-            <WarningCircle size={14} weight="bold" className="text-amber-600" />
+            <IconWarning size={14} className="text-amber-600" />
             <span>Worth Practicing ({filteredWeak.length})</span>
           </button>
           <button
@@ -924,7 +911,7 @@ function TargetedFocusSection({
                 : 'text-ink-secondary hover:text-ink'
             }`}
           >
-            <Trophy size={14} weight="bold" className="text-emerald-600" />
+            <IconTrophy size={14} className="text-emerald-600" />
             <span>Mastered Topics ({filteredStrong.length})</span>
           </button>
         </div>
@@ -938,7 +925,7 @@ function TargetedFocusSection({
         </div>
       ) : displayList.length === 0 ? (
         <EmptyState
-          icon={activeTab === 'weak' ? CheckCircle : Trophy}
+          icon={activeTab === 'weak' ? IconCheckCircle : IconTrophy}
           title={activeTab === 'weak' ? 'No Topics Below 60%' : 'No Mastered Topics Yet'}
           detail={
             activeTab === 'weak'
@@ -986,7 +973,7 @@ function TargetedFocusSection({
                     }`}
                   >
                     <span>Practice</span>
-                    <ArrowRight size={12} weight="bold" />
+                    <IconArrowRight size={12} />
                   </Link>
                 </div>
               </div>
@@ -1094,9 +1081,9 @@ export default function StudentAnalyticsPage() {
             href="/student/results"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-sky-tint hover:bg-sky-tint/80 border border-line text-brand-hover font-bold text-xs transition-colors shadow-2xs min-h-[44px]"
           >
-            <Exam size={16} weight="duotone" className="text-brand" />
+            <IconTest size={16} className="text-brand" />
             <span>View Test Scorecards</span>
-            <ArrowRight size={14} weight="bold" />
+            <IconArrowRight size={14} />
           </Link>
 
           <button
@@ -1105,9 +1092,8 @@ export default function StudentAnalyticsPage() {
             disabled={isRefreshing}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-surface border border-line hover:bg-paper text-ink font-bold text-xs transition-colors shadow-2xs min-h-[44px] disabled:opacity-60"
           >
-            <ArrowClockwise
+            <IconRefresh
               size={14}
-              weight="bold"
               className={`text-ink-secondary ${isRefreshing ? 'animate-spin' : ''}`}
             />
             <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
@@ -1129,7 +1115,7 @@ export default function StudentAnalyticsPage() {
               title="Tests Completed"
               value={summary?.testsAttempted ?? 0}
               subtitle="Total evaluated attempts"
-              icon={ClipboardText}
+              icon={IconFileText}
               iconColor="text-brand"
               iconBg="bg-sky-tint"
             />
@@ -1141,7 +1127,7 @@ export default function StudentAnalyticsPage() {
                   : '—'
               }
               subtitle="Mean marks per test"
-              icon={ChartBar}
+              icon={IconChartBar}
               iconColor="text-brand"
               iconBg="bg-sky-tint"
             />
@@ -1153,7 +1139,7 @@ export default function StudentAnalyticsPage() {
                   : '—'
               }
               subtitle="Highest marks achieved"
-              icon={Trophy}
+              icon={IconTrophy}
               iconColor="text-purple-600"
               iconBg="bg-purple-50"
             />
@@ -1165,7 +1151,7 @@ export default function StudentAnalyticsPage() {
                   : '—'
               }
               subtitle="Correct / Total answered"
-              icon={Target}
+              icon={IconTarget}
               iconColor="text-mint-ink"
               iconBg="bg-mint-tint"
             />
@@ -1177,7 +1163,7 @@ export default function StudentAnalyticsPage() {
                   : '—'
               }
               subtitle="Overall test percentage"
-              icon={Percent}
+              icon={IconPercent}
               iconColor="text-amber-600"
               iconBg="bg-amber-50"
             />

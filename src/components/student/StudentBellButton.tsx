@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell } from '@phosphor-icons/react';
+import { IconBell } from '@/components/icons/student-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { StudentNotificationCenter } from '@/components/student/StudentNotificationCenter';
@@ -58,7 +58,7 @@ export function StudentBellButton() {
         aria-expanded={isOpen}
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
       >
-        <Bell size={18} weight={unreadCount > 0 ? 'fill' : 'regular'} />
+        <IconBell size={18} />
         {unreadCount > 0 && (
           <span className="store-bell-dot" aria-hidden="true">
             {unreadCount > 9 ? '9+' : unreadCount}

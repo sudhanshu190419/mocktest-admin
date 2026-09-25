@@ -302,7 +302,7 @@ export default function StudentCourseDetailPage() {
                   <div className="mt-4 flex items-center justify-end border-t border-line pt-3">
                     <Link
                       href={actionHref}
-                      className="inline-flex min-h-[36px] items-center gap-1 text-body font-bold text-brand hover:underline"
+                      className="inline-flex min-h-[44px] items-center gap-1 text-body font-bold text-brand hover:underline"
                     >
                       <span>{actionLabel}</span>
                     </Link>

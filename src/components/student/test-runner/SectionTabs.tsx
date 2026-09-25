@@ -38,7 +38,7 @@ export const SectionTabs: React.FC<SectionTabsProps> = ({
                 key={sec.name}
                 type="button"
                 onClick={() => onSelectSection(sec.name, sec.startIndex)}
-                className={`flex items-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-field text-caption font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`flex items-center gap-2 min-h-[44px] px-3.5 py-1.5 rounded-field text-caption font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   isActive
                     ? 'bg-brand text-white shadow-xs'
                     : 'bg-white hover:bg-sky-tint text-ink border border-line'

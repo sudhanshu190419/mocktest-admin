@@ -3,15 +3,15 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  Play,
-  Clock,
-  User,
-  CalendarBlank,
-  GraduationCap,
-  CheckCircle,
-  ArrowCounterClockwise,
-  ArrowRight,
-} from '@phosphor-icons/react';
+  IconPlay,
+  IconClock,
+  IconUser,
+  IconCalendar,
+  IconGraduationCap,
+  IconCheckCircle,
+  IconRefresh,
+  IconArrowRight,
+} from '@/components/icons/student-icons';
 import type { StudentRecording } from '@/services/student/studentRecordingWebService';
 import {
   formatRecordingDuration,
@@ -34,14 +34,14 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
   const watchedPercent = progress?.watchedPercentage ?? 0;
 
   let ctaLabel = 'Watch Recording';
-  let ctaIcon = <Play size={14} weight="fill" />;
+  let ctaIcon = <IconPlay size={14} />;
 
   if (isCompleted) {
     ctaLabel = 'Watch Again';
-    ctaIcon = <ArrowCounterClockwise size={14} weight="bold" />;
+    ctaIcon = <IconRefresh size={14} />;
   } else if (isStarted) {
     ctaLabel = 'Continue Watching';
-    ctaIcon = <Play size={14} weight="fill" />;
+    ctaIcon = <IconPlay size={14} />;
   }
 
   return (
@@ -62,14 +62,14 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
             </span>
 
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-caption font-bold bg-black/40 text-white backdrop-blur-md border border-white/10">
-              <Clock size={12} weight="bold" />
+              <IconClock size={12} />
               <span>{formattedDuration}</span>
             </span>
           </div>
 
           {/* Center Play Icon Visual */}
           <div className="relative z-10 self-center my-auto flex h-12 w-12 items-center justify-center rounded-field bg-white/20 backdrop-blur-md text-white border border-white/30 group-hover:scale-110 group-hover:bg-white group-hover:text-brand-hover transition-all duration-300 shadow-md">
-            <Play size={20} weight="fill" className="ml-0.5" />
+            <IconPlay size={20} className="ml-0.5" />
           </div>
 
           {/* Bottom Progress Indicator on Thumbnail */}
@@ -105,20 +105,20 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
           <div className="space-y-1.5 pt-1 border-t border-line text-body text-ink-secondary">
             {recording.teacherName && (
               <div className="flex items-center gap-2">
-                <User size={14} weight="duotone" className="text-ink-muted shrink-0" />
+                <IconUser size={14} className="text-ink-muted shrink-0" />
                 <span className="truncate font-semibold">{recording.teacherName}</span>
               </div>
             )}
 
             {recording.batchName && (
               <div className="flex items-center gap-2">
-                <GraduationCap size={14} weight="duotone" className="text-ink-muted shrink-0" />
+                <IconGraduationCap size={14} className="text-ink-muted shrink-0" />
                 <span className="truncate">{recording.batchName}</span>
               </div>
             )}
 
             <div className="flex items-center gap-2">
-              <CalendarBlank size={14} weight="duotone" className="text-ink-muted shrink-0" />
+              <IconCalendar size={14} className="text-ink-muted shrink-0" />
               <span>{formattedDate}</span>
             </div>
           </div>
@@ -138,7 +138,7 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
 
         {isCompleted && (
           <div className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-field bg-mint-tint text-mint-ink border border-emerald-200 text-caption font-bold">
-            <CheckCircle size={14} weight="fill" />
+            <IconCheckCircle size={14} />
             <span>Completed Lecture</span>
           </div>
         )}
@@ -156,7 +156,7 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
         >
           {ctaIcon}
           <span>{ctaLabel}</span>
-          <ArrowRight size={13} weight="bold" className="opacity-70 group-hover:translate-x-0.5 transition-transform" />
+          <IconArrowRight size={13} className="opacity-70 group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
     </div>

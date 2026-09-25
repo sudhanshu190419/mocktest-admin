@@ -144,7 +144,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-sm w-full text-center">
+        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-sheet border border-line shadow-xl max-w-sm w-full text-center">
           <SpinnerGap size={40} className="animate-spin text-brand" />
           <h3 className="font-bold text-ink text-lg">Loading Solutions</h3>
           <p className="text-xs text-ink-secondary">Preparing verified question explanations and diagrams...</p>
@@ -157,15 +157,15 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
   if (error || !reviewData) {
     return (
       <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-md w-full text-center">
-          <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-sheet border border-line shadow-xl max-w-md w-full text-center">
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-card">
             <WarningCircle size={40} weight="fill" />
           </div>
           <h3 className="font-bold text-ink text-lg">Unable to Load Review</h3>
           <p className="text-xs text-ink-secondary font-medium">{error || 'Review session not available.'}</p>
           <Link
             href={`/student/tests/${testId}/results/${attemptId}`}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-field font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
           >
             <ArrowLeft size={16} weight="bold" />
             <span>Return to Scorecard</span>
@@ -220,7 +220,7 @@ export default function StudentAnswerReviewPage({ params }: ReviewPageProps) {
               testTitle={reviewData.test.title}
             />
           ) : (
-            <div className="p-12 text-center bg-white rounded-3xl border border-line text-ink-secondary">
+            <div className="p-12 text-center bg-white rounded-sheet border border-line text-ink-secondary">
               No questions match the selected filter.
             </div>
           )}

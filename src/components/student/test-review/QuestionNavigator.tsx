@@ -21,7 +21,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
   onSelectQuestion,
 }) => {
   const getBadgeStyle = (status: ReviewQuestionStatus, isCurrent: boolean) => {
-    let base = 'relative flex items-center justify-center rounded-xl font-mono text-xs font-bold transition-all cursor-pointer h-10 ';
+    let base = 'relative flex items-center justify-center rounded-field font-mono text-xs font-bold transition-all cursor-pointer h-10 ';
 
     if (isCurrent) {
       base += 'ring-2 ring-brand ring-offset-2 scale-105 z-10 ';
@@ -59,7 +59,7 @@ export const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-line shadow-xs flex flex-col gap-4">
+    <div className="bg-white rounded-card p-4 sm:p-5 border border-line shadow-xs flex flex-col gap-4">
       <div className="flex items-center justify-between border-b border-line pb-3">
         <h3 className="text-sm font-bold text-ink">Question Navigator</h3>
         <span className="text-xs text-ink-secondary font-medium">

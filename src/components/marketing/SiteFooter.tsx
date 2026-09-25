@@ -92,7 +92,7 @@ export function SiteFooter() {
               <li><Link href="/student/tests" className="hover:text-sky-600 transition-colors">Mock Tests</Link></li>
               <li><Link href="/courses" className="hover:text-sky-600 transition-colors">PYQ Packages</Link></li>
               <li><Link href="/student/classes" className="hover:text-sky-600 transition-colors">Live Classes</Link></li>
-              <li><Link href="#" className="hover:text-sky-600 transition-colors">Blog</Link></li>
+              <li><Link href="/blog" className="hover:text-sky-600 transition-colors">Blog</Link></li>
               <li><Link href="/student/overview" className="hover:text-sky-600 transition-colors">My Learning</Link></li>
             </ul>
           </div>

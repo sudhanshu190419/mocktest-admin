@@ -25,7 +25,7 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
         type="button"
         onClick={onPrevious}
         disabled={isFirst}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-paper hover:bg-sky-tint text-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-field text-xs sm:text-sm font-bold bg-paper hover:bg-sky-tint text-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         <ArrowLeft size={16} weight="bold" />
         <span>Previous</span>
@@ -39,7 +39,7 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
         type="button"
         onClick={onNext}
         disabled={isLast}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-brand hover:bg-brand-hover text-white shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-field text-xs sm:text-sm font-bold bg-brand hover:bg-brand-hover text-white shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         <span>Next</span>
         <ArrowRight size={16} weight="bold" />

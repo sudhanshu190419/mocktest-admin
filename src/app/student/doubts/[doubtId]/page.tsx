@@ -4,22 +4,22 @@ import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  CheckCircle,
-  Clock,
-  ArrowsClockwise,
-  PaperPlaneRight,
-  WarningCircle,
-  ChatText,
-  User,
-  CalendarBlank,
-  Check,
-  VideoCamera,
-  FileText,
-  Exam,
-  Sparkle,
-  GraduationCap,
-} from '@phosphor-icons/react';
+  IconArrowLeft,
+  IconCheckCircle,
+  IconClock,
+  IconRefresh,
+  IconSend,
+  IconWarning,
+  IconDoubt,
+  IconUser,
+  IconCalendar,
+  IconCheck,
+  IconVideo,
+  IconFileText,
+  IconTest,
+  IconSpark,
+  IconGraduationCap,
+} from '@/components/icons/student-icons';
 import {
   useDoubtDetail,
   useReplyToDoubt,
@@ -54,15 +54,15 @@ function getResourceBadge(type: DoubtResourceType | null) {
   if (!type) return null;
   switch (type) {
     case 'live_class':
-      return { label: 'Live Class', icon: VideoCamera, color: 'text-brand-hover bg-sky-tint border-line' };
+      return { label: 'Live Class', icon: IconVideo, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'content':
-      return { label: 'Study Material', icon: FileText, color: 'text-brand-hover bg-sky-tint border-line' };
+      return { label: 'Study Material', icon: IconFileText, color: 'text-brand-hover bg-sky-tint border-line' };
     case 'question':
-      return { label: 'Test Question', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
+      return { label: 'Test Question', icon: IconTest, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'mock_test':
-      return { label: 'Mock Test', icon: Exam, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
+      return { label: 'Mock Test', icon: IconTest, color: 'text-lilac-ink bg-lilac-tint border-purple-200' };
     case 'pyq_paper':
-      return { label: 'PYQ Paper', icon: FileText, color: 'text-mint-ink bg-mint-tint border-emerald-200' };
+      return { label: 'PYQ Paper', icon: IconFileText, color: 'text-mint-ink bg-mint-tint border-emerald-200' };
     default:
       return null;
   }
@@ -245,7 +245,7 @@ export default function StudentDoubtThreadPage() {
     return (
       <div className="store-container">
         <EmptyState
-          icon={WarningCircle}
+          icon={IconWarning}
           title="Doubt Not Found or Access Denied"
           detail={
             error instanceof Error
@@ -254,7 +254,7 @@ export default function StudentDoubtThreadPage() {
           }
           action={
             <ButtonLink href="/student/doubts" size="md">
-              <ArrowLeft size={16} weight="bold" />
+              <IconArrowLeft size={16} />
               <span>Return to My Doubts</span>
             </ButtonLink>
           }
@@ -293,7 +293,7 @@ export default function StudentDoubtThreadPage() {
             </span>
             {doubt.reopenedCount > 0 && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-field text-caption font-bold bg-sand text-sand-ink border border-amber-200">
-                <ArrowsClockwise size={12} weight="bold" />
+                <IconRefresh size={12} />
                 <span>Reopened ({doubt.reopenedCount}/3)</span>
               </span>
             )}
@@ -309,9 +309,8 @@ export default function StudentDoubtThreadPage() {
             title="Refresh conversation"
             className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-field border border-line bg-surface text-ink-secondary hover:bg-paper hover:text-ink transition-colors disabled:opacity-50"
           >
-            <ArrowsClockwise
+            <IconRefresh
               size={18}
-              weight="bold"
               className={isFetching ? 'animate-spin text-brand' : ''}
             />
           </button>
@@ -323,7 +322,7 @@ export default function StudentDoubtThreadPage() {
               disabled={resolveMutation.isPending}
               className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2.5 rounded-field bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-body shadow-xs transition-colors"
             >
-              <CheckCircle size={16} weight="bold" />
+              <IconCheckCircle size={16} />
               <span>Resolve Doubt</span>
             </button>
           )}
@@ -335,7 +334,7 @@ export default function StudentDoubtThreadPage() {
               disabled={reopenMutation.isPending}
               className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2.5 rounded-field bg-amber-600 hover:bg-amber-700 text-white font-bold text-body shadow-xs transition-colors"
             >
-              <ArrowsClockwise size={16} weight="bold" />
+              <IconRefresh size={16} />
               <span>Reopen Doubt</span>
             </button>
           )}
@@ -367,14 +366,14 @@ export default function StudentDoubtThreadPage() {
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-field text-caption font-bold border ${resourceBadge.color}`}
                   >
-                    <resourceBadge.icon size={13} weight="bold" />
+                    <resourceBadge.icon size={13} />
                     <span>{resourceBadge.label}</span>
                   </span>
                 )}
               </div>
 
               <div className="flex items-center gap-1 text-caption text-ink-secondary font-medium">
-                <CalendarBlank size={14} />
+                <IconCalendar size={14} />
                 <span>Asked {formatDateTime(doubt.createdAt)}</span>
               </div>
             </div>
@@ -408,7 +407,7 @@ export default function StudentDoubtThreadPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between px-1">
               <h3 className="text-h3 font-bold text-ink flex items-center gap-2">
-                <ChatText size={18} weight="duotone" className="text-brand" />
+                <IconDoubt size={18} className="text-brand" />
                 <span>Discussion & Faculty Solutions ({replies.length})</span>
               </h3>
               {doubt.firstResponseAt && (
@@ -421,7 +420,7 @@ export default function StudentDoubtThreadPage() {
             {replies.length === 0 ? (
               <div className="p-8 rounded-card bg-surface border border-line text-center space-y-2 shadow-card">
                 <div className="inline-flex p-3 rounded-field bg-sky-tint text-brand">
-                  <Clock size={24} weight="duotone" />
+                  <IconClock size={24} />
                 </div>
                 <p className="text-body font-bold text-ink">
                   Awaiting Faculty Response
@@ -493,7 +492,7 @@ export default function StudentDoubtThreadPage() {
                         <div>
                           {reply.isAcceptedAnswer ? (
                             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-caption font-bold bg-emerald-600 text-white shadow-xs">
-                              <Check size={13} weight="bold" />
+                              <IconCheck size={13} />
                               <span>Accepted Solution</span>
                             </span>
                           ) : (
@@ -505,7 +504,7 @@ export default function StudentDoubtThreadPage() {
                                 disabled={acceptMutation.isPending}
                                 className="inline-flex min-h-[36px] items-center gap-1 px-3 py-1 rounded-field text-caption font-bold text-mint-ink bg-mint-tint hover:bg-emerald-100 border border-emerald-200 transition-colors disabled:opacity-50"
                               >
-                                <Check size={13} weight="bold" />
+                                <IconCheck size={13} />
                                 <span>Accept Solution</span>
                               </button>
                             )
@@ -536,7 +535,7 @@ export default function StudentDoubtThreadPage() {
           {/* 3. Reply Composer */}
           <div className="rounded-card border border-line bg-surface p-5 sm:p-6 shadow-card space-y-3">
             <h4 className="text-caption font-bold text-ink uppercase tracking-wider flex items-center gap-1.5">
-              <PaperPlaneRight size={15} weight="duotone" className="text-brand" />
+              <IconSend size={15} className="text-brand" />
               <span>Write a Follow-Up Question</span>
             </h4>
 
@@ -568,7 +567,7 @@ export default function StudentDoubtThreadPage() {
                     disabled={!replyText.trim() || replyMutation.isPending}
                     className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand-hover active:bg-brand-hover text-white font-bold text-body shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <PaperPlaneRight size={15} weight="bold" />
+                    <IconSend size={15} />
                     <span>{replyMutation.isPending ? 'Sending...' : 'Send Reply'}</span>
                   </button>
                 </div>
@@ -602,7 +601,7 @@ export default function StudentDoubtThreadPage() {
             </h3>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-field bg-mint-tint text-mint-ink border border-emerald-200 font-bold text-sm">
-                <GraduationCap size={22} weight="duotone" />
+                <IconGraduationCap size={22} />
               </div>
               <div className="min-w-0">
                 <p className="text-body font-bold text-ink truncate">
@@ -618,7 +617,7 @@ export default function StudentDoubtThreadPage() {
           {/* Quick Support Card */}
           <div className="rounded-card border border-line bg-sky-tint p-5 space-y-2">
             <div className="flex items-center gap-2 text-brand-hover text-caption font-bold">
-              <Sparkle size={16} weight="fill" className="text-brand" />
+              <IconSpark size={16} className="text-brand" />
               <span>Helpful Tip</span>
             </div>
             <p className="text-caption text-ink-secondary leading-relaxed">

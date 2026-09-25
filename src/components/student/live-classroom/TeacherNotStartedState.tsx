@@ -28,8 +28,8 @@ export const TeacherNotStartedState: React.FC<TeacherNotStartedStateProps> = ({
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center p-4">
-      <div className="max-w-lg w-full p-8 sm:p-10 rounded-3xl bg-ink border border-ink text-center text-white space-y-6 shadow-2xl">
-        <div className="relative w-16 h-16 rounded-3xl bg-brand/20 text-sky-ink flex items-center justify-center mx-auto border border-brand/30">
+      <div className="max-w-lg w-full p-8 sm:p-10 rounded-sheet bg-ink border border-ink text-center text-white space-y-6 shadow-2xl">
+        <div className="relative w-16 h-16 rounded-sheet bg-brand/20 text-sky-ink flex items-center justify-center mx-auto border border-brand/30">
           <Broadcast size={30} weight="duotone" className="text-sky-ink" />
         </div>
 
@@ -47,7 +47,7 @@ export const TeacherNotStartedState: React.FC<TeacherNotStartedStateProps> = ({
         </div>
 
         {/* Schedule box */}
-        <div className="p-4 rounded-2xl bg-ink/60 border border-ink/60 grid grid-cols-2 gap-3 text-xs text-ink-muted text-left">
+        <div className="p-4 rounded-card bg-ink/60 border border-ink/60 grid grid-cols-2 gap-3 text-xs text-ink-muted text-left">
           <div className="flex items-center gap-2">
             <Calendar size={15} weight="bold" className="text-ink-muted" />
             <span>{timeDisplay}</span>
@@ -68,7 +68,7 @@ export const TeacherNotStartedState: React.FC<TeacherNotStartedStateProps> = ({
               type="button"
               onClick={onRefresh}
               disabled={isChecking}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-md disabled:opacity-50"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-md disabled:opacity-50"
             >
               <ArrowsClockwise size={14} weight="bold" className={isChecking ? 'animate-spin' : ''} />
               <span>{isChecking ? 'Checking...' : 'Check Live Status'}</span>
@@ -77,7 +77,7 @@ export const TeacherNotStartedState: React.FC<TeacherNotStartedStateProps> = ({
 
           <Link
             href="/student/classes"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors border border-ink"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors border border-ink"
           >
             <ArrowLeft size={14} weight="bold" />
             <span>Back to Classes</span>

@@ -2,7 +2,12 @@
 
 import Link from 'next/link';
 import { Card } from './Card';
-import { ArrowRight, Globe, CalendarBlank, ChartBar } from '@phosphor-icons/react/dist/ssr';
+import {
+  IconArrowRight,
+  IconSpark,
+  IconCalendar,
+  IconProgress,
+} from '@/components/icons/student-icons';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import type { Course } from '@/types/courseCatalog';
 
@@ -111,7 +116,7 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
             {course.streamCode === 'FOUNDATION' ? 'Foundation' : course.streamCode}
           </span>
           {isEnrolled ? (
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+            <span className="px-2 py-0.5 rounded text-caption font-bold bg-emerald-100 text-emerald-800">
               Enrolled ✓
             </span>
           ) : (
@@ -126,15 +131,15 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
         <p className="store-card-description">{course.shortDescription}</p>
         <div className="store-course-facts">
           <span className="store-fact-item">
-            <Globe size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconSpark size={13} className="store-fact-icon shrink-0" />
             <span>{course.presentation.languageLabel}</span>
           </span>
           <span className="store-fact-item">
-            <CalendarBlank size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconCalendar size={13} className="store-fact-icon shrink-0" />
             <span className="tabular-nums">{course.duration} days</span>
           </span>
           <span className="store-fact-item">
-            <ChartBar size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconProgress size={13} className="store-fact-icon shrink-0" />
             <span className="capitalize">{course.difficultyLevel}</span>
           </span>
         </div>
@@ -169,7 +174,7 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
               {isEnrolled ? 'Go to Classroom' : 'Explore Course'}
             </span>
             <span className="store-card-cta-arrow" aria-hidden="true">
-              <ArrowRight size={13} weight="bold" />
+              <IconArrowRight size={13} />
             </span>
           </Link>
         </div>
@@ -177,3 +182,4 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
     </Card>
   );
 }
+

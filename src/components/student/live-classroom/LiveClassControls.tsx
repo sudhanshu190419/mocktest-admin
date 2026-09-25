@@ -39,7 +39,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
         <button
           type="button"
           onClick={onToggleHand}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all shadow-md active:scale-[0.98] ${
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-card text-xs font-black transition-all shadow-md active:scale-[0.98] ${
             isHandRaised
               ? 'bg-amber-500 text-ink ring-4 ring-amber-500/30'
               : 'bg-ink hover:bg-ink text-sky-ink border border-ink'
@@ -54,7 +54,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
         <button
           type="button"
           onClick={onToggleChat}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-md active:scale-[0.98] ${
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-card text-xs font-bold transition-all shadow-md active:scale-[0.98] ${
             isChatOpen
               ? 'bg-brand text-white'
               : 'bg-ink hover:bg-ink text-sky-ink border border-ink'
@@ -70,7 +70,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
           <button
             type="button"
             onClick={onOpenAskDoubt}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-brand/30 hover:bg-brand text-brand hover:text-white border border-brand/40 text-xs font-bold transition-all shadow-md active:scale-[0.98]"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-card bg-brand/30 hover:bg-brand text-brand hover:text-white border border-brand/40 text-xs font-bold transition-all shadow-md active:scale-[0.98]"
             title="Ask a Doubt"
           >
             <Question size={16} weight="bold" />
@@ -82,7 +82,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
         <button
           type="button"
           onClick={() => setShowConfirmLeave(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition-all active:scale-[0.98]"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-card bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition-all active:scale-[0.98]"
           title="Leave Live Class"
         >
           <SignOut size={16} weight="bold" />
@@ -101,7 +101,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
             if (e.target === e.currentTarget) setShowConfirmLeave(false);
           }}
         >
-          <div className="max-w-sm w-full p-6 rounded-3xl bg-ink border border-ink text-center text-white space-y-4 shadow-2xl">
+          <div className="max-w-sm w-full p-6 rounded-sheet bg-ink border border-ink text-center text-white space-y-4 shadow-2xl">
             <h3 className="text-base font-extrabold text-white">Leave Classroom?</h3>
             <p className="text-xs text-ink-muted leading-relaxed">
               Are you sure you want to exit? You can rejoin anytime while the session is live.
@@ -111,7 +111,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
               <button
                 type="button"
                 onClick={() => setShowConfirmLeave(false)}
-                className="flex-1 py-2.5 rounded-xl bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors"
+                className="flex-1 py-2.5 rounded-field bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors"
               >
                 Stay
               </button>
@@ -121,7 +121,7 @@ export const LiveClassControls: React.FC<LiveClassControlsProps> = ({
                   setShowConfirmLeave(false);
                   onLeaveClass();
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-colors shadow-md shadow-rose-600/30"
+                className="flex-1 py-2.5 rounded-field bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-colors shadow-md shadow-rose-600/30"
               >
                 Leave
               </button>

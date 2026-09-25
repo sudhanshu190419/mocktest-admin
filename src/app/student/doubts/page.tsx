@@ -4,16 +4,15 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ChatCircleDots,
-  Plus,
-  MagnifyingGlass,
-  Funnel,
-  X,
-  CaretLeft,
-  CaretRight,
-  ArrowsClockwise,
-  WarningCircle,
-} from '@phosphor-icons/react';
+  IconDoubt,
+  IconPlus,
+  IconSearch,
+  IconFilter,
+  IconClose,
+  IconChevronLeft,
+  IconChevronRight,
+  IconRefresh,
+} from '@/components/icons/student-icons';
 import { useMyDoubts } from '@/hooks/doubt/useDoubt';
 import { StudentDoubtStats } from '@/components/student/doubts/StudentDoubtStats';
 import { StudentDoubtCard } from '@/components/student/doubts/StudentDoubtCard';
@@ -182,7 +181,7 @@ function StudentDoubtsHubContent() {
             <span>Doubts & Support</span>
           </nav>
           <div className="flex items-center gap-2.5 mt-1">
-            <ChatCircleDots size={28} weight="duotone" className="text-brand" />
+            <IconDoubt size={28} className="text-brand" />
             <h1 className="text-2xl sm:text-display font-extrabold text-ink tracking-tight">
               My Academic Doubts
             </h1>
@@ -200,7 +199,7 @@ function StudentDoubtsHubContent() {
             className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-field border border-line bg-surface text-ink-secondary hover:text-ink hover:bg-paper transition-all disabled:opacity-50 shadow-xs"
             title="Refresh doubts"
           >
-            <ArrowsClockwise size={18} className={isFetching ? 'animate-spin text-brand' : ''} />
+            <IconRefresh size={18} className={isFetching ? 'animate-spin text-brand' : ''} />
           </button>
 
           <button
@@ -208,7 +207,7 @@ function StudentDoubtsHubContent() {
             onClick={handleOpenAskModal}
             className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand text-white font-bold text-body shadow-xs hover:bg-brand-hover active:scale-[0.98] transition-all"
           >
-            <Plus size={18} weight="bold" />
+            <IconPlus size={18} />
             <span>Ask a Doubt</span>
           </button>
         </div>
@@ -241,7 +240,7 @@ function StudentDoubtsHubContent() {
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id as StatusTab)}
-                className={`min-h-[38px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors whitespace-nowrap ${
+                className={`min-h-[44px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors whitespace-nowrap ${
                   active
                     ? 'bg-brand text-white shadow-xs'
                     : 'bg-paper text-ink-secondary hover:bg-sky-tint'
@@ -257,13 +256,13 @@ function StudentDoubtsHubContent() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {/* Search Box */}
           <div className="relative flex-1">
-            <MagnifyingGlass
+            <IconSearch
               size={16}
-              weight="bold"
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none"
             />
             <input
               type="text"
+              aria-label="Search doubts"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search doubts by question title, topic or description..."
@@ -275,7 +274,7 @@ function StudentDoubtsHubContent() {
                 onClick={() => setSearchInput('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-ink-muted hover:text-ink-secondary rounded-field"
               >
-                <X size={14} weight="bold" />
+                <IconClose size={14} />
               </button>
             )}
           </div>
@@ -308,7 +307,7 @@ function StudentDoubtsHubContent() {
               onClick={handleResetFilters}
               className="inline-flex min-h-[44px] items-center justify-center gap-1.5 px-3.5 py-2 rounded-field text-body font-bold text-ink-secondary bg-paper hover:bg-sky-tint hover:text-ink transition-colors shrink-0"
             >
-              <X size={14} weight="bold" />
+              <IconClose size={14} />
               <span>Reset Filters</span>
             </button>
           )}
@@ -338,7 +337,7 @@ function StudentDoubtsHubContent() {
       ) : doubts.length === 0 ? (
         isFiltered ? (
           <EmptyState
-            icon={Funnel}
+            icon={IconFilter}
             title="No Doubts Match Your Filters"
             detail="We couldn't find any questions matching your current search or status filters."
             action={
@@ -353,7 +352,7 @@ function StudentDoubtsHubContent() {
           />
         ) : (
           <EmptyState
-            icon={ChatCircleDots}
+            icon={IconDoubt}
             title="No Doubts Asked Yet"
             detail="Have a question while studying? Submit your doubt with attachments and get detailed faculty solutions."
             action={
@@ -362,7 +361,7 @@ function StudentDoubtsHubContent() {
                 onClick={handleOpenAskModal}
                 className="inline-flex min-h-[44px] items-center gap-2 px-5 py-2.5 rounded-field bg-brand text-white font-bold text-body shadow-xs hover:bg-brand-hover transition-all"
               >
-                <Plus size={16} weight="bold" />
+                <IconPlus size={16} />
                 <span>Ask Your First Doubt</span>
               </button>
             }
@@ -392,9 +391,9 @@ function StudentDoubtsHubContent() {
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1 || isFetching}
-                  className="inline-flex min-h-[38px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex min-h-[44px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  <CaretLeft size={14} weight="bold" />
+                  <IconChevronLeft size={14} />
                   <span>Prev</span>
                 </button>
 
@@ -406,10 +405,10 @@ function StudentDoubtsHubContent() {
                   type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || isFetching}
-                  className="inline-flex min-h-[38px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex min-h-[44px] items-center gap-1 px-3 py-1.5 rounded-field border border-line bg-surface text-caption font-bold text-ink hover:bg-paper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <span>Next</span>
-                  <CaretRight size={14} weight="bold" />
+                  <IconChevronRight size={14} />
                 </button>
               </div>
             </div>

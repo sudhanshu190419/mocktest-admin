@@ -3,13 +3,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  BookOpen,
-  MagnifyingGlass,
-  Sparkle,
-  ArrowsClockwise,
-  Warning,
-  ArrowSquareOut,
-} from '@phosphor-icons/react';
+  IconLibrary,
+  IconSearch,
+  IconSpark,
+  IconRefresh,
+  IconArrowRight,
+} from '@/components/icons/student-icons';
 import {
   fetchStudentEnrolledCourses,
   type EnrolledCourseCardItem,
@@ -85,9 +84,9 @@ export default function StudentCoursesPage() {
         <button
           onClick={loadCourses}
           disabled={isLoading}
-          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-field border border-line bg-surface px-3 py-1.5 text-body font-semibold text-ink-secondary hover:bg-paper disabled:opacity-50 transition-colors shadow-xs"
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field border border-line bg-surface px-3 py-1.5 text-body font-semibold text-ink-secondary hover:bg-paper disabled:opacity-50 transition-colors shadow-xs"
         >
-          <ArrowsClockwise className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <IconRefresh className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           <span>Refresh</span>
         </button>
       </div>
@@ -97,7 +96,7 @@ export default function StudentCoursesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="max-w-2xl space-y-2">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-caption font-bold text-brand-hover border border-line">
-              <Sparkle className="h-3.5 w-3.5" weight="duotone" />
+              <IconSpark className="h-3.5 w-3.5" />
               <span>Enrolled Learning Programs</span>
             </div>
             <h1 className="text-2xl sm:text-display font-extrabold tracking-tight text-ink">
@@ -114,7 +113,7 @@ export default function StudentCoursesPage() {
               className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-4 py-2.5 text-body font-bold text-white shadow-xs hover:bg-brand-hover transition-colors"
             >
               <span>Explore All Courses</span>
-              <ArrowSquareOut size={16} weight="bold" />
+              <IconArrowRight size={16} />
             </Link>
           </div>
         </div>
@@ -124,10 +123,11 @@ export default function StudentCoursesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-card border border-line bg-surface p-3 shadow-xs">
         {/* Search Input */}
         <div className="relative flex-1">
-          <MagnifyingGlass className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+          <IconSearch className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
           <input
             type="text"
             placeholder="Search enrolled courses, batches, or subjects..."
+            aria-label="Search enrolled courses, batches, or subjects"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full min-h-[44px] rounded-field border border-line bg-paper pl-9 pr-4 py-2 text-body font-medium text-ink placeholder:text-ink-muted focus:border-brand focus:bg-surface focus:outline-none transition-all"
@@ -138,7 +138,7 @@ export default function StudentCoursesPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`min-h-[38px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors ${
+            className={`min-h-[44px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors ${
               selectedCategory === 'all'
                 ? 'bg-brand text-white shadow-xs'
                 : 'bg-paper text-ink-secondary hover:bg-sky-tint'
@@ -150,7 +150,7 @@ export default function StudentCoursesPage() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`min-h-[38px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors ${
+              className={`min-h-[44px] rounded-field px-3.5 py-1.5 text-body font-semibold transition-colors ${
                 selectedCategory === cat
                   ? 'bg-brand text-white shadow-xs'
                   : 'bg-paper text-ink-secondary hover:bg-sky-tint'
@@ -183,7 +183,7 @@ export default function StudentCoursesPage() {
         />
       ) : filteredCourses.length === 0 ? (
         <EmptyState
-          icon={BookOpen}
+          icon={IconLibrary}
           title={searchQuery ? 'No courses match your search' : 'No Enrolled Courses Found'}
           detail={
             searchQuery
@@ -193,7 +193,7 @@ export default function StudentCoursesPage() {
           action={
             <ButtonLink href="/courses" size="md">
               <span>Explore Course Catalog</span>
-              <ArrowSquareOut size={16} weight="bold" />
+              <IconArrowRight size={16} />
             </ButtonLink>
           }
         />

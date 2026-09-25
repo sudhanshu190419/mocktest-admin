@@ -656,7 +656,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="relative w-full aspect-video bg-neutral-950 rounded-2xl overflow-hidden shadow-2xl group select-none border border-neutral-800"
+      className="relative w-full aspect-video bg-neutral-950 rounded-card overflow-hidden shadow-2xl group select-none border border-neutral-800"
     >
       {/* ── Native HTML5 Video Element ───────────────────────────────── */}
       {playbackUrl ? (
@@ -710,7 +710,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
 
       {/* ── Resume Notification Banner ───────────────────────────────── */}
       {resumeNotification && (
-        <div className="absolute top-16 left-6 z-30 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-neutral-900/90 backdrop-blur-md border border-neutral-700 text-white shadow-xl animate-fade-in">
+        <div className="absolute top-16 left-6 z-30 flex items-center gap-3 px-4 py-2.5 rounded-field bg-neutral-900/90 backdrop-blur-md border border-neutral-700 text-white shadow-xl animate-fade-in">
           <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" weight="fill" />
           <span className="text-xs font-medium">{resumeNotification}</span>
           <button
@@ -725,7 +725,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
       {/* ── Buffering Spinner Overlay ─────────────────────────────────── */}
       {isBuffering && !playerError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 pointer-events-none">
-          <div className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-neutral-900/80 border border-neutral-700 shadow-2xl">
+          <div className="flex flex-col items-center gap-2 p-4 rounded-card bg-neutral-900/80 border border-neutral-700 shadow-2xl">
             <Spinner className="w-10 h-10 animate-spin text-brand" />
             <span className="text-xs font-medium text-neutral-300">Buffering...</span>
           </div>
@@ -735,7 +735,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
       {/* ── Error State Overlay ──────────────────────────────────────── */}
       {playerError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/95 z-40 p-6 text-center">
-          <div className="p-3 bg-red-950/50 border border-red-800/80 rounded-2xl mb-3 text-red-400">
+          <div className="p-3 bg-red-950/50 border border-red-800/80 rounded-card mb-3 text-red-400">
             <WarningCircle className="w-8 h-8" weight="fill" />
           </div>
           <h3 className="text-base font-semibold text-white mb-1">Playback Issue</h3>
@@ -744,7 +744,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
           </p>
           <button
             onClick={() => executeUrlRefresh(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand hover:bg-brand text-white text-xs font-semibold shadow-lg shadow-card transition-all active:scale-[0.98]"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-field bg-brand hover:bg-brand text-white text-xs font-semibold shadow-lg shadow-card transition-all active:scale-[0.98]"
           >
             <ArrowsClockwise className="w-4 h-4" />
             Retry Playback
@@ -889,7 +889,7 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
               </button>
 
               {showSpeedMenu && (
-                <div className="absolute bottom-full right-0 mb-2 py-1 w-24 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="absolute bottom-full right-0 mb-2 py-1 w-24 bg-neutral-900 border border-neutral-700 rounded-field shadow-2xl z-50 overflow-hidden">
                   <div className="px-3 py-1 text-caption uppercase font-bold text-neutral-400 tracking-wider">
                     Speed
                   </div>

@@ -70,7 +70,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           {isCollapsed ? (
             <Link
               href="/student/overview"
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 p-1 transition-all hover:scale-105 shadow-sm"
+              className="flex h-9 w-9 items-center justify-center rounded-field bg-slate-50 hover:bg-slate-100 p-1 transition-all hover:scale-105 shadow-sm"
               title="Make Me Topper — Student Studio"
             >
               <Image
@@ -105,7 +105,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           {onCloseMobile && (
             <button
               onClick={onCloseMobile}
-              className="lg:hidden p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-paper"
+              className="lg:hidden p-1.5 rounded-field text-ink-muted hover:text-ink hover:bg-paper"
               aria-label="Close menu"
             >
               <X size={18} />
@@ -139,7 +139,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
                 href={item.href}
                 onClick={onCloseMobile}
                 title={isCollapsed ? item.label : undefined}
-                className={`relative flex items-center rounded-xl text-xs transition-all duration-200 ${
+                className={`relative flex items-center rounded-field text-xs transition-all duration-200 ${
                   isCollapsed
                     ? 'justify-center p-2.5 mx-auto'
                     : 'justify-between px-3.5 py-2.5'
@@ -183,13 +183,13 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
         {isCollapsed ? (
           <Link
             href="/student/doubts"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-brand bg-sky-tint hover:bg-sky-tint transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-field text-brand bg-sky-tint hover:bg-sky-tint transition-colors"
             title="Need Assistance? Ask a Doubt"
           >
             <Question size={20} weight="duotone" />
           </Link>
         ) : (
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br bg-sky-tint/70 bg-paper border border-line/80">
+          <div className="p-3.5 rounded-card bg-gradient-to-br bg-sky-tint/70 bg-paper border border-line/80">
             <div className="flex items-center gap-2 text-brand-hover font-bold text-xs mb-1 font-display">
               <Question size={16} weight="duotone" className="text-brand" />
               <span>Need Assistance?</span>
@@ -211,7 +211,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
         {isCollapsed && onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-secondary hover:bg-paper hover:text-ink transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-field text-ink-secondary hover:bg-paper hover:text-ink transition-colors"
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
@@ -226,7 +226,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
             window.location.href = '/';
           }}
           title={isCollapsed ? 'Sign Out' : undefined}
-          className={`flex items-center rounded-xl text-xs font-semibold text-ink-secondary hover:bg-rose-50 hover:text-rose-600 transition-colors ${
+          className={`flex items-center rounded-field text-xs font-semibold text-ink-secondary hover:bg-rose-50 hover:text-rose-600 transition-colors ${
             isCollapsed
               ? 'h-10 w-10 justify-center'
               : 'w-full gap-2 px-3 py-2'

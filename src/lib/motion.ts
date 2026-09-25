@@ -11,6 +11,14 @@ import { useReducedMotion } from 'framer-motion';
 import type { Transition, Variants } from 'framer-motion';
 
 export const DURATION = { fast: 0.15, base: 0.2, slow: 0.3 } as const;
+export const duration = { fast: 150, base: 200, slow: 300, emphasis: 300 } as const;
+
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
 
 export const COACH_EASE = [0.16, 1, 0.3, 1] as const;
 

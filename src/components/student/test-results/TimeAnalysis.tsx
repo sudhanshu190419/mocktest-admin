@@ -20,9 +20,9 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({
   const timePaceSec = Math.round(avgTimePerQuestion);
 
   return (
-    <div className="bg-white rounded-3xl p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
+    <div className="bg-white rounded-sheet p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
       <div className="flex items-center gap-2.5">
-        <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+        <div className="p-2 bg-amber-50 text-amber-600 rounded-field">
           <Clock size={20} weight="bold" />
         </div>
         <div>
@@ -33,8 +33,8 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total Time Used */}
-        <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-center gap-3.5">
-          <div className="p-3 bg-amber-100 text-amber-700 rounded-xl">
+        <div className="p-4 rounded-card bg-amber-50/60 border border-amber-200/80 flex items-center gap-3.5">
+          <div className="p-3 bg-amber-100 text-amber-700 rounded-field">
             <HourglassHigh size={22} weight="bold" />
           </div>
           <div>
@@ -47,8 +47,8 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({
         </div>
 
         {/* Avg Pace */}
-        <div className="p-4 rounded-2xl bg-sky-tint/60 border border-line/80 flex items-center gap-3.5">
-          <div className="p-3 bg-sky-tint text-brand-hover rounded-xl">
+        <div className="p-4 rounded-card bg-sky-tint/60 border border-line/80 flex items-center gap-3.5">
+          <div className="p-3 bg-sky-tint text-brand-hover rounded-field">
             <Lightning size={22} weight="fill" />
           </div>
           <div>
@@ -61,8 +61,8 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({
         </div>
 
         {/* Question Count Pace */}
-        <div className="p-4 rounded-2xl bg-sky-tint/60 border border-line/80 flex items-center gap-3.5">
-          <div className="p-3 bg-sky-tint text-brand-hover rounded-xl">
+        <div className="p-4 rounded-card bg-sky-tint/60 border border-line/80 flex items-center gap-3.5">
+          <div className="p-3 bg-sky-tint text-brand-hover rounded-field">
             <Clock size={22} weight="bold" />
           </div>
           <div>

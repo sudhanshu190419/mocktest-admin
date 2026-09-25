@@ -72,7 +72,7 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-sm w-full text-center">
+        <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-sheet border border-line shadow-xl max-w-sm w-full text-center">
           <SpinnerGap size={40} className="animate-spin text-brand" />
           <h3 className="font-bold text-ink text-lg">Retrieving Scorecard</h3>
           <p className="text-xs text-ink-secondary">Loading authoritative test results and section analytics...</p>
@@ -85,15 +85,15 @@ export default function StudentTestResultsPage({ params }: ResultsPageProps) {
   if (error || (!resultData && isReleased)) {
     return (
       <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-3xl border border-line shadow-xl max-w-md w-full text-center">
-          <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+        <div className="flex flex-col items-center gap-4 p-8 bg-white rounded-sheet border border-line shadow-xl max-w-md w-full text-center">
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-card">
             <WarningCircle size={40} weight="fill" />
           </div>
           <h3 className="font-bold text-ink text-lg">Unable to Display Results</h3>
           <p className="text-xs text-ink-secondary font-medium">{error || 'Result record not found.'}</p>
           <Link
             href="/student/tests"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-field font-bold text-xs bg-ink text-white hover:bg-ink transition-colors mt-2 shadow-sm"
           >
             <ArrowLeft size={16} weight="bold" />
             <span>Return to Test Hub</span>

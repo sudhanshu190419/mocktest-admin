@@ -3,34 +3,34 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  VideoCamera,
-  Broadcast,
-  Exam,
-  ChatCircleDots,
-  BookOpen,
-  CheckCircle,
-  ArrowRight,
-} from '@phosphor-icons/react';
+  IconVideo,
+  IconWifi,
+  IconTest,
+  IconDoubt,
+  IconLibrary,
+  IconCheckCircle,
+  IconArrowRight,
+} from '@/components/icons/student-icons';
 
 const FEATURES = [
   {
     title: 'Live Teaching Experience',
-    icon: <Broadcast size={18} weight="fill" />,
+    icon: <IconWifi size={18} />,
     box: 'bg-sky-50 text-[#0284c7]',
   },
   {
     title: 'Real Exam Questions',
-    icon: <Exam size={18} weight="fill" />,
+    icon: <IconTest size={18} />,
     box: 'bg-amber-50 text-amber-500',
   },
   {
     title: 'Doubt Solving in Real Time',
-    icon: <ChatCircleDots size={18} weight="fill" />,
+    icon: <IconDoubt size={18} />,
     box: 'bg-rose-50 text-rose-500',
   },
   {
     title: 'Understand Our Teaching Style',
-    icon: <BookOpen size={18} weight="fill" />,
+    icon: <IconLibrary size={18} />,
     box: 'bg-emerald-50 text-[#166534]',
   },
 ];
@@ -52,7 +52,7 @@ export function FreeDemoSection() {
           {/* ── Left: copy, features & actions ─────────────────────────── */}
           <div className="flex flex-col justify-center px-6 py-10 sm:px-10 sm:py-12 lg:py-16 lg:pl-14 lg:pr-10">
             <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-bold tracking-[0.16em] text-[#166534] sm:text-[11px]">
-              <VideoCamera size={14} weight="fill" aria-hidden="true" />
+              <IconVideo size={14} aria-hidden="true" />
               FREE DEMO CLASSES
             </span>
 
@@ -98,7 +98,7 @@ export function FreeDemoSection() {
                 className="inline-flex min-h-[48px] w-full items-center justify-center gap-3 rounded-[10px] bg-[#0284c7] px-6 text-[13.5px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(2,132,199,0.7)] transition-all duration-200 hover:bg-[#0369a1] hover:shadow-[0_14px_28px_-10px_rgba(2,132,199,0.75)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0284c7] sm:w-auto"
               >
                 Get Free Demo Class
-                <ArrowRight size={15} weight="bold" aria-hidden="true" />
+                <IconArrowRight size={15} aria-hidden="true" />
               </Link>
             </div>
           </div>
@@ -147,9 +147,8 @@ export function FreeDemoSection() {
                   key={item}
                   className="flex items-center gap-2 text-[11px] font-medium text-[#152b45] sm:text-[12px]"
                 >
-                  <CheckCircle
+                  <IconCheckCircle
                     size={15}
-                    weight="fill"
                     className="shrink-0 text-[#166534]"
                     aria-hidden="true"
                   />

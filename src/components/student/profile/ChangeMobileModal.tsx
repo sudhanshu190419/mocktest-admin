@@ -254,11 +254,11 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-line overflow-hidden">
+      <div className="relative w-full max-w-md bg-white rounded-sheet shadow-2xl border border-line overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-line">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-tint text-brand border border-line">
+            <div className="flex h-10 w-10 items-center justify-center rounded-card bg-sky-tint text-brand border border-line">
               <ShieldCheck size={20} weight="bold" />
             </div>
             <div>
@@ -273,7 +273,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-ink-muted hover:bg-paper hover:text-ink-secondary transition-colors"
+            className="rounded-field p-1.5 text-ink-muted hover:bg-paper hover:text-ink-secondary transition-colors"
           >
             <X size={18} weight="bold" />
           </button>
@@ -282,13 +282,13 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
         {/* Feedback Banners */}
         <div className="px-6 pt-4 space-y-2">
           {error && (
-            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <div className="p-3.5 rounded-card bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
               <WarningCircle size={18} weight="fill" className="text-red-600 shrink-0" />
               <span>{error}</span>
             </div>
           )}
           {resendMessage && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <div className="p-3 rounded-card bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
               <CheckCircle size={16} weight="fill" className="text-emerald-600 shrink-0" />
               <span>{resendMessage}</span>
             </div>
@@ -300,7 +300,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
           <form onSubmit={handleStep1Submit} className="p-6 space-y-4">
             {/* Current Mobile Display */}
             {currentPhone && (
-              <div className="p-3 rounded-2xl bg-paper border border-line flex items-center justify-between text-xs">
+              <div className="p-3 rounded-card bg-paper border border-line flex items-center justify-between text-xs">
                 <span className="text-ink-muted font-bold uppercase text-caption tracking-wider">Current Number</span>
                 <span className="font-bold text-ink">{currentPhone}</span>
               </div>
@@ -317,7 +317,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter your current password"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-line text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-field border border-line text-xs font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
                 />
                 <button
                   type="button"
@@ -332,7 +332,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
             {/* New Phone Number */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-ink">New Mobile Number</label>
-              <div className="flex rounded-xl border border-line overflow-hidden focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-all">
+              <div className="flex rounded-field border border-line overflow-hidden focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-all">
                 <div className="flex items-center gap-1.5 px-3 bg-paper border-r border-line text-ink-secondary text-xs font-bold shrink-0">
                   <Phone size={14} className="text-ink-muted" />
                   <span>+91</span>
@@ -360,14 +360,14 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
+                className="px-4 py-2.5 rounded-field border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                className="px-5 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
               >
                 {submitting ? (
                   <>
@@ -388,7 +388,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
         {/* Step 2 Form: 6-Digit OTP Verification */}
         {step === 2 && (
           <form onSubmit={handleStep2Submit} className="p-6 space-y-5">
-            <div className="p-3.5 rounded-2xl bg-sky-tint/60 border border-line text-center space-y-0.5">
+            <div className="p-3.5 rounded-card bg-sky-tint/60 border border-line text-center space-y-0.5">
               <p className="text-xs text-brand-hover font-semibold">
                 Verification code sent to
               </p>
@@ -416,7 +416,7 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className="h-12 w-11 text-center text-lg font-black font-mono rounded-xl border border-line bg-paper text-ink focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all shadow-2xs"
+                    className="h-12 w-11 text-center text-lg font-black font-mono rounded-field border border-line bg-paper text-ink focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all shadow-2xs"
                   />
                 ))}
               </div>
@@ -455,14 +455,14 @@ export const ChangeMobileModal: React.FC<ChangeMobileModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
+                className="px-4 py-2.5 rounded-field border border-line text-ink-secondary text-xs font-bold hover:bg-paper transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                className="px-5 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
               >
                 {submitting ? (
                   <>

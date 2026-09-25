@@ -25,7 +25,6 @@ describe('Student Web Shell & Dashboard Verification', () => {
     const layoutContent = fs.readFileSync(layoutPath, 'utf8');
     expect(layoutContent).toContain('StudentGuard');
     expect(layoutContent).toContain('CourseStoreShell');
-    expect(layoutContent).toContain('StudentSubNav');
     expect(layoutContent).toContain('StudentBottomNav');
   });
 

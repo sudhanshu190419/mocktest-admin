@@ -2,11 +2,11 @@
 
 import React from 'react';
 import {
-  ChatCircleDots,
-  Clock,
-  CheckCircle,
-  Hourglass,
-} from '@phosphor-icons/react';
+  IconDoubt,
+  IconClock,
+  IconCheckCircle,
+  IconHourglass,
+} from '@/components/icons/student-icons';
 import type { DoubtStatus } from '@/types/doubt';
 
 interface StudentDoubtStatsProps {
@@ -40,7 +40,7 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
           >
             <div className="flex items-center justify-between mb-3">
               <div className="h-4 w-24 bg-paper rounded-md" />
-              <div className="h-9 w-9 bg-paper rounded-xl" />
+              <div className="h-9 w-9 bg-paper rounded-field" />
             </div>
             <div className="h-8 w-16 bg-paper rounded-lg mb-1" />
             <div className="h-3 w-32 bg-paper rounded-md" />
@@ -58,7 +58,7 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
       count: totalCount,
       displayCount: totalCount > 0 ? totalCount : '—',
       subtitle: totalCount > 0 ? 'All submitted questions' : 'No doubts submitted yet',
-      icon: ChatCircleDots,
+      icon: IconDoubt,
       iconColor: 'text-brand',
       iconBg: 'bg-sky-tint border-line',
       activeRing: 'ring-2 ring-brand border-brand bg-sky-tint/30',
@@ -70,7 +70,7 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
       count: pendingCount,
       displayCount: pendingCount > 0 ? pendingCount : '—',
       subtitle: pendingCount > 0 ? `${openCount} open · ${inProgressCount} faculty is on it` : 'Zero pending replies',
-      icon: Hourglass,
+      icon: IconHourglass,
       iconColor: 'text-sand-ink',
       iconBg: 'bg-sand border-amber-200',
       activeRing: 'ring-2 ring-amber-500 border-amber-400 bg-sand/30',
@@ -82,7 +82,7 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
       count: resolvedCount,
       displayCount: resolvedCount > 0 ? resolvedCount : '—',
       subtitle: resolvedCount > 0 ? 'Verified faculty solutions' : 'No resolved doubts yet',
-      icon: CheckCircle,
+      icon: IconCheckCircle,
       iconColor: 'text-mint-ink',
       iconBg: 'bg-mint-tint border-emerald-200',
       activeRing: 'ring-2 ring-emerald-500 border-emerald-400 bg-mint-tint/30',
@@ -124,7 +124,7 @@ export const StudentDoubtStats: React.FC<StudentDoubtStatsProps> = ({
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-field border ${card.iconBg} ${card.iconColor} transition-transform group-hover:scale-105`}
               >
-                <Icon size={22} weight="duotone" />
+                <Icon size={22} />
               </div>
             </div>
 

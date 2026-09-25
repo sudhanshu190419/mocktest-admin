@@ -58,7 +58,7 @@ export function StudentDoubtAcademicContext({
       <h3 className="mb-3 text-caption font-bold uppercase tracking-wider text-ink-muted">
         Academic Context
       </h3>
-      <div className="space-y-0.5 bg-paper/70 p-3 rounded-2xl border border-line">
+      <div className="space-y-0.5 bg-paper/70 p-3 rounded-card border border-line">
         <ContextRow label="Course" value={course} />
         <ContextRow label="Batch" value={batch} />
         <ContextRow label="Subject" value={subject} />

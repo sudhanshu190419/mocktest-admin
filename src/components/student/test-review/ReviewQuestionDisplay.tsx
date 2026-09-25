@@ -104,7 +104,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
   return (
     <div className="flex flex-col gap-6">
       {/* Question Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
+      <div className="bg-white rounded-sheet p-6 sm:p-8 border border-line shadow-sm flex flex-col gap-5">
         {/* Top Header */}
         <div className="flex items-center justify-between flex-wrap gap-2 border-b border-line pb-4">
           <div className="flex items-center gap-2">
@@ -134,7 +134,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
 
         {/* Question Image */}
         {question.questionImageUrl && (
-          <div className="relative rounded-2xl overflow-hidden border border-line bg-paper max-w-lg">
+          <div className="relative rounded-card overflow-hidden border border-line bg-paper max-w-lg">
             <Image
               src={question.questionImageUrl}
               alt={question.questionImageAlt || 'Question diagram'}
@@ -155,7 +155,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
               return (
                 <div
                   key={opt.id}
-                  className={`p-4 rounded-2xl border flex items-start justify-between gap-3 transition-colors ${getOptionFeedbackClasses(
+                  className={`p-4 rounded-card border flex items-start justify-between gap-3 transition-colors ${getOptionFeedbackClasses(
                     opt.feedback
                   )}`}
                 >
@@ -210,7 +210,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
 
         {/* Numerical Answers */}
         {question.questionType === 'numerical' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 p-5 rounded-2xl bg-paper border border-line">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 p-5 rounded-card bg-paper border border-line">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-bold text-ink-secondary uppercase">Your Answer:</span>
               <span className="text-lg font-mono font-bold text-ink">
@@ -229,7 +229,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         {/* Subjective / Text Answers */}
         {(question.questionType === 'subjective' || question.questionType === 'text_based') && (
           <div className="flex flex-col gap-3 mt-2">
-            <div className="p-4 rounded-2xl bg-paper border border-line">
+            <div className="p-4 rounded-card bg-paper border border-line">
               <span className="text-xs font-bold text-ink-secondary uppercase block mb-1">Your Submitted Response:</span>
               <p className="text-sm text-ink whitespace-pre-wrap font-mono">
                 {question.studentAnswerText || 'No response submitted.'}
@@ -237,7 +237,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
             </div>
 
             {question.evaluatorFeedback && (
-              <div className="p-4 rounded-2xl bg-sky-tint border border-line">
+              <div className="p-4 rounded-card bg-sky-tint border border-line">
                 <span className="text-xs font-bold text-brand-hover uppercase block mb-1">Teacher Feedback:</span>
                 <p className="text-sm text-brand-hover whitespace-pre-wrap">
                   {question.evaluatorFeedback}
@@ -249,9 +249,9 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
       </div>
 
       {/* Solution & Explanation Card */}
-      <div className="bg-gradient-to-br bg-sky-tint/80 via-white bg-sky-tint/80 rounded-3xl p-6 sm:p-8 border border-line/80 shadow-sm flex flex-col gap-4">
+      <div className="bg-gradient-to-br bg-sky-tint/80 via-white bg-sky-tint/80 rounded-sheet p-6 sm:p-8 border border-line/80 shadow-sm flex flex-col gap-4">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-brand text-white rounded-xl shadow-xs">
+          <div className="p-2 bg-brand text-white rounded-field shadow-xs">
             <BookOpen size={20} weight="bold" />
           </div>
           <div>
@@ -265,7 +265,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
             {question.explanationText}
           </div>
         ) : (
-          <div className="p-4 rounded-xl bg-white border border-line text-xs text-ink-secondary italic">
+          <div className="p-4 rounded-field bg-white border border-line text-xs text-ink-secondary italic">
             Detailed text solution is not yet available for this question.
           </div>
         )}
@@ -276,7 +276,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
             {question.explanationImages.map((imgUrl, i) => (
               <div
                 key={i}
-                className="relative rounded-2xl overflow-hidden border border-line bg-white p-2"
+                className="relative rounded-card overflow-hidden border border-line bg-white p-2"
               >
                 <Image
                   src={imgUrl}
@@ -284,7 +284,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
                   width={500}
                   height={350}
                   unoptimized
-                  className="w-full h-auto object-contain cursor-zoom-in rounded-xl"
+                  className="w-full h-auto object-contain cursor-zoom-in rounded-field"
                   onClick={() => setSelectedImage(imgUrl)}
                 />
               </div>
@@ -303,7 +303,7 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
               href={question.explanationVideoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold shadow-xs transition-colors"
+              className="px-4 py-2 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold shadow-xs transition-colors"
             >
               Watch Video Solution
             </a>
@@ -317,14 +317,14 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm p-4 animate-in fade-in duration-150 cursor-zoom-out"
           onClick={() => setSelectedImage(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 overflow-hidden shadow-2xl">
+          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-card p-2 overflow-hidden shadow-2xl">
             <Image
               src={selectedImage}
               alt="Expanded diagram"
               width={1000}
               height={800}
               unoptimized
-              className="w-full h-auto max-h-[85vh] object-contain rounded-xl"
+              className="w-full h-auto max-h-[85vh] object-contain rounded-field"
             />
           </div>
         </div>

@@ -3,16 +3,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Trophy,
-  MagnifyingGlass,
-  CheckCircle,
-  Clock,
-  XCircle,
-  BookOpen,
-  ArrowRight,
-  Exam,
-  ChartBar,
-} from '@phosphor-icons/react';
+  IconTrophy,
+  IconSearch,
+  IconCheckCircle,
+  IconClock,
+  IconXCircle,
+  IconLibrary,
+  IconArrowRight,
+  IconTest,
+  IconChartBar,
+} from '@/components/icons/student-icons';
 import {
   fetchStudentAssignedMockTests,
   type StudentMockTestCardItem,
@@ -132,9 +132,9 @@ export default function StudentMyTestResultsPage() {
           href="/student/analytics"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-sky-tint hover:bg-sky-tint/80 border border-line text-brand-hover font-bold text-xs transition-colors self-start md:self-auto shrink-0 shadow-2xs min-h-[44px]"
         >
-          <ChartBar size={16} weight="duotone" className="text-brand" />
+          <IconChartBar size={16} className="text-brand" />
           <span>View Performance Analytics</span>
-          <ArrowRight size={14} weight="bold" />
+          <IconArrowRight size={14} />
         </Link>
       </div>
 
@@ -149,7 +149,7 @@ export default function StudentMyTestResultsPage() {
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="relative flex-1 sm:w-64">
-            <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
+            <IconSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted h-4 w-4" />
             <input
               type="text"
               placeholder="Search by test title or subject..."
@@ -164,7 +164,7 @@ export default function StudentMyTestResultsPage() {
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink min-h-[44px] min-w-[32px] flex items-center justify-center"
                 aria-label="Clear search"
               >
-                <XCircle size={14} weight="fill" />
+                <IconXCircle size={14} />
               </button>
             )}
           </div>
@@ -219,7 +219,7 @@ export default function StudentMyTestResultsPage() {
           />
         ) : (
           <EmptyState
-            icon={Trophy}
+            icon={IconTrophy}
             title="No test results available yet"
             detail="Complete your assigned mock tests to view your performance scorecards, accuracy breakdown, and step-by-step verified solutions."
             action={
@@ -248,7 +248,7 @@ export default function StudentMyTestResultsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="student-pill student-pill-sky">
-                        <Exam className="h-3.5 w-3.5" />
+                        <IconTest className="h-3.5 w-3.5" />
                         {formatTestType(test.testType)}
                       </span>
                       {test.subjectName && (
@@ -260,7 +260,7 @@ export default function StudentMyTestResultsPage() {
 
                     {res.submittedAt && (
                       <span className="inline-flex items-center gap-1 text-caption font-semibold text-ink-muted">
-                        <Clock size={12} />
+                        <IconClock size={12} />
                         <span>{formatDate(res.submittedAt)}</span>
                       </span>
                     )}
@@ -354,7 +354,7 @@ export default function StudentMyTestResultsPage() {
                     href={resultUrl}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-field bg-brand hover:bg-brand-hover text-white px-4 py-2.5 text-xs font-bold shadow-2xs transition-colors min-h-[44px]"
                   >
-                    <CheckCircle className="h-3.5 w-3.5" weight="bold" />
+                    <IconCheckCircle className="h-3.5 w-3.5" />
                     <span>View results</span>
                   </Link>
 
@@ -362,9 +362,9 @@ export default function StudentMyTestResultsPage() {
                     href={reviewUrl}
                     className="inline-flex items-center justify-center gap-1.5 rounded-field border border-line bg-surface hover:bg-paper px-3.5 py-2.5 text-xs font-bold text-ink transition-colors min-h-[44px]"
                   >
-                    <BookOpen className="h-3.5 w-3.5 text-brand" weight="bold" />
+                    <IconLibrary className="h-3.5 w-3.5 text-brand" />
                     <span>Solutions</span>
-                    <ArrowRight className="h-3 w-3 text-ink-muted" />
+                    <IconArrowRight className="h-3 w-3 text-ink-muted" />
                   </Link>
                 </div>
               </div>

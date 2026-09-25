@@ -4,20 +4,20 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
-  X,
-  UploadSimple,
-  FilePdf,
-  Image as ImageIcon,
-  Trash,
-  WarningCircle,
-  SpinnerGap,
-  Sparkle,
-  GraduationCap,
-  BookOpen,
-  Folder,
-  ChatCircleDots,
-  Clock,
-} from '@phosphor-icons/react';
+  IconClose,
+  IconPaperclip,
+  IconFileText,
+  IconImage,
+  IconTrash,
+  IconWarning,
+  IconRefresh,
+  IconSpark,
+  IconGraduationCap,
+  IconTest,
+  IconLibrary,
+  IconDoubt,
+  IconClock,
+} from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useSubmitDoubt } from '@/hooks/doubt/useDoubt';
 import {
@@ -381,7 +381,7 @@ export function StudentAskDoubtModal({
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-line bg-paper">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-field bg-brand text-white font-bold shadow-xs">
-              <ChatCircleDots size={22} weight="duotone" />
+              <IconDoubt size={22} />
             </div>
             <div>
               <h2 id="ask-doubt-title" className="text-h2 font-extrabold text-ink leading-tight">
@@ -400,7 +400,7 @@ export function StudentAskDoubtModal({
             className="flex h-9 w-9 items-center justify-center rounded-field text-ink-muted hover:text-ink hover:bg-paper transition-colors disabled:opacity-50"
             aria-label="Close modal"
           >
-            <X size={18} weight="bold" />
+            <IconClose size={18} />
           </button>
         </div>
 
@@ -408,7 +408,7 @@ export function StudentAskDoubtModal({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* SLA Advisory Text Banner (PRD §7.2) */}
           <div className="p-3.5 rounded-field bg-sky-tint border border-line flex items-center gap-2.5 text-caption text-brand-hover">
-            <Clock size={16} weight="duotone" className="shrink-0 text-brand" />
+            <IconClock size={16} className="shrink-0 text-brand" />
             <span>
               <strong>Faculty SLA:</strong> Faculty typically reply within 24 hours. You will receive an in-app notification upon reply.
             </span>
@@ -417,7 +417,7 @@ export function StudentAskDoubtModal({
           {/* Error Banner */}
           {submitError && (
             <div className="p-4 rounded-field bg-rose-50 border border-rose-200 flex items-start gap-3">
-              <WarningCircle size={20} weight="duotone" className="text-rose-600 shrink-0 mt-0.5" />
+              <IconWarning size={20} className="text-rose-600 shrink-0 mt-0.5" />
               <div className="text-caption text-rose-700 leading-relaxed">
                 <p className="font-bold text-rose-900">Submission Error</p>
                 <p>{submitError}</p>
@@ -429,7 +429,7 @@ export function StudentAskDoubtModal({
           {contextualResource && (
             <div className="p-3.5 rounded-field bg-sky-tint border border-line flex items-center justify-between text-body">
               <div className="flex items-center gap-2 font-bold text-brand-hover">
-                <Sparkle size={16} weight="fill" className="text-brand shrink-0" />
+                <IconSpark size={16} className="text-brand shrink-0" />
                 <span>Context:</span>
                 <span className="text-brand-hover font-semibold">
                   {getDoubtResourceDisplay(contextualResource.type).label}
@@ -441,7 +441,7 @@ export function StudentAskDoubtModal({
                 className="text-caption font-bold text-ink-secondary hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-field transition-colors flex items-center gap-1"
                 title="Detach resource from this doubt"
               >
-                <X size={12} weight="bold" />
+                <IconClose size={12} />
                 <span>Detach Context</span>
               </button>
             </div>
@@ -451,7 +451,7 @@ export function StudentAskDoubtModal({
           <div className="p-4.5 rounded-card bg-paper border border-line space-y-3.5">
             <div className="flex items-center justify-between">
               <h3 className="text-caption font-bold text-ink uppercase tracking-wider flex items-center gap-1.5">
-                <GraduationCap size={16} weight="duotone" className="text-brand" />
+                <IconGraduationCap size={16} className="text-brand" />
                 <span>Academic Details</span>
               </h3>
               <span className="text-caption font-medium text-ink-muted">
@@ -519,7 +519,7 @@ export function StudentAskDoubtModal({
               {/* Chapter */}
               <div className="space-y-1">
                 <label className="text-caption font-bold text-ink flex items-center gap-1.5">
-                  <BookOpen size={14} className="text-ink-muted" />
+                  <IconTest size={14} className="text-ink-muted" />
                   <span>Chapter (Optional)</span>
                 </label>
                 <select
@@ -552,7 +552,7 @@ export function StudentAskDoubtModal({
               {/* Topic */}
               <div className="space-y-1">
                 <label className="text-caption font-bold text-ink flex items-center gap-1.5">
-                  <Folder size={14} className="text-ink-muted" />
+                  <IconLibrary size={14} className="text-ink-muted" />
                   <span>Topic (Optional)</span>
                 </label>
                 <select
@@ -658,7 +658,7 @@ export function StudentAskDoubtModal({
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between">
               <label className="text-caption font-bold text-ink flex items-center gap-1.5">
-                <UploadSimple size={15} weight="bold" className="text-brand" />
+                <IconPaperclip size={15} className="text-brand" />
                 <span>Attachments (Optional)</span>
               </label>
               <span className="text-caption text-ink-muted font-medium">
@@ -683,7 +683,7 @@ export function StudentAskDoubtModal({
             >
               <div className="flex flex-col items-center gap-1.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-field bg-surface text-brand border border-line shadow-xs">
-                  <UploadSimple size={18} weight="bold" />
+                  <IconPaperclip size={18} />
                 </div>
                 <p className="text-body font-bold text-ink">
                   Click to upload photos or PDF notes
@@ -717,9 +717,9 @@ export function StudentAskDoubtModal({
                           }`}
                         >
                           {isPdf ? (
-                            <FilePdf size={16} weight="duotone" />
+                            <IconFileText size={16} />
                           ) : (
-                            <ImageIcon size={16} weight="duotone" />
+                            <IconImage size={16} />
                           )}
                         </div>
                         <div className="min-w-0">
@@ -739,7 +739,7 @@ export function StudentAskDoubtModal({
                         className="p-1 rounded-field text-ink-muted hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
                         title="Remove file"
                       >
-                        <Trash size={15} weight="bold" />
+                        <IconTrash size={15} />
                       </button>
                     </div>
                   );
@@ -763,7 +763,7 @@ export function StudentAskDoubtModal({
           <div className="flex items-center gap-3">
             {uploadProgressText && (
               <span className="text-caption font-semibold text-brand-hover flex items-center gap-1.5">
-                <SpinnerGap size={14} className="animate-spin" />
+                <IconRefresh size={14} className="animate-spin" />
                 <span>{uploadProgressText}</span>
               </span>
             )}
@@ -776,14 +776,14 @@ export function StudentAskDoubtModal({
             >
               {submitMutation.isPending || isUploadingAttachments ? (
                 <>
-                  <SpinnerGap size={15} className="animate-spin" />
+                  <IconRefresh size={15} className="animate-spin" />
                   <span>
                     {isUploadingAttachments ? 'Uploading Files...' : 'Submitting Doubt...'}
                   </span>
                 </>
               ) : (
                 <>
-                  <ChatCircleDots size={16} weight="bold" />
+                  <IconDoubt size={16} />
                   <span>Submit Doubt</span>
                 </>
               )}

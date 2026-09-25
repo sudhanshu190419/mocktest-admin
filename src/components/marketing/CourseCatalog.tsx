@@ -3,9 +3,32 @@
 import { useMemo, useState } from 'react';
 import { Button } from './Button';
 import { CourseArtwork, StoreCourseCard } from './StoreCourseCard';
+import { IconSearch } from '@/components/icons/student-icons';
+import { useAuth } from '@/context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import {
+  fetchStudentBootstrap,
+  studentDashboardKeys,
+  type StudentEnrolledCourse,
+} from '@/services/student/studentDashboardWebService';
 import type { Course } from '@/types/courseCatalog';
 
 export function CourseCatalog({ courses }: { courses: Course[] }) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+
+  const { data: bootstrapResult } = useQuery({
+    queryKey: studentDashboardKeys.bootstrap(profileId),
+    queryFn: () => fetchStudentBootstrap(),
+    enabled: !!profileId,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const enrolledCourses: StudentEnrolledCourse[] = bootstrapResult?.data?.enrolled_courses || [];
+  const enrolledCourseIds = enrolledCourses.map((c) => c.course_id);
+
   const [stream, setStream] = useState('ALL');
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState('all');
@@ -138,10 +161,7 @@ export function CourseCatalog({ courses }: { courses: Course[] }) {
             ))}
           </div>
           <label className="store-search">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="10" cy="10" r="6" stroke="currentColor" strokeWidth="1.7" />
-              <path d="m15 15 5 5" stroke="currentColor" strokeWidth="1.7" />
-            </svg>
+            <IconSearch size={16} aria-hidden="true" />
             <span className="sr-only">Search courses or subjects</span>
             <input
               type="search"
@@ -178,7 +198,11 @@ export function CourseCatalog({ courses }: { courses: Course[] }) {
         {filtered.length ? (
           <div className="store-course-grid">
             {filtered.map((course) => (
-              <StoreCourseCard key={course.courseId} course={course} />
+              <StoreCourseCard
+                key={course.courseId}
+                course={course}
+                isEnrolled={enrolledCourseIds.includes(course.courseId)}
+              />
             ))}
           </div>
         ) : (
@@ -213,3 +237,4 @@ export function CourseCatalog({ courses }: { courses: Course[] }) {
     </main>
   );
 }
+

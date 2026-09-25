@@ -156,7 +156,7 @@ export const TestRunnerHeader: React.FC<TestRunnerHeaderProps> = ({
           <button
             type="button"
             onClick={onToggleFullscreen}
-            className="flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-field text-caption font-medium bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-field text-caption font-medium bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer"
             title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
           >
@@ -179,7 +179,7 @@ export const TestRunnerHeader: React.FC<TestRunnerHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenCalculator}
-            className="flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-field text-caption font-medium bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-field text-caption font-medium bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer"
             title="Open Scientific Calculator"
           >
             <Calculator size={16} weight="bold" className="text-amber-300" />
@@ -192,7 +192,7 @@ export const TestRunnerHeader: React.FC<TestRunnerHeaderProps> = ({
           type="button"
           onClick={onExit}
           disabled={isSubmitting}
-          className="flex items-center gap-1 min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-field text-caption font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
+          className="flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] px-2.5 sm:px-3 py-1.5 rounded-field text-caption font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
           title="Exit test session"
         >
           <SignOut size={16} weight="bold" />
@@ -204,7 +204,7 @@ export const TestRunnerHeader: React.FC<TestRunnerHeaderProps> = ({
           type="button"
           onClick={onSubmit}
           disabled={isSubmitting}
-          className="flex items-center gap-1.5 min-h-[38px] px-3.5 sm:px-4 py-1.5 rounded-field text-caption sm:text-sm font-bold bg-brand hover:bg-brand-hover text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 sm:px-4 py-1.5 rounded-field text-caption sm:text-sm font-bold bg-brand hover:bg-brand-hover text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
         >
           {isSubmitting ? (
             <>

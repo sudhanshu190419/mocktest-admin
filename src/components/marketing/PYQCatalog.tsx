@@ -3,21 +3,35 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card } from './Card';
-import { ButtonLink } from './Button';
 import { CourseArtwork } from './StoreCourseCard';
-import { ArrowRight, CalendarBlank, FileText, Exam } from '@phosphor-icons/react/dist/ssr';
+import {
+  IconArrowRight,
+  IconCalendar,
+  IconPyq,
+  IconTest,
+  IconCheck,
+  IconSearch,
+} from '@/components/icons/student-icons';
+import { useAuth } from '@/context/AuthContext';
+import { useStudentPyqPurchases } from '@/hooks/student/useStudentPyqPurchases';
 import { formatCoursePrice } from '@/services/courseCatalogService';
 import type { PYQPackage } from '@/types/pyqCatalog';
 import type { ExamStreamCode } from '@/types/learnerGoal';
 
-export function PYQPackageCard({ item }: { item: PYQPackage }) {
+export function PYQPackageCard({
+  item,
+  isPurchased = false,
+}: {
+  item: PYQPackage;
+  isPurchased?: boolean;
+}) {
   const streamCode = item.streamCode?.toUpperCase();
   const isNeet = streamCode === 'NEET' || item.title?.toUpperCase().includes('NEET');
   const topImage = isNeet ? '/pyq/pyq.png' : null;
 
   return (
     <Card className="store-course-card" interactive>
-      <Link href={`/pyq/${item.packageId}`} tabIndex={-1} aria-hidden="true">
+      <Link href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`} tabIndex={-1} aria-hidden="true">
         <CourseArtwork
           stream={item.streamCode}
           title={item.subjectBreakdown.map((entry) => entry.subject).slice(0, 2).join('\n')}
@@ -29,37 +43,49 @@ export function PYQPackageCard({ item }: { item: PYQPackage }) {
           <span className={`store-stream-tag tag-${item.streamCode.toLowerCase()}`}>
             {item.streamCode === 'FOUNDATION' ? 'Foundation' : item.streamCode}
           </span>
-          <span>Previous year papers</span>
+          {isPurchased ? (
+            <span className="px-2 py-0.5 rounded text-caption font-bold bg-amber-100 text-amber-900">
+              Purchased ✓
+            </span>
+          ) : (
+            <span>Previous year papers</span>
+          )}
         </div>
         <h3>
-          <Link href={`/pyq/${item.packageId}`}>{item.title}</Link>
+          <Link href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`}>{item.title}</Link>
         </h3>
         <p className="store-card-description">{item.shortDescription}</p>
         <div className="store-course-facts">
           <span className="store-fact-item">
-            <CalendarBlank size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconCalendar size={13} className="store-fact-icon shrink-0" />
             <span className="tabular-nums">{item.yearRange}</span>
           </span>
           <span className="store-fact-item">
-            <FileText size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconPyq size={13} className="store-fact-icon shrink-0" />
             <span className="tabular-nums">{item.totalPapers} papers</span>
           </span>
           <span className="store-fact-item">
-            <Exam size={13} weight="bold" className="store-fact-icon" aria-hidden="true" />
+            <IconTest size={13} className="store-fact-icon shrink-0" />
             <span className="tabular-nums">{item.totalQuestions} questions</span>
           </span>
         </div>
         <div className="store-card-price">
           <div className="store-card-price-info">
-            <span className="store-small-label">One-time purchase</span>
+            <span className="store-small-label">{isPurchased ? 'Access Status' : 'One-time purchase'}</span>
             <div className="store-card-price-row">
-              <strong className="tabular-nums">
-                {formatCoursePrice(item.discountedPrice, item.currency)}
-              </strong>
-              {item.originalPrice > item.discountedPrice && (
-                <del className="tabular-nums">
-                  {formatCoursePrice(item.originalPrice, item.currency)}
-                </del>
+              {isPurchased ? (
+                <strong className="text-amber-800 text-base">Active Package</strong>
+              ) : (
+                <>
+                  <strong className="tabular-nums">
+                    {formatCoursePrice(item.discountedPrice, item.currency)}
+                  </strong>
+                  {item.originalPrice > item.discountedPrice && (
+                    <del className="tabular-nums">
+                      {formatCoursePrice(item.originalPrice, item.currency)}
+                    </del>
+                  )}
+                </>
               )}
             </div>
             <p className="store-monthly-line">
@@ -67,12 +93,14 @@ export function PYQPackageCard({ item }: { item: PYQPackage }) {
             </p>
           </div>
           <Link
-            href={`/pyq/${item.packageId}`}
-            className="store-card-cta store-card-cta-explore"
+            href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`}
+            className={`store-card-cta ${isPurchased ? 'store-card-cta-enrolled' : 'store-card-cta-explore'}`}
           >
-            <span className="store-card-cta-text">View package</span>
+            <span className="store-card-cta-text">
+              {isPurchased ? 'Start Tests' : 'View Package'}
+            </span>
             <span className="store-card-cta-arrow" aria-hidden="true">
-              <ArrowRight size={13} weight="bold" />
+              <IconArrowRight size={13} />
             </span>
           </Link>
         </div>
@@ -90,6 +118,10 @@ const STREAMS: { code: ExamStreamCode | 'ALL'; label: string }[] = [
 ];
 
 export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  const { purchasedPackageIds } = useStudentPyqPurchases(profileId);
+
   const [stream, setStream] = useState<ExamStreamCode | 'ALL'>('ALL');
   const [query, setQuery] = useState('');
 
@@ -209,16 +241,7 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
             ))}
           </div>
           <div className="store-search">
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
+            <IconSearch size={16} aria-hidden="true" />
             <input
               type="search"
               value={query}
@@ -255,7 +278,11 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
         ) : (
           <div className="store-course-grid">
             {filtered.map((item) => (
-              <PYQPackageCard key={item.packageId} item={item} />
+              <PYQPackageCard
+                key={item.packageId}
+                item={item}
+                isPurchased={purchasedPackageIds.includes(item.packageId)}
+              />
             ))}
           </div>
         )}
@@ -279,10 +306,11 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
         </div>
         <div className="store-choice-item">
           <span className="store-choice-number tabular-nums">02</span>
-          <h3>Enroll & practice</h3>
+          <h3>Purchase & practice</h3>
           <p>Get instant access to timed exams, answer keys, and chapter-wise analysis.</p>
         </div>
       </section>
     </>
   );
 }
+

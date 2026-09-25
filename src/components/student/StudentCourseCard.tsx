@@ -3,12 +3,12 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  VideoCamera,
-  FileText,
-  PlayCircle,
-  GraduationCap,
-  Exam,
-} from '@phosphor-icons/react';
+  IconVideo,
+  IconFileText,
+  IconPlayCircle,
+  IconGraduationCap,
+  IconTest,
+} from '@/components/icons/student-icons';
 import type { EnrolledCourseCardItem } from '@/services/student/studentCourseWebService';
 import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 
@@ -28,7 +28,7 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-caption font-bold text-brand-hover border border-line">
-            <GraduationCap className="h-3.5 w-3.5" weight="duotone" />
+            <IconGraduationCap className="h-3.5 w-3.5" />
             {course.category || course.streamName || 'Academic Track'}
           </span>
           <span className="inline-flex items-center rounded-field bg-paper px-2.5 py-1 text-caption font-semibold text-ink-secondary border border-line">
@@ -74,7 +74,7 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
                 <Link
                   key={sub.batchSubjectId || sub.subjectId}
                   href={`/student/courses/${course.courseId}/subjects/${sub.batchSubjectId || sub.subjectId}`}
-                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-field border border-line bg-paper px-2.5 py-1 text-caption font-medium text-ink hover:border-brand hover:bg-sky-tint transition-colors"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field border border-line bg-paper px-2.5 py-1 text-caption font-medium text-ink hover:border-brand hover:bg-sky-tint transition-colors"
                 >
                   <span>{sub.emoji}</span>
                   <span>{sub.subjectName}</span>
@@ -88,21 +88,21 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
         <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
           <div className="rounded-field bg-sky-tint p-2">
             <div className="flex items-center justify-center gap-1 text-brand-hover">
-              <VideoCamera className="h-3.5 w-3.5" weight="duotone" />
+              <IconVideo className="h-3.5 w-3.5" />
               <span className="text-body font-bold tabular-nums">{course.totalLectures}</span>
             </div>
             <p className="text-caption text-ink-secondary mt-0.5">Lectures</p>
           </div>
           <div className="rounded-field bg-mint-tint p-2">
             <div className="flex items-center justify-center gap-1 text-mint-ink">
-              <FileText className="h-3.5 w-3.5" weight="duotone" />
+              <IconFileText className="h-3.5 w-3.5" />
               <span className="text-body font-bold tabular-nums">{course.totalPdfs + course.totalNotes}</span>
             </div>
             <p className="text-caption text-ink-secondary mt-0.5">Notes & PDFs</p>
           </div>
           <div className="rounded-field bg-lilac-tint p-2">
             <div className="flex items-center justify-center gap-1 text-lilac-ink">
-              <Exam className="h-3.5 w-3.5" weight="duotone" />
+              <IconTest className="h-3.5 w-3.5" />
               <span className="text-body font-bold tabular-nums">{course.totalMockTests}</span>
             </div>
             <p className="text-caption text-ink-secondary mt-0.5">Mock Tests</p>
@@ -116,7 +116,7 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({ course }) 
           href={resumeHref}
           className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-field bg-brand px-4 py-2.5 text-body font-bold text-white shadow-xs hover:bg-brand-hover active:scale-[0.98] transition-all"
         >
-          <PlayCircle className="h-4 w-4" weight="bold" />
+          <IconPlayCircle className="h-4 w-4" />
           <span>Continue Learning</span>
         </Link>
       </div>

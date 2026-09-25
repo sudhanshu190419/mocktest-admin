@@ -85,7 +85,7 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
           <button
             type="button"
             onClick={onToggleBookmark}
-            className={`min-h-[38px] p-2 rounded-field border transition-colors cursor-pointer flex items-center justify-center ${
+            className={`min-h-[44px] min-w-[44px] p-2 rounded-field border transition-colors cursor-pointer flex items-center justify-center ${
               isBookmarked
                 ? 'bg-amber-100 text-amber-900 border-amber-300'
                 : 'bg-white hover:bg-paper text-ink-secondary border-line'

@@ -1,30 +1,30 @@
 'use client';
 
 import React from 'react';
-import { GraduationCap, FileText, UserSound } from '@phosphor-icons/react';
+import { IconGraduationCap, IconFileText, IconMicrophone } from '@/components/icons/student-icons';
 
 export function AppShowcaseSection() {
   const features = [
     {
-      icon: <GraduationCap size={23} weight="fill" className="text-blue-600" />,
+      icon: <IconGraduationCap size={22} className="text-blue-600" />,
       bg: 'bg-blue-50',
       title: 'Expert-Led Courses',
       desc: 'Learn concepts with structured, focused courses.',
     },
     {
-      icon: <FileText size={23} weight="fill" className="text-emerald-500" />,
+      icon: <IconFileText size={22} className="text-emerald-500" />,
       bg: 'bg-emerald-50',
       title: 'Mock Tests',
       desc: 'Practice under exam-like conditions and track your score.',
     },
     {
-      icon: <FileText size={23} weight="fill" className="text-amber-500" />,
+      icon: <IconFileText size={22} className="text-amber-500" />,
       bg: 'bg-amber-50',
       title: 'PYQ Practice',
       desc: 'Solve previous-year questions and understand every mistake.',
     },
     {
-      icon: <UserSound size={23} weight="fill" className="text-rose-500" />,
+      icon: <IconMicrophone size={22} className="text-rose-500" />,
       bg: 'bg-rose-50',
       title: 'Live Classes',
       desc: 'Learn directly from teachers and ask questions in real time.',

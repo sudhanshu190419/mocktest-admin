@@ -3,17 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CourseStoreShell } from './CourseStoreShell';
-import { HeroSection } from './HeroSection';
 import { StudentHomeHero } from './StudentHomeHero';
 import { StoreCourseCard } from './StoreCourseCard';
 import { PYQPackageCard } from './PYQCatalog';
 import { AppShowcaseSection } from './AppShowcaseSection';
 import { FreeDemoSection } from './FreeDemoSection';
-import { CaretLeft, CaretRight } from '@phosphor-icons/react/dist/ssr';
+import { IconChevronLeft, IconChevronRight } from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { getHomepageTrendingCourses } from '@/services/courseCatalogService';
 import { getPYQPackages } from '@/services/pyqCatalogService';
+import { useStudentPyqPurchases } from '@/hooks/student/useStudentPyqPurchases';
 import { useStoreCarousel } from './useStoreCarousel';
 import {
   fetchStudentBootstrap,
@@ -66,7 +66,7 @@ export function MarketingHomeView() {
   const profileId = user?.id ?? null;
   const [selectedGoal, setSelectedGoal] = useState<string>('NEET');
 
-  // React Query: Public homepage trending course collection (matching mobile selection & priority)
+  // React Query: Public homepage trending course collection
   const { data: courses = [], isLoading: coursesLoading } = useQuery({
     queryKey: ['catalog', 'homepage-trending-courses'],
     queryFn: () => getHomepageTrendingCourses(),
@@ -82,7 +82,7 @@ export function MarketingHomeView() {
     gcTime: 30 * 60_000,
   });
 
-  // React Query: Lightweight bootstrap data for student homepage hero
+  // React Query: Student courses bootstrap
   const { data: bootstrapResult, isLoading: bootstrapLoading } = useQuery({
     queryKey: studentDashboardKeys.bootstrap(profileId),
     queryFn: () => fetchStudentBootstrap(),
@@ -92,10 +92,12 @@ export function MarketingHomeView() {
     refetchOnWindowFocus: false,
   });
 
+  // React Query: Student PYQ purchases
+  const { purchases: pyqPurchases, isLoading: pyqPurchasesLoading } = useStudentPyqPurchases(profileId);
+
   const bootstrapData = bootstrapResult?.data ?? null;
   const enrolledCourses: StudentEnrolledCourse[] = bootstrapData?.enrolled_courses || [];
   const enrolledCourseIds = enrolledCourses.map((c) => c.course_id);
-  const hasEnrolledCourses = enrolledCourseIds.length > 0;
   const studentStream = bootstrapData?.selected_stream?.name;
 
   // Sync selected goal if student has a selected stream
@@ -147,10 +149,7 @@ export function MarketingHomeView() {
         <main id="store-main">
           <h1 className="sr-only">MakeMeTopper — Learn with structure. Practise with intent.</h1>
 
-          {/* State-aware Dual-Mode Hero:
-              - Auth Loading: Stable skeleton placeholder (no flash of visitor hero)
-              - Authenticated with courses or bootstrap loading: StudentHomeHero (with stale-while-revalidate)
-              - Authenticated with 0 courses (or guest): HeroSection discovery catalog */}
+          {/* 5-Variant State-Aware Hero */}
           {authLoading ? (
             <StudentHomeHero
               studentName=""
@@ -158,18 +157,17 @@ export function MarketingHomeView() {
               loading={true}
             />
           ) : user ? (
-            hasEnrolledCourses || bootstrapLoading ? (
-              <StudentHomeHero
-                studentName={studentName}
-                streamName={studentStream}
-                data={{ enrolledCourses }}
-                loading={bootstrapLoading && !bootstrapData}
-              />
-            ) : (
-              <HeroSection />
-            )
+            <StudentHomeHero
+              studentName={studentName}
+              streamName={studentStream}
+              data={{ enrolledCourses, pyqPurchases }}
+              loading={(bootstrapLoading && !bootstrapData) || pyqPurchasesLoading}
+            />
           ) : (
-            <HeroSection />
+            <StudentHomeHero
+              isGuest={true}
+              loading={false}
+            />
           )}
 
           <section
@@ -237,7 +235,7 @@ export function MarketingHomeView() {
                       disabled={courseCarousel.isAtStart}
                       aria-label="Previous courses"
                     >
-                      <CaretLeft size={16} weight="bold" />
+                      <IconChevronLeft size={16} />
                     </button>
                     <button
                       type="button"
@@ -246,7 +244,7 @@ export function MarketingHomeView() {
                       disabled={courseCarousel.isAtEnd}
                       aria-label="Next courses"
                     >
-                      <CaretRight size={16} weight="bold" />
+                      <IconChevronRight size={16} />
                     </button>
                   </div>
                 )}
@@ -329,7 +327,7 @@ export function MarketingHomeView() {
                         disabled={pyqCarousel.isAtStart}
                         aria-label="Previous PYQ packages"
                       >
-                        <CaretLeft size={16} weight="bold" />
+                        <IconChevronLeft size={16} />
                       </button>
                       <button
                         type="button"
@@ -338,7 +336,7 @@ export function MarketingHomeView() {
                         disabled={pyqCarousel.isAtEnd}
                         aria-label="Next PYQ packages"
                       >
-                        <CaretRight size={16} weight="bold" />
+                        <IconChevronRight size={16} />
                       </button>
                     </div>
                   )}
@@ -393,53 +391,12 @@ export function MarketingHomeView() {
             </div>
           </section>
 
-          <section
-            className="store-container store-home-section store-home-method"
-            aria-labelledby="home-method-title"
-          >
-            <div className="store-home-method-intro">
-              <p className="store-eyebrow">A NOTE FOR YOUR STUDY DESK</p>
-              <h2 id="home-method-title">
-                Small steps.
-                <br />A clearer direction.
-              </h2>
-              <p>A simple rhythm to bring to your preparation, whichever goal you choose.</p>
-              <span className="store-home-method-signature">Keep a little room for curiosity.</span>
-            </div>
-            <ol className="store-pillars">
-              {[
-                [
-                  '01',
-                  'Understand the idea.',
-                  'Start with one concept. Put it into your own words before moving to the next.',
-                ],
-                [
-                  '02',
-                  'Put it to the test.',
-                  'Work through a question without your notes. Notice where you hesitate, not just where you finish.',
-                ],
-                [
-                  '03',
-                  'Return with a reason.',
-                  'Keep a note of what tripped you up. Let that guide your next revision session.',
-                ],
-              ].map(([num, title, copy]) => (
-                <li key={num} className="store-pillar">
-                  <span className="store-pillar-num tabular-nums">{num}</span>
-                  <div>
-                    <h3>{title}</h3>
-                    <p>{copy}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </section>
-
           <AppShowcaseSection />
 
-          <FreeDemoSection />
+          {(!user || enrolledCourses.length === 0) && <FreeDemoSection />}
         </main>
       </CourseStoreShell>
     </div>
   );
 }
+

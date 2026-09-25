@@ -18,8 +18,8 @@ export const StudentClassesEmptyState: React.FC<StudentClassesEmptyStateProps> =
 }) => {
   if (type === 'no-live') {
     return (
-      <div className="p-8 sm:p-10 rounded-3xl bg-white border border-line text-center max-w-xl mx-auto my-4 space-y-3 shadow-xs">
-        <div className="w-12 h-12 rounded-2xl bg-paper text-ink-muted flex items-center justify-center mx-auto border border-line">
+      <div className="p-8 sm:p-10 rounded-sheet bg-white border border-line text-center max-w-xl mx-auto my-4 space-y-3 shadow-xs">
+        <div className="w-12 h-12 rounded-card bg-paper text-ink-muted flex items-center justify-center mx-auto border border-line">
           <Broadcast size={22} weight="duotone" />
         </div>
         <h3 className="text-base font-extrabold text-ink">No live classes right now</h3>
@@ -32,8 +32,8 @@ export const StudentClassesEmptyState: React.FC<StudentClassesEmptyStateProps> =
 
   if (type === 'no-upcoming') {
     return (
-      <div className="p-8 sm:p-12 rounded-3xl bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-3 shadow-xs">
-        <div className="w-12 h-12 rounded-2xl bg-sky-tint text-brand flex items-center justify-center mx-auto border border-line">
+      <div className="p-8 sm:p-12 rounded-sheet bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-3 shadow-xs">
+        <div className="w-12 h-12 rounded-card bg-sky-tint text-brand flex items-center justify-center mx-auto border border-line">
           <Calendar size={22} weight="duotone" />
         </div>
         <h3 className="text-base font-extrabold text-ink">No upcoming classes scheduled</h3>
@@ -46,8 +46,8 @@ export const StudentClassesEmptyState: React.FC<StudentClassesEmptyStateProps> =
 
   if (type === 'no-past') {
     return (
-      <div className="p-8 sm:p-12 rounded-3xl bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-3 shadow-xs">
-        <div className="w-12 h-12 rounded-2xl bg-paper text-ink-muted flex items-center justify-center mx-auto border border-line">
+      <div className="p-8 sm:p-12 rounded-sheet bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-3 shadow-xs">
+        <div className="w-12 h-12 rounded-card bg-paper text-ink-muted flex items-center justify-center mx-auto border border-line">
           <Clock size={22} weight="duotone" />
         </div>
         <h3 className="text-base font-extrabold text-ink">No completed live classes yet</h3>
@@ -60,8 +60,8 @@ export const StudentClassesEmptyState: React.FC<StudentClassesEmptyStateProps> =
 
   // no-results
   return (
-    <div className="p-8 sm:p-12 rounded-3xl bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-4 shadow-xs">
-      <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto border border-amber-100">
+    <div className="p-8 sm:p-12 rounded-sheet bg-white border border-line text-center max-w-xl mx-auto my-6 space-y-4 shadow-xs">
+      <div className="w-12 h-12 rounded-card bg-amber-50 text-amber-500 flex items-center justify-center mx-auto border border-amber-100">
         <MagnifyingGlass size={22} weight="bold" />
       </div>
       <div className="space-y-1">
@@ -76,7 +76,7 @@ export const StudentClassesEmptyState: React.FC<StudentClassesEmptyStateProps> =
           <button
             type="button"
             onClick={onResetFilters}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-paper hover:bg-sky-tint text-ink font-bold text-xs transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-field bg-paper hover:bg-sky-tint text-ink font-bold text-xs transition-colors"
           >
             <ArrowsClockwise size={13} weight="bold" />
             <span>Reset Filters</span>

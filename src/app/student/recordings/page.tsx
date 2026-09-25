@@ -3,9 +3,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  WarningCircle,
-  ArrowsClockwise,
-} from '@phosphor-icons/react';
+  IconWarning,
+  IconRefresh,
+} from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import {
   fetchStudentRecordingsHubData,
@@ -139,7 +139,7 @@ export default function StudentRecordingsHubPage() {
       {error && (
         <div className="student-card border-rose-200 bg-rose-50/70 text-rose-800 flex flex-col sm:flex-row items-center justify-between gap-4 p-5">
           <div className="flex items-center gap-3">
-            <WarningCircle size={24} weight="fill" className="text-rose-600 flex-shrink-0" />
+            <IconWarning size={24} className="text-rose-600 flex-shrink-0" />
             <div>
               <h4 className="text-sm font-bold">Failed to load recorded classes</h4>
               <p className="text-xs text-rose-600 mt-0.5">{error}</p>
@@ -148,9 +148,9 @@ export default function StudentRecordingsHubPage() {
           <button
             type="button"
             onClick={() => loadData(false)}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors inline-flex items-center gap-2 shadow-xs"
+            className="px-4 py-2 min-h-[44px] rounded-field bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors inline-flex items-center gap-2 shadow-xs"
           >
-            <ArrowsClockwise size={14} weight="bold" />
+            <IconRefresh size={14} />
             <span>Try Again</span>
           </button>
         </div>
