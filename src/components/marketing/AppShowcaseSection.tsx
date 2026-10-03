@@ -37,7 +37,7 @@ export function AppShowcaseSection() {
   ];
 
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-16 lg:py-20 overflow-hidden">
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-4 sm:py-16 lg:py-20 overflow-hidden">
       <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-center">
         {/* Text, Heading, Feature Cards & Download Action */}
         <div className="order-1 lg:order-1 space-y-4 sm:space-y-6">

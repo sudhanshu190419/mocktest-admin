@@ -146,4 +146,7 @@
   .course-store :is(a, button, [role='button'], input, select, summary) {
     min-height: 44px;
   }
+  .course-store footer :is(a, button, [role='button']) {
+    min-height: unset;
+  }
 }

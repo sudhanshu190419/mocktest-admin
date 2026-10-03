@@ -124,9 +124,9 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
           <Image
             src="/brand/logo-primary-horizontal.svg"
             alt="Make Me Topper"
-            width={145}
-            height={34}
-            className="h-7 w-auto object-contain"
+            width={180}
+            height={42}
+            className="h-9 w-auto object-contain"
             priority
           />
         </Link>

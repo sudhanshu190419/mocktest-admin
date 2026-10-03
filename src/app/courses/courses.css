@@ -1132,20 +1132,26 @@
   .store-results-bar { flex-wrap: wrap; padding-block: 14px; gap: 10px; }
   .store-results-bar > div { width: 100%; justify-content: space-between; gap: 8px; }
   .store-results-bar select { font-size: 12px; }
-  .store-course-grid { grid-template-columns: 1fr; gap: 18px; }
-  .course-art { min-height: 160px; padding: 18px 20px; }
-  .store-course-card-thumb { height: 170px; }
-  .art-title { font-size: 22px; line-height: 1.2; margin-top: 10px; max-width: 80%; }
-  .art-symbol { width: 125px; right: -15px; bottom: 10px; opacity: 0.35; }
-  .art-kicker { font-size: 11px; letter-spacing: .15em; }
-  .art-bottom { font-size: 11px; left: 18px; right: 18px; bottom: 12px; }
-  .store-course-card-body { padding: 16px 18px; }
-  .store-course-card h3 { font-size: 16px; line-height: 1.4; }
-  .store-card-description { font-size: 12.5px; line-height: 1.6; margin-top: 6px; }
-  .store-course-facts { font-size: 11.5px; gap: 5px 12px; margin-block: 10px 14px; }
-  .store-card-price { padding-top: 12px; gap: 10px; }
-  .store-card-price strong { font-size: 19px; }
-  .store-card-button { font-size: 12px; min-height: 40px; }
+  .store-course-grid { grid-template-columns: 1fr; gap: 14px; }
+  .course-art { min-height: 120px; padding: 12px 14px; }
+  .store-course-card-thumb { height: 125px; }
+  .art-title { font-size: 18px; line-height: 1.15; margin-top: 6px; max-width: 80%; }
+  .art-symbol { width: 90px; right: -10px; bottom: 5px; opacity: 0.35; }
+  .art-kicker { font-size: 9.5px; letter-spacing: .12em; }
+  .art-bottom { font-size: 9.5px; left: 14px; right: 14px; bottom: 8px; }
+  .store-course-card-body { padding: 12px 14px; }
+  .store-card-meta { margin-bottom: 6px; gap: 6px; font-size: 11px; }
+  .store-stream-tag { font-size: 10.5px; padding: 2px 6px; }
+  .store-course-card h3 { font-size: 14.5px; line-height: 1.35; }
+  .store-card-description { font-size: 11.5px; line-height: 1.4; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .store-course-facts { font-size: 10.5px; gap: 3px 10px; margin-block: 7px 9px; }
+  .store-card-price { padding-top: 9px; gap: 8px; }
+  .store-small-label { font-size: 10.5px; margin-bottom: 0px; }
+  .store-card-price strong { font-size: 17px; }
+  .store-monthly-line { font-size: 10.5px; margin-top: 1px; }
+  .store-card-cta { min-height: 33px; padding: 0 12px; font-size: 11.5px; gap: 6px; }
+  .store-card-cta-arrow { width: 18px; height: 18px; }
+  .store-card-button { font-size: 11.5px; min-height: 34px; }
   .store-choice-section { padding-block: 26px; gap: 20px 12px; }
   .store-choice-section h2 { font-size: 22px; }
   .store-choice-item { padding-left: 10px; }
@@ -1194,7 +1200,7 @@
   .store-related-grid { grid-template-columns: 1fr; gap: 18px; }
   .store-section-heading-actions { width: 100%; justify-content: space-between; }
   .store-carousel-track-scroll { gap: 14px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-inline: 2px; }
-  .store-carousel-slide-item { flex: 0 0 min(84vw, 310px); min-width: min(84vw, 310px); max-width: min(84vw, 310px); scroll-snap-align: start; }
+  .store-carousel-slide-item { flex: 0 0 min(78vw, 275px); min-width: min(78vw, 275px); max-width: min(78vw, 275px); scroll-snap-align: start; }
   .store-order-inner { padding: 20px; }
   .store-order-lines > div { font-size: 12px; }
   .store-mobile-enroll { padding-inline: 16px; }
@@ -1240,8 +1246,7 @@
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     pointer-events: auto;
   }
-  .student-main-content,
-  #store-main {
+  .student-main-content {
     padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
   footer,

@@ -59,9 +59,9 @@ export function AuthPreviewShell({ screen }: { screen: AuthScreen }) {
           <Image
             src="/brand/logo-primary-horizontal.svg"
             alt="Make Me Topper"
-            width={175}
-            height={40}
-            className="h-8 md:h-9 w-auto object-contain"
+            width={210}
+            height={50}
+            className="h-9 sm:h-10 md:h-11 w-auto object-contain"
             priority
           />
         </Link>

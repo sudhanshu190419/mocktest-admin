@@ -28,9 +28,9 @@ export function SiteHeader({
           <Image
             src="/brand/logo-primary-horizontal.svg"
             alt="Make Me Topper"
-            width={165}
-            height={38}
-            className="h-7 sm:h-8 md:h-9 w-auto object-contain shrink-0"
+            width={210}
+            height={50}
+            className="h-9 sm:h-10 md:h-11 w-auto object-contain shrink-0"
             priority
           />
         </Link>

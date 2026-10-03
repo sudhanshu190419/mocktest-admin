@@ -21,22 +21,22 @@ export function SiteFooter() {
   };
 
   return (
-    <footer className="w-full bg-[#f8fafc] border-t border-slate-200/70 pt-10 sm:pt-12 pb-24 sm:pb-8 mt-12 sm:mt-16 font-sans">
+    <footer className="w-full bg-[#f8fafc] border-t border-slate-200/70 pt-8 sm:pt-12 pb-24 sm:pb-8 mt-4 sm:mt-16 font-sans">
       <div className="w-full max-w-[1480px] mx-auto px-4 xs:px-6 sm:px-10 lg:px-14 xl:px-16">
         {/* ── 1. Main Column Grid (2-col on mobile, 5-col on desktop) ──── */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-12 gap-x-4 xs:gap-x-6 gap-y-8 sm:gap-8 lg:gap-10 pb-10 sm:pb-12">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-12 gap-x-4 xs:gap-x-6 gap-y-6 sm:gap-8 lg:gap-10 pb-8 sm:pb-12">
           {/* Column 1: Brand Info (col-span-2 sm:col-span-2 lg:col-span-4) */}
           <div className="col-span-2 sm:col-span-2 lg:col-span-4 pr-0 lg:pr-8">
             <Link href="/" className="inline-block mb-3 sm:mb-3.5" aria-label="Make Me Topper Home">
               <Image
                 src="/brand/logo-primary-horizontal.svg"
                 alt="Make Me Topper"
-                width={180}
-                height={42}
-                className="h-8 sm:h-9 w-auto object-contain"
+                width={210}
+                height={50}
+                className="h-9 sm:h-11 md:h-12 w-auto object-contain"
               />
             </Link>
-            <p className="text-xs text-slate-500 leading-relaxed mb-5 sm:mb-6 max-w-sm">
+            <p className="text-xs text-slate-500 leading-relaxed mb-4 sm:mb-6 max-w-sm">
               Make Me Topper is your complete learning platform for NEET, JEE and other competitive exams. Learn from expert faculty, practice with real exam papers, and move closer to your dreams.
             </p>
             {/* Social Icons */}
@@ -46,7 +46,7 @@ export function SiteFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
-                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95"
+                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95 shrink-0"
               >
                 <InstagramLogo size={16} weight="bold" />
               </a>
@@ -55,7 +55,7 @@ export function SiteFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="YouTube"
-                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95"
+                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95 shrink-0"
               >
                 <YoutubeLogo size={16} weight="bold" />
               </a>
@@ -64,7 +64,7 @@ export function SiteFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="LinkedIn"
-                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95"
+                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95 shrink-0"
               >
                 <LinkedinLogo size={16} weight="bold" />
               </a>
@@ -73,20 +73,20 @@ export function SiteFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="X"
-                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95"
+                className="w-8 h-8 rounded-full border border-slate-200 hover:border-sky-300 hover:text-sky-600 text-slate-600 flex items-center justify-center transition-colors bg-white shadow-2xs active:scale-95 shrink-0"
               >
                 <XLogo size={15} weight="bold" />
               </a>
             </div>
-            <p className="text-[11px] text-slate-400 mt-3.5 sm:mt-4 italic">
+            <p className="text-[11px] text-slate-400 mt-2.5 sm:mt-4 italic">
               — Together for a brighter tomorrow.
             </p>
           </div>
 
           {/* Column 2: Quick Links (col-span-1 lg:col-span-2) */}
           <div className="col-span-1 lg:col-span-2">
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-3 sm:mb-3.5">Quick Links</h4>
-            <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-600">
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Quick Links</h4>
+            <ul className="space-y-1 sm:space-y-2.5 text-xs text-slate-600">
               <li><Link href="/" className="hover:text-sky-600 transition-colors inline-block py-0.5">Home</Link></li>
               <li><Link href="/courses" className="hover:text-sky-600 transition-colors inline-block py-0.5">Courses</Link></li>
               <li><Link href="/student/tests" className="hover:text-sky-600 transition-colors inline-block py-0.5">Mock Tests</Link></li>
@@ -99,8 +99,8 @@ export function SiteFooter() {
 
           {/* Column 3: Popular Exams (col-span-1 lg:col-span-2) */}
           <div className="col-span-1 lg:col-span-2">
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-3 sm:mb-3.5">Popular Exams</h4>
-            <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-600">
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Popular Exams</h4>
+            <ul className="space-y-1 sm:space-y-2.5 text-xs text-slate-600">
               <li><Link href="/courses?stream=NEET" className="hover:text-sky-600 transition-colors inline-block py-0.5">NEET</Link></li>
               <li><Link href="/courses?stream=JEE" className="hover:text-sky-600 transition-colors inline-block py-0.5">JEE</Link></li>
               <li><Link href="/courses?stream=CUET" className="hover:text-sky-600 transition-colors inline-block py-0.5">CUET</Link></li>
@@ -112,8 +112,8 @@ export function SiteFooter() {
 
           {/* Column 4: Support (col-span-1 lg:col-span-2) */}
           <div className="col-span-1 lg:col-span-2">
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-3 sm:mb-3.5">Support</h4>
-            <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-600">
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Support</h4>
+            <ul className="space-y-1 sm:space-y-2.5 text-xs text-slate-600">
               <li><Link href="/student/doubts" className="hover:text-sky-600 transition-colors inline-block py-0.5">Help Center</Link></li>
               <li><Link href="/contact" className="hover:text-sky-600 transition-colors inline-block py-0.5">Contact Us</Link></li>
               <li><Link href="/courses#faq" className="hover:text-sky-600 transition-colors inline-block py-0.5">FAQs</Link></li>
