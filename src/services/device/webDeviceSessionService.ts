@@ -142,7 +142,7 @@ export async function validateActiveWebSession(): Promise<WebValidationResult> {
 
     if (error) {
       const msg = error.message || '';
-      const status = error.status;
+      const status = (error as any)?.status;
       if (status === 401 || msg.includes('JWT') || msg.includes('unauthenticated')) {
         return { status: 'unauthenticated' };
       }
@@ -191,7 +191,7 @@ export async function deactivateActiveWebSession(): Promise<{ success: boolean; 
     const webClientId = getOrCreateWebClientId();
     console.log(TAG + ' Deactivating active web session:', webClientId);
 
-    if (typeof supabase?.rpc !== 'function') return;
+    if (typeof supabase?.rpc !== 'function') return { success: true };
     const { error } = await supabase.rpc('deactivate_active_device', {
       p_installation_id: webClientId,
       p_reason: 'user_logout',

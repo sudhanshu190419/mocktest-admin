@@ -8,7 +8,7 @@
  * @module app/teacher/attendance/page
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { attendanceAnalyticsService } from '@/services/attendanceAnalyticsService';
 import { liveClassAttendanceService } from '@/services/liveClassAttendanceService';

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { attendanceAnalyticsService } from '../../attendanceAnalyticsService';
 import { supabase } from '@/config/supabase';
 
@@ -258,7 +258,7 @@ describe('Attendance Phase 2: Unified Batch <-> Live Class Relationship', () => 
       expect(result.total).toBe(3);
 
       // Class 1 (from live_class_batch)
-      const c1 = result.classes.find((r) => r.classId === 'class-1');
+      const c1 = result.classes.find((r: any) => r.classId === 'class-1');
       expect(c1).toBeDefined();
       expect(c1?.batchName).toBe('Batch 1'); // Not 'No Batch Assigned'
       expect(c1?.teacherName).toBe('Teacher Alpha');
@@ -268,7 +268,7 @@ describe('Attendance Phase 2: Unified Batch <-> Live Class Relationship', () => 
       expect(c1?.absentCount).toBe(0);
 
       // Class 2 (from batch_subject_live_classes)
-      const c2 = result.classes.find((r) => r.classId === 'class-2');
+      const c2 = result.classes.find((r: any) => r.classId === 'class-2');
       expect(c2).toBeDefined();
       expect(c2?.batchName).toBe('Batch 2');
       expect(c2?.teacherName).toBe('Teacher Beta');
@@ -276,7 +276,7 @@ describe('Attendance Phase 2: Unified Batch <-> Live Class Relationship', () => 
       expect(c2?.partialCount).toBe(1);
 
       // Class 3 (linked through BOTH paths to Batch 1)
-      const c3 = result.classes.find((r) => r.classId === 'class-3');
+      const c3 = result.classes.find((r: any) => r.classId === 'class-3');
       expect(c3).toBeDefined();
       // Batch 1 should only be listed ONCE, not 'Batch 1, Batch 1'
       expect(c3?.batchName).toBe('Batch 1');

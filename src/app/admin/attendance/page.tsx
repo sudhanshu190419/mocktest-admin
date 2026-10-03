@@ -35,6 +35,7 @@ import type {
   AdminTeacherAttendanceRow,
   AdminStudentAttendanceDetail,
   LiveClassAttendanceSummary,
+  AdminLiveClassAttendanceItem,
 } from '@/services/attendanceAnalyticsService';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
@@ -594,7 +595,7 @@ export default function AdminAttendancePage() {
       downloadCSV('teacher-attendance', headers, rows);
     } else if (activeTab === 'live-class') {
       const headers = ['Date', 'Time', 'Teacher', 'Batch', 'Present', 'Partial', 'Absent'];
-      const rows = liveClassAttendance.map((c) => [
+      const rows = liveClassAttendance.map((c: AdminLiveClassAttendanceItem) => [
         new Date(c.date).toLocaleDateString('en-IN'),
         formatClassTimeRange(c.date, c.durationMin),
         c.teacherName,
@@ -1069,7 +1070,7 @@ export default function AdminAttendancePage() {
                     </td>
                   </tr>
                 ) : (
-                  liveClassAttendance.map((cls) => (
+                  liveClassAttendance.map((cls: AdminLiveClassAttendanceItem) => (
                     <tr
                       key={cls.classId}
                       onClick={() => { setSelectedClassId(cls.classId); setSelectedClassName(cls.title); }}

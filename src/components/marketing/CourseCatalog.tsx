@@ -123,20 +123,22 @@ export function CourseCatalog({ courses }: { courses: Course[] }) {
   const filtered = useMemo(
     () =>
       courses
-        .filter(
-          (course) =>
+        .filter((course) => {
+          const sc = course.streamCode as string;
+          return (
             (stream === 'ALL' ||
-              course.streamCode === stream ||
-              (stream === 'JEE' && (course.streamCode === 'JEE' || course.streamCode === 'ENGINEERING')) ||
-              (stream === 'NEET' && (course.streamCode === 'NEET' || course.streamCode === 'MEDICAL')) ||
-              (stream === 'COMMERCE' && (course.streamCode === 'COMMERCE' || course.streamCode === 'COMM')) ||
-              (stream === 'CUET' && (course.streamCode === 'CUET' || course.streamCode === 'UPSC' || course.streamCode === 'GOVERNMENT')) ||
-              (stream === 'FOUNDATION' && (course.streamCode === 'FOUNDATION' || course.streamCode === 'CLASS_10' || course.streamCode === 'CLASS_9'))) &&
+              sc === stream ||
+              (stream === 'JEE' && (sc === 'JEE' || sc === 'ENGINEERING')) ||
+              (stream === 'NEET' && (sc === 'NEET' || sc === 'MEDICAL')) ||
+              (stream === 'COMMERCE' && (sc === 'COMMERCE' || sc === 'COMM')) ||
+              (stream === 'CUET' && (sc === 'CUET' || sc === 'UPSC' || sc === 'GOVERNMENT')) ||
+              (stream === 'FOUNDATION' && (sc === 'FOUNDATION' || sc === 'CLASS_10' || sc === 'CLASS_9'))) &&
             (level === 'all' || course.difficultyLevel.toLowerCase() === level.toLowerCase()) &&
             `${course.title} ${course.presentation.subjects.join(' ')}`
               .toLowerCase()
               .includes(search.trim().toLowerCase())
-        )
+          );
+        })
         .sort((a, b) =>
           sort === 'price-low'
             ? (a.discountedPrice ?? a.originalPrice) - (b.discountedPrice ?? b.originalPrice)

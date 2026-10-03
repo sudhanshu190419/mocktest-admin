@@ -72,6 +72,38 @@ export interface BatchAttendanceSummary {
   absentCount: number;
 }
 
+export interface LiveClassAttendanceFilter {
+  dateFrom?: string;
+  dateTo?: string;
+  teacherId?: string;
+  batchId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AdminLiveClassAttendanceItem {
+  classId: string;
+  date: string;
+  durationMin?: number | null;
+  title: string;
+  teacherId: string;
+  teacherName: string;
+  batchName: string;
+  totalStudents: number;
+  presentCount: number;
+  partialCount: number;
+  absentCount: number;
+}
+
+export interface PaginatedAdminLiveClassAttendanceResult {
+  classes: AdminLiveClassAttendanceItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface LiveClassAttendanceSummary {
   classId: string;
   date: string;
@@ -1755,9 +1787,9 @@ export const attendanceAnalyticsService = {
     batchId: string,
     filters: { dateFrom?: string; dateTo?: string; page?: number; pageSize?: number } = {},
   ): Promise<AdminTeacherBatchClassesResult> {
+    const page = Math.max(1, filters.page ?? 1);
+    const pageSize = Math.max(1, Math.min(100, filters.pageSize ?? 10));
     try {
-      const page = Math.max(1, filters.page ?? 1);
-      const pageSize = Math.max(1, Math.min(100, filters.pageSize ?? 10));
 
       if (batchId === 'unassigned') {
         let allQuery = supabase

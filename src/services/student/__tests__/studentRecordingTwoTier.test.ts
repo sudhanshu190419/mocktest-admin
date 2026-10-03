@@ -225,7 +225,7 @@ describe('studentRecordingTwoTier', () => {
 
     it('prevents premature hasMore=false when duplicates across batches reduce page below pageSize', async () => {
       // 41 raw rows from DB, but containing duplicate assignments of only 14 unique recordings
-      const rawRows = [];
+      const rawRows: any[] = [];
       for (let i = 0; i < 41; i++) {
         const uniqueNum = Math.floor(i / 3); // 0 to 13 (14 unique recordings)
         const recId = 'rec-' + String(uniqueNum).padStart(3, '0');
