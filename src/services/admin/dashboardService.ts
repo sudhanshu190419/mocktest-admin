@@ -16,7 +16,7 @@
  * | Pending Q. Approvals   | questions WHERE status = 'pending_approval'     |
  * | Pending Content Approv.| approval_requests WHERE status = 'pending' AND resource_type = 'content' |
  * | Pending MT Approvals   | approval_requests WHERE status = 'pending' AND resource_type = 'mock_test' |
- * | Monthly Revenue        | orders WHERE status = 'confirmed' (MTD)         |
+ * | Monthly Revenue        | orders WHERE status = 'confirmed' AND created_at >= startOfMonth |
  * | Recent Registrations   | profiles ORDER BY created_at DESC LIMIT 10      |
  * | Upcoming Live Classes  | live_classes WHERE status = 'scheduled'         |
  *
@@ -53,20 +53,14 @@ export interface RecentRegistration {
 export interface UpcomingLiveClass {
   classId: string;
   title: string;
-  teacherName: string | null;
   scheduledAt: string;
   durationMin: number;
-  batchName: string | null;
 }
 
 export interface DashboardData {
   stats: DashboardStats;
   recentRegistrations: RecentRegistration[];
   upcomingClasses: UpcomingLiveClass[];
-  commerce?: {
-    totalOrders: number;
-    totalRevenue: number;
-  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -75,13 +69,14 @@ export interface DashboardData {
 
 export const adminDashboardService = {
   /**
-   * Fetch all dashboard data in parallel.
-   * Each query is independent so Promise.allSettled ensures partial results
-   * if one table is unreachable.
+   * Fetch aggregate KPI counts & revenue for dashboard cards.
    */
-  async getDashboardData(instituteId?: string | null): Promise<ApiResponse<DashboardData>> {
+  async getDashboardStats(instituteId?: string | null): Promise<ApiResponse<DashboardStats>> {
     try {
       const instituteFilter = instituteId ? { institute_id: instituteId } : {};
+
+      const now = new Date();
+      const startOfMonthIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
       const [
         studentsRes,
@@ -91,8 +86,7 @@ export const adminDashboardService = {
         pendingQuestionsRes,
         pendingContentApprovalsRes,
         pendingMockTestApprovalsRes,
-        recentRegsRes,
-        upcomingClassesRes,
+        ordersRes,
       ] = await Promise.allSettled([
         // Total Students
         supabase
@@ -145,26 +139,14 @@ export const adminDashboardService = {
           .eq('resource_type', 'mock_test')
           .match(instituteFilter),
 
-        // Recent Registrations (last 10)
+        // Monthly Revenue (orders confirmed this month)
         supabase
-          .from('profiles')
-          .select('profile_id, name, email, phone, role, created_at')
-          .match(instituteFilter)
-          .order('created_at', { ascending: false })
-          .limit(10),
-
-        // Upcoming Live Classes (next 5)
-        supabase
-          .from('live_classes')
-          .select('class_id, title, scheduled_at, duration_min, teacher_id')
-          .eq('status', 'scheduled')
-          .match(instituteFilter)
-          .gte('scheduled_at', new Date().toISOString())
-          .order('scheduled_at', { ascending: true })
-          .limit(5),
+          .from('orders')
+          .select('total_amount')
+          .eq('status', 'confirmed')
+          .gte('created_at', startOfMonthIso)
+          .match(instituteFilter),
       ]);
-
-      // ── Extract results with fallbacks ──────────────────────────────
 
       const totalStudents = studentsRes.status === 'fulfilled' ? studentsRes.value.count ?? 0 : 0;
       const totalTeachers = teachersRes.status === 'fulfilled' ? teachersRes.value.count ?? 0 : 0;
@@ -174,109 +156,145 @@ export const adminDashboardService = {
       const pendingContentApprovals = pendingContentApprovalsRes.status === 'fulfilled' ? pendingContentApprovalsRes.value.count ?? 0 : 0;
       const pendingMockTestApprovals = pendingMockTestApprovalsRes.status === 'fulfilled' ? pendingMockTestApprovalsRes.value.count ?? 0 : 0;
 
-      // Recent Registrations
-      let recentRegistrations: RecentRegistration[] = [];
-      if (recentRegsRes.status === 'fulfilled' && recentRegsRes.value.data) {
-        recentRegistrations = recentRegsRes.value.data.map((p: any) => ({
-          profileId: p.profile_id,
-          name: p.name ?? 'Unknown',
-          email: p.email ?? null,
-          phone: p.phone ?? null,
-          role: p.role,
-          createdAt: p.created_at,
-        }));
-      }
-
-      // Upcoming Live Classes
-      let upcomingClasses: UpcomingLiveClass[] = [];
-      if (upcomingClassesRes.status === 'fulfilled' && upcomingClassesRes.value.data) {
-        const rawClasses = upcomingClassesRes.value.data as any[];
-        const upcomingClassIds = rawClasses.map((c) => c.class_id);
-        const upcomingTeacherIds = [...new Set(rawClasses.map((c) => c.teacher_id).filter(Boolean))];
-
-        let teacherNameMap = new Map<string, string>();
-        if (upcomingTeacherIds.length > 0) {
-          const { data: teachers } = await supabase
-            .from('teacher_details')
-            .select('teacher_id, profiles(name)')
-            .in('teacher_id', upcomingTeacherIds);
-          for (const t of teachers ?? []) {
-            const p = (t as any).profiles;
-            const name = Array.isArray(p) ? p[0]?.name : p?.name;
-            if (name) teacherNameMap.set(t.teacher_id, name);
-          }
-        }
-
-        let classBatchMap = new Map<string, string>();
-        if (upcomingClassIds.length > 0) {
-          const { data: links } = await supabase
-            .from('batch_subject_live_classes')
-            .select(`
-              class_id,
-              batch_subjects!inner(
-                batches!inner(name)
-              )
-            `)
-            .in('class_id', upcomingClassIds);
-          for (const l of links ?? []) {
-            const bs = (l as any).batch_subjects;
-            const b = Array.isArray(bs) ? bs[0]?.batches : bs?.batches;
-            const bName = Array.isArray(b) ? b[0]?.name : b?.name;
-            if (bName && !classBatchMap.has(l.class_id)) {
-              classBatchMap.set(l.class_id, bName);
-            }
-          }
-        }
-
-        upcomingClasses = rawClasses.map((c: any) => ({
-          classId: c.class_id,
-          title: c.title,
-          teacherName: teacherNameMap.get(c.teacher_id) ?? null,
-          scheduledAt: c.scheduled_at,
-          durationMin: c.duration_min,
-          batchName: classBatchMap.get(c.class_id) ?? null,
-        }));
-      }
-
-      // ── Commerce Metrics ─────────────────────────────────────────────
-      let totalOrders = 0;
       let totalRevenue = 0;
-
-      try {
-        const { data: ordersData, count: ordersCount } = await supabase
-          .from('orders')
-          .select('total_amount, status', { count: 'exact' })
-          .match(instituteFilter);
-
-        if (ordersData) {
-          totalOrders = ordersCount ?? ordersData.length;
-          totalRevenue = ordersData
-            .filter((o: any) => o.status === 'confirmed')
-            .reduce((sum: number, o: any) => sum + parseFloat(o.total_amount ?? 0), 0);
-        }
-      } catch (_err) {
-        // Commerce data may not be available yet
+      if (ordersRes.status === 'fulfilled' && ordersRes.value.data) {
+        totalRevenue = (ordersRes.value.data as any[]).reduce(
+          (sum: number, o: any) => sum + parseFloat(o.total_amount ?? 0),
+          0
+        );
       }
 
       return {
         success: true,
         data: {
-          stats: {
-            totalStudents,
-            totalTeachers,
-            activeBatches,
-            publishedMockTests,
-            pendingQuestionApprovals,
-            pendingContentApprovals,
-            pendingMockTestApprovals,
-            monthlyRevenue: totalRevenue > 0 ? totalRevenue : null,
-          },
-          recentRegistrations,
-          upcomingClasses,
-          commerce: {
-            totalOrders,
-            totalRevenue,
-          },
+          totalStudents,
+          totalTeachers,
+          activeBatches,
+          publishedMockTests,
+          pendingQuestionApprovals,
+          pendingContentApprovals,
+          pendingMockTestApprovals,
+          monthlyRevenue: totalRevenue > 0 ? totalRevenue : null,
+        },
+      };
+    } catch (err) {
+      console.error('Failed to fetch dashboard stats:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch dashboard stats.',
+      };
+    }
+  },
+
+  /**
+   * Fetch recent user registrations (last 10).
+   */
+  async getRecentRegistrations(instituteId?: string | null): Promise<ApiResponse<RecentRegistration[]>> {
+    try {
+      const instituteFilter = instituteId ? { institute_id: instituteId } : {};
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('profile_id, name, email, phone, role, created_at')
+        .match(instituteFilter)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        throw error;
+      }
+
+      const recentRegistrations: RecentRegistration[] = (data ?? []).map((p: any) => ({
+        profileId: p.profile_id,
+        name: p.name ?? 'Unknown',
+        email: p.email ?? null,
+        phone: p.phone ?? null,
+        role: p.role,
+        createdAt: p.created_at,
+      }));
+
+      return {
+        success: true,
+        data: recentRegistrations,
+      };
+    } catch (err) {
+      console.error('Failed to fetch recent registrations:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch recent registrations.',
+      };
+    }
+  },
+
+  /**
+   * Fetch upcoming scheduled live classes (next 5).
+   */
+  async getUpcomingClasses(instituteId?: string | null): Promise<ApiResponse<UpcomingLiveClass[]>> {
+    try {
+      const instituteFilter = instituteId ? { institute_id: instituteId } : {};
+
+      const { data, error } = await supabase
+        .from('live_classes')
+        .select('class_id, title, scheduled_at, duration_min')
+        .eq('status', 'scheduled')
+        .match(instituteFilter)
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true })
+        .limit(5);
+
+      if (error) {
+        throw error;
+      }
+
+      const upcomingClasses: UpcomingLiveClass[] = (data ?? []).map((c: any) => ({
+        classId: c.class_id,
+        title: c.title,
+        scheduledAt: c.scheduled_at,
+        durationMin: c.duration_min,
+      }));
+
+      return {
+        success: true,
+        data: upcomingClasses,
+      };
+    } catch (err) {
+      console.error('Failed to fetch upcoming classes:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch upcoming classes.',
+      };
+    }
+  },
+
+  /**
+   * Fetch all dashboard data in parallel.
+   * Reuses granular fetchers for consistent behavior across single and composite callers.
+   */
+  async getDashboardData(instituteId?: string | null): Promise<ApiResponse<DashboardData>> {
+    try {
+      const [statsRes, regsRes, classesRes] = await Promise.all([
+        this.getDashboardStats(instituteId),
+        this.getRecentRegistrations(instituteId),
+        this.getUpcomingClasses(instituteId),
+      ]);
+
+      const defaultStats: DashboardStats = {
+        totalStudents: 0,
+        totalTeachers: 0,
+        activeBatches: 0,
+        publishedMockTests: 0,
+        pendingQuestionApprovals: 0,
+        pendingContentApprovals: 0,
+        pendingMockTestApprovals: 0,
+        monthlyRevenue: null,
+      };
+
+      return {
+        success: true,
+        data: {
+          stats: statsRes.success && statsRes.data ? statsRes.data : defaultStats,
+          recentRegistrations: regsRes.success && regsRes.data ? regsRes.data : [],
+          upcomingClasses: classesRes.success && classesRes.data ? classesRes.data : [],
         },
       };
     } catch (err) {

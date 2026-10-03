@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Card } from './Card';
 import { Button } from './Button';
 import { CourseArtwork } from './StoreCourseCard';
+import { IconArrowRight } from '@/components/icons/student-icons';
+import { useAuth } from '@/context/AuthContext';
 import {
   getPublishedDemoClasses,
   getDemoClassVideoSignedUrl,
@@ -24,39 +26,44 @@ const STREAMS: { code: ExamStreamCode | 'ALL'; label: string }[] = [
 ];
 
 export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: DemoClass[] }) {
+  const { user, loading: authLoading } = useAuth();
   const [stream, setStream] = useState<ExamStreamCode | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [classes, setClasses] = useState<DemoClass[]>(initialClasses);
-  const [loading, setLoading] = useState(initialClasses.length === 0);
+  const [loading, setLoading] = useState(false);
+
+  // Video preview modal state
   const [activeVideoClass, setActiveVideoClass] = useState<DemoClass | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
-    if (initialClasses.length === 0) {
+    // If user is logged in, refresh demo classes list
+    if (user && initialClasses.length === 0) {
       setLoading(true);
+      getPublishedDemoClasses()
+        .then((res) => setClasses(res))
+        .finally(() => setLoading(false));
     }
-    getPublishedDemoClasses()
-      .then((data) => {
-        if (isMounted) {
-          setClasses(data);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load demo classes:', err);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
+  }, [user, initialClasses.length]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [initialClasses.length]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return classes.filter((item) => {
+      if (stream !== 'ALL') {
+        const itemStream = (item.streamCode || item.streamName || '').toUpperCase();
+        if (itemStream !== stream) return false;
+      }
+      if (!q) return true;
+      return (
+        item.title.toLowerCase().includes(q) ||
+        (item.description && item.description.toLowerCase().includes(q)) ||
+        (item.streamName && item.streamName.toLowerCase().includes(q))
+      );
+    });
+  }, [classes, stream, search]);
 
-  // Handle video modal opening and signed URL fetching
   const handleOpenVideo = async (demo: DemoClass) => {
     setActiveVideoClass(demo);
     setSignedUrl(null);
@@ -68,11 +75,10 @@ export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: Demo
       if (res?.signedUrl) {
         setSignedUrl(res.signedUrl);
       } else {
-        setVideoError('Unable to generate video preview link. Please try again later.');
+        setVideoError('Unable to load video stream. Please verify storage permissions.');
       }
-    } catch (err) {
-      console.error('Error fetching signed video URL:', err);
-      setVideoError('Could not load the demo video stream.');
+    } catch {
+      setVideoError('An unexpected error occurred while loading the video.');
     } finally {
       setVideoLoading(false);
     }
@@ -82,103 +88,149 @@ export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: Demo
     setActiveVideoClass(null);
     setSignedUrl(null);
     setVideoError(null);
+    setVideoLoading(false);
   };
 
-  // Close modal on Escape key
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleCloseVideo();
-      }
-    };
-    if (activeVideoClass) {
-      window.addEventListener('keydown', onKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = 'unset';
-    };
-  }, [activeVideoClass]);
+  // ── Auth Loading State ──────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div className="store-demo-picker py-16 text-center">
+        <div className="inline-block h-7 w-7 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mb-2.5" />
+        <p className="text-xs font-medium text-slate-500">Checking account status...</p>
+      </div>
+    );
+  }
 
-  const filtered = useMemo(() => {
-    const text = search.trim().toLowerCase();
-    return classes.filter((c) => {
-      const streamNameUpper = (c.streamName || c.streamCode || '').toUpperCase();
-      if (stream !== 'ALL') {
-        if (!streamNameUpper.includes(stream)) return false;
-      }
-      if (!text) return true;
-      return (
-        c.title.toLowerCase().includes(text) ||
-        (c.description && c.description.toLowerCase().includes(text)) ||
-        streamNameUpper.toLowerCase().includes(text)
-      );
-    });
-  }, [classes, stream, search]);
+  // ── Login Required State when user is not logged in ─────────────
+  if (!user) {
+    return (
+      <div className="store-demo-picker">
+        <div className="mx-auto max-w-xl text-center py-8 sm:py-12 px-4">
+          {/* Refined Compact Lock Icon */}
+          <div className="inline-flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs border border-blue-100/90 mb-3.5">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="sm:w-5 sm:h-5"
+            >
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
 
+          {/* Eyebrow badge */}
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200/90 bg-blue-50/90 px-3 py-0.5 text-[10px] sm:text-[11px] font-extrabold tracking-wider text-blue-700 uppercase shadow-2xs mb-3">
+            <span>LOGIN REQUIRED</span>
+          </div>
+
+          {/* Heading */}
+          <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight leading-snug mb-2.5">
+            Please log in to watch <br className="hidden sm:block" />
+            <span className="text-blue-600">Free Demo Classes</span>
+          </h2>
+
+          {/* Description */}
+          <p className="text-slate-600 text-xs sm:text-sm max-w-md mx-auto leading-relaxed mb-6">
+            Experience our pedagogy firsthand with full interactive masterclass recordings across NEET, JEE, CUET, and Foundation. Sign in to your account for instant free access.
+          </p>
+
+          {/* Action Buttons using Header "Get Started" Blue */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-3.5 max-w-sm mx-auto mb-8">
+            <Link
+              href="/login"
+              className="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 px-7 text-xs sm:text-sm font-semibold text-white shadow-xs transition-all"
+            >
+              <span>Log In to Continue</span>
+              <IconArrowRight size={14} />
+            </Link>
+
+            <Link
+              href="/signup"
+              className="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 active:scale-95 px-6 text-xs sm:text-sm font-semibold text-slate-800 shadow-xs transition-all"
+            >
+              Create Free Account
+            </Link>
+          </div>
+
+          {/* Feature Highlights with Blue Accents */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-5 border-t border-slate-100 text-left">
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">✓</span>
+              <span className="text-[11.5px] font-semibold text-slate-700">100% Free Access</span>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">✓</span>
+              <span className="text-[11.5px] font-semibold text-slate-700">HD Video Lectures</span>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">✓</span>
+              <span className="text-[11.5px] font-semibold text-slate-700">Expert Faculty</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Logged-in State: Full Demo Classes Catalog ──────────────────
   return (
-    <div className="store-demo-picker-section">
+    <div className="store-demo-picker">
       <div className="store-section-heading">
         <div>
-          <p className="store-eyebrow">FREE INTERACTIVE SAMPLES</p>
-          <h2>Experience our teaching firsthand.</h2>
+          <p className="store-eyebrow">PREVIEW OUR TEACHING</p>
+          <h2>Free demo classes for every exam stream.</h2>
         </div>
         <p>
-          Watch full sample lessons across all streams before making any enrollment decision.
+          Stream actual masterclass sessions.
+          <br />
+          Experience interactive problem solving & concept clarity.
         </p>
       </div>
 
       <div className="store-catalog-controls">
-        <div className="store-stream-filters" role="group" aria-label="Filter demo classes by stream">
-          {STREAMS.map((item) => {
-            const count =
-              item.code === 'ALL'
-                ? classes.length
-                : classes.filter((c) =>
-                    (c.streamName || c.streamCode || '').toUpperCase().includes(item.code)
-                  ).length;
-            return (
-              <button
-                key={item.code}
-                onClick={() => setStream(item.code)}
-                aria-pressed={stream === item.code}
-                className={stream === item.code ? 'selected' : ''}
-              >
-                {item.label}
-                <span className="tabular-nums">{count}</span>
-              </button>
-            );
-          })}
+        <div className="store-stream-filters" role="group" aria-label="Filter demo classes by exam stream">
+          {STREAMS.map((item) => (
+            <button
+              key={item.code}
+              onClick={() => setStream(item.code)}
+              aria-pressed={stream === item.code}
+              className={stream === item.code ? 'selected' : ''}
+            >
+              {item.label}
+              {item.code === 'ALL' && <span className="tabular-nums">{classes.length}</span>}
+            </button>
+          ))}
         </div>
-
-        <label className="store-search">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="10" cy="10" r="6" stroke="currentColor" strokeWidth="1.7" />
-            <path d="m15 15 5 5" stroke="currentColor" strokeWidth="1.7" />
-          </svg>
-          <span className="sr-only">Search demo classes</span>
+        <div className="store-search">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search demo classes or topics…"
+            aria-label="Search demo classes"
           />
-        </label>
+        </div>
       </div>
 
       <div className="store-results-bar">
-        <p role="status">
-          <b className="tabular-nums">{filtered.length}</b> demo class
-          {filtered.length === 1 ? '' : 'es'} available
-        </p>
+        <div>
+          <span>
+            <b className="tabular-nums">{filtered.length}</b> demo class
+            {filtered.length === 1 ? '' : 'es'} available
+          </span>
+        </div>
       </div>
 
       {loading ? (
         <div className="store-empty">
-          <span aria-hidden="true">◷</span>
-          <h3>Loading demo classes...</h3>
-          <p>Connecting to secure MakeMeTopper video repository.</p>
+          <p>Loading demo classes…</p>
         </div>
       ) : filtered.length > 0 ? (
         <div className="store-course-grid">

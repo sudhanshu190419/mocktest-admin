@@ -151,13 +151,13 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
       </a>
       <header className="store-header">
         <div className="store-container store-header-inner">
-          <Link href="/" className="store-logo flex items-center" aria-label="Make Me Topper home">
+          <Link href="/" className="store-logo flex items-center shrink-0" aria-label="Make Me Topper home">
             <Image
               src="/brand/logo-primary-horizontal.svg"
               alt="Make Me Topper"
               width={165}
               height={38}
-              className="h-8 md:h-9 w-auto object-contain"
+              className="h-7 sm:h-8 md:h-9 w-auto object-contain shrink-0"
               priority
             />
           </Link>
@@ -313,7 +313,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <button
                   type="button"
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600"
@@ -324,13 +324,13 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                 </button>
                 <Link
                   href={`/login?next=${encodeURIComponent(pathname)}`}
-                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-800 shadow-xs transition-all hover:border-slate-300 hover:bg-slate-50"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-800 shadow-xs transition-all hover:border-slate-300 hover:bg-slate-50 active:scale-95"
                 >
                   Log in
                 </Link>
                 <Link
                   href={`/signup?next=${encodeURIComponent(pathname)}`}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-xs transition-all hover:bg-blue-700"
+                  className="hidden md:inline-flex items-center justify-center gap-1.5 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-xs transition-all hover:bg-blue-700"
                 >
                   Get Started <span aria-hidden="true">→</span>
                 </Link>

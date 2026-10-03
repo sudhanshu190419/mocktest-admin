@@ -55,6 +55,7 @@ interface DbTeacherTimetableSlot {
   valid_from: string;
   valid_until: string;
   status: TimetableSlotStatus;
+  is_recurring?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -111,6 +112,7 @@ function mapTeacherTimetableSlot(db: DbTeacherTimetableSlot): TimetableSlot {
     validFrom: db.valid_from,
     validUntil: db.valid_until,
     status: db.status,
+    isRecurring: db.is_recurring ?? true,
     createdBy: db.created_by,
     createdAt: db.created_at,
     updatedAt: db.updated_at,

@@ -56,6 +56,7 @@ interface DbTimetableSlot {
   valid_from: string;
   valid_until: string;
   status: TimetableSlotStatus;
+  is_recurring?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -127,6 +128,7 @@ function mapTimetableSlot(db: DbTimetableSlot): TimetableSlot {
     validFrom: db.valid_from,
     validUntil: db.valid_until,
     status: db.status,
+    isRecurring: db.is_recurring ?? true,
     createdBy: db.created_by,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
@@ -302,6 +304,13 @@ export async function getTimetableSlots(
     }
     if (filters?.status) {
       query = query.eq('status', filters.status);
+    }
+    if (typeof filters?.isRecurring === 'boolean') {
+      query = query.eq('is_recurring', filters.isRecurring);
+    }
+    if (filters?.dateRange) {
+      // Slot validity intersects [startDate, endDate]: valid_from <= endDate AND valid_until >= startDate
+      query = query.lte('valid_from', filters.dateRange.endDate).gte('valid_until', filters.dateRange.startDate);
     }
 
     // ── Sort ─────────────────────────────────────────────────────────

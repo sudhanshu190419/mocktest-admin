@@ -189,24 +189,23 @@ describe('row resolution', () => {
 });
 
 describe('grouping + dedupe', () => {
-  it('groups 3 dates into ONE slot + 3 plans (TEST 24)', () => {
+  it('groups 3 dates into 3 date-specific slots + 3 plans (TEST 24)', () => {
     const rows = [
       makeRawRow({ date: '2026-08-10' }),
       makeRawRow({ date: '2026-08-17' }),
       makeRawRow({ date: '2026-08-24' }),
     ];
     const preview = previewFor(...rows);
-    expect(preview.groups).toHaveLength(1);
-    expect(preview.groups[0].lessonCount).toBe(3);
+    expect(preview.groups).toHaveLength(3);
     expect(preview.groups[0].validFrom).toBe('2026-08-10');
-    expect(preview.groups[0].validUntil).toBe('2026-08-24');
+    expect(preview.groups[0].validUntil).toBe('2026-08-10');
+    expect(preview.groups[0].is_recurring).toBe(false);
     expect(preview.summary.plansToCreate).toBe(3);
-    expect(preview.summary.slotsToCreate).toBe(1);
+    expect(preview.summary.slotsToCreate).toBe(3);
 
     const payload = buildImportPayload(preview);
-    expect(payload?.slots).toHaveLength(1);
+    expect(payload?.slots).toHaveLength(3);
     expect(payload?.plans).toHaveLength(3);
-    expect(new Set(payload?.plans.map((p) => p.slot_key))).toEqual(new Set([payload!.slots[0].key]));
   });
 
   it('splits different times into different slots (TEST 25)', () => {
@@ -264,22 +263,20 @@ describe('grouping + dedupe', () => {
     expect(preview.groups).toHaveLength(2);
   });
 
-  it('applies explicit Valid From / Valid Until as overrides (TEST 27)', () => {
+  it('rejects conflicting teachers for the same batch schedule at the same date and time (TEST J)', () => {
+    const reference = makeReference({
+      assignments: [
+        { batchSubjectId: FIXTURE.bsPhyJeeA, teacherId: FIXTURE.teacherRahul },
+        { batchSubjectId: FIXTURE.bsPhyJeeA, teacherId: FIXTURE.teacherPriya },
+      ],
+    });
     const rows = [
-      makeRawRow({ date: '2026-08-10', validFrom: '2026-08-01', validUntil: '2026-08-31' }),
-      makeRawRow({ date: '2026-08-17', validFrom: '2026-08-01', validUntil: '2026-08-31' }),
+      makeRawRow({ date: '2026-08-10', startTime: '10:00', endTime: '11:00', teacherMobile: '9876543210' }),
+      makeRawRow({ date: '2026-08-10', startTime: '10:00', endTime: '11:00', teacherMobile: '9876543211' }),
     ];
-    const preview = previewFor(...rows);
-    expect(preview.groups[0].validFrom).toBe('2026-08-01');
-    expect(preview.groups[0].validUntil).toBe('2026-08-31');
-  });
-
-  it('errors when a date falls outside the explicit validity (TEST validity)', () => {
-    const preview = previewFor(
-      makeRawRow({ date: '2026-08-10', validFrom: '2026-09-01', validUntil: '2026-09-30' }),
-    );
+    const preview = buildImportPreview({ rows, reference });
     expect(hasBlockingErrors(preview)).toBe(true);
-    expect(preview.rows[0].issues.some((i) => /outside the timetable validity/i.test(i.problem))).toBe(true);
+    expect(preview.rows.some((r) => r.issues.some((i) => /Conflicting teachers/i.test(i.problem)))).toBe(true);
   });
 
   it('keeps each class\'s own chapter/topic across multiple dates (TEST 4)', () => {
@@ -296,41 +293,38 @@ describe('grouping + dedupe', () => {
 });
 
 describe('existing-slot classification', () => {
-  it('reuses an identical existing slot (TEST reuse)', () => {
-    // Existing: Rahul PHY JEE-A Monday 09:00-10:00. Import an identical schedule.
-    const preview = previewFor(
-      makeRawRow({ date: '2026-08-10', startTime: '09:00', endTime: '10:00' }),
-    );
+  it('reuses an identical existing date-specific slot (TEST reuse)', () => {
+    const reference = makeReference({
+      existingSlots: [
+        {
+          timetableSlotId: 'slot-aug-10',
+          teacherId: FIXTURE.teacherRahul,
+          batchSubjectId: FIXTURE.bsPhyJeeA,
+          dayOfWeek: 1,
+          startTime: '09:00:00',
+          endTime: '10:00:00',
+          validFrom: '2026-08-10',
+          validUntil: '2026-08-10',
+          status: 'active',
+        },
+      ],
+      existingPlans: [{ timetableSlotId: 'slot-aug-10', occurrenceDate: '2026-08-10' }],
+    });
+    const preview = buildImportPreview({
+      rows: [makeRawRow({ date: '2026-08-10', startTime: '09:00', endTime: '10:00' })],
+      reference,
+    });
     expect(preview.groups[0].mode).toBe('reuse');
-    expect(preview.groups[0].existingSlotId).toBe(FIXTURE.existingSlotMon);
+    expect(preview.groups[0].existingSlotId).toBe('slot-aug-10');
     expect(preview.summary.slotsToReuse).toBe(1);
-    // The plan for 2026-08-10 already exists on that slot → update, not create.
     expect(preview.summary.plansToUpdate).toBe(1);
     expect(preview.summary.plansToCreate).toBe(0);
   });
 
-  it('extends validity when the import window is wider (TEST extend)', () => {
-    const preview = previewFor(
-      makeRawRow({ date: '2026-08-10', startTime: '09:00', endTime: '10:00', validFrom: '2026-01-01', validUntil: '2027-07-31' }),
-    );
-    expect(preview.groups[0].mode).toBe('extend');
-    expect(preview.summary.slotsToExtend).toBe(1);
-  });
-
-  it('creates a new slot when the schedule differs (TEST create)', () => {
-    const preview = previewFor(makeRawRow()); // 10:00-11:00 vs existing 09:00-10:00
+  it('creates a new date-specific slot when schedule date differs (TEST create)', () => {
+    const preview = previewFor(makeRawRow({ date: '2026-08-17' }));
     expect(preview.groups[0].mode).toBe('create');
     expect(preview.summary.slotsToCreate).toBe(1);
-  });
-
-  it('detects a teacher conflict with an existing active slot (TEST 22 basis)', () => {
-    // Rahul PHY JEE-A Monday 10:00-11:00 — overlaps existing 09:00-10:00? No.
-    // Use 09:30-10:30 to overlap the existing 09:00-10:00 window.
-    const preview = previewFor(
-      makeRawRow({ date: '2026-08-10', startTime: '09:30', endTime: '10:30' }),
-    );
-    expect(hasBlockingErrors(preview)).toBe(true);
-    expect(preview.issues.some((i) => /conflict with an existing timetable/i.test(i.problem))).toBe(true);
   });
 });
 
@@ -394,7 +388,7 @@ describe('warnings + mixed files', () => {
       makeRawRow({ date: '2026-08-17', topic: '' }), // chapter-only
     ];
     const payload = buildImportPayload(previewFor(...rows))!;
-    expect(payload.slots).toHaveLength(1);
+    expect(payload.slots).toHaveLength(2);
     expect(payload.plans).toHaveLength(2);
     const slot = payload.slots[0];
     expect(slot).toMatchObject({
@@ -405,7 +399,7 @@ describe('warnings + mixed files', () => {
       start_time: '10:00:00',
       end_time: '11:00:00',
       valid_from: '2026-08-10',
-      valid_until: '2026-08-17',
+      valid_until: '2026-08-10',
     });
     expect(slot.key).toBeTruthy();
     const byDate = Object.fromEntries(payload.plans.map((p) => [p.occurrence_date, p]));

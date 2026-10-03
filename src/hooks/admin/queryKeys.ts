@@ -97,6 +97,18 @@ export const adminKeys = {
     /** Key for a specific dashboard data query (keyed by instituteId). */
     list: (instituteId?: string | null) =>
       [...adminKeys.dashboard.lists(), instituteId] as const,
+
+    /** Key for decoupled dashboard KPIs (keyed by instituteId). */
+    kpis: (instituteId?: string | null) =>
+      [...adminKeys.dashboard.all(), 'kpis', instituteId] as const,
+
+    /** Key for decoupled recent registrations (keyed by instituteId). */
+    recentRegistrations: (instituteId?: string | null) =>
+      [...adminKeys.dashboard.all(), 'recentRegistrations', instituteId] as const,
+
+    /** Key for decoupled upcoming live classes (keyed by instituteId). */
+    upcomingClasses: (instituteId?: string | null) =>
+      [...adminKeys.dashboard.all(), 'upcomingClasses', instituteId] as const,
   },
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -214,9 +226,13 @@ export const adminKeys = {
     /** Key for every teacher lifecycle list query (broad invalidation). */
     lists: () => [...adminKeys.teacherLifecycle.all(), 'list'] as const,
 
-    /** Key for a specific paginated teacher list. */
-    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
-      [...adminKeys.teacherLifecycle.lists(), filters, pagination] as const,
+    /** Key for a specific paginated, filtered, and sorted teacher list. */
+    list: (
+      filters?: Record<string, unknown>,
+      sort?: Record<string, unknown>,
+      pagination?: Record<string, unknown>,
+    ) =>
+      [...adminKeys.teacherLifecycle.lists(), filters, sort, pagination] as const,
 
     /** Key for every teacher lifecycle detail query. */
     details: () => [...adminKeys.teacherLifecycle.all(), 'detail'] as const,
@@ -243,9 +259,13 @@ export const adminKeys = {
     /** Key for every student lifecycle list query (broad invalidation). */
     lists: () => [...adminKeys.studentLifecycle.all(), 'list'] as const,
 
-    /** Key for a specific paginated student list. */
-    list: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
-      [...adminKeys.studentLifecycle.lists(), filters, pagination] as const,
+    /** Key for a specific paginated, filtered, and sorted student list. */
+    list: (
+      filters?: Record<string, unknown>,
+      sort?: Record<string, unknown>,
+      pagination?: Record<string, unknown>,
+    ) =>
+      [...adminKeys.studentLifecycle.lists(), filters, sort, pagination] as const,
 
     /** Key for every student lifecycle detail query. */
     details: () => [...adminKeys.studentLifecycle.all(), 'detail'] as const,
@@ -315,6 +335,10 @@ export const adminKeys = {
 
     /** Key for dashboard counts. */
     counts: () => [...adminKeys.batchManagement.all(), 'counts'] as const,
+
+    /** Key for lightweight batch lookup (options/dropdowns). */
+    lookup: (instituteId?: string | null) =>
+      [...adminKeys.batchManagement.all(), 'lookup', instituteId] as const,
 
     /** Key for statistics. */
     stats: () => [...adminKeys.batchManagement.all(), 'stats'] as const,
@@ -887,5 +911,75 @@ export const adminKeys = {
     /** Key for the institute-scoped reference-data fetch. */
     reference: (instituteId?: string | null) =>
       [...adminKeys.bulkImport.all(), 'reference', instituteId] as const,
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Attendance Analytics
+  // ═════════════════════════════════════════════════════════════════════════
+
+  attendance: {
+    /** Root key for all attendance queries. */
+    all: () => [...adminKeys.all, 'attendance'] as const,
+
+    /** Key for admin attendance summary cards. */
+    summary: (instituteId?: string | null) =>
+      [...adminKeys.attendance.all(), 'summary', instituteId] as const,
+
+    /** Key for dropdown batch options. */
+    batches: (instituteId?: string | null) =>
+      [...adminKeys.attendance.all(), 'batches', instituteId] as const,
+
+    /** Key for dropdown teacher options. */
+    teachers: (instituteId?: string | null) =>
+      [...adminKeys.attendance.all(), 'teachers', instituteId] as const,
+
+    /** Key for batch attendance table. */
+    batch: (
+      instituteId?: string | null,
+      filters?: { dateFrom?: string; dateTo?: string; teacherId?: string; batchId?: string },
+    ) => [...adminKeys.attendance.all(), 'batch', instituteId, filters] as const,
+
+    /** Key for teacher attendance table. */
+    teacher: (
+        instituteId?: string | null,
+        filters?: { dateFrom?: string; dateTo?: string },
+      ) => [...adminKeys.attendance.all(), 'teacher', instituteId, filters] as const,
+
+      /** Key for teacher batches breakdown (Level 2 drill-down). */
+      teacherBatches: (
+        instituteId?: string | null,
+        teacherId?: string | null,
+        filters?: { dateFrom?: string; dateTo?: string },
+      ) => [...adminKeys.attendance.all(), 'teacherBatches', instituteId, teacherId, filters] as const,
+
+      /** Key for teacher batch classes (Level 3 drill-down). */
+      teacherBatchClasses: (
+        instituteId?: string | null,
+        teacherId?: string | null,
+        batchId?: string | null,
+        filters?: { dateFrom?: string; dateTo?: string; page?: number; pageSize?: number },
+      ) => [...adminKeys.attendance.all(), 'teacherBatchClasses', instituteId, teacherId, batchId, filters] as const,
+
+    /** Key for live class attendance table. */
+    liveClass: (
+      instituteId?: string | null,
+      filters?: {
+        dateFrom?: string;
+        dateTo?: string;
+        teacherId?: string;
+        batchId?: string;
+        search?: string;
+        page?: number;
+        pageSize?: number;
+      },
+    ) => [...adminKeys.attendance.all(), 'liveClass', instituteId, filters] as const,
+
+    /** Key for individual class attendance sheet detail. */
+    classDetail: (classId?: string | null) =>
+      [...adminKeys.attendance.all(), 'classDetail', classId] as const,
+
+    /** Key for student attendance search. */
+    student: (instituteId?: string | null, searchQuery?: string) =>
+      [...adminKeys.attendance.all(), 'student', instituteId, searchQuery] as const,
   },
 };

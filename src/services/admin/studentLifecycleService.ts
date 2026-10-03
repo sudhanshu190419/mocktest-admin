@@ -54,6 +54,7 @@ export interface StudentLifecycleCounts {
   suspended: number;
   inactive: number;
   totalStudents: number;
+  total: number;
 }
 
 /** A single student row in the admin student list. */
@@ -199,39 +200,38 @@ export const studentLifecycleService = {
 
   /**
    * Get student lifecycle dashboard counts grouped by account_status.
+   *
+   * Consolidated in Phase 1 to execute via a single SECURITY DEFINER RPC
+   * (`get_student_lifecycle_counts`) instead of 5 separate PostgREST count requests.
    */
   async getCounts(instituteId?: string | null): Promise<ApiResponse<StudentLifecycleCounts>> {
     try {
-      const makeQuery = (status: AccountStatus) => {
-        let q = supabase
-          .from('profiles')
-          .select('profile_id', { count: 'exact', head: true })
-          .eq('role', 'student')
-          .eq('account_status', status);
-        if (instituteId) {
-          q = q.eq('institute_id', instituteId);
-        }
-        return q;
-      };
+      const { data, error } = await supabase.rpc('get_student_lifecycle_counts', {
+        p_institute_id: instituteId ?? null,
+      });
 
-      const [pending, approved, rejected, suspended, inactive] = await Promise.all([
-        makeQuery('pending'),
-        makeQuery('approved'),
-        makeQuery('rejected'),
-        makeQuery('suspended'),
-        makeQuery('inactive'),
-      ]);
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const raw = (data ?? {}) as Record<string, number>;
+      const pending = Number(raw.pending ?? 0);
+      const approved = Number(raw.approved ?? 0);
+      const rejected = Number(raw.rejected ?? 0);
+      const suspended = Number(raw.suspended ?? 0);
+      const inactive = Number(raw.inactive ?? 0);
+      const sum = pending + approved + rejected + suspended + inactive;
+      const total = typeof raw.total === 'number' && raw.total > 0 ? Number(raw.total) : sum;
 
       const counts: StudentLifecycleCounts = {
-        pending: pending.count ?? 0,
-        approved: approved.count ?? 0,
-        rejected: rejected.count ?? 0,
-        suspended: suspended.count ?? 0,
-        inactive: inactive.count ?? 0,
-        totalStudents: 0,
+        pending,
+        approved,
+        rejected,
+        suspended,
+        inactive,
+        totalStudents: total,
+        total,
       };
-      counts.totalStudents =
-        counts.pending + counts.approved + counts.rejected + counts.suspended + counts.inactive;
 
       return { success: true, data: counts };
     } catch (err) {

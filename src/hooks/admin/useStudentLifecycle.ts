@@ -64,7 +64,7 @@ export function useStudentLifecycleCounts(instituteId?: string | null) {
  * @param sort       - Optional sort configuration.
  * @param pagination - Optional pagination parameters (page, pageSize).
  *
- * Cache key: `['admin', 'studentLifecycle', 'list', filters, pagination]`
+ * Cache key: `['admin', 'studentLifecycle', 'list', filters, sort, pagination]`
  * Stale time: 1 minute
  */
 export function useStudentList(
@@ -75,6 +75,7 @@ export function useStudentList(
   return useQuery({
     queryKey: adminKeys.studentLifecycle.list(
       filters as Record<string, unknown> | undefined,
+      sort as Record<string, unknown> | undefined,
       pagination as Record<string, unknown> | undefined,
     ),
     queryFn: async () => {

@@ -59,7 +59,11 @@ export function useAssignedStudents(batchId: string) {
  * Cache key: `['admin', 'batchStudentAssignment', 'available', batchId, search]`
  * Stale time: 30 seconds (available list changes when assignments are made)
  */
-export function useAvailableStudents(batchId: string, search?: string) {
+export function useAvailableStudents(
+  batchId: string,
+  search?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: [...adminKeys.batchStudentAssignment.availableList(batchId), search],
     queryFn: async () => {
@@ -70,7 +74,7 @@ export function useAvailableStudents(batchId: string, search?: string) {
       return result.data!;
     },
     staleTime: 30 * 1000,
-    enabled: !!batchId,
+    enabled: !!batchId && (options?.enabled ?? true),
   });
 }
 

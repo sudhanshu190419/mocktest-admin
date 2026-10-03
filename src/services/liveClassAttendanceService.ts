@@ -672,57 +672,86 @@ export const liveClassAttendanceService = {
         return [];
       }
 
-      const existingRecords: (AttendanceRecord & { studentName?: string })[] = (data ?? []).map((row: any) => ({
-        attendanceId: row.attendance_id,
-        classId: row.class_id,
-        studentId: row.student_id,
-        instituteId: row.institute_id,
-        joinedAt: row.joined_at,
-        leftAt: row.left_at,
-        durationSeconds: row.duration_seconds ?? 0,
-        attendanceStatus: (row.attendance_status || 'absent') as AttendanceStatus,
-        joinCount: row.join_count ?? 0,
-        isManualOverride: row.is_manual_override ?? false,
-        overrideBy: row.override_by,
-        overrideReason: row.override_reason,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        studentName: row.student_details?.profiles?.name ?? 'Unknown',
-      }));
+      const existingRecords: (AttendanceRecord & { studentName?: string })[] = (data ?? []).map((row: any) => {
+        const sd = Array.isArray(row.student_details) ? row.student_details[0] : row.student_details;
+        const profile = Array.isArray(sd?.profiles) ? sd?.profiles[0] : sd?.profiles;
+        return {
+          attendanceId: row.attendance_id,
+          classId: row.class_id,
+          studentId: row.student_id,
+          instituteId: row.institute_id,
+          joinedAt: row.joined_at,
+          leftAt: row.left_at,
+          durationSeconds: row.duration_seconds ?? 0,
+          attendanceStatus: (row.attendance_status || 'absent') as AttendanceStatus,
+          joinCount: row.join_count ?? 0,
+          isManualOverride: row.is_manual_override ?? false,
+          overrideBy: row.override_by,
+          overrideReason: row.override_reason,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          studentName: profile?.name ?? row.student_details?.profiles?.name ?? 'Unknown',
+        };
+      });
 
       const existingStudentIds = new Set(existingRecords.map((r) => r.studentId));
 
-      // 2. Fetch enrolled students for this class via batch_subject_live_classes -> batch_subjects -> batch_students
-      const { data: bsLinks } = await supabase
-        .from('batch_subject_live_classes')
-        .select(`
-          batch_subject_id,
-          batch_subjects!inner(batch_id)
-        `)
-        .eq('class_id', classId);
+      // 2. Resolve batch IDs for this class from BOTH paths:
+      //    Path 1: batch_subject_live_classes -> batch_subjects -> batch_id
+      //    Path 2: live_class_batch -> batch_id
+      const [bslcRes, directRes] = await Promise.all([
+        supabase
+          .from('batch_subject_live_classes')
+          .select(`
+            batch_subject_id,
+            batch_subjects!inner(batch_id)
+          `)
+          .eq('class_id', classId),
+        supabase
+          .from('live_class_batch')
+          .select('batch_id')
+          .eq('class_id', classId),
+      ]);
 
-      const batchIds = [...new Set((bsLinks ?? []).map((l: any) => {
-        const bs = l.batch_subjects;
-        return Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
-      }).filter(Boolean))];
+      const batchIdSet = new Set<string>();
+      for (const item of bslcRes?.data ?? []) {
+        const bs = (item as any).batch_subjects;
+        const bid = Array.isArray(bs) ? bs[0]?.batch_id : bs?.batch_id;
+        if (bid) batchIdSet.add(bid);
+      }
+      for (const item of directRes?.data ?? []) {
+        if (item.batch_id) batchIdSet.add(item.batch_id);
+      }
+      const batchIds = Array.from(batchIdSet);
 
+      // 3. Fetch active enrolled students from batch_students for all linked batches
       if (batchIds.length > 0) {
-        const { data: batchStudents } = await supabase
+        const { data: batchStudents, error: bsError } = await supabase
           .from('batch_students')
           .select(`
             student_id,
+            status,
             student_details!inner(
               institute_id,
               profiles!inner(name)
             )
           `)
-          .in('batch_id', batchIds);
+          .in('batch_id', batchIds)
+          .eq('status', 'active');
+
+        if (bsError) {
+          console.error('[Attendance] Failed to fetch batch students for class roster:', bsError.message);
+        }
 
         const nowIso = new Date().toISOString();
         for (const bs of batchStudents ?? []) {
           if (!existingStudentIds.has(bs.student_id)) {
             existingStudentIds.add(bs.student_id);
-            const sd = (bs as any).student_details;
+            const sd = Array.isArray((bs as any).student_details)
+              ? (bs as any).student_details[0]
+              : (bs as any).student_details;
+            const profile = Array.isArray(sd?.profiles) ? sd.profiles[0] : sd?.profiles;
+
             existingRecords.push({
               attendanceId: `synthetic-${bs.student_id}`,
               classId,
@@ -738,7 +767,7 @@ export const liveClassAttendanceService = {
               overrideReason: null,
               createdAt: nowIso,
               updatedAt: nowIso,
-              studentName: sd?.profiles?.name ?? 'Unknown',
+              studentName: profile?.name ?? 'Unknown',
             });
           }
         }

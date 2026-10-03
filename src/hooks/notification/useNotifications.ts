@@ -87,6 +87,7 @@ export function useNotifications(
       return result.data!;
     },
     enabled: !!userId,
+    staleTime: 1 * 60 * 1000,
   });
 }
 
@@ -112,6 +113,7 @@ export function useUnreadNotifications(
       return result.data!;
     },
     enabled: !!userId,
+    staleTime: 2 * 60 * 1000, // 2 minutes: prevents redundant header refetches on route changes
   });
 }
 

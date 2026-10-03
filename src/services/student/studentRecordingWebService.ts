@@ -50,6 +50,36 @@ export interface StudentRecording {
   scheduledAt: string | null;
   createdAt: string;
   progress: StudentRecordingProgress | null;
+  assignedAt?: string | null;
+  chapterId?: string | null;
+  chapterName?: string | null;
+  topicId?: string | null;
+  topicName?: string | null;
+}
+
+export interface StudentSubjectSummary {
+  subjectId: string;
+  subjectName: string;
+  recordingCount: number;
+  latestRecordingAt: string | null;
+}
+
+export interface RecordingCursor {
+  assignedAt: string;
+  recordingId: string;
+}
+
+export interface StudentRecordingsPage {
+  recordings: StudentRecording[];
+  nextCursor: RecordingCursor | null;
+  hasMore: boolean;
+}
+
+export interface FetchStudentRecordingsPageOptions {
+  subjectId?: string;
+  cursor?: RecordingCursor | null;
+  pageSize?: number;
+  search?: string;
 }
 
 export interface StudentPlaybackUrlResult {
@@ -94,6 +124,61 @@ interface TeacherProfileLookupRow {
  * Batched teacher profile lookup.
  * Query pattern: teacher_details -> profiles (name)
  */
+
+function pickJoinedName(rel: any): string | null {
+  if (!rel) return null;
+  if (Array.isArray(rel)) {
+    return rel[0]?.name ?? null;
+  }
+  return typeof rel === "object" ? (rel.name ?? null) : null;
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Resolve pure academic subject name.
+ * Prefers subjects.name from the subjects table.
+ * If fallback to batch_subjects.name, strips any batch name suffix/prefix.
+ */
+export function resolveSubjectName(bs: any): string | null {
+  if (bs?.subjects?.name) {
+    return String(bs.subjects.name).trim();
+  }
+  if (!bs?.name) return null;
+  let name = String(bs.name).trim();
+  const bName = bs.batches?.name ? String(bs.batches.name).trim() : null;
+  if (bName) {
+    name = name
+      .replace(new RegExp(`\\s*[-–—:•|]?\\s*\\(?${escapeRegex(bName)}\\)?$`, "gi"), "")
+      .replace(new RegExp(`^\\(?${escapeRegex(bName)}\\)?\\s*[-–—:•|]?\\s*`, "gi"), "")
+      .trim();
+  }
+  return name || bs.name.trim();
+}
+
+/**
+ * Remove batch name from recording titles (e.g. "New - testtt" -> "testtt").
+ */
+export function cleanRecordingTitle(
+  rawTitle: string | null | undefined,
+  batchName: string | null | undefined,
+): string {
+  if (!rawTitle) return "Recorded Class";
+  let title = rawTitle.trim();
+  if (batchName && batchName.trim()) {
+    const escaped = escapeRegex(batchName.trim());
+    title = title
+      .replace(new RegExp(`\\s*(?:[-–—:•|]\\s*)?\\(${escaped}\\)$`, "i"), "")
+      .replace(new RegExp(`\\s*[-–—:•|]\\s*${escaped}$`, "i"), "")
+      .replace(new RegExp(`^\\(${escaped}\\)\\s*(?:[-–—:•|]\\s*)?`, "i"), "")
+      .replace(new RegExp(`^${escaped}\\s*[-–—:•|]\\s*`, "i"), "")
+      .trim();
+  }
+  return title || rawTitle.trim();
+}
+
 async function buildTeacherNameMap(teacherIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const validIds = teacherIds.filter(isUuidString);
@@ -229,7 +314,319 @@ export function getRecordingSubjectColor(subjectName?: string | null): {
 //  Main Hub Service Operation
 // ═══════════════════════════════════════════════════════════════════════════
 
+
 /**
+ * Resolves active batch IDs for the current authenticated student.
+ * Queries batch_students directly using the authenticated Supabase client.
+ * Postgres RLS automatically restricts rows to the authenticated student.
+ */
+export async function fetchActiveStudentBatchIds(): Promise<string[]> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session?.user) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("batch_students")
+      .select("batch_id")
+      .in("status", ["active", "approved"]);
+
+    if (error || !data) {
+      if (error) {
+        console.warn("[studentRecordingWebService] Error querying batch_students fallback:", error);
+      }
+      return [];
+    }
+    return (data as any[])
+      .map((r) => r.batch_id)
+      .filter((id) => typeof id === "string" && isUuidString(id));
+  } catch (err) {
+    console.warn("[studentRecordingWebService] Error fetching active batch IDs fallback:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch subject summaries for the student's active batches (Level 1 Overview).
+ * Calls the optimized RPC get_student_recording_subjects.
+ * Only returns subjects with >= 1 accessible, completed, non-deleted recording.
+ *
+ * @param batchIds - Array of batch UUIDs the student is enrolled in.
+ */
+export async function getStudentRecordingSubjects(
+  batchIds: string[],
+): Promise<StudentSubjectSummary[]> {
+  const targetBatchIds = batchIds.filter(isUuidString);
+  if (targetBatchIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc("get_student_recording_subjects", {
+    p_batch_ids: targetBatchIds,
+  });
+
+  if (error) {
+    console.error("[studentRecordingWebService] Error fetching recording subjects:", error);
+    throw new Error(error.message || "Failed to fetch recording subjects");
+  }
+
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
+
+  return (data as any[]).map((row) => ({
+    subjectId: row.subject_id,
+    subjectName: row.subject_name,
+    recordingCount: Number(row.recording_count) || 0,
+    latestRecordingAt: row.latest_recording_at ?? null,
+  }));
+}
+
+/**
+ * Fetch a paginated page of recordings for a specific subject (Level 2).
+ * Uses cursor-based keyset pagination on (assigned_at DESC, recording_id DESC).
+ *
+ * @param batchIds - Array of batch UUIDs the student is enrolled in.
+ * @param options  - Pagination and filtering options (subjectId, cursor, pageSize, search).
+ */
+export async function getStudentRecordingsPage(
+  batchIds: string[],
+  options?: FetchStudentRecordingsPageOptions,
+): Promise<StudentRecordingsPage> {
+  const targetBatchIds = batchIds.filter(isUuidString);
+  if (targetBatchIds.length === 0) {
+    return { recordings: [], nextCursor: null, hasMore: false };
+  }
+
+  const pageSize = options?.pageSize && options.pageSize > 0 ? options.pageSize : 20;
+
+  // 1. Resolve batch_subject_ids for the target batches (optionally filtered by subjectId)
+  let bsQuery = supabase
+    .from("batch_subjects")
+    .select(`
+      batch_subject_id,
+      batch_id,
+      subject_id,
+      name,
+      batches!inner (name),
+      subjects (name)
+    `)
+    .in("batch_id", targetBatchIds)
+    .eq("is_active", true);
+
+  if (options?.subjectId && isUuidString(options.subjectId)) {
+    bsQuery = bsQuery.eq("subject_id", options.subjectId);
+  }
+
+  const { data: bsLookup, error: bsError } = await bsQuery;
+
+  if (bsError) {
+    console.error("[studentRecordingWebService] Error resolving batch subjects for page:", bsError);
+    throw new Error(bsError.message || "Failed to resolve batch subjects");
+  }
+
+  if (!bsLookup || bsLookup.length === 0) {
+    return { recordings: [], nextCursor: null, hasMore: false };
+  }
+
+  const batchSubjectIds: string[] = [];
+  const bsMap = new Map<
+    string,
+    { batchName: string | null; subjectName: string | null; subjectId: string | null; batchId: string }
+  >();
+
+  for (const bs of bsLookup as any[]) {
+    batchSubjectIds.push(bs.batch_subject_id);
+    bsMap.set(bs.batch_subject_id, {
+      batchName: bs.batches?.name ?? null,
+      subjectName: resolveSubjectName(bs),
+      subjectId: bs.subject_id ?? null,
+      batchId: bs.batch_id,
+    });
+  }
+
+  // 2. Query batch_subject_recordings joining recordings and live_classes
+  // Fetch with padding to account for any potential duplicate assignments of the same recording across student batches
+  const fetchLimit = pageSize * 2 + 1;
+
+  let bsrQuery = supabase
+    .from("batch_subject_recordings")
+    .select(`
+      recording_id,
+      batch_subject_id,
+      assigned_at,
+      recordings!inner (
+        recording_id,
+        class_id,
+        teacher_id,
+        title,
+        description,
+        status,
+        duration_seconds,
+        thumbnail_path,
+        created_at,
+        is_deleted,
+        live_classes!left (
+          class_id,
+          title,
+          description,
+          teacher_id,
+          chapter_id,
+          topic_id,
+          scheduled_at,
+          chapters (name),
+          topics (name)
+        )
+      )
+    `)
+    .in("batch_subject_id", batchSubjectIds)
+    .eq("recordings.status", "completed")
+    .eq("recordings.is_deleted", false)
+    .order("assigned_at", { ascending: false })
+    .order("recording_id", { ascending: false });
+
+  // Apply deterministic keyset cursor strictly older than (cursor.assignedAt, cursor.recordingId)
+  if (options?.cursor?.assignedAt && options?.cursor?.recordingId) {
+    bsrQuery = bsrQuery.or(
+      `assigned_at.lt.${options.cursor.assignedAt},and(assigned_at.eq.${options.cursor.assignedAt},recording_id.lt.${options.cursor.recordingId})`,
+    );
+  } else if (options?.cursor?.assignedAt) {
+    bsrQuery = bsrQuery.lt("assigned_at", options.cursor.assignedAt);
+  }
+
+  bsrQuery = bsrQuery.limit(fetchLimit);
+
+  const { data: bsrData, error: bsrError } = await bsrQuery;
+
+  if (bsrError) {
+    console.error("[studentRecordingWebService] Query error in getStudentRecordingsPage:", bsrError);
+    throw new Error(bsrError.message || "Failed to fetch recordings page");
+  }
+
+  if (!bsrData || bsrData.length === 0) {
+    return { recordings: [], nextCursor: null, hasMore: false };
+  }
+
+  // 3. Collect unique teacher IDs for batch resolution (only for these ~20 rows)
+  const teacherIds = new Set<string>();
+  for (const row of bsrData as any[]) {
+    const rec = row.recordings;
+    const teacherId = rec?.teacher_id || rec?.live_classes?.teacher_id;
+    if (teacherId && isUuidString(teacherId)) {
+      teacherIds.add(teacherId);
+    }
+  }
+
+  const teacherNameMap = await buildTeacherNameMap(Array.from(teacherIds));
+
+  // 4. Deduplicate recordings by recording_id in memory
+  const recordingMap = new Map<string, StudentRecording>();
+
+  for (const row of bsrData as any[]) {
+    const rec = row.recordings;
+    if (!rec || rec.is_deleted) continue;
+
+    const recordingId = rec.recording_id;
+    if (recordingMap.has(recordingId)) {
+      continue;
+    }
+
+    const bsInfo = bsMap.get(row.batch_subject_id);
+    const teacherId = rec.teacher_id || rec.live_classes?.teacher_id;
+    const teacherName = teacherId ? (teacherNameMap.get(teacherId) ?? null) : null;
+    const rawTitle = rec.title || rec.live_classes?.title || "Recorded Class";
+    const title = cleanRecordingTitle(rawTitle, bsInfo?.batchName);
+    const description = rec.description || rec.live_classes?.description || null;
+    const scheduledAt = rec.live_classes?.scheduled_at || null;
+
+    if (options?.search) {
+      const searchLower = options.search.toLowerCase();
+      const titleMatch = title.toLowerCase().includes(searchLower);
+      const descMatch = description?.toLowerCase().includes(searchLower) ?? false;
+      const teacherMatch = teacherName?.toLowerCase().includes(searchLower) ?? false;
+      const subjectMatch = bsInfo?.subjectName?.toLowerCase().includes(searchLower) ?? false;
+
+      if (!titleMatch && !descMatch && !teacherMatch && !subjectMatch) {
+        continue;
+      }
+    }
+
+    recordingMap.set(recordingId, {
+      recordingId,
+      classId: rec.class_id || rec.live_classes?.class_id || null,
+      title,
+      description,
+      teacherName,
+      subjectName: bsInfo?.subjectName ?? null,
+      batchName: bsInfo?.batchName ?? null,
+      batchId: bsInfo?.batchId ?? null,
+      courseName: null,
+      thumbnailPath: rec.thumbnail_path ?? null,
+      durationSeconds: typeof rec.duration_seconds === "number" ? Math.max(0, rec.duration_seconds) : 0,
+      scheduledAt,
+      createdAt: rec.created_at,
+      assignedAt: row.assigned_at ?? rec.created_at,
+      chapterId: rec.live_classes?.chapter_id ?? null,
+      chapterName: pickJoinedName(rec.live_classes?.chapters),
+      topicId: rec.live_classes?.topic_id ?? null,
+      topicName: pickJoinedName(rec.live_classes?.topics),
+      progress: null,
+    });
+  }
+
+  const allDeduplicated = Array.from(recordingMap.values());
+
+  // Deterministic sort newest first (assignedAt DESC, recordingId DESC)
+  allDeduplicated.sort((a, b) => {
+    const timeA = new Date(a.assignedAt || a.createdAt).getTime();
+    const timeB = new Date(b.assignedAt || b.createdAt).getTime();
+    if (timeA !== timeB) return timeB - timeA;
+    return b.recordingId.localeCompare(a.recordingId);
+  });
+
+  const hasMore = allDeduplicated.length > pageSize || bsrData.length === fetchLimit;
+  const recordings = allDeduplicated.slice(0, pageSize);
+
+  // 5. Fetch viewing progress ONLY for this page of max 20 recordings
+  if (recordings.length > 0) {
+    const pageRecordingIds = recordings.map((r) => r.recordingId);
+    const durationsMap = new Map<string, number>();
+    for (const r of recordings) {
+      durationsMap.set(r.recordingId, r.durationSeconds);
+    }
+    try {
+      const progressResult = await fetchBatchRecordingProgress(pageRecordingIds, {
+        durationsMap,
+      });
+      if (progressResult.data) {
+        for (const rec of recordings) {
+          rec.progress = progressResult.data.get(rec.recordingId) ?? null;
+        }
+      }
+    } catch (progErr) {
+      console.warn("[studentRecordingWebService] Error fetching page progress:", progErr);
+    }
+  }
+
+  const lastItem = recordings.length > 0 ? recordings[recordings.length - 1] : null;
+  const nextCursor: RecordingCursor | null =
+    hasMore && lastItem && lastItem.assignedAt
+      ? {
+          assignedAt: lastItem.assignedAt,
+          recordingId: lastItem.recordingId,
+        }
+      : null;
+
+  return {
+    recordings,
+    nextCursor,
+    hasMore,
+  };
+}
+
+/**
+ * @deprecated Use getStudentRecordingSubjects (Level 1) and getStudentRecordingsPage (Level 2) instead.
  * Fetch all completed, accessible recorded classes for the authenticated student.
  *
  * @param userId - Optional Supabase auth user UUID. If omitted, resolved from session.

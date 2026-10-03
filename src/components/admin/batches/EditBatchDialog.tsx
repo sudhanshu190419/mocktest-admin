@@ -33,7 +33,6 @@ export function EditBatchDialog({ isOpen, onClose, batch, onSuccess }: EditBatch
   const [academicYear, setAcademicYear] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [maxSeats, setMaxSeats] = useState<number | ''>('');
   const [status, setStatus] = useState<BatchStatus>('upcoming');
 
   // Populate form fields when batch data changes
@@ -44,7 +43,6 @@ export function EditBatchDialog({ isOpen, onClose, batch, onSuccess }: EditBatch
       setAcademicYear(batch.academicYear || '');
       setStartDate(batch.startDate ? batch.startDate.slice(0, 10) : '');
       setEndDate(batch.endDate ? batch.endDate.slice(0, 10) : '');
-      setMaxSeats(batch.capacity ?? '');
       setStatus(batch.status || 'upcoming');
     }
   }, [batch]);
@@ -83,7 +81,6 @@ export function EditBatchDialog({ isOpen, onClose, batch, onSuccess }: EditBatch
       academicYear: trimmedYear || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      maxSeats: maxSeats === '' ? null : Number(maxSeats),
       status,
     };
 
@@ -216,20 +213,7 @@ export function EditBatchDialog({ isOpen, onClose, batch, onSuccess }: EditBatch
             </div>
           </div>
 
-          {/* Max Seats */}
-          <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              Max Seats <span className="text-gray-400">(optional)</span>
-            </label>
-            <input
-              type="number"
-              value={maxSeats}
-              onChange={(e) => setMaxSeats(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="Unlimited"
-              min={1}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
+
 
           {/* Error Banner */}
           {updateMutation.isError && (

@@ -109,13 +109,17 @@ export default function AdminTimetablePage() {
   // ── View + filters ──────────────────────────────────────────────────
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [weekAnchor, setWeekAnchor] = useState(() => mondayOfWeek(new Date()));
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i)),
+    [weekAnchor],
+  );
+  const weekStartISO = toLocalISODate(weekDates[0]);
+  const weekEndISO = toLocalISODate(weekDates[6]);
   const [teacherFilter, setTeacherFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  // 100/page so the calendar view (which has no pagination controls) shows
-  // the full timetable; the list view still paginates via the DataTable.
-  const pageSize = 100;
+  const pageSize = view === 'calendar' ? 500 : 25;
 
   // ── Modal / dialog state ────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false);
@@ -157,8 +161,9 @@ export default function AdminTimetablePage() {
       teacherId: teacherFilter || undefined,
       batchId: batchFilter || undefined,
       status: (statusFilter || undefined) as TimetableSlotStatus | undefined,
+      dateRange: view === 'calendar' ? { startDate: weekStartISO, endDate: weekEndISO } : undefined,
     }),
-    [instituteId, teacherFilter, batchFilter, statusFilter],
+    [instituteId, teacherFilter, batchFilter, statusFilter, view, weekStartISO, weekEndISO],
   );
 
   const { data, isLoading } = useTimetableSlotList(filters, { page, pageSize });
@@ -234,43 +239,59 @@ export default function AdminTimetablePage() {
     setPage(1);
   }, []);
 
-  const weekDates = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i)),
-    [weekAnchor],
-  );
-
-  // Slots grouped by day_of_week for the calendar. A slot is shown only in
-  // weeks where its recurring weekday actually occurs inside its validity
-  // window (valid_from..valid_until) — expired slots must never appear in
-  // later weeks (e.g. an August-2026 slot must not render in February 2027),
-  // and a slot ending mid-week must not render for the rest of that week.
-  const weekStartISO = toLocalISODate(weekDates[0]);
-  const weekEndISO = toLocalISODate(weekDates[6]);
+  // Slots grouped by day_of_week for the calendar.
+  // - Recurring slots (isRecurring !== false) appear on their weekday within validity window.
+  // - One-off date-specific slots (isRecurring === false) appear ONLY on validFrom === dateStr.
+  // - A date-specific slot overrides a recurring slot on the same batch_subject_id + start_time + end_time (substitution).
   const slotsByDay = useMemo(() => {
     const map = new Map<number, TimetableSlot[]>();
-    for (const s of slots) {
-      // Same rule as the backend materializer and the lesson planner
-      // (generateOccurrenceDates clamps to day_of_week + validity): keep the
-      // slot only when at least one of its occurrences falls inside the
-      // selected week AND inside its validity window. The dayOfWeek grouping
-      // below then places it on the correct weekday column.
-      const occursInWeek = generateOccurrenceDates(
-        s.dayOfWeek,
-        s.validFrom,
-        s.validUntil,
-        weekStartISO,
-        weekEndISO,
-      );
-      if (occursInWeek.length === 0) continue;
-      const list = map.get(s.dayOfWeek) ?? [];
-      list.push(s);
-      map.set(s.dayOfWeek, list);
+
+    for (let i = 0; i < 7; i++) {
+      const dayDate = weekDates[i];
+      const dateStr = toLocalISODate(dayDate);
+      const dayNum = i + 1; // 1 = Monday ... 7 = Sunday
+
+      const candidatesOnDate: TimetableSlot[] = [];
+      for (const s of slots) {
+        if (s.isRecurring === false) {
+          if (s.validFrom === dateStr) {
+            candidatesOnDate.push(s);
+          }
+        } else {
+          if (
+            s.dayOfWeek === dayNum &&
+            dateStr >= s.validFrom &&
+            dateStr <= s.validUntil
+          ) {
+            candidatesOnDate.push(s);
+          }
+        }
+      }
+
+      const collisionMap = new Map<string, TimetableSlot>();
+      for (const slot of candidatesOnDate) {
+        const overrideKey = `${slot.batchSubjectId}_${slot.startTime}_${slot.endTime}`;
+        const existing = collisionMap.get(overrideKey);
+        if (!existing) {
+          collisionMap.set(overrideKey, slot);
+        } else {
+          // Date-specific one-off slot overrides recurring template
+          if (slot.isRecurring === false && existing.isRecurring !== false) {
+            collisionMap.set(overrideKey, slot);
+          }
+        }
+      }
+
+      const finalSlots: TimetableSlot[] = [];
+      collisionMap.forEach((slot) => {
+        finalSlots.push(slot);
+      });
+      finalSlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      map.set(dayNum, finalSlots);
     }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.startTime.localeCompare(b.startTime));
-    }
+
     return map;
-  }, [slots, weekStartISO, weekEndISO]);
+  }, [slots, weekDates]);
 
   // ── Table columns ───────────────────────────────────────────────────
   const columns = useMemo<Column<TimetableSlot>[]>(
@@ -334,10 +355,12 @@ export default function AdminTimetablePage() {
       },
       {
         key: 'validity',
-        header: 'Valid',
+        header: 'Validity',
         render: (item) => (
           <span className="text-gray-600 dark:text-gray-400">
-            {formatDate(item.validFrom)} → {formatDate(item.validUntil)}
+            {item.isRecurring === false
+              ? formatDate(item.validFrom)
+              : `${formatDate(item.validFrom)} → ${formatDate(item.validUntil)}`}
           </span>
         ),
       },
@@ -537,7 +560,7 @@ export default function AdminTimetablePage() {
             </span>
             <span className="hidden items-center gap-1.5 text-xs text-gray-400 sm:inline-flex">
               <CalendarBlank size={14} />
-              Weekly recurring slots
+              Weekly schedule & classes
             </span>
           </div>
 
@@ -580,9 +603,20 @@ export default function AdminTimetablePage() {
                         title="Edit timetable"
                         className="block w-full cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-700 dark:hover:bg-blue-900/20"
                       >
-                        <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">
-                          {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
-                        </p>
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">
+                            {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
+                          </p>
+                          {slot.isRecurring === false ? (
+                            <span className="rounded bg-purple-100 px-1 py-0.5 text-[9px] font-semibold text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                              One-off
+                            </span>
+                          ) : (
+                            <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                              Weekly
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-0.5 truncate text-xs font-medium text-gray-900 dark:text-gray-100">
                           {slot.subjectName ?? '—'}
                         </p>

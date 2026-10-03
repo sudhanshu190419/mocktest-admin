@@ -7,7 +7,7 @@ import {
   IconClock,
   IconUser,
   IconCalendar,
-  IconGraduationCap,
+  IconBookmark,
   IconCheckCircle,
   IconRefresh,
   IconArrowRight,
@@ -110,10 +110,14 @@ export const StudentRecordingCard: React.FC<StudentRecordingCardProps> = ({ reco
               </div>
             )}
 
-            {recording.batchName && (
+            {(recording.chapterName || recording.topicName) && (
               <div className="flex items-center gap-2">
-                <IconGraduationCap size={14} className="text-ink-muted shrink-0" />
-                <span className="truncate">{recording.batchName}</span>
+                <IconBookmark size={14} className="text-ink-muted shrink-0" />
+                <span className="truncate">
+                  {recording.chapterName && recording.topicName
+                    ? `${recording.chapterName} • ${recording.topicName}`
+                    : recording.chapterName || recording.topicName}
+                </span>
               </div>
             )}
 

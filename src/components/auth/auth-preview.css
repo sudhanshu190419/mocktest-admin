@@ -31,13 +31,18 @@
   min-height: 100svh;
   background: var(--color-auth-paper);
   color: var(--color-auth-ink);
-  font-family: var(--auth-dm-sans), sans-serif;
+  --auth-manrope: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --auth-dm-sans: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.6;
 }
 .auth-preview :where(a, button, input):focus-visible { outline: 3px solid var(--color-auth-blue); outline-offset: 4px; }
 .auth-preview button { cursor: pointer; }
 .auth-preview button:disabled { cursor: wait; }
-.auth-preview h1, .auth-preview h2, .auth-logo { font-family: var(--auth-manrope), sans-serif; }
+.auth-preview h1, .auth-preview h2, .auth-logo { font-family: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 .auth-skip { position: fixed; top: 8px; left: 12px; padding: 12px 20px; background: var(--color-auth-white); z-index: 100; transform: translateY(-150%); }
 .auth-skip:focus { transform: none; }
 .auth-banner { padding: 9px 20px; background: var(--color-auth-sky); text-align: center; font-size: 12px; }

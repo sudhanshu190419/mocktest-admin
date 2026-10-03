@@ -309,8 +309,47 @@ export const courseManagementService = {
 
   /**
    * Get course management dashboard counts grouped by status.
+   *
+   * Tries the consolidated `get_admin_course_counts` RPC first for a single-query
+   * aggregation, falling back to parallel HEAD count queries if unavailable.
    */
   async getCounts(instituteId?: string | null): Promise<ApiResponse<CourseManagementCounts>> {
+    try {
+      // 1. Try single efficient RPC aggregation
+      try {
+        const rpcResult = await supabase.rpc('get_admin_course_counts', {
+          p_institute_id: instituteId ?? null,
+        });
+
+        if (rpcResult && !rpcResult.error && rpcResult.data) {
+          const raw = rpcResult.data as Record<string, number>;
+          return {
+            success: true,
+            data: {
+              total: Number(raw.total ?? 0),
+              draft: Number(raw.draft ?? 0),
+              pendingApproval: Number(raw.pendingApproval ?? raw.pending_approval ?? 0),
+              approved: Number(raw.approved ?? 0),
+              published: Number(raw.published ?? 0),
+              archived: Number(raw.archived ?? 0),
+            },
+          };
+        }
+      } catch {
+        // Fall through to fallback
+      }
+
+      // 2. Fallback if RPC is unavailable (e.g. during migration rollout)
+      return await courseManagementService._getCountsFallback(instituteId);
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  /**
+   * Fallback for course dashboard counts when RPC is unavailable.
+   */
+  async _getCountsFallback(instituteId?: string | null): Promise<ApiResponse<CourseManagementCounts>> {
     try {
       const makeQuery = (status: CourseStatus) => {
         let q = supabase

@@ -61,7 +61,11 @@ export function useBatchSubjectTeacherSummary(batchId: string, instituteId?: str
  * Cache key: `['admin', 'batchSubjectTeacherAssignment', 'available', instituteId, search]`
  * Stale time: 30 seconds
  */
-export function useBSTAvailableTeachers(instituteId: string, search?: string) {
+export function useBSTAvailableTeachers(
+  instituteId: string,
+  search?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: adminKeys.batchSubjectTeacherAssignment.availableTeachers(instituteId, search),
     queryFn: async () => {
@@ -75,7 +79,7 @@ export function useBSTAvailableTeachers(instituteId: string, search?: string) {
       return result.data!;
     },
     staleTime: 30 * 1000,
-    enabled: !!instituteId,
+    enabled: !!instituteId && (options?.enabled ?? true),
   });
 }
 

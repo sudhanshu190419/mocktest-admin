@@ -1,17 +1,12 @@
 import type { Metadata } from 'next';
-import { Manrope, DM_Sans } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import Providers from '@/lib/providers';
 import './globals.css';
 
-const manrope = Manrope({
-  variable: '--font-store-display',
+const plusJakartaSans = Plus_Jakarta_Sans({
+  variable: '--font-plus-jakarta-sans',
   subsets: ['latin'],
-  display: 'swap',
-});
-
-const dmSans = DM_Sans({
-  variable: '--font-store-body',
-  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
 });
 
@@ -33,7 +28,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${dmSans.variable} h-full antialiased`}
+      className={`${plusJakartaSans.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
@@ -42,4 +37,3 @@ export default function RootLayout({
     </html>
   );
 }
-

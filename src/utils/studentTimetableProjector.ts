@@ -57,6 +57,7 @@ export interface RawTimetableSlot {
   end_time: string;
   valid_from: string; // YYYY-MM-DD
   valid_until: string; // YYYY-MM-DD
+  is_recurring?: boolean;
   status: 'active' | 'paused' | 'cancelled';
   teacher_name?: string | null;
   subject_name?: string | null;
@@ -416,19 +417,57 @@ export function projectSlotsForDateRange(params: {
     const dayOfWeek = cursor.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
     const isoDow = dayOfWeek === 0 ? 7 : dayOfWeek; // 1 = Mon ... 7 = Sun
 
-    // Match recurring slots for this day of week & validity window
+    // Match slots active for this date (one-off on exact valid_from, recurring on day of week)
+    const candidatesOnDate: RawTimetableSlot[] = [];
     for (const slot of activeSlots) {
-      if (slot.day_of_week !== isoDow) continue;
-      if (slot.valid_from && dateStr < slot.valid_from) continue;
-      if (slot.valid_until && dateStr > slot.valid_until) continue;
+      const inRange = (!slot.valid_from || dateStr >= slot.valid_from) &&
+                      (!slot.valid_until || dateStr <= slot.valid_until);
+      if (!inRange) continue;
 
+      const isDateSpecific = slot.is_recurring === false || Boolean(slot.valid_from && slot.valid_until && slot.valid_from === slot.valid_until);
+
+      if (isDateSpecific) {
+        // Date-specific / one-off slot appears ONLY on its exact date
+        if (slot.valid_from === dateStr) {
+          candidatesOnDate.push(slot);
+        }
+      } else {
+        // Recurring slot appears only on matching weekday
+        if (slot.day_of_week === isoDow) {
+          candidatesOnDate.push(slot);
+        }
+      }
+    }
+
+    // Resolve Overrides: one-off slot overrides recurring template for same batch_subject_id + start_time + end_time
+    // Teacher is excluded from the override key so a substitute teacher replaces the regular recurring teacher for that date
+    const collisionMap = new Map<string, RawTimetableSlot>();
+    for (const slot of candidatesOnDate) {
+      const overrideKey = `${slot.batch_subject_id}_${slot.start_time}_${slot.end_time}`;
+      const existing = collisionMap.get(overrideKey);
+
+      const isSlotDateSpecific = slot.is_recurring === false || Boolean(slot.valid_from && slot.valid_until && slot.valid_from === slot.valid_until);
+      const isExistingDateSpecific = existing ? (existing.is_recurring === false || Boolean(existing.valid_from && existing.valid_until && existing.valid_from === existing.valid_until)) : false;
+
+      if (!existing) {
+        collisionMap.set(overrideKey, slot);
+      } else {
+        // Date-specific slot ALWAYS overrides recurring template
+        if (isSlotDateSpecific && !isExistingDateSpecific) {
+          collisionMap.set(overrideKey, slot);
+        }
+      }
+    }
+
+    collisionMap.forEach((slot) => {
       const planKey = `${slot.timetable_slot_id}_${dateStr}`;
       const plan = lessonPlanMap.get(planKey);
       const concrete = concreteClassBySlotDate.get(planKey);
 
       const subjectName = slot.subject_name || concrete?.subject_name || 'Subject';
       const teacherName = slot.teacher_name || concrete?.teacher_name || null;
-      const batchName = slot.batch_name || concrete?.batch_name || 'Class Batch';
+      const rawBatchName = slot.batch_name || concrete?.batch_name || null;
+      const batchName = rawBatchName || 'Class Batch';
       const batchId = slot.batch_id || concrete?.batch_id || '';
       const batchSubjectId = slot.batch_subject_id || '';
 
@@ -450,6 +489,14 @@ export function projectSlotsForDateRange(params: {
         now,
       );
 
+      const title =
+        concrete?.title ||
+        (rawBatchName
+          ? `${subjectName} — ${rawBatchName}`
+          : chapterName
+            ? `${subjectName}: ${chapterName}`
+            : `${subjectName} Lecture`);
+
       results.push({
         id: concrete?.class_id || `projected_${slot.timetable_slot_id}_${dateStr}`,
         date: dateStr,
@@ -458,7 +505,7 @@ export function projectSlotsForDateRange(params: {
         timeSlot,
         duration: `${durationMin} mins`,
         durationMin,
-        title: concrete?.title || (chapterName ? `${subjectName}: ${chapterName}` : `${subjectName} Lecture`),
+        title,
         subject: subjectName,
         teacher: teacherName,
         batch: batchName,
@@ -477,7 +524,7 @@ export function projectSlotsForDateRange(params: {
         badgeText: theme.badgeText,
         isProjected: !concrete,
       });
-    }
+    });
 
     // Add one-off concrete classes for this date
     const oneOffs = oneOffClassesByDate.get(dateStr) || [];

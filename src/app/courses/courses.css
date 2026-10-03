@@ -38,9 +38,14 @@
   --radius-card: var(--radius-store-card);
   --shadow-card: var(--shadow-store-card);
   --shadow-pop: var(--shadow-store-hover);
+  --font-store-display: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-store-body: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--color-store-paper);
   color: var(--color-store-ink);
-  font-family: var(--font-store-body), sans-serif;
+  font-family: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.6;
   flex: 1;
 }
@@ -56,7 +61,7 @@
 .store-skip:focus { transform: none; }
 .store-header { position: sticky; top: 0; z-index: 30; background: var(--color-store-white); border-bottom: 1px solid var(--color-store-line); }
 .store-header-inner { display: flex; align-items: center; justify-content: space-between; min-height: 85px; gap: 24px; }
-.store-logo { display: flex; align-items: center; gap: 11px; font-family: var(--font-store-display), sans-serif; font-weight: 800; font-size: 23px; letter-spacing: -.065em; }
+.store-logo { display: flex; align-items: center; gap: 11px; font-family: var(--font-store-display), sans-serif; font-weight: 800; font-size: 23px; letter-spacing: -.065em; flex-shrink: 0; }
 .store-logomark { width: 35px; height: 35px; display: inline-flex; align-items: center; justify-content: center; color: var(--color-store-white); background: var(--color-store-blue); border-radius: 10px 10px 3px 10px; font-size: 25px; letter-spacing: -.13em; padding-right: 5px; }
 .store-logomark span { color: var(--color-store-apricot); }
 .store-logo-light { font-weight: 450; }
@@ -710,6 +715,10 @@
   .store-stream-selection { grid-column: 1 / -1; margin-top: 14px; }
   .store-home-method { gap: 40px; }
 }
+@media (max-width: 768px) {
+  .store-desktop-nav { display: none !important; }
+  .store-menu-toggle { display: flex !important; align-items: center; justify-content: center; }
+}
 @media (max-width: 800px) {
   .store-carousel-slide { grid-template-columns: 1fr; gap: 30px; padding-block: 20px 30px; }
   .store-carousel-copy h2 { font-size: clamp(2.5rem, 6.5vw, 3.4rem); }
@@ -1034,6 +1043,10 @@
   .store-carousel-track-scroll { gap: 20px; }
   .store-carousel-slide-item { flex: 0 0 calc((100% - (2 * 20px)) / 2.22); min-width: calc((100% - (2 * 20px)) / 2.22); max-width: calc((100% - (2 * 20px)) / 2.22); }
 }
+@media (max-width: 768px) {
+  .store-desktop-nav { display: none !important; }
+  .store-menu-toggle { display: flex !important; align-items: center; justify-content: center; }
+}
 @media (max-width: 800px) {
   .store-desktop-nav { gap: 20px; }
   .store-logo { font-size: 20px; }
@@ -1086,23 +1099,27 @@
   .store-desktop-nav { display: none; }
   .store-menu-toggle { display: block; padding: 8px 0; font-size: 12px; }
   .store-login { font-size: 12px; min-height: 35px; padding-inline: 11px; gap: 8px; }
-  .store-hero { grid-template-columns: 1fr; padding-block: 30px; gap: 24px; }
-  .store-hero h1 { font-size: clamp(2.4rem, 9.5vw, 3.4rem); max-width: 480px; }
-  .store-hero .store-eyebrow { font-size: 11.5px; margin-bottom: 16px; }
-  .store-hero-copy > p:not(.store-eyebrow) { font-size: 13.5px; }
+  .store-hero { grid-template-columns: 1fr; padding-block: 28px 36px; gap: 24px; }
+  .store-hero h1 { font-size: clamp(2rem, 8vw, 2.75rem); line-height: 1.15; max-width: 480px; letter-spacing: -0.03em; }
+  .store-hero .store-eyebrow { font-size: 11px; margin-bottom: 14px; letter-spacing: 0.12em; }
+  .store-hero-copy > p:not(.store-eyebrow) { font-size: 13.5px; line-height: 1.65; }
   .store-hero-link { margin-top: 18px; }
-  .store-hero-caption { margin-top: 22px; font-size: 12px; }
-  .store-hero-visual { height: 290px; border-top-right-radius: 50px; }
-  .store-book { width: 160px; height: 210px; }
-  .book-front { left: 14%; top: 60px; }
-  .book-back { right: 10%; top: 38px; }
-  .store-book > strong { font-size: 26px; }
-  .store-orbit-label { right: 6%; bottom: 45px; }
-  .store-visual-label { font-size: 11px; }
-  .store-visual-bottom { font-size: 11px; bottom: 8px; }
-  .store-benefits > div { grid-template-columns: 1fr 1fr; row-gap: 10px; padding-block: 14px; }
+  .store-hero-caption { margin-top: 20px; font-size: 11.5px; }
+  .store-hero-visual { height: 280px; border-top-right-radius: 40px; border-bottom-left-radius: 24px; overflow: hidden; max-width: 100%; }
+  .store-book { width: 140px; height: 195px; padding: 14px; }
+  .book-front { left: 8%; top: 52px; }
+  .book-back { right: 8%; top: 32px; }
+  .store-book > strong { font-size: 22px; }
+  .book-front .course-art { width: 95px; height: 100px; top: 85px; }
+  .book-front .course-art .art-symbol { width: 95px; }
+  .store-orbit-label { right: 4%; bottom: 38px; padding: 8px 12px 8px 32px; font-size: 11px; }
+  .store-orbit-label > span { left: 8px; top: 6px; font-size: 18px; }
+  .store-visual-label { font-size: 10px; }
+  .store-visual-bottom { font-size: 10px; bottom: 8px; }
+  .store-benefits > div { grid-template-columns: 1fr 1fr; row-gap: 12px; padding-block: 14px; }
   .store-benefits span { justify-content: flex-start !important; font-size: 11.5px; gap: 8px; }
   .store-benefits span:nth-child(even) { border-right: 0; padding-left: 14px; }
+  .store-benefits b { font-size: 18px; }
   .store-catalog-section { padding-block: 32px 38px; }
   .store-section-heading { align-items: start; flex-direction: column; gap: 12px; margin-bottom: 20px; }
   .store-section-heading h2 { font-size: 24px; }

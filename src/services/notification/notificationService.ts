@@ -273,9 +273,14 @@ export async function getNotifications(
       return mapNotification(dbRow);
     });
 
-    // Get unread count for the user
-    const unreadResult = await getUnreadCount(userId);
-    const unreadCountVal = unreadResult.success ? unreadResult.data ?? 0 : 0;
+    // Get unread count for the user (optimized: if already filtering isRead === false, count is already unread count)
+    let unreadCountVal = 0;
+    if (filters?.isRead === false) {
+      unreadCountVal = count ?? 0;
+    } else {
+      const unreadResult = await getUnreadCount(userId);
+      unreadCountVal = unreadResult.success ? unreadResult.data ?? 0 : 0;
+    }
 
     console.log(`Fetched ${notifications.length} of ${count ?? 0} total, ${unreadCountVal} unread`);
     console.groupEnd();

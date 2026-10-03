@@ -33,6 +33,7 @@ import { supabase } from '../config/supabase';
 import { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { getTokenExpirySummary } from '../utils/supabase';
 import { auditService } from './audit/auditService';
+import { registerActiveWebSession, deactivateActiveWebSession } from './device/webDeviceSessionService';
 import type { AdminRoleAssignment, DbAdminRole } from '../types/adminRoles';
 import type {
   AuthResponse,
@@ -430,7 +431,8 @@ export async function signOut(): Promise<AuthResponse<null>> {
       });
     }
 
-    const { error } = await supabase.auth.signOut();
+    try { await deactivateActiveWebSession(); } catch (e) { console.warn('[AuthService] Web session deactivation failed:', e); }
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
       return { success: false, error: extractErrorMessage(error) };

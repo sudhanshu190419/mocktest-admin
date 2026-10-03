@@ -24,13 +24,13 @@ export function SiteHeader({
   return (
     <header className="sticky top-0 z-40 border-b border-divider bg-surface/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
-        <Link href="/" className="flex items-center" aria-label="Make Me Topper home">
+        <Link href="/" className="flex items-center shrink-0" aria-label="Make Me Topper home">
           <Image
             src="/brand/logo-primary-horizontal.svg"
             alt="Make Me Topper"
             width={165}
             height={38}
-            className="h-8 md:h-9 w-auto object-contain"
+            className="h-7 sm:h-8 md:h-9 w-auto object-contain shrink-0"
             priority
           />
         </Link>

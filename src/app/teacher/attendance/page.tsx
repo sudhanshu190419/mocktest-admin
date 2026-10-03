@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { attendanceAnalyticsService } from '@/services/attendanceAnalyticsService';
 import { liveClassAttendanceService } from '@/services/liveClassAttendanceService';
+import { useClassAttendance } from '@/hooks/admin/useAttendanceAnalytics';
 import type {
   TeacherAttendanceSummary,
   TeacherAttendanceRecord,
@@ -220,29 +221,15 @@ function LiveClassAttendanceSheet({
   className: string;
   onClose: () => void;
 }) {
-  const [entries, setEntries] = useState<AttendanceSheetEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: records, isLoading: loading } = useClassAttendance(classId);
 
-  useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
-      try {
-        const records = await liveClassAttendanceService.getClassAttendance(classId);
-        setEntries(
-          records.map((r) => ({
-            studentName: r.studentName ?? 'Unknown',
-            attendanceStatus: r.attendanceStatus,
-            durationSeconds: r.durationSeconds,
-          }))
-        );
-      } catch (err) {
-        console.error('Failed to load attendance sheet:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
-  }, [classId]);
+  const entries: AttendanceSheetEntry[] = useMemo(() => {
+    return (records ?? []).map((r) => ({
+      studentName: r.studentName ?? 'Unknown',
+      attendanceStatus: r.attendanceStatus,
+      durationSeconds: r.durationSeconds,
+    }));
+  }, [records]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -591,35 +578,49 @@ export default function TeacherAttendancePage() {
               <p className="text-sm text-gray-400">No batch attendance data available.</p>
             </div>
           ) : (
-            batchAttendance.map((batch) => (
-              <div
-                key={batch.batchId}
-                className="rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">{batch.batchName}</h4>
-                  <span className="text-xs text-gray-500">{batch.studentCount} students</span>
-                </div>
-                <div className="mb-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Average Attendance</p>
-                  <AttendancePercentBar percent={batch.averageAttendancePercent} />
-                </div>
-                <div className="flex gap-3 text-xs">
-                  <div className="flex-1 rounded-lg bg-emerald-50 p-2 text-center dark:bg-emerald-900/20">
-                    <p className="text-lg font-bold text-emerald-600">{batch.presentCount}</p>
-                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400">Present</p>
+            batchAttendance.map((batch) => {
+              const totalClasses = (batch as any).totalClasses ?? (
+                batch.studentCount > 0
+                  ? Math.round((batch.presentCount + batch.partialCount + batch.absentCount) / batch.studentCount)
+                  : 0
+              );
+
+              return (
+                <div
+                  key={batch.batchId}
+                  className="rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">{batch.batchName}</h4>
+                    <span className="text-xs text-gray-500">{batch.studentCount} students</span>
                   </div>
-                  <div className="flex-1 rounded-lg bg-amber-50 p-2 text-center dark:bg-amber-900/20">
-                    <p className="text-lg font-bold text-amber-600">{batch.partialCount}</p>
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400">Partial</p>
+                  <div className="mb-3 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2.5 dark:bg-gray-800/50">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5">Total Classes</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{totalClasses}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Average Attendance</p>
+                      <AttendancePercentBar percent={batch.averageAttendancePercent} />
+                    </div>
                   </div>
-                  <div className="flex-1 rounded-lg bg-rose-50 p-2 text-center dark:bg-rose-900/20">
-                    <p className="text-lg font-bold text-rose-600">{batch.absentCount}</p>
-                    <p className="text-[10px] text-rose-700 dark:text-rose-400">Absent</p>
+                  <div className="flex gap-3 text-xs">
+                    <div className="flex-1 rounded-lg bg-emerald-50 p-2 text-center dark:bg-emerald-900/20">
+                      <p className="text-lg font-bold text-emerald-600">{batch.presentCount}</p>
+                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400">Present</p>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-amber-50 p-2 text-center dark:bg-amber-900/20">
+                      <p className="text-lg font-bold text-amber-600">{batch.partialCount}</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400">Partial</p>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-rose-50 p-2 text-center dark:bg-rose-900/20">
+                      <p className="text-lg font-bold text-rose-600">{batch.absentCount}</p>
+                      <p className="text-[10px] text-rose-700 dark:text-rose-400">Absent</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

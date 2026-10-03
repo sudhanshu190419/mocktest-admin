@@ -267,7 +267,7 @@ function buildReferenceIndex(reference: ReferenceData): ReferenceIndex {
   const planKeySet = new Set<string>();
   for (const p of reference.existingPlans) planKeySet.add(`${p.timetableSlotId}:${p.occurrenceDate}`);
 
-  const holidaysSet = new Set(reference.holidays);
+  const holidaysSet = new Set<string>(reference.holidays || []);
 
   const leavesByTeacher = new Map<string, { startDate: string; endDate: string }[]>();
   for (const l of reference.teacherLeaves) {
@@ -594,11 +594,13 @@ function normalizeRow(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Deterministic slot key (matches the RPC payload contract — no indexes). */
-function groupKey(teacherId: string, batchSubjectId: string, dayOfWeek: number, start: string, end: string): string {
+function groupKey(teacherId: string, batchSubjectId: string, dayOfWeek: number, start: string, end: string, date?: string): string {
+  if (date) {
+    return `${teacherId}|${batchSubjectId}|${dayOfWeek}|${date}|${start}|${end}`;
+  }
   return `${teacherId}|${batchSubjectId}|${dayOfWeek}|${start}|${end}`;
 }
 
-/** True when a row has no blocking error issues. */
 function rowHasErrors(row: ImportedRow): boolean {
   return row.issues.some((i) => i.severity === 'error');
 }
@@ -634,59 +636,23 @@ function classifyGroup(
         s.startTime === start &&
         s.endTime === end &&
         (s.status === 'active' || s.status === 'paused') &&
-        validityOverlap(validFrom, validUntil, s.validFrom, s.validUntil),
+        s.validFrom === validFrom &&
+        s.validUntil === validUntil,
     )
-    .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
-  const existing = candidates[0] ?? null;
+    .sort((a, b) => a.validFrom.localeCompare(b.validFrom));
 
-  if (!existing) return { mode: 'create', existingSlotId: null };
-
-  const needsExtend =
-    validFrom < existing.validFrom || validUntil > existing.validUntil;
-  return { mode: needsExtend ? 'extend' : 'reuse', existingSlotId: existing.timetableSlotId };
-}
-
-/** Advisory conflict check for a group against ACTIVE existing slots. */
-function existingSlotConflict(
-  teacherId: string,
-  batchSubjectId: string,
-  dayOfWeek: number,
-  start: string,
-  end: string,
-  validFrom: string,
-  validUntil: string,
-  excludeSlotId: string | null,
-  index: ReferenceIndex,
-): { kind: 'teacher' | 'batch' | null; detail: string } {
-  const batchId = index.batchIdByBatchSubject.get(batchSubjectId) ?? null;
-  for (const slot of index.activeSlots) {
-    if (slot.timetableSlotId === excludeSlotId) continue;
-    if (slot.dayOfWeek !== dayOfWeek) continue;
-    if (!timesOverlap(start, end, slot.startTime, slot.endTime)) continue;
-    if (!validityOverlap(validFrom, validUntil, slot.validFrom, slot.validUntil)) continue;
-    if (slot.teacherId === teacherId) {
-      return { kind: 'teacher', detail: `Teacher already has a class on this day/time (valid ${slot.validFrom} → ${slot.validUntil}).` };
-    }
-    if (batchId && index.batchIdByBatchSubject.get(slot.batchSubjectId) === batchId) {
-      return { kind: 'batch', detail: `Batch already has a class on this day/time (valid ${slot.validFrom} → ${slot.validUntil}).` };
-    }
+  if (candidates.length === 0) {
+    return { mode: 'create', existingSlotId: null };
   }
-  return { kind: null, detail: '' };
-}
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Public API
-// ═══════════════════════════════════════════════════════════════════════════
+  return { mode: 'reuse', existingSlotId: candidates[0].timetableSlotId };
+}
 
 /**
  * Build the full import preview from parsed rows + reference data.
  *
- * Pure — no network, no database. Errors collected across ALL rows so the
- * admin can fix multiple problems at once. Any error ⇒ the file cannot be
- * imported (`buildImportPayload` returns null).
- *
- * @param input - `{ rows, reference }`.
- * @returns The complete `ImportPreview`.
+ * @param input - { rows, reference }.
+ * @returns The complete ImportPreview.
  */
 export function buildImportPreview(
   input: { rows: RawSheetRow[]; reference: ReferenceData },
@@ -696,8 +662,30 @@ export function buildImportPreview(
   const rows: ImportedRow[] = rawRows.map((r) => normalizeRow(r, index));
   const fileIssues: ImportIssue[] = [];
 
+  // ── Check conflicting teachers on same batch on same date/time ──
+  const seenBatchSlot = new Map<string, ImportedRow>();
+  for (const row of rows) {
+    if (rowHasErrors(row)) continue;
+    if (!row.batchSubjectId || !row.date || !row.startTime || !row.endTime || !row.teacherId) continue;
+    const batchSlotKey = `${row.batchSubjectId}|${row.date}|${row.startTime}|${row.endTime}`;
+    const prior = seenBatchSlot.get(batchSlotKey);
+    if (prior) {
+      if (prior.teacherId !== row.teacherId) {
+        row.issues.push({
+          row: row.row,
+          column: 'Teacher',
+          value: row.teacherName ?? row.teacherMobile,
+          problem: `Conflicting teachers for the same batch on ${row.date} (${row.startTime}-${row.endTime}): row ${prior.row} has ${prior.teacherName ?? prior.teacherMobile}, but row ${row.row} has ${row.teacherName ?? row.teacherMobile}.`,
+          suggestion: 'A batch cannot have multiple different teachers scheduled at the same time.',
+          severity: 'error',
+        });
+      }
+    } else {
+      seenBatchSlot.set(batchSlotKey, row);
+    }
+  }
+
   // ── Dedupe identical rows; conflict on same slot+date with a different lesson ──
-  // key = slot identity + occurrence date (chapter/topic/notes compared separately)
   const seen = new Map<string, ImportedRow>();
   const dedupedRows: ImportedRow[] = [];
 
@@ -712,13 +700,14 @@ export function buildImportPreview(
       isoDowOf(row.date),
       row.startTime,
       row.endTime,
+      row.date,
     );
     const occurrenceKey = `${identityKey}|${row.date}`;
     const lessonKey = `${occurrenceKey}|${row.chapterId ?? ''}|${row.topicId ?? ''}|${row.notes ?? ''}`;
     const prior = seen.get(occurrenceKey);
 
     if (prior) {
-      // Same slot + same date: identical → silent dedupe; different → blocking.
+      // Same slot + same date: identical -> silent dedupe; different -> blocking error.
       const priorLessonKey = `${occurrenceKey}|${prior.chapterId ?? ''}|${prior.topicId ?? ''}|${prior.notes ?? ''}`;
       if (priorLessonKey === lessonKey) {
         row.issues.push({
@@ -744,81 +733,41 @@ export function buildImportPreview(
     dedupedRows.push(row);
   }
 
-  // ── Group valid rows into schedule groups ─────────────────────────────
-  // Silent duplicates (duplicateOfRow set) never enter a group — the first
-  // occurrence is the canonical row.
+  // ── Group valid rows into schedule groups ──
+  // Normal Excel rows represent date-specific classes: one row = one class occurrence on one specific date.
   const groupByKey = new Map<string, ImportedRow[]>();
   for (const row of dedupedRows) {
     if (rowHasErrors(row)) continue;
     if (row.duplicateOfRow !== null) continue;
     if (!row.teacherId || !row.batchSubjectId || !row.date || !row.startTime || !row.endTime) continue;
     const day = isoDowOf(row.date);
-    const key = groupKey(row.teacherId, row.batchSubjectId, day, row.startTime, row.endTime);
+    const key = groupKey(row.teacherId, row.batchSubjectId, day, row.startTime, row.endTime, row.date);
     const list = groupByKey.get(key) ?? [];
     list.push(row);
     groupByKey.set(key, list);
   }
 
-  // ── Explicit validity overrides (Valid From / Valid Until columns) ────
-  // Group validity = min/max of explicit overrides when ANY row provides
-  // them; otherwise min/max of the group's dates.
   const groups: ImportGroup[] = [];
-  for (const [key, groupRows] of groupByKey) {
+  groupByKey.forEach((groupRows, key) => {
     const teacherId = groupRows[0].teacherId!;
     const batchSubjectId = groupRows[0].batchSubjectId!;
     const dayOfWeek = isoDowOf(groupRows[0].date);
     const start = groupRows[0].startTime;
     const end = groupRows[0].endTime;
+    const occurrenceDate = groupRows[0].date;
 
-    const dates = [...new Set(groupRows.map((r) => r.date))].sort();
-    const rawValidFroms = rawRows
-      .filter((r) => groupRows.some((gr) => gr.row === r.row))
-      .map((r) => parseSpreadsheetDate(r.validFrom))
-      .filter((d): d is string => d !== null);
-    const rawValidUntils = rawRows
-      .filter((r) => groupRows.some((gr) => gr.row === r.row))
-      .map((r) => parseSpreadsheetDate(r.validUntil))
-      .filter((d): d is string => d !== null);
-
-    const hasExplicit = rawValidFroms.length > 0 || rawValidUntils.length > 0;
-    let validFrom = hasExplicit && rawValidFroms.length > 0 ? rawValidFroms[0] : dates[0];
-    let validUntil = hasExplicit && rawValidUntils.length > 0 ? rawValidUntils[0] : dates[dates.length - 1];
-    for (const d of rawValidFroms) if (d < validFrom) validFrom = d;
-    for (const d of rawValidUntils) if (d > validUntil) validUntil = d;
-
-    if (!validFrom || !validUntil) continue;
-    if (validFrom > validUntil) {
-      for (const r of groupRows) {
-        r.issues.push({
-          row: r.row, column: null, value: { validFrom, validUntil },
-          problem: 'Valid From must be on or before Valid Until.',
-          severity: 'error',
-        });
-      }
-      continue;
-    }
-
-    // Every lesson date must fall within the group's effective validity.
-    for (const r of groupRows) {
-      r.groupValidFrom = validFrom;
-      r.groupValidUntil = validUntil;
-      if (r.date < validFrom || r.date > validUntil) {
-        r.issues.push({
-          row: r.row, column: 'Date', value: r.date,
-          problem: `Date ${r.date} is outside the timetable validity (${validFrom} → ${validUntil}).`,
-          severity: 'error',
-        });
-      }
-    }
+    const validFrom = occurrenceDate;
+    const validUntil = occurrenceDate;
+    const dates = [occurrenceDate];
 
     const validGroupRows = groupRows.filter((r) => !rowHasErrors(r));
-    if (validGroupRows.length === 0) continue;
+    if (validGroupRows.length === 0) return;
 
     const { mode, existingSlotId } = classifyGroup(
       teacherId, batchSubjectId, dayOfWeek, start, end, validFrom, validUntil, index,
     );
 
-    // Holiday / teacher-leave warnings (non-blocking — materializer skips).
+    // Holiday / teacher-leave warnings (non-blocking).
     for (const r of validGroupRows) {
       if (index.holidaysSet.has(r.date)) {
         r.issues.push({
@@ -837,37 +786,6 @@ export function buildImportPreview(
       }
     }
 
-    // Validity-gap info: weekdays within the validity window that have no
-    // planned lesson (holidays/breaks are skipped by the materializer, but
-    // the admin should know the window is wider than the planned dates).
-    const allOccurrences = expandDateRange(validFrom, validUntil).filter(
-      (d) => isoDowOf(d) === dayOfWeek,
-    );
-    const unplanned = allOccurrences.filter((d) => !dates.includes(d));
-    if (unplanned.length > 0 && unplanned.length <= 30) {
-      fileIssues.push({
-        row: null, column: null, value: unplanned.length,
-        problem: `Timetable validity ${validFrom} → ${validUntil} contains ${unplanned.length} weekday(s) with no lesson plan (e.g. ${unplanned.slice(0, 3).join(', ')}).`,
-        severity: 'info',
-      });
-    }
-
-    // Advisory conflict check against ACTIVE existing slots (create only —
-    // reuse/extend already targets its own slot; the RPC re-checks itself).
-    if (mode === 'create') {
-      const conflict = existingSlotConflict(
-        teacherId, batchSubjectId, dayOfWeek, start, end, validFrom, validUntil, existingSlotId, index,
-      );
-      if (conflict.kind) {
-        fileIssues.push({
-          row: null, column: null, value: `${rawRows.find((r) => r.row === groupRows[0].row)?.teacherMobile ?? ''} / ${groupRows[0].batchCode} / ${groupRows[0].subjectCode}`,
-          problem: `${conflict.kind === 'teacher' ? 'Teacher' : 'Batch'} conflict with an existing timetable slot: ${conflict.detail}`,
-          suggestion: 'Adjust the day/time or validity, or update the existing timetable first.',
-          severity: 'error',
-        });
-      }
-    }
-
     groups.push({
       key,
       teacherId,
@@ -877,6 +795,7 @@ export function buildImportPreview(
       endTime: end,
       validFrom,
       validUntil,
+      is_recurring: false,
       dates,
       lessonCount: validGroupRows.length,
       mode,
@@ -890,21 +809,20 @@ export function buildImportPreview(
         severity: 'info',
       });
     }
-  }
+  });
 
-  // ── Within-file conflicts (teacher / batch, same day, half-open time, overlapping validity) ──
+  // ── Within-file conflicts (teacher / batch, same date, overlapping time) ──
   for (let i = 0; i < groups.length; i += 1) {
     for (let j = i + 1; j < groups.length; j += 1) {
       const a = groups[i];
       const b = groups[j];
-      if (a.dayOfWeek !== b.dayOfWeek) continue;
+      if (a.validFrom !== b.validFrom) continue;
       if (!timesOverlap(a.startTime, a.endTime, b.startTime, b.endTime)) continue;
-      if (!validityOverlap(a.validFrom, a.validUntil, b.validFrom, b.validUntil)) continue;
 
       if (a.teacherId === b.teacherId) {
         fileIssues.push({
           row: null, column: null, value: `${a.key} vs ${b.key}`,
-          problem: `Teacher conflict within the file: two schedules on the same day overlap in time and validity.`,
+          problem: `Teacher conflict within the file: two schedules for the same teacher on ${a.validFrom} overlap in time.`,
           suggestion: 'Move one of the overlapping schedules to a different day/time.',
           severity: 'error',
         });
@@ -914,7 +832,7 @@ export function buildImportPreview(
       if (aBatch && aBatch === bBatch) {
         fileIssues.push({
           row: null, column: null, value: `${a.key} vs ${b.key}`,
-          problem: `Batch conflict within the file: two schedules for the same batch overlap on the same day/time.`,
+          problem: `Batch conflict within the file: two schedules for the same batch on ${a.validFrom} overlap on the same time.`,
           suggestion: 'Move one of the overlapping schedules to a different day/time.',
           severity: 'error',
         });
@@ -922,7 +840,7 @@ export function buildImportPreview(
     }
   }
 
-  // ── Summary ───────────────────────────────────────────────────────────
+  // ── Summary ──
   const errorRows = dedupedRows.filter((r) => rowHasErrors(r)).length;
   const duplicateCount = dedupedRows.filter((r) => r.duplicateOfRow !== null).length;
   const warningCount = dedupedRows.reduce((n, r) => n + r.issues.filter((i) => i.severity === 'warning').length, 0)
@@ -935,12 +853,11 @@ export function buildImportPreview(
       (r) => !rowHasErrors(r) && r.duplicateOfRow === null &&
         r.teacherId === group.teacherId &&
         r.batchSubjectId === group.batchSubjectId &&
-        isoDowOf(r.date) === group.dayOfWeek &&
+        r.date === group.validFrom &&
         r.startTime === group.startTime &&
         r.endTime === group.endTime,
     );
     for (const r of groupValidRows) {
-      // A plan updates when its slot+date already exists in the DB.
       const existingSlotId = group.existingSlotId;
       const exists = existingSlotId !== null && index.planKeySet.has(`${existingSlotId}:${r.date}`);
       if (exists) plansToUpdate += 1;
@@ -948,7 +865,7 @@ export function buildImportPreview(
     }
   }
 
-  // ── Missing Academic References Extraction ───────────────────────────
+  // ── Missing Academic References Extraction ──
   const missingChaptersMap = new Map<string, MissingChapterItem>();
   const missingTopicsMap = new Map<string, MissingTopicItem>();
 
@@ -960,7 +877,6 @@ export function buildImportPreview(
     const rawChap = raw.chapter.trim();
     const rawTop = raw.topic.trim();
 
-    // Missing Chapter: chapter provided in file but not resolved
     if (rawChap && !r.chapterId) {
       const subjectName = r.subjectId
         ? reference.subjects.find((s) => s.subjectId === r.subjectId)?.name ?? raw.subjectCode
@@ -983,7 +899,6 @@ export function buildImportPreview(
       }
     }
 
-    // Missing Topic: topic provided, chapter resolved, but topic not found
     if (rawTop && r.chapterId && !r.topicId) {
       const chapterName = reference.chapters.find((c) => c.chapterId === r.chapterId)?.name ?? rawChap;
       const key = `${r.chapterId}:::${rawTop.toLowerCase()}`;
@@ -1032,9 +947,6 @@ export function hasBlockingErrors(preview: ImportPreview): boolean {
 
 /**
  * Build the exact `bulk_import_timetable` payload (p_slots + p_plans).
- *
- * Only call when `hasBlockingErrors(preview)` is false. Returns null when
- * there is nothing to import.
  */
 export function buildImportPayload(preview: ImportPreview): BulkImportPayload | null {
   if (hasBlockingErrors(preview)) return null;
@@ -1049,6 +961,7 @@ export function buildImportPayload(preview: ImportPreview): BulkImportPayload | 
     end_time: g.endTime,
     valid_from: g.validFrom,
     valid_until: g.validUntil,
+    is_recurring: g.is_recurring ?? false,
   }));
 
   const plans: BulkPlanPayload[] = [];
@@ -1060,7 +973,7 @@ export function buildImportPayload(preview: ImportPreview): BulkImportPayload | 
       (g) =>
         g.teacherId === row.teacherId &&
         g.batchSubjectId === row.batchSubjectId &&
-        g.dayOfWeek === isoDowOf(row.date) &&
+        g.validFrom === row.date &&
         g.startTime === row.startTime &&
         g.endTime === row.endTime,
     );

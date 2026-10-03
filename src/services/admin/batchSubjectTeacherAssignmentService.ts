@@ -176,41 +176,56 @@ export const batchSubjectTeacherAssignmentService = {
     try {
       validateUUID(batchId, 'batchId');
 
-      // Get all batch subjects for this batch
-      const { data: batchSubjects, error: bsError } = await supabase
+      // Single efficient query to fetch batch subjects and their assigned teachers
+      const { data, error } = await supabase
         .from('batch_subjects')
         .select(
           `
           batch_subject_id,
           is_active,
           subjects!inner (name),
-          batches!inner (name)
+          batches!inner (name),
+          batch_subject_teachers (
+            teacher_id,
+            teacher_details:teacher_details!inner (
+              teacher_id,
+              profiles!inner (
+                name
+              )
+            )
+          )
         `,
         )
         .eq('batch_id', batchId);
 
-      if (bsError) {
-        return { success: false, error: extractErrorMessage(bsError) };
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
       }
 
-      // For each batch subject, get assigned teachers
-      const summaries: BatchSubjectTeacherSummary[] = [];
+      const summaries: BatchSubjectTeacherSummary[] = (data ?? []).map((bs: any) => {
+        const bstList = Array.isArray(bs.batch_subject_teachers)
+          ? bs.batch_subject_teachers
+          : [];
 
-      for (const bs of (batchSubjects ?? []) as any[]) {
-        const teachersResult = await this.getAssignedTeachers(bs.batch_subject_id);
-        const teachers = teachersResult.success ? (teachersResult.data ?? []) : [];
+        const teachers = bstList
+          .filter((t: any) => t.teacher_id)
+          .map((t: any) => {
+            const td = t.teacher_details ?? {};
+            const prof = td.profiles ?? {};
+            return {
+              teacherId: td.teacher_id ?? t.teacher_id,
+              teacherName: prof.name ?? 'Unknown',
+              assignmentId: `${bs.batch_subject_id}_${t.teacher_id}`,
+            };
+          });
 
-        summaries.push({
+        return {
           batchSubjectId: bs.batch_subject_id,
           subjectName: bs.subjects?.name ?? 'Unknown Subject',
           batchName: bs.batches?.name ?? 'Unknown Batch',
-          teachers: teachers.map((t) => ({
-            teacherId: t.teacherId,
-            teacherName: t.teacherName,
-            assignmentId: t.assignmentId,
-          })),
-        });
-      }
+          teachers,
+        };
+      });
 
       return { success: true, data: summaries };
     } catch (err) {

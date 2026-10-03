@@ -82,6 +82,12 @@ export interface BatchListItem {
 }
 
 /** Detailed batch for the detail view. */
+/** Lightweight batch lookup item for filter dropdowns. */
+export interface BatchLookupItem {
+  batchId: string;
+  batchName: string;
+}
+
 export interface BatchManagementDetail extends BatchListItem {
   /** Teacher information (from batch_subject_teachers). */
   teacher: {
@@ -188,7 +194,6 @@ const SORT_FIELD_MAP: Record<string, string> = {
   createdAt: 'created_at',
   studentCount: 'student_count',
   capacity: 'max_seats',
-  teacherName: 'teacher_name',
 };
 
 /** Valid lifecycle status transitions for batches in admin management. */
@@ -265,6 +270,42 @@ export const batchManagementService = {
    */
   async getCounts(instituteId?: string | null): Promise<ApiResponse<BatchManagementCounts>> {
     try {
+      // 1. Try single efficient RPC aggregation
+      try {
+        const rpcResult = await supabase.rpc('get_admin_batch_counts', {
+          p_institute_id: instituteId ?? null,
+        });
+
+        if (rpcResult && !rpcResult.error && rpcResult.data) {
+          const raw = rpcResult.data as Record<string, number>;
+          return {
+            success: true,
+            data: {
+              total: Number(raw.total ?? 0),
+              active: Number(raw.active ?? 0),
+              inactive: Number(raw.inactive ?? 0),
+              archived: Number(raw.archived ?? 0),
+              full: Number(raw.full ?? 0),
+              availableSeats: Number(raw.availableSeats ?? 0),
+            },
+          };
+        }
+      } catch {
+        // Fall through to fallback
+      }
+
+      // 2. Fallback if RPC is unavailable (e.g. during migration rollout)
+      return await batchManagementService._getCountsFallback(instituteId);
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  /**
+   * Fallback for batch dashboard counts when RPC is unavailable.
+   */
+  async _getCountsFallback(instituteId?: string | null): Promise<ApiResponse<BatchManagementCounts>> {
+    try {
       const makeQuery = (status: BatchStatus) => {
         let q = supabase
           .from('batches')
@@ -290,11 +331,9 @@ export const batchManagementService = {
       const archivedCount = archived.count ?? 0;
       const inactiveCount = upcomingCount + completedCount;
 
-      // Full batches: where deleted_at is null and student count >= max_seats
       let fullCount = 0;
       let availableSeatsSum = 0;
 
-      // Fetch all non-deleted batches with max_seats and student counts
       let batchesQuery = supabase
         .from('batches')
         .select(
@@ -316,7 +355,7 @@ export const batchManagementService = {
       if (allBatches) {
         for (const batch of allBatches as any[]) {
           const maxSeats = batch.max_seats;
-          const studentCount = batch.batch_students?.[0]?.count ?? 0;
+          const studentCount = batch.student_count?.[0]?.count ?? batch.batch_students?.[0]?.count ?? 0;
 
           if (maxSeats !== null && maxSeats > 0) {
             if (studentCount >= maxSeats) {
@@ -340,6 +379,50 @@ export const batchManagementService = {
           availableSeats: availableSeatsSum,
         },
       };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  1b. Lightweight Batch Lookup (for filters & dropdowns)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get a lightweight list of active batches for dropdown selectors and filters.
+   *
+   * Queries only `batch_id` and `name` for non-deleted batches, avoiding
+   * unnecessary relational joins and sequential calls to `batch_subject_teachers`.
+   *
+   * @param instituteId - Optional institute scope.
+   */
+  async getBatchLookup(
+    instituteId?: string | null,
+  ): Promise<ApiResponse<BatchLookupItem[]>> {
+    try {
+      let query = supabase
+        .from('batches')
+        .select('batch_id, name')
+        .is('deleted_at', null);
+
+      if (instituteId) {
+        query = query.eq('institute_id', instituteId);
+      }
+
+      query = query.order('name', { ascending: true });
+
+      const { data, error } = await query;
+
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const items: BatchLookupItem[] = (data ?? []).map((row: any) => ({
+        batchId: row.batch_id,
+        batchName: row.name,
+      }));
+
+      return { success: true, data: items };
     } catch (err) {
       return { success: false, error: extractErrorMessage(err) };
     }
@@ -376,8 +459,7 @@ export const batchManagementService = {
             name
           ),
           batch_students!left (
-            student_id,
-            status
+            count
           )
         `,
           { count: 'exact' },
@@ -452,48 +534,20 @@ export const batchManagementService = {
         return { success: false, error: extractErrorMessage(error) };
       }
 
-      // Fetch teacher info separately via batch_subject_teachers
-      const batchIds = (data ?? []).map((r: any) => r.batch_id);
-      const teacherByBatchMap = new Map<string, { teacherId: string; name: string }>();
-      if (batchIds.length > 0) {
-        const { data: bstData } = await supabase
-          .from('batch_subject_teachers')
-          .select(`
-            teacher_id,
-            batch_subjects!inner(batch_id),
-            teacher_details!inner (
-              profiles!inner (
-                name
-              )
-            )
-          `)
-          .in('batch_subjects.batch_id', batchIds);
 
-        // Get first teacher per batch (for backward compatibility)
-        const firstTeacherPerBatch = new Map<string, { teacherId: string; name: string }>();
-        (bstData ?? []).forEach((item: any) => {
-          const bid = item.batch_subjects?.batch_id;
-          if (bid && !firstTeacherPerBatch.has(bid) && item.teacher_details?.profiles?.name) {
-            firstTeacherPerBatch.set(bid, {
-              teacherId: item.teacher_id,
-              name: item.teacher_details.profiles.name,
-            });
-          }
-        });
-        for (const [bid, info] of firstTeacherPerBatch) {
-          teacherByBatchMap.set(bid, info);
-        }
-      }
 
       let items = (data ?? []).map((row: any) => {
-        // Compute student count: count batch_students with active status
-        const students = row.batch_students ?? [];
-        const studentCount = Array.isArray(students)
-          ? students.filter((s: any) => !s.status || s.status === 'active').length
-          : 0;
-
-        // Get teacher info from batch_subject_teachers
-        const tInfo = teacherByBatchMap.get(row.batch_id);
+        // Compute student count directly from database aggregation without transferring student rows
+        let studentCount = 0;
+        if (Array.isArray(row.batch_students) && row.batch_students.length > 0) {
+          if (typeof row.batch_students[0].count === 'number') {
+            studentCount = row.batch_students[0].count;
+          } else {
+            studentCount = row.batch_students.filter((s: any) => !s.status || s.status === 'active').length;
+          }
+        } else if (typeof row.student_count === 'number') {
+          studentCount = row.student_count;
+        }
 
         // Compute available seats
         const capacity = row.max_seats ?? null;
@@ -503,8 +557,8 @@ export const batchManagementService = {
           batchId: row.batch_id,
           batchCode: row.batch_code,
           batchName: row.name,
-          teacherId: tInfo?.teacherId ?? null,
-          teacherName: tInfo?.name ?? null,
+          teacherId: null,
+          teacherName: null,
           streamId: row.stream_id,
           streamName: row.streams?.name ?? null,
           subjectId: null,
@@ -523,12 +577,7 @@ export const batchManagementService = {
         items.sort((a, b) =>
           direction === 'asc' ? a.studentCount - b.studentCount : b.studentCount - a.studentCount,
         );
-      } else if (sort?.sortBy === 'teacherName') {
-        items.sort((a, b) => {
-          const aName = a.teacherName ?? '';
-          const bName = b.teacherName ?? '';
-          return direction === 'asc' ? aName.localeCompare(bName) : bName.localeCompare(aName);
-        });
+
       }
 
       return {
@@ -575,7 +624,7 @@ export const batchManagementService = {
       }
 
       // 2. Fetch related data in parallel
-      const [teachersRes, studentsRes, studentProfilesRes, mockTestsRes] = await Promise.allSettled([
+      const [teachersRes, studentsRes, mockTestsRes] = await Promise.allSettled([
         // Teacher info (via batch_subject_teachers -> batch_subjects)
         // First get batch_subject_ids for this batch
         (async () => {
@@ -608,26 +657,6 @@ export const batchManagementService = {
           .eq('batch_id', batchId)
           .eq('status', 'active'),
 
-        // Student profiles for assigned students
-        supabase
-          .from('batch_students')
-          .select(
-            `
-            student_id,
-            enrolled_on,
-            student_details!inner (
-              student_id,
-              profiles!inner (
-                name,
-                email
-              )
-            )
-          `,
-          )
-          .eq('batch_id', batchId)
-          .eq('status', 'active')
-          .order('enrolled_on', { ascending: true }),
-
         // Mock tests count (via batch_subject_mock_tests -> batch_subjects)
         supabase
           .from('batch_subject_mock_tests')
@@ -652,16 +681,8 @@ export const batchManagementService = {
       // Process mock test count
       const mockTestCount = mockTestsRes.status === 'fulfilled' ? (mockTestsRes.value.count ?? 0) : 0;
 
-      // Process assigned students
-      const studentProfiles = studentProfilesRes.status === 'fulfilled'
-        ? (studentProfilesRes.value.data ?? [])
-        : [];
-      const assignedStudents = (Array.isArray(studentProfiles) ? studentProfiles : []).map((row: any) => ({
-        studentId: row.student_details?.student_id ?? row.student_id,
-        name: row.student_details?.profiles?.name ?? 'Unknown',
-        email: row.student_details?.profiles?.email ?? null,
-        enrolledOn: row.enrolled_on ?? '',
-      }));
+      // Assigned student list is managed directly by useAssignedStudents hook
+      const assignedStudents: { studentId: string; name: string; email: string | null; enrolledOn: string }[] = [];
 
       // Compute available seats
       const capacity = batch.max_seats ?? null;

@@ -232,41 +232,31 @@ export const teacherLifecycleService = {
    */
   async getCounts(instituteId?: string | null): Promise<ApiResponse<TeacherLifecycleCounts>> {
     try {
-      // Create a FRESH query builder for each status so that .eq() filters
-      // on one query do NOT mutate the shared builder (the bug: previously
-      // all 5 .eq('account_status', ...) calls accumulated on the same
-      // `base` object, producing impossible WHERE conditions like
-      // "account_status = 'pending' AND account_status = 'approved'"
-      // which always returned 0 for every count).
-      const makeQuery = (status: AccountStatus) => {
-        let q = supabase
-          .from('profiles')
-          .select('profile_id', { count: 'exact', head: true })
-          .eq('role', 'teacher')
-          .eq('account_status', status);
-        if (instituteId) {
-          q = q.eq('institute_id', instituteId);
-        }
-        return q;
-      };
+      const { data, error } = await supabase.rpc('get_teacher_lifecycle_counts', {
+        p_institute_id: instituteId ?? null,
+      });
 
-      const [pending, approved, rejected, suspended, inactive] = await Promise.all([
-        makeQuery('pending'),
-        makeQuery('approved'),
-        makeQuery('rejected'),
-        makeQuery('suspended'),
-        makeQuery('inactive'),
-      ]);
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const raw = (data ?? {}) as Record<string, number>;
+      const pending = Number(raw.pending ?? 0);
+      const approved = Number(raw.approved ?? 0);
+      const rejected = Number(raw.rejected ?? 0);
+      const suspended = Number(raw.suspended ?? 0);
+      const inactive = Number(raw.inactive ?? 0);
+      const sum = pending + approved + rejected + suspended + inactive;
+      const total = typeof raw.total === 'number' && raw.total > 0 ? Number(raw.total) : sum;
 
       const counts: TeacherLifecycleCounts = {
-        pending: pending.count ?? 0,
-        approved: approved.count ?? 0,
-        rejected: rejected.count ?? 0,
-        suspended: suspended.count ?? 0,
-        inactive: inactive.count ?? 0,
-        total: 0,
+        pending,
+        approved,
+        rejected,
+        suspended,
+        inactive,
+        total,
       };
-      counts.total = counts.pending + counts.approved + counts.rejected + counts.suspended + counts.inactive;
 
       return { success: true, data: counts };
     } catch (err) {

@@ -15,7 +15,7 @@ import {
   useBulkActivateStudents,
 } from '@/hooks/admin/useStudentLifecycle';
 import { studentLifecycleService } from '@/services/admin/studentLifecycleService';
-import { useBatchList } from '@/hooks/admin/useBatchManagement';
+import { useBatchLookup } from '@/hooks/admin/useBatchManagement';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -177,14 +177,14 @@ export default function StudentManagementPage() {
   }, []);
 
   // ── Batch Options (dynamic) ────────────────────────────────────────
-  const { data: batchListData } = useBatchList();
+  const { data: batchLookupData } = useBatchLookup();
   const batchOptions = useMemo(() => {
-    const batches = batchListData?.data ?? [];
+    const batches = batchLookupData ?? [];
     return [
       { value: '', label: 'All Batches' },
       ...batches.map((b) => ({ value: b.batchId, label: b.batchName })),
     ];
-  }, [batchListData]);
+  }, [batchLookupData]);
 
   // ── Data Fetching ────────────────────────────────────────────────────
   const sort = getSortValue(sortKey);

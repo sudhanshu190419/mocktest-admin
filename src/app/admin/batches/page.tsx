@@ -13,7 +13,6 @@ import {
   useDeleteBatch,
 } from '@/hooks/admin/useBatchManagement';
 import { useStreams } from '@/hooks/academic/useStreams';
-import { useTeacherList } from '@/hooks/admin/useTeacherLifecycle';
 import { usePermissions } from '@/hooks/admin/usePermissions';
 import { CreateBatchDialog } from '@/components/admin/batches/CreateBatchDialog';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -32,7 +31,6 @@ import {
   Archive,
   Prohibit,
   Power,
-  Baby,
   GraduationCap,
   Play,
   Trash,
@@ -60,8 +58,6 @@ const SORT_OPTIONS = [
   { value: 'name_desc', label: 'Batch Name (Z-A)' },
   { value: 'studentCount_desc', label: 'Student Count (High to Low)' },
   { value: 'studentCount_asc', label: 'Student Count (Low to High)' },
-  { value: 'capacity_desc', label: 'Capacity (High to Low)' },
-  { value: 'capacity_asc', label: 'Capacity (Low to High)' },
   { value: 'teacherName_asc', label: 'Teacher (A-Z)' },
   { value: 'teacherName_desc', label: 'Teacher (Z-A)' },
 ];
@@ -92,7 +88,7 @@ function formatTimeAgo(isoString: string): string {
  * separate sortBy and sortDirection values for the service layer.
  */
 function getSortValue(sortKey: string): {
-  sortBy: 'name' | 'createdAt' | 'studentCount' | 'capacity' | 'teacherName';
+  sortBy: 'name' | 'createdAt' | 'studentCount';
   sortDirection: 'asc' | 'desc';
 } {
   const parts = sortKey.split('_');
@@ -136,8 +132,8 @@ function mapFilterStatus(status: string): string | undefined {
 
 function SummaryCardsSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-      {Array.from({ length: 6 }).map((_, i) => (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
           <Skeleton className="mb-2 h-3 w-16" />
           <Skeleton className="mb-1 h-6 w-12" />
@@ -160,8 +156,6 @@ export default function BatchManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [streamFilter, setStreamFilter] = useState('');
-  const [teacherFilter, setTeacherFilter] = useState('');
-  const [subjectFilter, setSubjectFilter] = useState('');
   const [sortKey, setSortKey] = useState('createdAt_desc');
   const [page, setPage] = useState(1);
   const pageSize = 15;
@@ -209,9 +203,8 @@ export default function BatchManagementPage() {
   const filters = useMemo(() => ({
     status: mapFilterStatus(statusFilter),
     streamId: streamFilter || undefined,
-    teacherId: teacherFilter || undefined,
     search: debouncedSearch || undefined,
-  }), [statusFilter, streamFilter, teacherFilter, debouncedSearch]);
+  }), [statusFilter, streamFilter, debouncedSearch]);
 
   const { data: counts, isLoading: countsLoading, refetch: refetchCounts } = useBatchManagementCounts();
 
@@ -225,11 +218,7 @@ export default function BatchManagementPage() {
 
   // ── Stream & Teacher Options for Filters ─────────────────────────────
   const { data: streamsData, refetch: refetchStreams } = useStreams(undefined, undefined, { page: 1, pageSize: 100 });
-  const { data: teachersData, refetch: refetchTeachers } = useTeacherList(
-    { status: 'approved' },
-    undefined,
-    { page: 1, pageSize: 100 },
-  );
+
 
   const streamOptions = useMemo(() => {
     const options = [{ value: '', label: 'All Streams' }];
@@ -241,17 +230,7 @@ export default function BatchManagementPage() {
     return options;
   }, [streamsData]);
 
-  const teacherOptions = useMemo(() => {
-    const options = [{ value: '', label: 'All Teachers' }];
-    if (teachersData?.data) {
-      teachersData.data.forEach((t) => {
-        if (t.teacherId) {
-          options.push({ value: t.teacherId, label: t.name });
-        }
-      });
-    }
-    return options;
-  }, [teachersData]);
+
 
   const isLoading = countsLoading || listLoading;
 
@@ -259,8 +238,7 @@ export default function BatchManagementPage() {
     refetchCounts();
     refetchList();
     refetchStreams();
-    refetchTeachers();
-  }, [refetchCounts, refetchList, refetchStreams, refetchTeachers]);
+  }, [refetchCounts, refetchList, refetchStreams]);
 
   // ── Mutation Hooks ──────────────────────────────────────────────────
   const activateMutation = useActivateBatch();
@@ -381,8 +359,6 @@ export default function BatchManagementPage() {
       { label: 'Active', value: counts.active, color: 'emerald' as const, icon: <Play size={20} weight="duotone" /> },
       { label: 'Inactive', value: counts.inactive, color: 'amber' as const, icon: <Prohibit size={20} weight="duotone" /> },
       { label: 'Archived', value: counts.archived, color: 'rose' as const, icon: <Archive size={20} weight="duotone" /> },
-      { label: 'Full Batches', value: counts.full, color: 'purple' as const, icon: <Users size={20} weight="duotone" /> },
-      { label: 'Available Seats', value: counts.availableSeats, color: 'cyan' as const, icon: <Baby size={20} weight="duotone" /> },
     ];
   }, [counts]);
 
@@ -409,15 +385,7 @@ export default function BatchManagementPage() {
         </div>
       ),
     },
-    {
-      key: 'teacherName',
-      header: 'Teacher',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.teacherName ?? '—'}
-        </span>
-      ),
-    },
+
     {
       key: 'streamName',
       header: 'Stream',
@@ -427,15 +395,7 @@ export default function BatchManagementPage() {
         </span>
       ),
     },
-    {
-      key: 'subjectName',
-      header: 'Subject',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.subjectName ?? '—'}
-        </span>
-      ),
-    },
+
     {
       key: 'studentCount',
       header: 'Students',
@@ -445,35 +405,7 @@ export default function BatchManagementPage() {
         </span>
       ),
     },
-    {
-      key: 'capacity',
-      header: 'Capacity',
-      render: (item) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          {item.capacity !== null ? item.capacity : '∞'}
-        </span>
-      ),
-    },
-    {
-      key: 'availableSeats',
-      header: 'Available Seats',
-      render: (item) => {
-        const seats = item.availableSeats;
-        const isFull = seats !== null && seats <= 0;
-        const isUnlimited = seats === null;
-        return (
-          <span className={`text-xs font-medium ${
-            isFull
-              ? 'text-rose-600'
-              : isUnlimited
-                ? 'text-gray-400'
-                : 'text-emerald-600'
-          }`}>
-            {isUnlimited ? '∞' : isFull ? 'Full' : seats}
-          </span>
-        );
-      },
-    },
+
     {
       key: 'status',
       header: 'Status',
@@ -587,7 +519,7 @@ export default function BatchManagementPage() {
          ════════════════════════════════════════════════════════════════ */}
       <PageHeader
         title="Batch Management"
-        description="Manage batches, assign teachers, monitor capacity, and organize students."
+        description="Manage batches, assign teachers, and organize students."
         breadcrumbs={[
           { label: 'Admin', href: '/admin' },
           { label: 'Batch Management' },
@@ -649,7 +581,7 @@ export default function BatchManagementPage() {
       {countsLoading ? (
         <SummaryCardsSkeleton />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {summaryCards.map((stat) => (
             <MetricCard
               key={stat.label}
@@ -712,14 +644,7 @@ export default function BatchManagementPage() {
           label="Stream"
           className="min-w-[140px]"
         />
-        <Select
-          value={teacherFilter}
-          onChange={(v) => handleFilterChange(setTeacherFilter, v)}
-          options={teacherOptions}
-          placeholder="All Teachers"
-          label="Teacher"
-          className="min-w-[140px]"
-        />
+
         <Select
           value={sortKey}
           onChange={(v) => handleFilterChange(setSortKey, v)}
@@ -744,7 +669,7 @@ export default function BatchManagementPage() {
             icon={<GraduationCap size={40} weight="thin" />}
             title="No batches found"
             description={
-              debouncedSearch || statusFilter || streamFilter || teacherFilter
+              debouncedSearch || statusFilter || streamFilter
                 ? 'Try adjusting your search or filters.'
                 : 'Batches will appear here once they are created.'
             }
@@ -777,10 +702,12 @@ export default function BatchManagementPage() {
       {/* ════════════════════════════════════════════════════════════════
           Create Batch Dialog
          ════════════════════════════════════════════════════════════════ */}
-      <CreateBatchDialog
-        isOpen={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
-      />
+      {showCreateDialog && (
+        <CreateBatchDialog
+          isOpen={showCreateDialog}
+          onClose={() => setShowCreateDialog(false)}
+        />
+      )}
     </div>
   );
 }

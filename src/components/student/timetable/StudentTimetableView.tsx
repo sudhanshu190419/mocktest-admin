@@ -16,12 +16,7 @@ import {
   IconCalendarCheck,
   IconSpark,
 } from '@/components/icons/student-icons';
-import {
-  fetchTodayTimetable,
-  fetchWeekTimetable,
-  fetchMonthTimetable,
-  fetchAnnualTimetable,
-} from '@/services/student/studentTimetableWebService';
+import { useStudentTimetable } from '@/hooks/student/useStudentTimetable';
 import {
   formatDateToIsoDate,
   getAcademicYearInfo,
@@ -35,107 +30,74 @@ type TabView = 'today' | 'week' | 'month' | 'year';
 type FilterType = 'all' | 'live' | 'test';
 
 export function StudentTimetableView() {
-  const [activeTab, setActiveTab] = useState<TabView>('today');
+  const [activeTab, setActiveTab] = useState<TabView>('week');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Today State
-  const [todaySessions, setTodaySessions] = useState<TimetableSessionItem[]>([]);
-
-  // Week State
-  const [weekReferenceDate, setWeekReferenceDate] = useState<Date>(new Date());
-  const [weekDays, setWeekDays] = useState<DynamicDayItem[]>([]);
-  const [weekSessions, setWeekSessions] = useState<TimetableSessionItem[]>([]);
+  // Week Navigation State
+  const [weekReferenceDate, setWeekReferenceDate] = useState<Date>(() => new Date());
   const [selectedWeekDateStr, setSelectedWeekDateStr] = useState<string>('');
 
-  // Month State
-  const [monthYear, setMonthYear] = useState<number>(new Date().getFullYear());
-  const [monthNumber, setMonthNumber] = useState<number>(new Date().getMonth() + 1); // 1..12
-  const [monthSessions, setMonthSessions] = useState<TimetableSessionItem[]>([]);
-  const [selectedMonthDateStr, setSelectedMonthDateStr] = useState<string>('');
+  // Month Navigation State
+  const [monthYear, setMonthYear] = useState<number>(() => new Date().getFullYear());
+  const [monthNumber, setMonthNumber] = useState<number>(() => new Date().getMonth() + 1); // 1..12
+  const [selectedMonthDateStr, setSelectedMonthDateStr] = useState<string>(() => formatDateToIsoDate(new Date()));
 
-  // Annual Year State
+  // Annual Year Navigation State
   const currentAcademicYear = useMemo(() => getAcademicYearInfo(), []);
   const [selectedStartYear, setSelectedStartYear] = useState<number>(currentAcademicYear.startYear);
-  const [annualInfo, setAnnualInfo] = useState<AcademicYearInfo>(currentAcademicYear);
-  const [annualMonths, setAnnualMonths] = useState<Array<{ year: number; month: number; label: string; shortName: string }>>([]);
-  const [annualSessions, setAnnualSessions] = useState<TimetableSessionItem[]>([]);
-  const [expandedAnnualMonth, setExpandedAnnualMonth] = useState<string | null>(null);
+  const [expandedAnnualMonth, setExpandedAnnualMonth] = useState<string | null>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth() + 1}`;
+  });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  Data Fetchers
+  //  Authoritative React Query Timetable Hook (Tab-Scoped, Cached, Optimized)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const loadTodayData = useCallback(async () => {
-    try {
-      const { sessions } = await fetchTodayTimetable();
-      setTodaySessions(sessions);
-    } catch (err) {
-      console.error('[StudentTimetableView] Failed to load today timetable:', err);
-    }
-  }, []);
+  const {
+    todaySessions,
+    weekSessions,
+    weekDays,
+    monthSessions,
+    annualSessions,
+    annualMonths,
+    annualInfo,
+    isLoading,
+    refetch,
+  } = useStudentTimetable({
+    activeTab,
+    weekReferenceDate,
+    monthYear,
+    monthNumber,
+    selectedStartYear,
+  });
 
-  const loadWeekData = useCallback(async (refDate: Date) => {
-    try {
-      const { days, sessions } = await fetchWeekTimetable(refDate);
-      setWeekDays(days);
-      setWeekSessions(sessions);
-      const todayInWeek = days.find((d) => d.isToday);
-      setSelectedWeekDateStr(todayInWeek ? todayInWeek.dateString : days[0]?.dateString || '');
-    } catch (err) {
-      console.error('[StudentTimetableView] Failed to load week timetable:', err);
-    }
-  }, []);
-
-  const loadMonthData = useCallback(async (yr: number, mo: number) => {
-    try {
-      const { sessions } = await fetchMonthTimetable(yr, mo);
-      setMonthSessions(sessions);
-      const todayStr = formatDateToIsoDate(new Date());
-      const isCurrentMonth = todayStr.startsWith(`${yr}-${String(mo).padStart(2, '0')}`);
-      setSelectedMonthDateStr(isCurrentMonth ? todayStr : `${yr}-${String(mo).padStart(2, '0')}-01`);
-    } catch (err) {
-      console.error('[StudentTimetableView] Failed to load month timetable:', err);
-    }
-  }, []);
-
-  const loadAnnualData = useCallback(async (startYear: number) => {
-    try {
-      const { academicYear, months, sessions } = await fetchAnnualTimetable(startYear);
-      setAnnualInfo(academicYear);
-      setAnnualMonths(months);
-      setAnnualSessions(sessions);
-      const now = new Date();
-      const currentMonthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-      setExpandedAnnualMonth(currentMonthKey);
-    } catch (err) {
-      console.error('[StudentTimetableView] Failed to load annual timetable:', err);
-    }
-  }, []);
-
-  const loadInitialData = useCallback(async () => {
-    setIsLoading(true);
-    await Promise.all([
-      loadTodayData(),
-      loadWeekData(weekReferenceDate),
-      loadMonthData(monthYear, monthNumber),
-      loadAnnualData(selectedStartYear),
-    ]);
-    setIsLoading(false);
-  }, [loadTodayData, loadWeekData, loadMonthData, loadAnnualData, weekReferenceDate, monthYear, monthNumber, selectedStartYear]);
-
+  // Keep selectedWeekDateStr in sync when weekDays change
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (weekDays && weekDays.length > 0) {
+      const hasSelectedInWeek = weekDays.some((d) => d.dateString === selectedWeekDateStr);
+      if (!hasSelectedInWeek) {
+        const todayInWeek = weekDays.find((d) => d.isToday);
+        setSelectedWeekDateStr(todayInWeek ? todayInWeek.dateString : weekDays[0]?.dateString || '');
+      }
+    }
+  }, [weekDays, selectedWeekDateStr]);
+
+  // Keep selectedMonthDateStr in sync when month changes
+  useEffect(() => {
+    const todayStr = formatDateToIsoDate(new Date());
+    const isCurrentMonth = todayStr.startsWith(`${monthYear}-${String(monthNumber).padStart(2, '0')}`);
+    setSelectedMonthDateStr(isCurrentMonth ? todayStr : `${monthYear}-${String(monthNumber).padStart(2, '0')}-01`);
+  }, [monthYear, monthNumber]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    if (activeTab === 'today') await loadTodayData();
-    else if (activeTab === 'week') await loadWeekData(weekReferenceDate);
-    else if (activeTab === 'month') await loadMonthData(monthYear, monthNumber);
-    else if (activeTab === 'year') await loadAnnualData(selectedStartYear);
-    setIsRefreshing(false);
+    try {
+      await refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -204,20 +166,17 @@ export function StudentTimetableView() {
     const prev = new Date(weekReferenceDate);
     prev.setDate(prev.getDate() - 7);
     setWeekReferenceDate(prev);
-    loadWeekData(prev);
   };
 
   const handleNextWeek = () => {
     const next = new Date(weekReferenceDate);
     next.setDate(next.getDate() + 7);
     setWeekReferenceDate(next);
-    loadWeekData(next);
   };
 
   const handleCurrentWeek = () => {
     const now = new Date();
     setWeekReferenceDate(now);
-    loadWeekData(now);
   };
 
   // Month Navigation
@@ -230,7 +189,6 @@ export function StudentTimetableView() {
     }
     setMonthYear(newYr);
     setMonthNumber(newMo);
-    loadMonthData(newYr, newMo);
   };
 
   const handleNextMonth = () => {
@@ -242,20 +200,17 @@ export function StudentTimetableView() {
     }
     setMonthYear(newYr);
     setMonthNumber(newMo);
-    loadMonthData(newYr, newMo);
   };
 
   const handleCurrentMonth = () => {
     const now = new Date();
     setMonthYear(now.getFullYear());
     setMonthNumber(now.getMonth() + 1);
-    loadMonthData(now.getFullYear(), now.getMonth() + 1);
   };
 
   // Year Navigation
   const handleYearChange = (year: number) => {
     setSelectedStartYear(year);
-    loadAnnualData(year);
   };
 
   // Month Grid Days

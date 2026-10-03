@@ -216,11 +216,7 @@ export default function BatchDetailPage() {
 
   const { data: batch, isLoading, isError, error, refetch } = useBatchDetail(batchId);
 
-  // ── Capacity Utilization ───────────────────────────────────────────────
-  const utilizationPercent = useMemo(() => {
-    if (!batch || batch.capacity === null || batch.capacity <= 0) return null;
-    return Math.round((batch.studentCount / batch.capacity) * 100 * 100) / 100;
-  }, [batch]);
+
 
   // ── Student Assignment State ──────────────────────────────────────────
   const [studentSearch, setStudentSearch] = useState('');
@@ -274,13 +270,42 @@ export default function BatchDetailPage() {
     isError: assignedError,
   } = useAssignedStudents(batchId);
 
+  const [hasRequestedAvailable, setHasRequestedAvailable] = useState(false);
+
+  const isAvailableEnabled = hasRequestedAvailable || Boolean(debouncedSearch && debouncedSearch.trim().length > 0);
+
   const {
     data: availableStudents,
     isLoading: availableLoading,
     isError: isAvailableError,
     error: availableError,
     refetch: refetchAvailable,
-  } = useAvailableStudents(batchId, debouncedSearch || undefined);
+  } = useAvailableStudents(batchId, debouncedSearch || undefined, {
+    enabled: isAvailableEnabled,
+  });
+
+  // ── Pagination State ────────────────────────────────────────────────
+  const [assignedPage, setAssignedPage] = useState(1);
+  const [availablePage, setAvailablePage] = useState(1);
+  const ASSIGNED_PAGE_SIZE = 10;
+  const AVAILABLE_PAGE_SIZE = 10;
+
+  // Reset available page on search
+  useEffect(() => {
+    setAvailablePage(1);
+  }, [debouncedSearch]);
+
+  const paginatedAssignedStudents = useMemo(() => {
+    if (!assignedStudents) return [];
+    const start = (assignedPage - 1) * ASSIGNED_PAGE_SIZE;
+    return assignedStudents.slice(start, start + ASSIGNED_PAGE_SIZE);
+  }, [assignedStudents, assignedPage]);
+
+  const paginatedAvailableStudents = useMemo(() => {
+    if (!availableStudents) return [];
+    const start = (availablePage - 1) * AVAILABLE_PAGE_SIZE;
+    return availableStudents.slice(start, start + AVAILABLE_PAGE_SIZE);
+  }, [availableStudents, availablePage]);
 
   // ── Auth Context ─────────────────────────────────────────────────────
   const { instituteId } = useAuth();
@@ -294,11 +319,7 @@ export default function BatchDetailPage() {
   const removeStudentsMutation = useRemoveStudents();
 
   // ── Computed Values ───────────────────────────────────────────────────
-  const isAtCapacity = batch?.capacity !== null && batch?.capacity !== undefined
-    && (batch?.studentCount ?? 0) >= batch.capacity;
-  const availableSeats = batch?.capacity !== null && batch?.capacity !== undefined
-    ? Math.max(0, batch.capacity - (batch?.studentCount ?? 0))
-    : null;
+
 
   // ── Handler: Assign Selected Students ─────────────────────────────────
   const handleConfirmAssign = async () => {
@@ -689,12 +710,7 @@ export default function BatchDetailPage() {
               <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{batch.studentCount}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Students</p>
             </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {batch.capacity !== null ? batch.capacity : '∞'}
-              </p>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Capacity</p>
-            </div>
+
             <div className="text-center">
               <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
                 {batch.mockTestCount}
@@ -861,38 +877,38 @@ export default function BatchDetailPage() {
                 value={batch.studentCount}
                 color="blue"
               />
-              {batch.assignedStudents.length > 0 && (
+              {(assignedStudents ?? []).length > 0 && (
                 <div className="flex-1">
                   <p className="text-xs text-gray-500 mb-2">Recently enrolled</p>
                   <div className="space-y-1.5">
-                    {batch.assignedStudents.slice(0, 5).map((s) => (
+                    {(assignedStudents ?? []).slice(0, 5).map((s) => (
                       <div
                         key={s.studentId}
                         className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-1.5 dark:border-gray-700 dark:bg-gray-800/20"
                       >
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-[8px] font-bold text-white">
-                          {s.name.charAt(0).toUpperCase()}
+                          {s.studentName.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
-                            {s.name}
+                            {s.studentName}
                           </p>
                           <p className="text-[10px] text-gray-400">
-                            Enrolled {formatDate(s.enrolledOn)}
+                            Enrolled {formatDate(s.joinedAt)}
                           </p>
                         </div>
                       </div>
                     ))}
-                    {batch.assignedStudents.length > 5 && (
+                    {(assignedStudents ?? []).length > 5 && (
                       <p className="text-[10px] text-center text-gray-400 pt-1">
-                        +{batch.assignedStudents.length - 5} more students
+                        +{(assignedStudents ?? []).length - 5} more students
                       </p>
                     )}
                   </div>
                 </div>
               )}
             </div>
-            {batch.assignedStudents.length === 0 && (
+            {(!assignedStudents || assignedStudents.length === 0) && (
               <p className="text-xs text-gray-400 mt-2">
                 No students are currently enrolled in this batch.
               </p>
@@ -907,18 +923,9 @@ export default function BatchDetailPage() {
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Student Assignment
               </h3>
-              {/* Capacity indicator */}
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <Users size={14} />
-                <span>
-                  {batch.studentCount}
-                  {batch.capacity !== null ? ` / ${batch.capacity}` : ''} students
-                </span>
-                {availableSeats !== null && (
-                  <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                    {availableSeats} seat{availableSeats !== 1 ? 's' : ''} available
-                  </span>
-                )}
+                <span>{batch.studentCount} students enrolled</span>
               </div>
             </div>
             <p className="mb-4 text-xs text-gray-500">Assign or remove students from this batch</p>
@@ -975,11 +982,15 @@ export default function BatchDetailPage() {
                 </div>
                 <DataTable
                   columns={assignedColumns}
-                  data={assignedStudents ?? []}
+                  data={paginatedAssignedStudents}
                   keyExtractor={(item) => item.studentId}
                   isLoading={assignedLoading}
                   selectedIds={selectedAssignedIds}
                   onSelectionChange={setSelectedAssignedIds}
+                  page={assignedPage}
+                  pageSize={ASSIGNED_PAGE_SIZE}
+                  totalCount={assignedStudents?.length ?? 0}
+                  onPageChange={setAssignedPage}
                   emptyState={
                     <EmptyState
                       icon={<UserCircle size={28} weight="thin" />}
@@ -995,7 +1006,7 @@ export default function BatchDetailPage() {
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Available ({availableStudents?.length ?? 0})
+                    Available {isAvailableEnabled ? `(${availableStudents?.length ?? 0})` : ''}
                   </h4>
                   {selectedAvailableIds.size > 0 && (
                     <button
@@ -1006,9 +1017,8 @@ export default function BatchDetailPage() {
                           count: selectedAvailableIds.size,
                         })
                       }
-                      disabled={isAtCapacity || assignMutation.isPending}
+                      disabled={assignMutation.isPending}
                       className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
-                      title={isAtCapacity ? 'Batch capacity reached.' : undefined}
                     >
                       {assignMutation.isPending ? (
                         <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -1027,31 +1037,46 @@ export default function BatchDetailPage() {
                 <div className="mb-3">
                   <SearchBar
                     value={studentSearch}
-                    onChange={setStudentSearch}
+                    onChange={(val) => {
+                      setStudentSearch(val);
+                      if (val) setHasRequestedAvailable(true);
+                    }}
                     placeholder="Search by name or enrollment..."
                     className="w-full"
                   />
                 </div>
 
-                {/* Capacity warning */}
-                {isAtCapacity && (
-                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    Batch capacity reached. Remove some students before assigning new ones.
-                  </div>
-                )}
+
 
                 <DataTable
                   columns={availableColumns}
-                  data={availableStudents ?? []}
+                  data={paginatedAvailableStudents}
                   keyExtractor={(item) => item.studentId}
                   isLoading={availableLoading}
                   selectedIds={selectedAvailableIds}
                   onSelectionChange={setSelectedAvailableIds}
+                  page={availablePage}
+                  pageSize={AVAILABLE_PAGE_SIZE}
+                  totalCount={availableStudents?.length ?? 0}
+                  onPageChange={setAvailablePage}
                   emptyState={
-                    isAvailableError ? (
+                    !isAvailableEnabled ? (
+                      <EmptyState
+                        icon={<UserCircle size={28} weight="thin" />}
+                        title="Search or load available students"
+                        description="Search by name or enrollment number, or click below to browse eligible students."
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => setHasRequestedAvailable(true)}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40"
+                          >
+                            <Users size={14} />
+                            Browse Available Students
+                          </button>
+                        }
+                      />
+                    ) : isAvailableError ? (
                       <EmptyState
                         icon={<XCircle size={28} weight="duotone" className="text-red-500" />}
                         title="Failed to load students"
@@ -1107,49 +1132,7 @@ export default function BatchDetailPage() {
         {/* ─── RIGHT COLUMN (1/3) ────────────────────────────────────── */}
         <div className="space-y-6">
 
-          {/* ════════════════════════════════════════════════════════════
-              Section 3: Capacity Statistics
-              ════════════════════════════════════════════════════════════ */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Capacity Statistics
-            </h3>
-            <p className="mb-4 text-xs text-gray-500">Seat utilisation overview</p>
-            <div className="grid grid-cols-1 gap-4">
-              <StatCard
-                icon={<Users size={22} weight="duotone" />}
-                label="Capacity"
-                value={batch.capacity !== null ? batch.capacity : 'Unlimited'}
-                color="blue"
-              />
-              <StatCard
-                icon={<Student size={22} weight="duotone" />}
-                label="Enrolled Students"
-                value={batch.studentCount}
-                color="emerald"
-              />
-              <StatCard
-                icon={<User size={22} weight="duotone" />}
-                label="Available Seats"
-                value={batch.availableSeats !== null ? batch.availableSeats : 'Unlimited'}
-                color={batch.availableSeats !== null && batch.availableSeats <= 0 ? 'amber' : 'indigo'}
-              />
-              <StatCard
-                icon={<Buildings size={22} weight="duotone" />}
-                label="Utilization"
-                value={utilizationPercent !== null ? `${utilizationPercent}%` : 'N/A'}
-                color={
-                  utilizationPercent !== null
-                    ? utilizationPercent >= 90
-                      ? 'amber'
-                      : utilizationPercent >= 70
-                        ? 'emerald'
-                        : 'gray'
-                    : 'gray'
-                }
-              />
-            </div>
-          </div>
+
 
           {/* ════════════════════════════════════════════════════════════
               Section 5: Batch Statistics

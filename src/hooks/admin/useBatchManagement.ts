@@ -27,7 +27,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from './queryKeys';
 import { batchManagementService } from '@/services/admin/batchManagementService';
-import type { BatchManagementFilters, BatchManagementSortOptions } from '@/services/admin/batchManagementService';
+import type { BatchManagementFilters, BatchManagementSortOptions, BatchLookupItem } from '@/services/admin/batchManagementService';
+export type { BatchLookupItem };
 import type { PaginationParams } from '@/types/academic';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -42,6 +43,31 @@ import type { PaginationParams } from '@/types/academic';
  * Cache key: `['admin', 'batchManagement', 'counts', instituteId]`
  * Stale time: 2 minutes (counts change when admins add/archive batches)
  */
+/**
+ * Fetch a lightweight list of active batches for filter dropdowns.
+ *
+ * Avoids heavy relational joins (streams, batch_students) and sequential
+ * teacher resolution, returning only batchId and batchName.
+ *
+ * @param instituteId - Optional institute scope.
+ *
+ * Cache key: `['admin', 'batchManagement', 'lookup', instituteId]`
+ * Stale time: 5 minutes (batch names change rarely)
+ */
+export function useBatchLookup(instituteId?: string | null) {
+  return useQuery<BatchLookupItem[]>({
+    queryKey: adminKeys.batchManagement.lookup(instituteId),
+    queryFn: async () => {
+      const result = await batchManagementService.getBatchLookup(instituteId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch batch options.');
+      }
+      return result.data!;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useBatchManagementCounts(instituteId?: string | null) {
   return useQuery({
     queryKey: [...adminKeys.batchManagement.counts(), instituteId],
@@ -137,24 +163,11 @@ export function useBatchStats(instituteId?: string | null) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Shared mutation options for invalidating batch management caches.
- */
-function useInvalidateBatchManagement() {
-  const queryClient = useQueryClient();
-
-  return async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.all() }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
-    ]);
-  };
-}
-
-/**
  * Create a new batch.
+ * Invalidates lists, counts, and dropdown lookups without clearing other batch details.
  */
 export function useCreateBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: import('@/services/admin/batchManagementService').CreateBatchInput) => {
@@ -165,16 +178,22 @@ export function useCreateBatch() {
       return result;
     },
     onSuccess: async () => {
-      await invalidate();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lookup() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
 
 /**
  * Update an existing batch.
+ * Invalidates the specific batch detail, lists, counts, and lookups.
  */
 export function useUpdateBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({
@@ -190,17 +209,23 @@ export function useUpdateBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(variables.batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lookup() }),
+      ]);
     },
   });
 }
 
 /**
- * Archive an active batch (active → archived).
+ * Archive an active batch (active ──► archived).
+ * Targets the specific batch detail, lists, counts, and dashboard.
  */
 export function useArchiveBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -210,17 +235,22 @@ export function useArchiveBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, batchId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
 
 /**
- * Restore an archived batch (archived → active).
+ * Restore an archived batch (archived ──► active).
  */
 export function useRestoreBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -230,17 +260,22 @@ export function useRestoreBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, batchId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
 
 /**
- * Activate an inactive (upcoming/completed) batch (→ active).
+ * Activate an inactive (upcoming/completed) batch (──► active).
  */
 export function useActivateBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -250,17 +285,22 @@ export function useActivateBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, batchId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
 
 /**
- * Deactivate an active batch (active → completed).
+ * Deactivate an active batch (active ──► completed).
  */
 export function useDeactivateBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -270,18 +310,22 @@ export function useDeactivateBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, batchId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
 
 /**
  * Delete a batch (soft-delete).
- * Only succeeds when no students or scheduled mock tests exist.
  */
 export function useDeleteBatch() {
-  const invalidate = useInvalidateBatchManagement();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -291,9 +335,14 @@ export function useDeleteBatch() {
       }
       return result;
     },
-    onSuccess: async () => {
-      await invalidate();
+    onSuccess: async (_data, batchId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.detail(batchId) }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lists() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.counts() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.batchManagement.lookup() }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.dashboard.all() }),
+      ]);
     },
   });
 }
-

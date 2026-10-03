@@ -50,6 +50,7 @@ interface DbTimetableSlot {
   valid_from: string;
   valid_until: string;
   status: TimetableSlotStatus;
+  is_recurring?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -110,6 +111,7 @@ function mapTimetableSlot(db: DbTimetableSlot): TimetableSlot {
     validFrom: db.valid_from,
     validUntil: db.valid_until,
     status: db.status,
+    isRecurring: db.is_recurring ?? true,
     // Institute IANA timezone (defaults match institutes.timezone) — used by
     // Phase 2C to map a class's scheduled_at to its occurrence date.
     instituteTimezone: institute?.timezone || 'Asia/Kolkata',

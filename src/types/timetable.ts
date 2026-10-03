@@ -54,6 +54,8 @@ export interface TimetableSlot {
   /** Validity window end (YYYY-MM-DD). */
   validUntil: string;
   status: TimetableSlotStatus;
+  /** false = date-specific one-off slot, true = recurring weekly rule. */
+  isRecurring: boolean;
   /**
    * Joined institute IANA timezone (`institutes.timezone`, default
    * "Asia/Kolkata"). Optional — set by the lesson planner's slot resolution;
@@ -73,6 +75,12 @@ export interface TimetableFilters {
   /** Filter by batch (batch_subjects.batch_id). */
   batchId?: string;
   status?: TimetableSlotStatus;
+  isRecurring?: boolean;
+  /** If specified, matches slots whose validity window intersects [startDate, endDate]. */
+  dateRange?: {
+    startDate: string;
+    endDate: string;
+  };
 }
 
 /** Input for creating a timetable slot via create_timetable_slot RPC. */

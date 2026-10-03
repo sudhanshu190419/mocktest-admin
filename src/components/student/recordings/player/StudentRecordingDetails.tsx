@@ -97,10 +97,16 @@ export const StudentRecordingDetails: React.FC<StudentRecordingDetailsProps> = (
             </span>
           )}
 
-          {recording.batchName && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-200">
-              <GraduationCap className="w-3.5 h-3.5 text-neutral-500" />
-              {recording.batchName}
+          {recording.chapterName && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
+              <BookOpen className="w-3.5 h-3.5 text-sky-500" />
+              {recording.chapterName}
+            </span>
+          )}
+
+          {recording.topicName && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {recording.topicName}
             </span>
           )}
 

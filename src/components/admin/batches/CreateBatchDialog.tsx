@@ -49,7 +49,6 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
   const [streamId, setStreamId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [maxSeats, setMaxSeats] = useState<number | ''>('');
   const [status, setStatus] = useState<'upcoming' | 'active'>('upcoming');
 
   // ── Data ───────────────────────────────────────────────────────────────
@@ -95,7 +94,6 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
     setStreamId(streams[0]?.streamId ?? '');
     setStartDate('');
     setEndDate('');
-    setMaxSeats('');
     setStatus('upcoming');
   }
 
@@ -135,7 +133,7 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
       academicYear: trimmedYear,
       startDate,
       endDate,
-      maxSeats: maxSeats === '' ? null : Number(maxSeats),
+      maxSeats: null,
       status,
     };
 
@@ -283,34 +281,19 @@ export function CreateBatchDialog({ isOpen, onClose }: CreateBatchDialogProps) {
             </div>
           </div>
 
-          {/* Max Seats & Status row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                Max Seats <span className="text-gray-400">(optional)</span>
-              </label>
-              <input
-                type="number"
-                value={maxSeats}
-                onChange={(e) => setMaxSeats(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Unlimited"
-                min={1}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                Status <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as 'upcoming' | 'active')}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
-              >
-                <option value="upcoming">Upcoming</option>
-                <option value="active">Active</option>
-              </select>
-            </div>
+          {/* Status */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
+              Status <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'upcoming' | 'active')}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="upcoming">Upcoming</option>
+              <option value="active">Active</option>
+            </select>
           </div>
 
           {/* Error / Success */}

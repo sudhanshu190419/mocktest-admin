@@ -11,6 +11,13 @@ import type { AdminRoleAssignment, DbAdminRole } from '@/types/adminRoles';
 import { trustedDeviceService } from '@/services/security/trustedDeviceService';
 import { computeDeviceFingerprint } from '@/services/security/fingerprintService';
 import {
+  registerActiveWebSession,
+  validateActiveWebSession,
+  deactivateActiveWebSession,
+  subscribeToWebSessionChanges,
+  getOrCreateWebClientId,
+} from '@/services/device/webDeviceSessionService';
+import {
   clearStoredDeviceToken,
   getStoredDeviceToken,
   storeDeviceToken,
@@ -78,6 +85,126 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // so teachers / students / super admins are unaffected.
   const [deviceStatus, setDeviceStatus] = useState<DeviceCheckState>('bypass');
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+
+  // Web Device Session (Slot B) for Student One-Device Enforcement
+  const webSessionUnsubRef = useRef<(() => void) | null>(null);
+  const webSessionUserIdRef = useRef<string | null>(null);
+  const webValidationInFlightRef = useRef<Promise<void> | null>(null);
+
+  const stopWebSessionManagement = () => {
+    if (webSessionUnsubRef.current) {
+      console.log('[AuthContext] [DEVICE_AUTH] Stopping web session Realtime subscription');
+      webSessionUnsubRef.current();
+      webSessionUnsubRef.current = null;
+    }
+    webSessionUserIdRef.current = null;
+  };
+
+  const forceWebSignOut = async (message: string) => {
+    console.log('[AuthContext] [DEVICE_AUTH] Web force logout:', message);
+    stopWebSessionManagement();
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {}
+    setSession(null);
+    setUser(null);
+    setTeacherProfile(null);
+    setDeviceStatus('bypass');
+    setDeviceInfo(null);
+    clearTeacherIdentityCache();
+    clearStudentIdCache();
+    lastAuthenticatedProfileIdRef.current = null;
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(message);
+    }
+  };
+
+  const startWebSessionManagement = async (userId: string, role?: string) => {
+    if (role !== 'student') return;
+
+    // Prevent duplicate listeners for the same user
+    if (webSessionUserIdRef.current === userId && webSessionUnsubRef.current !== null) {
+      console.log('[AuthContext] [DEVICE_AUTH] Web session management already active for user:', userId);
+      return;
+    }
+
+    webSessionUserIdRef.current = userId;
+    const webClientId = getOrCreateWebClientId();
+
+    // Clean up any stale subscription first
+    if (webSessionUnsubRef.current) {
+      webSessionUnsubRef.current();
+      webSessionUnsubRef.current = null;
+    }
+
+    console.log('[AuthContext] [DEVICE_AUTH] Starting web session management for student:', userId, 'client:', webClientId);
+
+    // Register active web session with retry
+    const registerWithRetry = async (maxAttempts = 3) => {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (webSessionUserIdRef.current !== userId) return;
+        const reg = await registerActiveWebSession();
+        if (reg.success) {
+          console.log(`[AuthContext] [DEVICE_AUTH] Web session registered on attempt ${attempt}`);
+          return;
+        }
+        console.warn(`[AuthContext] [DEVICE_AUTH] Web session register attempt ${attempt} failed:`, reg.error);
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    };
+    registerWithRetry();
+
+    // Subscribe to Realtime device-session events
+    const sub = subscribeToWebSessionChanges(userId, webClientId, (reason) => {
+      console.log('[AuthContext] [DEVICE_AUTH] Web session replaced:', reason);
+      forceWebSignOut('You have been logged out because your account was signed in on another browser or computer.');
+    });
+    webSessionUnsubRef.current = sub.unsubscribe;
+    console.log('[AuthContext] [DEVICE_AUTH] Web Realtime subscribed');
+  };
+
+  useEffect(() => {
+    const handleVisibilityOrFocus = async () => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible' &&
+        user?.id &&
+        teacherProfile?.role === 'student'
+      ) {
+        if (webValidationInFlightRef.current) return;
+        webValidationInFlightRef.current = (async () => {
+          try {
+            console.log('[DEVICE_AUTH] Checking web device session on visibility/focus...');
+            const validation = await validateActiveWebSession();
+            console.log('[DEVICE_AUTH] Web session validation result:', validation.status);
+            if (validation.status === 'inactive') {
+              console.log('[DEVICE_AUTH] Web session replaced; forcing logout: replaced_by_new_device');
+              await forceWebSignOut('You have been logged out because your account was signed in on another browser or computer.');
+            }
+          } catch (err) {
+            console.warn('[DEVICE_AUTH] Web validation error:', err);
+          } finally {
+            webValidationInFlightRef.current = null;
+          }
+        })();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.addEventListener('focus', handleVisibilityOrFocus);
+    }
+
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+      }
+    };
+  }, [user?.id, teacherProfile?.role]);
+
 
   // In-flight guard for the trusted-device CHALLENGE phase only (Bug 1 fix):
   // signIn(), the onAuthStateChange handler and React Strict Mode can all fire
@@ -534,6 +661,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           accountStatus: profileData?.account_status || 'approved',
           name: profileData?.name || baseProfile.name,
           email: profileData?.email || baseProfile.email,
+          designation:
+            profileData?.role === 'admin'
+              ? 'Administrator'
+              : baseProfile.designation,
           adminRoles,
         });
 
@@ -580,6 +711,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         void evaluateDeviceTrust(profileData?.role, adminRoles);
       } else {
         console.log('[TD-load] skipping re-evaluation (device already evaluated for this user)');
+      }
+
+      // Web Device Session (Slot B) for Student One-Device Enforcement
+      if (profileData?.role === 'student') {
+        void startWebSessionManagement(userId, 'student');
       }
     } catch (err) {
       console.error('Error fetching teacher details:', err);

@@ -220,7 +220,7 @@ export const recordingService = {
       // ── Load live class ───────────────────────────────────────────────
       const { data: liveClass, error: classError } = await supabase
         .from('live_classes')
-        .select('class_id, teacher_id, institute_id, room_name')
+        .select('class_id, teacher_id, institute_id, room_name, timetable_slot_id')
         .eq('class_id', input.classId)
         .single();
 
@@ -244,7 +244,18 @@ export const recordingService = {
         .select('batch_subject_id')
         .eq('class_id', input.classId);
 
-      const batchSubjectIds = (classBSL ?? []).map((r) => r.batch_subject_id);
+      let batchSubjectIds = (classBSL ?? []).map((r: { batch_subject_id: string }) => r.batch_subject_id);
+
+      if (batchSubjectIds.length === 0 && (liveClass as any).timetable_slot_id) {
+        const { data: slot } = await supabase
+          .from('timetable_slots')
+          .select('batch_subject_id')
+          .eq('timetable_slot_id', (liveClass as any).timetable_slot_id)
+          .maybeSingle();
+        if (slot?.batch_subject_id) {
+          batchSubjectIds.push(slot.batch_subject_id);
+        }
+      }
 
       // ── Create recordings row ─────────────────────────────────────────
       // source_type is 'live_class' by default (column DEFAULT), which
@@ -312,13 +323,14 @@ export const recordingService = {
 
           const { error: assignError } = await supabase
             .from('batch_subject_recordings')
-            .insert(assignmentRows)
-            .select();
+            .upsert(assignmentRows, {
+              onConflict: 'batch_subject_id,recording_id',
+              ignoreDuplicates: true,
+            });
 
           if (assignError) {
             console.error('[Recording] Failed to create batch_subject_recordings:', assignError.message);
-            // Non-critical — recording exists and egress is running.
-            // Admin can manually reassign later.
+            throw new Error(`Failed to assign recording to batch subjects: ${assignError.message}`);
           }
         }
 

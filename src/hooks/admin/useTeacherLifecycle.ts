@@ -65,7 +65,7 @@ export function useTeacherLifecycleCounts(instituteId?: string | null) {
  * @param sort       - Optional sort configuration.
  * @param pagination - Optional pagination parameters (page, pageSize).
  *
- * Cache key: `['admin', 'teacherLifecycle', 'list', filters, pagination]`
+ * Cache key: `['admin', 'teacherLifecycle', 'list', filters, sort, pagination]`
  * Stale time: 1 minute (teacher list changes frequently during approval sessions)
  */
 export function useTeacherList(
@@ -76,6 +76,7 @@ export function useTeacherList(
   return useQuery({
     queryKey: adminKeys.teacherLifecycle.list(
       filters as Record<string, unknown> | undefined,
+      sort as Record<string, unknown> | undefined,
       pagination as Record<string, unknown> | undefined,
     ),
     queryFn: async () => {

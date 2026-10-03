@@ -348,6 +348,7 @@ export interface ImportGroup {
    * "use this existing slot" without creating a duplicate.
    */
   existingSlotId: string | null;
+  is_recurring?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -425,6 +426,7 @@ export interface BulkSlotPayload {
   end_time: string;
   valid_from: string;
   valid_until: string;
+  is_recurring?: boolean;
 }
 
 /** One `p_plans` entry — EXACTLY as migration 114 expects. */

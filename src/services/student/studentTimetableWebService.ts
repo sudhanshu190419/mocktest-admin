@@ -45,6 +45,7 @@ interface DbSlotRow {
   valid_from: string;
   valid_until: string;
   status: 'active' | 'paused' | 'cancelled';
+  is_recurring?: boolean;
   teacher_details?: {
     teacher_id: string;
     profiles?: { name: string } | { name: string }[] | null;
@@ -127,6 +128,7 @@ interface RpcTimetableSlotRow {
   valid_from: string;
   valid_until: string;
   status: 'active' | 'paused' | 'cancelled' | string;
+  is_recurring?: boolean;
 }
 
 /**
@@ -198,49 +200,114 @@ async function fetchStudentTimetableSlotsLegacy(): Promise<RawTimetableSlot[]> {
 }
 
 /**
+ * In-flight promise map for deduplicating concurrent slot fetches by batch IDs.
+ */
+const inFlightSlotRequests = new Map<string, Promise<RawTimetableSlot[]>>();
+
+/**
+ * 5-minute TTL in-memory cache for student timetable slot definitions.
+ */
+export const SLOT_CACHE_TTL = 5 * 60 * 1000;
+
+export const slotMemoryCache = new Map<
+  string,
+  {
+    data: RawTimetableSlot[];
+    timestamp: number;
+  }
+>();
+
+/**
+ * Utility to clear the in-memory slot cache.
+ */
+export function clearStudentSlotMemoryCache(): void {
+  slotMemoryCache.clear();
+}
+
+/**
  * Fetch all active recurring timetable slots accessible to the authenticated student.
- * Primary path: calls public.get_student_timetable_slots RPC.
+ * Primary path: checks 5-minute memory cache, in-flight deduplication, then calls public.get_student_timetable_slots RPC.
  * Fallback path: falls back to legacy PostgREST query on error.
  */
 export async function fetchStudentTimetableSlots(batchIds?: string[]): Promise<RawTimetableSlot[]> {
-  try {
-    const rpcParams: { p_batch_ids?: string[] } = {};
-    if (batchIds && batchIds.length > 0) {
-      rpcParams.p_batch_ids = batchIds;
-    }
+  const cacheKey =
+    batchIds && batchIds.length > 0
+      ? [...batchIds].sort().join(',')
+      : 'all_batches';
 
-    const { data, error } = await supabase.rpc('get_student_timetable_slots', rpcParams);
-
-    if (error) {
-      console.warn('[studentTimetableWebService] get_student_timetable_slots RPC failed, using legacy fallback:', error.message);
-      return await fetchStudentTimetableSlotsLegacy();
-    }
-
-    if (!Array.isArray(data)) {
-      console.warn('[studentTimetableWebService] get_student_timetable_slots returned non-array, using legacy fallback');
-      return await fetchStudentTimetableSlotsLegacy();
-    }
-
-    return (data as RpcTimetableSlotRow[]).map((row) => ({
-      timetable_slot_id: row.timetable_slot_id,
-      institute_id: '',
-      teacher_id: '',
-      batch_subject_id: row.batch_subject_id,
-      day_of_week: Number(row.day_of_week),
-      start_time: row.start_time,
-      end_time: row.end_time,
-      valid_from: row.valid_from,
-      valid_until: row.valid_until,
-      status: (row.status as 'active' | 'paused' | 'cancelled') || 'active',
-      teacher_name: null,
-      batch_name: row.batch_name || null,
-      batch_id: row.batch_id || null,
-      subject_name: row.subject_name || null,
-    }));
-  } catch (err) {
-    console.warn('[studentTimetableWebService] fetchStudentTimetableSlots catch, using legacy fallback:', err);
-    return await fetchStudentTimetableSlotsLegacy().catch(() => []);
+  // 1. Check valid memory cache
+  const cached = slotMemoryCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SLOT_CACHE_TTL) {
+    return cached.data;
   }
+
+  // 2. Check in-flight promise deduplication
+  const existing = inFlightSlotRequests.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = (async (): Promise<RawTimetableSlot[]> => {
+    try {
+      const rpcParams: { p_batch_ids?: string[] } = {};
+      if (batchIds && batchIds.length > 0) {
+        rpcParams.p_batch_ids = batchIds;
+      }
+
+      const { data, error } = await supabase.rpc('get_student_timetable_slots', rpcParams);
+
+      if (error) {
+        console.warn('[studentTimetableWebService] get_student_timetable_slots RPC failed, using legacy fallback:', error.message);
+        return await fetchStudentTimetableSlotsLegacy();
+      }
+
+      if (!Array.isArray(data)) {
+        console.warn('[studentTimetableWebService] get_student_timetable_slots returned non-array, using legacy fallback');
+        return await fetchStudentTimetableSlotsLegacy();
+      }
+
+      const mapped: RawTimetableSlot[] = (data as RpcTimetableSlotRow[]).map((row) => ({
+        timetable_slot_id: row.timetable_slot_id,
+        institute_id: '',
+        teacher_id: '',
+        batch_subject_id: row.batch_subject_id,
+        day_of_week: Number(row.day_of_week),
+        start_time: row.start_time,
+        end_time: row.end_time,
+        valid_from: row.valid_from,
+        valid_until: row.valid_until,
+        status: (row.status as 'active' | 'paused' | 'cancelled') || 'active',
+        ...(row.is_recurring !== undefined ? { is_recurring: Boolean(row.is_recurring) } : {}),
+        teacher_name: null,
+        batch_name: row.batch_name || null,
+        batch_id: row.batch_id || null,
+        subject_name: row.subject_name || null,
+      }));
+
+      const finalData = (batchIds && batchIds.length > 0)
+        ? mapped.filter((s) => s.batch_id && batchIds.includes(s.batch_id))
+        : mapped;
+
+      slotMemoryCache.set(cacheKey, {
+        data: finalData,
+        timestamp: Date.now(),
+      });
+
+      return finalData;
+    } catch (err) {
+      console.warn('[studentTimetableWebService] fetchStudentTimetableSlots catch, using legacy fallback:', err);
+      return await fetchStudentTimetableSlotsLegacy().catch(() => []);
+    }
+  })();
+
+  inFlightSlotRequests.set(cacheKey, promise);
+  void promise.finally(() => {
+    if (inFlightSlotRequests.get(cacheKey) === promise) {
+      inFlightSlotRequests.delete(cacheKey);
+    }
+  });
+
+  return promise;
 }
 
 /**
@@ -263,8 +330,8 @@ export async function fetchStudentLessonPlans(
         chapter_id,
         topic_id,
         notes,
-        chapters ( name ),
-        topics ( name )
+        chapters:chapters!fk_lesson_plans_chapter ( name ),
+        topics:topics!fk_lesson_plans_topic ( name )
       `)
       .in('timetable_slot_id', slotIds);
 

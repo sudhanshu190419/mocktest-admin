@@ -103,7 +103,9 @@ export default function BatchSubjectTeacherSection({
   const {
     data: availableTeachers,
     isLoading: teachersLoading,
-  } = useBSTAvailableTeachers(instituteId ?? '', debouncedTeacherSearch || undefined);
+  } = useBSTAvailableTeachers(instituteId ?? '', debouncedTeacherSearch || undefined, {
+    enabled: !!selectedSubject,
+  });
 
   // ── Mutations ───────────────────────────────────────────────────────
   const assignMutation = useBSTAssignTeacher(batchId);

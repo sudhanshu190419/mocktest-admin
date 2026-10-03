@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card } from './Card';
 import { CourseArtwork } from './StoreCourseCard';
 import {
@@ -11,6 +12,10 @@ import {
   IconTest,
   IconCheck,
   IconSearch,
+  IconFileText,
+  IconLayers,
+  IconChartBar,
+  IconTarget,
 } from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useStudentPyqPurchases } from '@/hooks/student/useStudentPyqPurchases';
@@ -139,143 +144,252 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
 
   return (
     <>
-      <section className="store-container store-hero" id="store-main">
-        <div className="store-hero-copy store-reveal">
-          <p className="store-eyebrow">
-            <span className="store-status-dot" aria-hidden="true"></span>
-            PREVIOUS YEAR QUESTIONS
-          </p>
-          <h1>
-            Learn from the <span>papers that came before.</span>
-          </h1>
-          <p>
-            Solved previous-year question packages for NEET, JEE, CUET, and Foundation. Practice official
-            exam papers with timer, answer keys, and detailed explanations.
-          </p>
-          <a className="store-hero-link" href="#pyq-catalog">
-            Browse packages <span aria-hidden="true">↗</span>
-          </a>
-          <p className="store-hero-caption">
-            <span className="store-caption-rule" aria-hidden="true"></span>
-            FRESH EYES. PROVEN QUESTIONS. CLEARER NEXT STEPS.
-          </p>
+      {/* ── 1. PYQ Hero Section Matching Exact Mobile & Desktop Designs ── */}
+      <section
+        className="relative overflow-hidden bg-white min-h-[560px] xs:min-h-[610px] sm:min-h-[680px] lg:min-h-[640px] flex flex-col justify-between"
+        id="store-main"
+      >
+        {/* Mobile Background Graphic (pyq-mobile.webp) */}
+        <div className="pointer-events-none absolute inset-0 block lg:hidden overflow-hidden" aria-hidden="true">
+          <Image
+            src="/pyq-mobile.webp"
+            alt=""
+            fill
+            priority
+            quality={80}
+            sizes="(max-width: 1023px) 100vw, 0vw"
+            className="object-cover object-top select-none"
+          />
         </div>
-        <div className="store-hero-visual" aria-hidden="true">
-          <span className="store-visual-label">THE PYQ COLLECTION</span>
-          <div className="store-book book-back">
-            <span>PREVIOUS YEAR QUESTIONS</span>
-            <strong>
-              2015
-              <br />— 2025
-            </strong>
-            <span className="book-line"></span>
-            <span>EXAMINATION ARCHIVES</span>
-          </div>
-          <div className="store-book book-front">
-            <span>MAKE ME TOPPER</span>
-            <strong>
-              Answers,
-              <br />
-              step by <span>step.</span>
-            </strong>
-            <div className="course-art art-jee">
-              <div className="art-grid" aria-hidden="true"></div>
-              <svg className="art-symbol" viewBox="0 0 200 200" fill="none">
-                <circle cx="100" cy="100" r="62" stroke="currentColor" strokeWidth="5" />
-                <path d="M60 118 C80 70 120 70 140 118" stroke="currentColor" strokeWidth="6" />
-                <circle cx="100" cy="60" r="9" fill="currentColor" />
-              </svg>
+
+        {/* Mobile Seamless Radial Soft Glow / Ambient Backdrop: zero straight lines, perfectly feathered behind text */}
+        <div
+          className="pointer-events-none absolute inset-0 block lg:hidden z-[1]"
+          style={{
+            background:
+              'radial-gradient(ellipse 85% 65% at 0% 0%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 30%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.2) 65%, transparent 80%)',
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Desktop Background Graphic (pyq-desktop.webp) */}
+        <div className="pointer-events-none absolute inset-0 hidden lg:block overflow-hidden" aria-hidden="true">
+          <Image
+            src="/pyq-desktop.webp"
+            alt=""
+            fill
+            priority
+            quality={80}
+            sizes="(min-width: 1024px) 100vw, 0vw"
+            className="object-cover object-[center_right] select-none"
+          />
+        </div>
+
+        {/* Desktop left gradient overlay for crisp text contrast */}
+        <div
+          className="pointer-events-none absolute inset-0 hidden lg:block bg-gradient-to-r from-white via-white/85 to-transparent w-[62%]"
+          aria-hidden="true"
+        />
+
+        {/* Main Content Area */}
+        <div className="store-container relative z-10 w-full pt-3.5 xs:pt-4 sm:pt-8 lg:py-16">
+          <div className="max-w-[215px] xs:max-w-[235px] sm:max-w-md lg:max-w-2xl space-y-2.5 xs:space-y-3 sm:space-y-6">
+            {/* Eyebrow Badge */}
+            <div className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-200/90 bg-[#e6f7ef] px-2.5 py-0.5 sm:px-3.5 sm:py-1.5 text-[9.5px] xs:text-[10.5px] sm:text-xs font-extrabold tracking-[0.08em] sm:tracking-[0.12em] text-[#047857] uppercase shadow-2xs">
+              <IconFileText size={12} className="text-[#047857] sm:w-3.5 sm:h-3.5" />
+              <span>PREVIOUS YEAR QUESTIONS</span>
             </div>
-            <span className="book-footer">OFFICIAL PAPERS</span>
+
+            {/* Headline */}
+            <h1 className="text-[23px] xs:text-[26px] sm:text-4xl lg:text-[54px] font-black text-slate-900 tracking-tight leading-[1.12]">
+              Real Questions. <br />
+              <span className="text-[#047857]">Real Exam Experience.</span> <br />
+              Real Results.
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-slate-600 text-[11px] xs:text-[11.5px] sm:text-base lg:text-[16.5px] font-normal leading-relaxed max-w-[205px] xs:max-w-[225px] sm:max-w-lg">
+              Access subject-wise, chapter-wise and year-wise PYQs with detailed solutions, just like the actual exam.
+            </p>
+
+            {/* Action Buttons: Vertical stack on mobile, horizontal on desktop */}
+            <div className="flex flex-col items-start sm:flex-row sm:items-center gap-1.5 xs:gap-2 sm:gap-3.5 pt-0.5">
+              <a
+                href="#pyq-catalog"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#046a38] hover:bg-[#03542c] active:scale-95 px-4 xs:px-5 sm:px-7 py-2 xs:py-2.5 sm:py-3.5 text-[11.5px] xs:text-xs sm:text-[15px] font-bold text-white shadow-sm transition-all w-auto"
+              >
+                <span>Explore PYQ Packages</span>
+                <IconArrowRight size={13} className="sm:w-3.5 sm:h-3.5" />
+              </a>
+
+              <a
+                href="#pyq-catalog"
+                className="inline-flex items-center justify-center rounded-full border border-slate-200/90 bg-white hover:bg-slate-50 active:scale-95 px-4 xs:px-5 sm:px-7 py-2 xs:py-2.5 sm:py-3.5 text-[11.5px] xs:text-xs sm:text-[15px] font-bold text-slate-800 shadow-sm transition-all w-auto"
+              >
+                View Sample Questions
+              </a>
+            </div>
           </div>
-          <div className="store-orbit-label">
-            <span aria-hidden="true">✓</span>
-            Official questions across the collection
-          </div>
-          <div className="store-visual-bottom">
-            <span>SOLVED · SORTED · VERIFIED</span>
-            <span aria-hidden="true">✳</span>
+        </div>
+
+        {/* Desktop 4 Feature Row (Inside hero on desktop, matching reference design with vertical stack) */}
+        <div className="relative z-10 w-full mt-auto hidden lg:block">
+          <div className="store-container pb-10 xl:pb-12">
+            <div className="grid grid-cols-4 gap-6 xl:gap-8 max-w-2xl">
+              {/* Card 1: Chapter-wise PYQs */}
+              <div className="flex flex-col items-start gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fee2e2] text-[#ef4444] shrink-0 shadow-2xs">
+                  <IconFileText size={20} />
+                </div>
+                <div>
+                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Chapter-wise PYQs</h4>
+                  <p className="text-[11.5px] xl:text-xs text-slate-500 font-normal leading-tight mt-1">Practice topic by topic.</p>
+                </div>
+              </div>
+
+              {/* Card 2: Year-wise Papers */}
+              <div className="flex flex-col items-start gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#ede9fe] text-[#7c3aed] shrink-0 shadow-2xs">
+                  <IconLayers size={20} />
+                </div>
+                <div>
+                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Year-wise Papers</h4>
+                  <p className="text-[11.5px] xl:text-xs text-slate-500 font-normal leading-tight mt-1">Access past years easily.</p>
+                </div>
+              </div>
+
+              {/* Card 3: Detailed Solutions */}
+              <div className="flex flex-col items-start gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#d1fae5] text-[#10b981] shrink-0 shadow-2xs">
+                  <IconChartBar size={20} />
+                </div>
+                <div>
+                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Detailed Solutions</h4>
+                  <p className="text-[11.5px] xl:text-xs text-slate-500 font-normal leading-tight mt-1">Step-by-step explanations.</p>
+                </div>
+              </div>
+
+              {/* Card 4: Exam-like Practice */}
+              <div className="flex flex-col items-start gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fef3c7] text-[#f59e0b] shrink-0 shadow-2xs">
+                  <IconTarget size={20} />
+                </div>
+                <div>
+                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Exam-like Practice</h4>
+                  <p className="text-[11.5px] xl:text-xs text-slate-500 font-normal leading-tight mt-1">Boost your confidence.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
-      <section className="store-benefits" aria-label="Why practise previous year questions">
-        <div className="store-container">
-          <span>
-            <b aria-hidden="true">✓</b> Real exam patterns
-          </span>
-          <span>
-            <b aria-hidden="true">✓</b> Step-by-step solutions
-          </span>
-          <span>
-            <b aria-hidden="true">✓</b> Full-length practice tests
-          </span>
-          <span>
-            <b aria-hidden="true">✓</b> One-time purchase
-          </span>
+
+      {/* ── 2. Mobile 4 Feature Cards (Directly below image with rounded-t-3xl white sheet container) ── */}
+      <section className="block lg:hidden bg-white -mt-6 relative z-20 rounded-t-[28px] border-b border-slate-100 pt-5 pb-5 px-3.5 xs:px-4 shadow-[0_-6px_20px_rgba(0,0,0,0.04)]">
+        <div className="grid grid-cols-2 gap-2.5 xs:gap-3">
+          {/* Card 1: Chapter-wise PYQs (Rose) */}
+          <div className="bg-[#fff1f2] border border-[#ffe4e6] rounded-2xl p-2.5 xs:p-3 flex items-center gap-2.5">
+            <div className="flex h-8 w-8 xs:h-9 xs:w-9 items-center justify-center rounded-xl bg-[#fee2e2] text-[#ef4444] shrink-0 shadow-2xs">
+              <IconFileText size={17} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[11.5px] xs:text-xs font-bold text-slate-900 leading-tight truncate xs:whitespace-normal">
+                Chapter-wise PYQs
+              </h4>
+              <p className="text-[9.5px] xs:text-[10.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate xs:whitespace-normal">
+                Practice topic by topic.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 2: Year-wise Papers (Purple) */}
+          <div className="bg-[#f5f3ff] border border-[#ede9fe] rounded-2xl p-2.5 xs:p-3 flex items-center gap-2.5">
+            <div className="flex h-8 w-8 xs:h-9 xs:w-9 items-center justify-center rounded-xl bg-[#ede9fe] text-[#7c3aed] shrink-0 shadow-2xs">
+              <IconLayers size={17} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[11.5px] xs:text-xs font-bold text-slate-900 leading-tight truncate xs:whitespace-normal">
+                Year-wise Papers
+              </h4>
+              <p className="text-[9.5px] xs:text-[10.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate xs:whitespace-normal">
+                Access past years easily.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: Detailed Solutions (Emerald) */}
+          <div className="bg-[#f0fdf4] border border-[#dcfce7] rounded-2xl p-2.5 xs:p-3 flex items-center gap-2.5">
+            <div className="flex h-8 w-8 xs:h-9 xs:w-9 items-center justify-center rounded-xl bg-[#d1fae5] text-[#10b981] shrink-0 shadow-2xs">
+              <IconChartBar size={17} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[11.5px] xs:text-xs font-bold text-slate-900 leading-tight truncate xs:whitespace-normal">
+                Detailed Solutions
+              </h4>
+              <p className="text-[9.5px] xs:text-[10.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate xs:whitespace-normal">
+                Step-by-step explanations.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Exam-like Practice (Amber) */}
+          <div className="bg-[#fffbeb] border border-[#fef3c7] rounded-2xl p-2.5 xs:p-3 flex items-center gap-2.5">
+            <div className="flex h-8 w-8 xs:h-9 xs:w-9 items-center justify-center rounded-xl bg-[#fef3c7] text-[#f59e0b] shrink-0 shadow-2xs">
+              <IconTarget size={17} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[11.5px] xs:text-xs font-bold text-slate-900 leading-tight truncate xs:whitespace-normal">
+                Exam-like Practice
+              </h4>
+              <p className="text-[9.5px] xs:text-[10.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate xs:whitespace-normal">
+                Boost your confidence.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
+
+      {/* ── 3. PYQ Catalog Listing Section ────────────────────────────── */}
       <section className="store-container store-catalog-section" id="pyq-catalog">
         <div className="store-section-heading">
           <div>
             <p className="store-eyebrow">PICK YOUR PAPERS</p>
-            <h2>Previous year packages.</h2>
+            <h2>Official previous year question packages.</h2>
           </div>
-          <p>Official collections & mock tests</p>
+          <p>
+            Topic-wise practice or timed full-length tests.
+            <br />
+            Choose the package for your stream.
+          </p>
         </div>
+
         <div className="store-catalog-controls">
-          <div className="store-stream-filters" role="group" aria-label="Filter by exam">
-            {STREAMS.map((option) => (
+          <div className="store-stream-filters" role="group" aria-label="Filter by exam stream">
+            {STREAMS.map((item) => (
               <button
-                key={option.code}
-                className={stream === option.code ? 'selected' : ''}
-                aria-pressed={stream === option.code}
-                onClick={() => setStream(option.code)}
+                key={item.code}
+                onClick={() => setStream(item.code)}
+                aria-pressed={stream === item.code}
+                className={stream === item.code ? 'selected' : ''}
               >
-                {option.label}
-                <span className="tabular-nums">
-                  {option.code === 'ALL'
-                    ? packages.length
-                    : packages.filter((item) => item.streamCode === option.code).length}
-                </span>
+                {item.label}
+                {item.code === 'ALL' && <span className="tabular-nums">{packages.length}</span>}
               </button>
             ))}
           </div>
-          <div className="store-search">
+          <label className="store-search">
             <IconSearch size={16} aria-hidden="true" />
+            <span className="sr-only">Search PYQ packages</span>
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search packages or subjects…"
-              aria-label="Search PYQ packages"
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by exam or subject..."
             />
-          </div>
+          </label>
         </div>
-        <div className="store-results-bar">
-          <div>
-            <span>
-              <b className="tabular-nums">{filtered.length}</b> package
-              {filtered.length === 1 ? '' : 's'} available
-            </span>
-          </div>
-        </div>
-        {filtered.length === 0 ? (
-          <div className="store-empty">
-            <span aria-hidden="true">✳</span>
-            <h3>Nothing here — yet.</h3>
-            <p>No packages match that filter. Try another exam or clear the search.</p>
-            <button
-              className="store-card-button"
-              style={{ maxWidth: 220, margin: '0 auto' }}
-              onClick={() => {
-                setStream('ALL');
-                setQuery('');
-              }}
-            >
-              Show all packages ↗
-            </button>
-          </div>
-        ) : (
+
+        {filtered.length ? (
           <div className="store-course-grid">
             {filtered.map((item) => (
               <PYQPackageCard
@@ -285,32 +399,14 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
               />
             ))}
           </div>
+        ) : (
+          <div className="store-empty">
+            <span aria-hidden="true">⌕</span>
+            <h3>No PYQ packages match your filters.</h3>
+            <p>Try switching streams or clearing your search.</p>
+          </div>
         )}
-      </section>
-      <section
-        className="store-container store-choice-section"
-        aria-label="How a PYQ purchase works"
-      >
-        <div>
-          <p className="store-eyebrow">SIMPLE BY DESIGN</p>
-          <h2>
-            One price.
-            <br />
-            <span>One payment. Yours forever.</span>
-          </h2>
-        </div>
-        <div className="store-choice-item">
-          <span className="store-choice-number tabular-nums">01</span>
-          <h3>Preview the package</h3>
-          <p>Open a package to see its paper counts, subject breakdown, and inclusions.</p>
-        </div>
-        <div className="store-choice-item">
-          <span className="store-choice-number tabular-nums">02</span>
-          <h3>Purchase & practice</h3>
-          <p>Get instant access to timed exams, answer keys, and chapter-wise analysis.</p>
-        </div>
       </section>
     </>
   );
 }
-

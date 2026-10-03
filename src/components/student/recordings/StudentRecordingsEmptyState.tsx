@@ -1,16 +1,24 @@
 'use client';
 
 import React from 'react';
-import { IconFilm, IconSearch } from '@/components/icons/student-icons';
+import { IconFilm, IconSearch, IconRefresh } from '@/components/icons/student-icons';
 
 interface StudentRecordingsEmptyStateProps {
   isFiltered?: boolean;
   onResetFilters?: () => void;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  onLoadMore?: () => void;
+  loadedCount?: number;
 }
 
 export const StudentRecordingsEmptyState: React.FC<StudentRecordingsEmptyStateProps> = ({
   isFiltered = false,
   onResetFilters,
+  hasNextPage = false,
+  isFetchingNextPage = false,
+  onLoadMore,
+  loadedCount = 0,
 }) => {
   if (isFiltered) {
     return (
@@ -20,17 +28,38 @@ export const StudentRecordingsEmptyState: React.FC<StudentRecordingsEmptyStatePr
         </div>
         <h3 className="text-base font-extrabold text-ink">No matching recorded classes</h3>
         <p className="mt-1 text-xs text-ink-secondary max-w-xs leading-relaxed">
-          No lecture recordings match your current search query, subject, or watch status filters.
+          {loadedCount > 0
+            ? `No recordings matched your search/filters in the ${loadedCount} loaded lectures.`
+            : 'No lecture recordings match your current search query or watch status filters.'}
         </p>
-        {onResetFilters && (
-          <button
-            type="button"
-            onClick={onResetFilters}
-            className="mt-4 px-4 py-2 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors shadow-xs"
-          >
-            Clear All Filters
-          </button>
-        )}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+          {hasNextPage && onLoadMore && (
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={isFetchingNextPage}
+              className="px-4 py-2 min-h-[44px] rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-colors inline-flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+            >
+              {isFetchingNextPage ? (
+                <>
+                  <IconRefresh size={14} className="animate-spin" />
+                  <span>Loading Older Lectures...</span>
+                </>
+              ) : (
+                <span>Load Older Lectures (+20)</span>
+              )}
+            </button>
+          )}
+          {onResetFilters && (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="px-4 py-2 min-h-[44px] rounded-field bg-paper hover:bg-line text-ink text-xs font-bold transition-colors border border-line cursor-pointer"
+            >
+              Clear All Filters
+            </button>
+          )}
+        </div>
       </div>
     );
   }
