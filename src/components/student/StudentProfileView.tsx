@@ -16,6 +16,7 @@ import {
   IconSignOut,
   IconCheckCircle,
   IconWarning,
+  IconTrash,
   IconRefresh,
   IconSpark,
   IconLibrary,
@@ -723,6 +724,31 @@ export const StudentProfileView: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Card: Danger Zone — Account Deletion */}
+          <div className="p-6 rounded-sheet bg-red-50/40 border border-red-200 shadow-xs space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-field bg-red-100 text-red-700">
+                <IconWarning size={15} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-red-950">Danger Zone</h3>
+                <p className="text-caption text-red-600">Irreversible account actions</p>
+              </div>
+            </div>
+
+            <p className="text-caption text-red-800 leading-relaxed">
+              Permanently delete your student account, test attempts, analytics, and active course enrollments.
+            </p>
+
+            <Link
+              href="/delete-account"
+              className="w-full py-2.5 rounded-card bg-white hover:bg-red-50 text-red-600 border border-red-300 text-xs font-black transition-colors flex items-center justify-center gap-2 shadow-2xs"
+            >
+              <IconTrash size={14} />
+              <span>Delete Account</span>
+            </Link>
           </div>
         </div>
       </div>

@@ -117,7 +117,8 @@ export function SiteFooter() {
               <li><Link href="/student/doubts" className="hover:text-sky-600 transition-colors inline-block py-0.5">Help Center</Link></li>
               <li><Link href="/contact" className="hover:text-sky-600 transition-colors inline-block py-0.5">Contact Us</Link></li>
               <li><Link href="/courses#faq" className="hover:text-sky-600 transition-colors inline-block py-0.5">FAQs</Link></li>
-              <li><Link href="#" className="hover:text-sky-600 transition-colors inline-block py-0.5">Privacy Policy</Link></li>
+              <li><Link href="/privacy-policy" className="hover:text-sky-600 transition-colors inline-block py-0.5">Privacy Policy</Link></li>
+              <li><Link href="/delete-account" className="hover:text-sky-600 transition-colors inline-block py-0.5">Delete Account</Link></li>
               <li><Link href="#" className="hover:text-sky-600 transition-colors inline-block py-0.5">Terms & Conditions</Link></li>
               <li><Link href="#" className="hover:text-sky-600 transition-colors inline-block py-0.5">Refund Policy</Link></li>
             </ul>

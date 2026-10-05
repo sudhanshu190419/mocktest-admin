@@ -20,9 +20,9 @@
  * @module components/live-studio/LiveStudioView
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { LiveKitRoom, RoomAudioRenderer, useTracks, useRemoteParticipants, VideoTrack } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, type RoomOptions } from 'livekit-client';
 import {
   X,
   Users,
@@ -42,6 +42,7 @@ import { useLiveClass } from '@/hooks/useLiveClass';
 import StartLiveDialog from './StartLiveDialog';
 import { ControlBar } from './ControlBar';
 import { StudioChatPanel } from '@/components/chat/StudioChatPanel';
+import { CameraQuality, CAMERA_QUALITY_CONFIGS } from '@/lib/livekit/cameraQuality';
 
 // ─── Props ─────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,9 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
     }
   }, [scheduledClassId, rejoinClassId, isOpen, state.status, startScheduledClass, rejoinClass, onLiveClassStarted]);
 
+  // ── Camera Quality Setting (1080p default / 720p fallback) ─────────
+  const [cameraQuality, setCameraQuality] = useState<CameraQuality>('1080p');
+
   // ── Local Media Preview (getUserMedia) ───────────────────────────────
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isPreviewMicOn, setIsPreviewMicOn] = useState(true);
@@ -167,17 +171,22 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewStartedRef = useRef(false);
 
-  // Start/stop camera preview when modal opens/closes
+  // Start/stop camera preview when modal opens/closes or quality changes
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isLive) return;
 
     let stream: MediaStream | null = null;
     let cancelled = false;
 
     const startPreview = async () => {
       try {
+        const config = CAMERA_QUALITY_CONFIGS[cameraQuality];
         stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            width: { ideal: config.capture.resolution?.width ?? 1920 },
+            height: { ideal: config.capture.resolution?.height ?? 1080 },
+            frameRate: { ideal: config.capture.resolution?.frameRate ?? 30 },
+          },
           audio: true,
         });
         if (cancelled) {
@@ -201,7 +210,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
       }
       setLocalStream(null);
     };
-  }, [isOpen]);
+  }, [isOpen, isLive, cameraQuality]);
 
   // Attach local stream to <video> element
   useEffect(() => {
@@ -426,6 +435,22 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
 
   // ── Render ────────────────────────────────────────────────────────────
 
+  // Stable room options passed to LiveKitRoom so useLiveKitRoom initializes with the selected quality
+  const initialQualityRef = useRef<CameraQuality>(cameraQuality);
+  useEffect(() => {
+    if (!isLive) {
+      initialQualityRef.current = cameraQuality;
+    }
+  }, [cameraQuality, isLive]);
+
+  const roomOptions = useMemo<RoomOptions>(
+    () => ({
+      videoCaptureDefaults: CAMERA_QUALITY_CONFIGS[initialQualityRef.current].capture,
+      publishDefaults: CAMERA_QUALITY_CONFIGS[initialQualityRef.current].publish,
+    }),
+    [],
+  );
+
   // ── Live mode: wrap everything in LiveKitRoom ───────────────────────
   if (isLive && state.token && state.serverUrl) {
     return (
@@ -435,6 +460,7 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
         connect={true}
         video={true}
         audio={true}
+        options={roomOptions}
         className="fixed inset-0 z-50 bg-navy-800/90 backdrop-blur-xl flex flex-col p-6 sm:p-10 overflow-hidden animate-fadeIn text-white"
         onDisconnected={() => {
           // LiveKit disconnected — this is expected on:
@@ -545,6 +571,8 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
           isEnding={state.isEnding}
           recordingClassId={state.classId ?? undefined}
           recordingClassTitle={state.title}
+          cameraQuality={cameraQuality}
+          onQualityChange={setCameraQuality}
         />
       </LiveKitRoom>
     );
@@ -669,6 +697,26 @@ export function LiveStudioView({ isOpen, onClose, scheduledClassId, rejoinClassI
               aria-label={isPreviewCamOn ? 'Turn camera off' : 'Turn camera on'}
             >
               <VideoCamera size={22} />
+            </button>
+
+            {/* Preview Camera Quality Toggle */}
+            <button
+              type="button"
+              onClick={() => setCameraQuality((prev) => (prev === '1080p' ? '720p' : '1080p'))}
+              className={`px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1.5 shadow-sm ${
+                cameraQuality === '1080p'
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-400/40 hover:bg-blue-500/30'
+                  : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+              }`}
+              title={`Camera Quality: ${CAMERA_QUALITY_CONFIGS[cameraQuality].label}. Click to toggle.`}
+              aria-label="Toggle camera quality between 1080p and 720p"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  cameraQuality === '1080p' ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-amber-400'
+                }`}
+              />
+              <span>{CAMERA_QUALITY_CONFIGS[cameraQuality].shortLabel}</span>
             </button>
           </div>
 

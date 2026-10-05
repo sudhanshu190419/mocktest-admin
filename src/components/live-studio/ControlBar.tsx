@@ -12,9 +12,11 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocalParticipant } from '@livekit/components-react';
-import { Microphone, Presentation, VideoCamera, WarningCircle } from '@phosphor-icons/react';
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { CircleNotch, Microphone, Presentation, VideoCamera, WarningCircle } from '@phosphor-icons/react';
+import { Track, LocalVideoTrack } from 'livekit-client';
 import { RecordingControl } from './RecordingControl';
+import { CameraQuality, CAMERA_QUALITY_CONFIGS } from '@/lib/livekit/cameraQuality';
 
 /** How long a screen-share error notice stays visible (ms). */
 const SCREEN_SHARE_NOTICE_MS = 6000;
@@ -33,14 +35,27 @@ interface ControlBarProps {
   recordingClassId?: string;
   /** Live class title — used as the recording title. */
   recordingClassTitle?: string;
+  /** Current camera quality setting ('1080p' | '720p'). */
+  cameraQuality?: CameraQuality;
+  /** Callback when the teacher changes camera quality. */
+  onQualityChange?: (quality: CameraQuality) => void;
 }
 
 /**
  * Control bar for a live LiveKit session.
  * Renders camera/mic toggle buttons, an "End Session" button,
- * and a close studio link (disconnect-only).
+ * a camera quality toggle, and a close studio link (disconnect-only).
  */
-export function ControlBar({ onEndClass, onCloseStudio, isEnding = false, recordingClassId, recordingClassTitle }: ControlBarProps): React.JSX.Element {
+export function ControlBar({
+  onEndClass,
+  onCloseStudio,
+  isEnding = false,
+  recordingClassId,
+  recordingClassTitle,
+  cameraQuality = '1080p',
+  onQualityChange,
+}: ControlBarProps): React.JSX.Element {
+  const room = useRoomContext();
   const {
     isCameraEnabled,
     isScreenShareEnabled,
@@ -48,17 +63,57 @@ export function ControlBar({ onEndClass, onCloseStudio, isEnding = false, record
     localParticipant,
   } = useLocalParticipant();
 
+  const [isQualityChanging, setIsQualityChanging] = useState(false);
+
+  // ── Camera Quality Toggle Handler (1080p ⇄ 720p) ───────────────────
+  const handleToggleQuality = useCallback(
+    async (targetQuality: CameraQuality) => {
+      if (isQualityChanging || targetQuality === cameraQuality) return;
+      setIsQualityChanging(true);
+      try {
+        const config = CAMERA_QUALITY_CONFIGS[targetQuality];
+
+        // 1. Update room default options for subsequent camera toggles
+        if (room) {
+          room.options.videoCaptureDefaults = {
+            ...room.options.videoCaptureDefaults,
+            ...config.capture,
+          };
+          room.options.publishDefaults = {
+            ...room.options.publishDefaults,
+            ...config.publish,
+          };
+        }
+
+        // 2. If camera is currently active and published, seamlessly unpublish & republish with new quality
+        if (localParticipant) {
+          const camPub = localParticipant.getTrackPublication(Track.Source.Camera);
+          if (camPub && camPub.track && camPub.track instanceof LocalVideoTrack && !camPub.isMuted) {
+            const oldTrack = camPub.track;
+            // Unpublish and stop old MediaStreamTrack
+            await localParticipant.unpublishTrack(oldTrack, true);
+            // Create new MediaStreamTrack with target capture resolution
+            const newTracks = await localParticipant.createTracks({
+              video: config.capture,
+            });
+            // Publish with target encoding, simulcast layers, and maintain-resolution
+            for (const track of newTracks) {
+              await localParticipant.publishTrack(track, config.publish);
+            }
+          }
+        }
+
+        onQualityChange?.(targetQuality);
+      } catch (err) {
+        console.error('[LiveStudio] Failed to switch camera quality:', err);
+      } finally {
+        setIsQualityChanging(false);
+      }
+    },
+    [cameraQuality, isQualityChanging, localParticipant, onQualityChange, room],
+  );
+
   // ── Screen share (toggle + local error notice) ───────────────────────
-  //
-  // The button's on/off state is derived from `isScreenShareEnabled`, never
-  // from local state: when the teacher stops sharing with the browser's native
-  // "Stop sharing" control, livekit-client ends and unpublishes the ScreenShare
-  // track itself (`isScreenShareEnabled` flips to false), so the button and the
-  // studio stage update automatically.
-  //
-  // Dismissing the browser's screen picker (NotAllowedError / AbortError) is a
-  // normal user action, not an application error — it stays silent and never
-  // disconnects the teacher.
   const [screenShareError, setScreenShareError] = useState<string | null>(null);
   const [isScreenSharePending, setIsScreenSharePending] = useState(false);
   const screenShareNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,9 +130,6 @@ export function ControlBar({ onEndClass, onCloseStudio, isEnding = false, record
 
     setIsScreenSharePending(true);
     try {
-      // Must originate from this click handler — getDisplayMedia() requires a
-      // user gesture and the browser cannot be asked to share a screen without
-      // one.
       await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
     } catch (err) {
       const errorName = err instanceof Error ? err.name : '';
@@ -130,9 +182,33 @@ export function ControlBar({ onEndClass, onCloseStudio, isEnding = false, record
           <VideoCamera size={22} />
         </button>
 
+        {/* Camera Quality Toggle Badge */}
+        <button
+          type="button"
+          onClick={() => handleToggleQuality(cameraQuality === '1080p' ? '720p' : '1080p')}
+          disabled={isQualityChanging}
+          className={`px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1.5 shadow-sm ${
+            cameraQuality === '1080p'
+              ? 'bg-blue-500/20 text-blue-300 border-blue-400/40 hover:bg-blue-500/30'
+              : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+          } ${isQualityChanging ? 'opacity-50 cursor-wait' : ''}`}
+          title={`Camera Quality: ${CAMERA_QUALITY_CONFIGS[cameraQuality].label}. Click to toggle.`}
+          aria-label="Toggle camera quality between 1080p and 720p"
+        >
+          {isQualityChanging ? (
+            <CircleNotch size={14} className="animate-spin text-blue-300" />
+          ) : (
+            <span
+              className={`w-2 h-2 rounded-full ${
+                cameraQuality === '1080p' ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-amber-400'
+              }`}
+            />
+          )}
+          <span>{CAMERA_QUALITY_CONFIGS[cameraQuality].shortLabel}</span>
+        </button>
+
         {/* Screen Share Toggle */}
         <div className="relative flex items-center">
-          {/* Local, control-bar-scoped notice (same pattern as RecordingControl) */}
           {screenShareError && (
             <div
               role="status"
