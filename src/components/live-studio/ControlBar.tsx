@@ -13,9 +13,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
-import { CircleNotch, Microphone, Presentation, VideoCamera, WarningCircle } from '@phosphor-icons/react';
+import { Microphone, Presentation, VideoCamera, WarningCircle } from '@phosphor-icons/react';
 import { Track, LocalVideoTrack } from 'livekit-client';
 import { RecordingControl } from './RecordingControl';
+import { CameraQualityDropdown } from './CameraQualityDropdown';
 import { CameraQuality, CAMERA_QUALITY_CONFIGS } from '@/lib/livekit/cameraQuality';
 
 /** How long a screen-share error notice stays visible (ms). */
@@ -182,30 +183,12 @@ export function ControlBar({
           <VideoCamera size={22} />
         </button>
 
-        {/* Camera Quality Toggle Badge */}
-        <button
-          type="button"
-          onClick={() => handleToggleQuality(cameraQuality === '1080p' ? '720p' : '1080p')}
-          disabled={isQualityChanging}
-          className={`px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all border flex items-center gap-1.5 shadow-sm ${
-            cameraQuality === '1080p'
-              ? 'bg-blue-500/20 text-blue-300 border-blue-400/40 hover:bg-blue-500/30'
-              : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-          } ${isQualityChanging ? 'opacity-50 cursor-wait' : ''}`}
-          title={`Camera Quality: ${CAMERA_QUALITY_CONFIGS[cameraQuality].label}. Click to toggle.`}
-          aria-label="Toggle camera quality between 1080p and 720p"
-        >
-          {isQualityChanging ? (
-            <CircleNotch size={14} className="animate-spin text-blue-300" />
-          ) : (
-            <span
-              className={`w-2 h-2 rounded-full ${
-                cameraQuality === '1080p' ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-amber-400'
-              }`}
-            />
-          )}
-          <span>{CAMERA_QUALITY_CONFIGS[cameraQuality].shortLabel}</span>
-        </button>
+        {/* Camera Quality Dropdown [ 1080p FHD ▼ ] */}
+        <CameraQualityDropdown
+          quality={cameraQuality}
+          onSelectQuality={handleToggleQuality}
+          isChanging={isQualityChanging}
+        />
 
         {/* Screen Share Toggle */}
         <div className="relative flex items-center">
