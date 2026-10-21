@@ -78,3 +78,8 @@ verify_jwt = true
 [functions.verify-google-play-purchase]
 enabled = true
 verify_jwt = true
+# Google Play Real-Time Developer Notifications (RTDN) webhook.
+# verify_jwt = false is REQUIRED because Google Cloud Pub/Sub supplies Google OIDC tokens,
+# not Supabase user JWTs. The function authoritatively verifies the Google OIDC token.
+[functions.google-play-rtdn-webhook]
+verify_jwt = false
