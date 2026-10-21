@@ -37,7 +37,11 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
     };
   }
 
-  function createMockDeps(overrides: Partial<RtdnHandlerDependencies> = {}) {
+  function createMockDeps(overrides: Partial<RtdnHandlerDependencies> & {
+    subscriptionData?: any;
+    subscriptionUpdateResult?: { data: any; error: any };
+    historyInsertResult?: { error: any };
+  } = {}) {
     const futureExpiryIso = new Date(Date.now() + 30 * 86400000).toISOString();
     const googleApiFetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -55,18 +59,20 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
     const mockSupabase = {
       from: vi.fn((table: string) => {
         if (table === 'student_subscriptions') {
+          const defaultSubData = {
+            subscription_id: 'sub-1111-2222',
+            student_id: 'student-3333-4444',
+            plan_id: 'plan-5555-6666',
+            institute_id: 'inst-7777-8888',
+            start_date: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0],
+            end_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+            status: 'active',
+          };
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 maybeSingle: vi.fn().mockResolvedValue({
-                  data: {
-                    subscription_id: 'sub-1111-2222',
-                    student_id: 'student-3333-4444',
-                    plan_id: 'plan-5555-6666',
-                    institute_id: 'inst-7777-8888',
-                    end_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    status: 'active',
-                  },
+                  data: overrides.subscriptionData !== undefined ? overrides.subscriptionData : defaultSubData,
                   error: null,
                 }),
               })),
@@ -74,7 +80,14 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
             update: vi.fn((payload) => ({
               eq: vi.fn((field, val) => {
                 dbUpdateSpy(table, payload, field, val);
-                return Promise.resolve({ error: null });
+                const queryResult = overrides.subscriptionUpdateResult !== undefined
+                  ? overrides.subscriptionUpdateResult
+                  : { data: [{ subscription_id: val }], error: null };
+                return {
+                  ...Promise.resolve(queryResult),
+                  then: (onfulfilled?: any, onrejected?: any) => Promise.resolve(queryResult).then(onfulfilled, onrejected),
+                  select: vi.fn().mockResolvedValue(queryResult),
+                };
               }),
             })),
           };
@@ -95,7 +108,10 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
           return {
             insert: vi.fn((payload) => {
               dbInsertSpy(table, payload);
-              return Promise.resolve({ error: null });
+              const result = overrides.historyInsertResult !== undefined
+                ? overrides.historyInsertResult
+                : { error: null };
+              return Promise.resolve(result);
             }),
           };
         }
@@ -395,7 +411,17 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
     });
 
     it('valid OIDC subscription renewal notification executes full legitimate pipeline', async () => {
-      const { deps, spies } = createMockDeps();
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-1111-2222',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0],
+          end_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+          status: 'grace',
+        },
+      });
       const req = createPubSubRequest({
         subscriptionNotification: {
           notificationType: 2, // SUBSCRIPTION_RENEWED
@@ -666,4 +692,467 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
       expect(resExpired.isEntitlementActive).toBe(false);
     });
   });
+
+  // ── FIX 1–5: Expiration, Cancellation, Error Handling & History Consistency ──
+  describe('FIX 1-5: Expiration, Cancellation, Error Handling & History Consistency Suite', () => {
+    it('FIX 1: handles expiration on the same calendar date as start_date without violating ck_student_subscriptions_end_date', async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const futureEndDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+      const googleExpiryIso = new Date().toISOString(); // Google says expired today
+
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-test-same-day',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: todayStr, // Started today (e.g. 17:10:09 UTC)
+          end_date: futureEndDate, // 2026-11-20
+          status: 'active',
+        },
+        googleApiFetcher: vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+              lineItems: [{ productId: 'sub_test_sku', expiryTime: googleExpiryIso }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        ),
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13, // SUBSCRIPTION_EXPIRED
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.status).toBe('expired');
+
+      // Crucial assertion: end_date was NOT overwritten with todayStr (which would violate end_date > start_date).
+      // grace_end_date and content_access_end_date are set to null so entitlement is completely revoked.
+      expect(spies.dbUpdateSpy).toHaveBeenCalledWith(
+        'student_subscriptions',
+        expect.objectContaining({
+          status: 'expired',
+          is_auto_renew: false,
+          grace_end_date: null,
+          content_access_end_date: null,
+        }),
+        'subscription_id',
+        'sub-test-same-day'
+      );
+
+      // Verify that updatePayload did not set end_date to todayStr
+      const updateCall = spies.dbUpdateSpy.mock.calls.find((call) => call[0] === 'student_subscriptions');
+      expect(updateCall[1].end_date).toBeUndefined();
+
+      // History record is inserted because status changed from active to expired
+      expect(spies.dbInsertSpy).toHaveBeenCalledWith(
+        'subscription_history',
+        expect.objectContaining({
+          subscription_id: 'sub-test-same-day',
+          status_before: 'active',
+          status_after: 'expired',
+          change_reason: 'expiry',
+        })
+      );
+    });
+
+    it('FIX 1: handles normal expiration on a later date and updates end_date with valid grace/content windows', async () => {
+      const startDateStr = '2026-09-21';
+      const expiryDateStr = '2026-10-21';
+      const googleExpiryIso = '2026-10-21T12:00:00.000Z';
+
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-normal-expiry',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: startDateStr,
+          end_date: expiryDateStr,
+          status: 'active',
+        },
+        googleApiFetcher: vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+              lineItems: [{ productId: 'sub_test_sku', expiryTime: googleExpiryIso }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        ),
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13, // SUBSCRIPTION_EXPIRED
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      expect(spies.dbUpdateSpy).toHaveBeenCalledWith(
+        'student_subscriptions',
+        expect.objectContaining({
+          status: 'expired',
+          is_auto_renew: false,
+          end_date: expiryDateStr, // 2026-10-21 > 2026-09-21 is valid!
+          grace_end_date: '2026-10-28',
+          content_access_end_date: '2026-11-27',
+        }),
+        'subscription_id',
+        'sub-normal-expiry'
+      );
+    });
+
+    it('FIX 2: database update rejection halts processing, writes no history, and returns HTTP 500', async () => {
+      const { deps, spies } = createMockDeps({
+        subscriptionUpdateResult: {
+          data: null,
+          error: { message: 'new row for relation violates check constraint' },
+        },
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13,
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('violates check constraint');
+
+      // Proves history record is NEVER written after an update failure
+      expect(spies.dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('FIX 2: database update affecting zero rows halts processing, writes no history, and returns HTTP 500', async () => {
+      const { deps, spies } = createMockDeps({
+        subscriptionUpdateResult: {
+          data: [], // 0 rows updated
+          error: null,
+        },
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13,
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('affected 0 rows');
+
+      // Proves history record is NEVER written after 0-row update
+      expect(spies.dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('FIX 3: cancellation keeps status active, disables auto-renew, keeps cancelled_at null, and preserves paid-through dates', async () => {
+      // Dynamic Google expiry ~5 minutes in the future so paid period has not yet expired
+      const googleExpiryDate = new Date(Date.now() + 5 * 60 * 1000);
+      const googleExpiryIso = googleExpiryDate.toISOString();
+      // Derive start date from the same UTC date to test same-day accelerated license testing
+      const startDateStr = googleExpiryDate.toISOString().split('T')[0];
+      // Calculate a valid futureEndDate strictly after the start date
+      const futureEndDate = new Date(googleExpiryDate.getTime() + 30 * 86400000).toISOString().split('T')[0];
+
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-cancel-active',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: startDateStr,
+          end_date: futureEndDate,
+          status: 'active',
+        },
+        googleApiFetcher: vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              subscriptionState: 'SUBSCRIPTION_STATE_CANCELED',
+              lineItems: [{ productId: 'sub_test_sku', expiryTime: googleExpiryIso }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        ),
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 3, // SUBSCRIPTION_CANCELED
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('active');
+
+      // Verifies is_auto_renew disabled, status remains active, cancelled_at is null per constraint
+      expect(spies.dbUpdateSpy).toHaveBeenCalledWith(
+        'student_subscriptions',
+        expect.objectContaining({
+          status: 'active',
+          is_auto_renew: false,
+          cancelled_at: null,
+        }),
+        'subscription_id',
+        'sub-cancel-active'
+      );
+
+      // Verifies existing end_date is preserved exactly and NOT shrunk to same-day Google test expiry
+      const updateCall = spies.dbUpdateSpy.mock.calls.find((call) => call[0] === 'student_subscriptions');
+      expect(updateCall[1].end_date).toBe(futureEndDate);
+
+      // Confirms no invalid active -> active history record inserted
+      expect(spies.dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('FIX 3 & 4: cancellation with unchanged status active -> active does NOT insert into subscription_history', async () => {
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-cancel-no-history',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: '2026-10-01',
+          end_date: '2026-11-01',
+          status: 'active',
+        },
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 3, // SUBSCRIPTION_CANCELED
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      // DB updated with is_auto_renew: false
+      expect(spies.dbUpdateSpy).toHaveBeenCalled();
+      // Bypasses subscription_history to prevent violating ck_subscription_history_status_change
+      expect(spies.dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('FIX 4: history insertion failure logs a warning without failing the committed subscription update', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { deps, spies } = createMockDeps({
+          subscriptionData: {
+            subscription_id: 'sub-history-warn',
+            student_id: 'student-3333-4444',
+            plan_id: 'plan-5555-6666',
+            institute_id: 'inst-7777-8888',
+            start_date: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0],
+            end_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+            status: 'grace',
+          },
+          historyInsertResult: {
+            error: { message: 'temporary history insert failure' },
+          },
+        });
+
+        const req = createPubSubRequest({
+          subscriptionNotification: {
+            notificationType: 2, // SUBSCRIPTION_RENEWED (transitions grace -> active)
+            purchaseToken: 'purchase_token_valid_123',
+            subscriptionId: 'sub_test_sku',
+          },
+        });
+
+        const res = await handleRtdnHttpRequest(req, deps);
+
+        // Webhook acknowledges 200 because student_subscriptions was committed
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.status).toBe('active');
+
+        // Subscription update succeeds
+        expect(spies.dbUpdateSpy).toHaveBeenCalledWith(
+          'student_subscriptions',
+          expect.objectContaining({ status: 'active', is_auto_renew: true }),
+          'subscription_id',
+          'sub-history-warn'
+        );
+
+        // History insertion was attempted
+        expect(spies.dbInsertSpy).toHaveBeenCalledWith(
+          'subscription_history',
+          expect.objectContaining({
+            status_before: 'grace',
+            status_after: 'active',
+            change_reason: 'renewal',
+          })
+        );
+
+        // Best-effort history logging: failure is logged appropriately
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('[RTDN_WARNING] History record insert warning:'),
+          'temporary history insert failure'
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('FIX 4: repeated notifications with same status do not produce duplicate history records', async () => {
+      const pastExpiryIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-already-expired',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: '2026-09-01',
+          end_date: '2026-10-01',
+          status: 'expired', // Already expired
+        },
+        googleApiFetcher: vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+              lineItems: [{ productId: 'sub_test_sku', expiryTime: pastExpiryIso }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        ),
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13, // Repeated SUBSCRIPTION_EXPIRED
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      // History insert is skipped because status is already expired (status_before == status_after)
+      expect(spies.dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('FIX 1 & 5: deactivates course enrollment when subscription is authoritatively expired and content window is null', async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { deps, spies } = createMockDeps({
+        subscriptionData: {
+          subscription_id: 'sub-revoke-enrollment',
+          student_id: 'student-3333-4444',
+          plan_id: 'plan-5555-6666',
+          institute_id: 'inst-7777-8888',
+          start_date: todayStr,
+          end_date: '2026-11-20',
+          status: 'active',
+        },
+        googleApiFetcher: vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+              lineItems: [{ productId: 'sub_test_sku', expiryTime: new Date().toISOString() }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        ),
+      });
+
+      const req = createPubSubRequest({
+        subscriptionNotification: {
+          notificationType: 13,
+          purchaseToken: 'purchase_token_valid_123',
+          subscriptionId: 'sub_test_sku',
+        },
+      });
+
+      const res = await handleRtdnHttpRequest(req, deps);
+
+      expect(res.status).toBe(200);
+      // Course enrollment is deactivated with revoked_reason subscription_content_expired
+      expect(spies.dbUpdateSpy).toHaveBeenCalledWith(
+        'course_enrollments',
+        expect.objectContaining({
+          is_active: false,
+          revoked_reason: 'subscription_content_expired',
+        })
+      );
+    });
+
+    it('calculateRtdnTransition: same-day expiry sets newEndDate, graceEndDate, and contentAccessEndDate to null', () => {
+      const result = calculateRtdnTransition({
+        notificationType: 13,
+        currentStatus: 'active',
+        currentStartDate: '2026-10-21',
+        currentEndDate: '2026-11-20',
+        authoritativeGoogleSub: {
+          subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+          lineItems: [{ productId: 'sub_test_sku', expiryTime: '2026-10-21T17:15:15.000Z' }],
+        },
+        productId: 'sub_test_sku',
+        nowMs: Date.parse('2026-10-21T17:15:15.000Z'),
+        graceDays: 7,
+        contentAccessDays: 30,
+      });
+
+      expect(result.mappedStatus).toBe('expired');
+      expect(result.mappedReason).toBe('expiry');
+      expect(result.isAutoRenew).toBe(false);
+      expect(result.isEntitlementActive).toBe(false);
+      expect(result.newEndDate).toBeNull();
+      expect(result.graceEndDate).toBeNull();
+      expect(result.contentAccessEndDate).toBeNull();
+    });
+
+    it('calculateRtdnTransition: normal later-date expiry sets valid newEndDate, graceEndDate, and contentAccessEndDate', () => {
+      const result = calculateRtdnTransition({
+        notificationType: 13,
+        currentStatus: 'active',
+        currentStartDate: '2026-09-21',
+        currentEndDate: '2026-10-21',
+        authoritativeGoogleSub: {
+          subscriptionState: 'SUBSCRIPTION_STATE_EXPIRED',
+          lineItems: [{ productId: 'sub_test_sku', expiryTime: '2026-10-21T12:00:00.000Z' }],
+        },
+        productId: 'sub_test_sku',
+        nowMs: Date.parse('2026-10-21T12:00:00.000Z'),
+        graceDays: 7,
+        contentAccessDays: 30,
+      });
+
+      expect(result.mappedStatus).toBe('expired');
+      expect(result.newEndDate).toBe('2026-10-21');
+      expect(result.graceEndDate).toBe('2026-10-28');
+      expect(result.contentAccessEndDate).toBe('2026-11-27');
+    });
+  });
+
 });

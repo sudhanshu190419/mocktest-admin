@@ -36,6 +36,7 @@ export interface RtdnTransitionInput {
   notificationType: number;
   currentStatus: "pending" | "active" | "grace" | "expired" | "cancelled" | "refunded";
   currentEndDate?: string | null;
+  currentStartDate?: string | null;
   authoritativeGoogleSub?: any;
   productId?: string;
   planDurationDays?: number;
@@ -431,6 +432,7 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
     notificationType,
     currentStatus,
     currentEndDate,
+    currentStartDate,
     authoritativeGoogleSub,
     productId,
     nowMs = Date.now(),
@@ -462,6 +464,11 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
   }
 
   const googleSubState = authoritativeGoogleSub?.subscriptionState;
+
+  // Assess whether authoritative Google expiry falls on or before start_date (same-day license test expiry)
+  const isSameDayOrEarlierExpiry = Boolean(
+    newEndDateStr && currentStartDate && newEndDateStr <= currentStartDate
+  );
 
   // 2b. Terminal Refund & Revocation Guard: A refunded or revoked subscription is in a terminal state for that transaction.
   // Stale notifications (e.g. Pub/Sub delayed renewal/recovery) or delayed/cached Google API responses
@@ -621,15 +628,33 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
       if (isExpiredByGoogleTime || googleSubState === "SUBSCRIPTION_STATE_EXPIRED" || isCurrentlyExpired) {
         mappedStatus = "expired";
         isEntitlementActive = false;
+        if (isSameDayOrEarlierExpiry) {
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
+        } else {
+          calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+            ? newEndDateStr
+            : (currentEndDate || null);
+          if (calculatedEndDate) {
+            graceEndDate = addDays(calculatedEndDate, graceDays);
+            contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          }
+        }
       } else {
         // Paid entitlement preserved until expiry date
         mappedStatus = currentStatus === "grace" ? "grace" : "active";
         isEntitlementActive = true;
-      }
-      if (newEndDateStr) {
-        calculatedEndDate = newEndDateStr;
-      } else {
-        calculatedEndDate = currentEndDate || null;
+        // Preserve current paid-through dates; do NOT shrink end_date to same-day date
+        if (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate)) {
+          calculatedEndDate = newEndDateStr;
+        } else {
+          calculatedEndDate = currentEndDate || null;
+        }
+        if (calculatedEndDate) {
+          graceEndDate = addDays(calculatedEndDate, graceDays);
+          contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+        }
       }
       break;
 
@@ -651,7 +676,9 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
         mappedReason = "renewal";
         isAutoRenew = Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
         isEntitlementActive = true;
-        calculatedEndDate = newEndDateStr || currentEndDate || null;
+        calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+          ? newEndDateStr
+          : (currentEndDate || null);
         if (calculatedEndDate) {
           graceEndDate = addDays(calculatedEndDate, graceDays);
           contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
@@ -661,14 +688,20 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
         mappedReason = "expiry";
         isAutoRenew = false;
         isEntitlementActive = false;
-        if (newEndDateStr) {
-          calculatedEndDate = newEndDateStr;
+        if (isSameDayOrEarlierExpiry) {
+          // Do not write end_date <= start_date (preserves ck_student_subscriptions_end_date)
+          // and revoke grace/content windows immediately (preserves entitlement rules)
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
         } else {
-          calculatedEndDate = currentEndDate || null;
-        }
-        if (calculatedEndDate) {
-          graceEndDate = addDays(calculatedEndDate, graceDays);
-          contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+            ? newEndDateStr
+            : (currentEndDate || null);
+          if (calculatedEndDate) {
+            graceEndDate = addDays(calculatedEndDate, graceDays);
+            contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          }
         }
       }
       break;
@@ -695,7 +728,11 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
         mappedStatus = "expired";
         isEntitlementActive = false;
         isAutoRenew = false;
-        if (calculatedEndDate) {
+        if (isSameDayOrEarlierExpiry) {
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
+        } else if (calculatedEndDate) {
           graceEndDate = addDays(calculatedEndDate, graceDays);
           contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
         }
@@ -2037,7 +2074,7 @@ export async function handleRtdnHttpRequest(
     // Locate the matching student_subscription by purchaseToken
     const { data: subscription, error: subQueryErr } = await supabaseAdmin
       .from("student_subscriptions")
-      .select("subscription_id, student_id, plan_id, institute_id, end_date, status")
+      .select("subscription_id, student_id, plan_id, institute_id, start_date, end_date, status")
       .eq("payment_method_id", purchaseToken)
       .maybeSingle();
 
@@ -2101,6 +2138,7 @@ export async function handleRtdnHttpRequest(
       notificationType,
       currentStatus: subscription.status,
       currentEndDate: subscription.end_date,
+      currentStartDate: subscription.start_date,
       authoritativeGoogleSub,
       productId: subscriptionId,
       planDurationDays: plan?.duration_days,
@@ -2114,45 +2152,72 @@ export async function handleRtdnHttpRequest(
     const updatePayload: any = {
       status: transition.mappedStatus,
       is_auto_renew: transition.isAutoRenew,
-      grace_end_date: transition.graceEndDate,
-      content_access_end_date: transition.contentAccessEndDate,
+      grace_end_date: transition.graceEndDate ?? null,
+      content_access_end_date: transition.contentAccessEndDate ?? null,
       updated_at: nowIso,
     };
 
-    if (transition.newEndDate) {
+    // Strictly enforce ck_student_subscriptions_end_date: end_date MUST be > start_date
+    if (
+      transition.newEndDate &&
+      (!subscription.start_date || transition.newEndDate > subscription.start_date)
+    ) {
       updatePayload.end_date = transition.newEndDate;
     }
 
-    await supabaseAdmin
+    // Manage cancelled_at strictly per ck_student_subscriptions_cancelled_at:
+    // ((status = 'cancelled' and cancelled_at is not null) or (status != 'cancelled' and cancelled_at is null))
+    if (transition.mappedStatus === "cancelled") {
+      updatePayload.cancelled_at = nowIso;
+    } else {
+      updatePayload.cancelled_at = null;
+    }
+
+    const { data: updatedRows, error: updateErr } = await supabaseAdmin
       .from("student_subscriptions")
       .update(updatePayload)
-      .eq("subscription_id", subscription.subscription_id);
+      .eq("subscription_id", subscription.subscription_id)
+      .select("subscription_id");
 
-    // Record audit history with strictly valid enums
-    try {
-      const { error: histErr } = await supabaseAdmin
-        .from("subscription_history")
-        .insert({
-          subscription_id: subscription.subscription_id,
-          student_id: subscription.student_id,
-          institute_id: subscription.institute_id,
-          status_before: subscription.status,
-          status_after: transition.mappedStatus,
-          change_reason: transition.mappedReason,
-          occurred_at: nowIso,
-          metadata: {
-            event: eventName,
-            notification_type: notificationType,
-            google_expiry: newEndDateStr,
-            authoritative_state: authoritativeGoogleSub?.subscriptionState || null,
-          },
-        });
+    if (updateErr || !updatedRows || updatedRows.length === 0) {
+      const errMsg = updateErr?.message || "student_subscriptions update affected 0 rows";
+      console.error(`[RTDN_ERROR] student_subscriptions update failed: ${errMsg}`);
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-      if (histErr) {
-        console.warn("[RTDN_WARNING] History record insert warning:", histErr.message);
+    // Record audit history ONLY when a valid status transition occurs
+    // to strictly satisfy ck_subscription_history_status_change check (status_before is null or status_before != status_after)
+    if (transition.mappedStatus !== subscription.status) {
+      try {
+        const { error: histErr } = await supabaseAdmin
+          .from("subscription_history")
+          .insert({
+            subscription_id: subscription.subscription_id,
+            student_id: subscription.student_id,
+            institute_id: subscription.institute_id,
+            status_before: subscription.status,
+            status_after: transition.mappedStatus,
+            change_reason: transition.mappedReason,
+            occurred_at: nowIso,
+            metadata: {
+              event: eventName,
+              notification_type: notificationType,
+              google_expiry: newEndDateStr,
+              authoritative_state: authoritativeGoogleSub?.subscriptionState || null,
+            },
+          });
+
+        if (histErr) {
+          console.warn("[RTDN_WARNING] History record insert warning:", histErr.message);
+        }
+      } catch (histEx: any) {
+        console.warn("[RTDN_WARNING] History record insert exception:", histEx?.message || "Unknown error");
       }
-    } catch (histEx) {
-      console.warn("[RTDN_WARNING] History record insert exception:", histEx);
+    } else {
+      console.log(`[RTDN_DIAGNOSTIC] Status unchanged (${subscription.status}); skipping subscription_history insertion to satisfy ck_subscription_history_status_change`);
     }
 
     if (plan?.course_id) {
