@@ -72,3 +72,9 @@ verify_jwt = true
 
 [functions.complete-pyq-purchase]
 verify_jwt = true
+
+# Google Play in-app and subscription purchase server-side verification.
+# Requires valid Supabase JWT (verified caller identity auth.uid()).
+[functions.verify-google-play-purchase]
+enabled = true
+verify_jwt = true
