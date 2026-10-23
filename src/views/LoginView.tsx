@@ -38,7 +38,7 @@ export const LoginView: React.FC = () => {
 
     const { error } = await signIn(phoneNumber.trim(), password, captchaToken || undefined);
     if (error) {
-      captchaRef.current?.resetCaptcha();
+      captchaRef.current?.resetWidget();
       setCaptchaToken(null);
       setErrorMsg(error);
     }

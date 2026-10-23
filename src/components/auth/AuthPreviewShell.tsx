@@ -312,7 +312,7 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
               captchaToken: captchaToken || undefined,
             });
             if (!res.success) {
-              captchaRef.current?.resetCaptcha();
+              captchaRef.current?.resetWidget();
               setCaptchaToken(null);
               return { success: false, error: res.error };
             }
@@ -324,7 +324,7 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
           } else {
             const res = await signIn(fullPhone, password, captchaToken || undefined);
             if (res.error) {
-              captchaRef.current?.resetCaptcha();
+              captchaRef.current?.resetWidget();
               setCaptchaToken(null);
               return { success: false, error: res.error };
             }
@@ -428,12 +428,12 @@ function VerificationForm({ next }: { next: string }) {
         setShowResendCaptcha(false);
         setResendCaptchaToken(null);
       } else {
-        resendCaptchaRef.current?.resetCaptcha();
+        resendCaptchaRef.current?.resetWidget();
         setResendCaptchaToken(null);
         setResendStatus(res.error || 'Failed to resend code. Please try again.');
       }
     } catch {
-      resendCaptchaRef.current?.resetCaptcha();
+      resendCaptchaRef.current?.resetWidget();
       setResendCaptchaToken(null);
       setResendStatus('Failed to resend code. Please try again.');
     } finally {
@@ -686,7 +686,7 @@ function PasswordRecovery({ next }: { next: string }) {
               },
             });
             if (error) {
-              recoveryCaptchaRef.current?.resetCaptcha();
+              recoveryCaptchaRef.current?.resetWidget();
               setRecoveryCaptchaToken(null);
               return { success: false, error: messageForError(error) };
             }

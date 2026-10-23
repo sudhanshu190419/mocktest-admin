@@ -93,7 +93,7 @@ export default function DeleteAccountPage() {
       });
 
       if (error) {
-        captchaRef.current?.resetCaptcha();
+        captchaRef.current?.resetWidget();
         setCaptchaToken(null);
         if (error.code === 'captcha_failed' || (error.message && /captcha/i.test(error.message))) {
           setErrorMessage('Captcha check failed');
@@ -109,7 +109,7 @@ export default function DeleteAccountPage() {
         inputRefs.current[0]?.focus();
       }, 100);
     } catch (err: any) {
-      captchaRef.current?.resetCaptcha();
+      captchaRef.current?.resetWidget();
       setCaptchaToken(null);
       setErrorMessage(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {

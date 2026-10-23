@@ -5,7 +5,8 @@ import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 
 export interface TurnstileWidgetRef {
   resetWidget: () => void;
-  resetCaptcha?: () => void; // backwards-compatible alias
+  resetCaptcha: () => void;
+  reset: () => void;
 }
 
 export interface TurnstileWidgetProps {
@@ -40,6 +41,7 @@ export const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetPro
     useImperativeHandle(ref, () => ({
       resetWidget: reset,
       resetCaptcha: reset,
+      reset: reset,
     }));
 
     if (!TURNSTILE_SITE_KEY) {
