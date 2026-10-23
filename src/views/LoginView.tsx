@@ -10,6 +10,7 @@ import {
   ShieldCheck
 } from '@phosphor-icons/react';
 import { useAuth } from '@/context/AuthContext';
+import { TurnstileWidget, type TurnstileWidgetRef } from '@/components/auth/TurnstileWidget';
 
 export const LoginView: React.FC = () => {
   const { signIn } = useAuth();
@@ -21,6 +22,8 @@ export const LoginView: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = React.useRef<TurnstileWidgetRef>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,8 +36,10 @@ export const LoginView: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const { error } = await signIn(phoneNumber.trim(), password);
+    const { error } = await signIn(phoneNumber.trim(), password, captchaToken || undefined);
     if (error) {
+      captchaRef.current?.resetCaptcha();
+      setCaptchaToken(null);
       setErrorMsg(error);
     }
     setIsSubmitting(false);
@@ -163,6 +168,13 @@ export const LoginView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <TurnstileWidget
+                ref={captchaRef}
+                onVerify={(tok) => setCaptchaToken(tok)}
+                onExpire={() => setCaptchaToken(null)}
+                onError={() => setCaptchaToken(null)}
+              />
 
               <div className="pt-2">
                 <button

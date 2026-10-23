@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/config/supabase';
+import { TurnstileWidget, type TurnstileWidgetRef } from '@/components/auth/TurnstileWidget';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -20,6 +21,8 @@ export default function DeleteAccountPage() {
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [canResend, setCanResend] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileWidgetRef>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -74,17 +77,29 @@ export default function DeleteAccountPage() {
       return;
     }
 
+    if (!captchaToken && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+      setErrorMessage('Please complete the security check below.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
         phone: formatted,
         options: {
           shouldCreateUser: false,
+          ...(captchaToken ? { captchaToken } : {}),
         },
       });
 
       if (error) {
-        setErrorMessage(error.message || 'Could not send verification code. Check your mobile number.');
+        captchaRef.current?.resetCaptcha();
+        setCaptchaToken(null);
+        if (error.code === 'captcha_failed' || (error.message && /captcha/i.test(error.message))) {
+          setErrorMessage('Captcha check failed');
+        } else {
+          setErrorMessage(error.message || 'Could not send verification code. Check your mobile number.');
+        }
         return;
       }
 
@@ -94,6 +109,8 @@ export default function DeleteAccountPage() {
         inputRefs.current[0]?.focus();
       }, 100);
     } catch (err: any) {
+      captchaRef.current?.resetCaptcha();
+      setCaptchaToken(null);
       setErrorMessage(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -319,6 +336,13 @@ export default function DeleteAccountPage() {
                   I understand that deleting my account is permanent and cannot be undone. All active course access and test series will be forfeit.
                 </label>
               </div>
+
+              <TurnstileWidget
+                ref={captchaRef}
+                onVerify={(tok) => setCaptchaToken(tok)}
+                onExpire={() => setCaptchaToken(null)}
+                onError={() => setCaptchaToken(null)}
+              />
 
               <button
                 type="submit"

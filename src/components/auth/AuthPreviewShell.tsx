@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, useRef, type ReactNode } from 'react';
+import { TurnstileWidget, type TurnstileWidgetRef } from './TurnstileWidget';
 import { Button } from '@/components/marketing/Button';
 import { authRoute, getSafeNextUrl } from '@/lib/navigation';
 import { digitsOnly, toE164, isValidNationalNumber } from '@/lib/phone';
@@ -286,6 +287,8 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileWidgetRef>(null);
 
   return (
     <>
@@ -298,8 +301,19 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
           const fullPhone = toE164(phone);
 
           if (signup) {
-            const res = await signUp({ name: name.trim(), phone: fullPhone, password });
+            if (!captchaToken && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+              return { success: false, error: 'Please complete the security check below.' };
+            }
+
+            const res = await signUp({
+              name: name.trim(),
+              phone: fullPhone,
+              password,
+              captchaToken: captchaToken || undefined,
+            });
             if (!res.success) {
+              captchaRef.current?.resetCaptcha();
+              setCaptchaToken(null);
               return { success: false, error: res.error };
             }
             if (typeof window !== 'undefined') {
@@ -308,8 +322,10 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
             router.push(authRoute('/signup/verify', next));
             return { success: true };
           } else {
-            const res = await signIn(fullPhone, password);
+            const res = await signIn(fullPhone, password, captchaToken || undefined);
             if (res.error) {
+              captchaRef.current?.resetCaptcha();
+              setCaptchaToken(null);
               return { success: false, error: res.error };
             }
             router.replace(next);
@@ -334,6 +350,14 @@ function CredentialsForm({ signup, next }: { signup: boolean; next: string }) {
         )}
         <PhoneField value={phone} onChange={setPhone} />
         <PasswordField value={password} onChange={setPassword} current={!signup} />
+
+        <TurnstileWidget
+          ref={captchaRef}
+          onVerify={(tok) => setCaptchaToken(tok)}
+          onExpire={() => setCaptchaToken(null)}
+          onError={() => setCaptchaToken(null)}
+        />
+
         {!signup && (
           <Link className="auth-text-link auth-forgot" href={authRoute('/forgot-password', next)}>
             Forgot password?
@@ -357,6 +381,9 @@ function VerificationForm({ next }: { next: string }) {
   const [cooldown, setCooldown] = useState(60);
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [showResendCaptcha, setShowResendCaptcha] = useState(false);
+  const [resendCaptchaToken, setResendCaptchaToken] = useState<string | null>(null);
+  const resendCaptchaRef = useRef<TurnstileWidgetRef>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -379,17 +406,35 @@ function VerificationForm({ next }: { next: string }) {
 
   const handleResend = async () => {
     if (cooldown > 0 || resending || !phone) return;
+
+    if (!showResendCaptcha && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+      setShowResendCaptcha(true);
+      setResendStatus('Please complete the security check below to resend code.');
+      return;
+    }
+
+    if (!resendCaptchaToken && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+      setResendStatus('Please complete the security check before resending code.');
+      return;
+    }
+
     setResending(true);
     setResendStatus(null);
     try {
-      const res = await resendOtp(phone);
+      const res = await resendOtp(phone, resendCaptchaToken || undefined);
       if (res.success) {
         setResendStatus('A new 6-digit code has been sent to your phone.');
         setCooldown(60);
+        setShowResendCaptcha(false);
+        setResendCaptchaToken(null);
       } else {
+        resendCaptchaRef.current?.resetCaptcha();
+        setResendCaptchaToken(null);
         setResendStatus(res.error || 'Failed to resend code. Please try again.');
       }
     } catch {
+      resendCaptchaRef.current?.resetCaptcha();
+      setResendCaptchaToken(null);
       setResendStatus('Failed to resend code. Please try again.');
     } finally {
       setResending(false);
@@ -431,6 +476,21 @@ function VerificationForm({ next }: { next: string }) {
               {resendStatus}
             </p>
           )}
+
+          {showResendCaptcha && (
+            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+              <TurnstileWidget
+                ref={resendCaptchaRef}
+                onVerify={(tok) => {
+                  setResendCaptchaToken(tok);
+                  setResendStatus(null);
+                }}
+                onExpire={() => setResendCaptchaToken(null)}
+                onError={() => setResendCaptchaToken(null)}
+              />
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleResend}
@@ -451,6 +511,8 @@ function VerificationForm({ next }: { next: string }) {
               ? 'Sending new code…'
               : cooldown > 0
               ? `Resend code in ${cooldown}s`
+              : showResendCaptcha
+              ? 'Confirm Resend Code'
               : 'Didn’t receive code? Resend OTP'}
           </button>
         </div>
@@ -586,15 +648,17 @@ function PasswordRecovery({ next }: { next: string }) {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [recoveryCaptchaToken, setRecoveryCaptchaToken] = useState<string | null>(null);
+  const recoveryCaptchaRef = useRef<TurnstileWidgetRef>(null);
 
   return (
     <>
       <p className="auth-note" role="status">
         {step === 'phone'
-          ? 'Step 1 of 3 · Find your account'
+          ? 'Step 1 of 3 — Find your account'
           : step === 'otp'
-          ? 'Step 2 of 3 · Verify your phone'
-          : 'Step 3 of 3 · Set a new password'}
+          ? 'Step 2 of 3 — Verify your phone'
+          : 'Step 3 of 3 — Set a new password'}
       </p>
       <AuthForm
         key={step}
@@ -610,12 +674,20 @@ function PasswordRecovery({ next }: { next: string }) {
             if (!isValidNationalNumber(phone)) {
               return { success: false, error: 'Please enter a valid 10-digit mobile number.' };
             }
+            if (!recoveryCaptchaToken && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+              return { success: false, error: 'Please complete the security check below.' };
+            }
             const fullPhone = toE164(phone);
             const { error } = await supabase.auth.signInWithOtp({
               phone: fullPhone,
-              options: { shouldCreateUser: false },
+              options: {
+                shouldCreateUser: false,
+                ...(recoveryCaptchaToken ? { captchaToken: recoveryCaptchaToken } : {}),
+              },
             });
             if (error) {
+              recoveryCaptchaRef.current?.resetCaptcha();
+              setRecoveryCaptchaToken(null);
               return { success: false, error: messageForError(error) };
             }
             setStep('otp');
@@ -644,7 +716,17 @@ function PasswordRecovery({ next }: { next: string }) {
           return { success: true };
         }}
       >
-        {step === 'phone' && <PhoneField value={phone} onChange={setPhone} />}
+        {step === 'phone' && (
+          <>
+            <PhoneField value={phone} onChange={setPhone} />
+            <TurnstileWidget
+              ref={recoveryCaptchaRef}
+              onVerify={(tok) => setRecoveryCaptchaToken(tok)}
+              onExpire={() => setRecoveryCaptchaToken(null)}
+              onError={() => setRecoveryCaptchaToken(null)}
+            />
+          </>
+        )}
         {step === 'otp' && <OtpField value={code} onChange={setCode} />}
         {step === 'password' && (
           <>

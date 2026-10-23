@@ -37,7 +37,7 @@ interface AuthContextType {
   teacherProfile: TeacherProfile | null;
   instituteId: string | null;
   loading: boolean;
-  signIn: (phone: string, pass: string) => Promise<{ error: string | null }>;
+  signIn: (phone: string, pass: string, captchaToken?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   updateSpecialization: (specialization: string) => void;
   completeOnboarding: (onboardingData: { qualification: string; institution: string; year: string; accountHolder: string; bankName: string; accountNumber: string; ifscCode: string; }) => Promise<void>;
@@ -736,7 +736,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signIn = async (phone: string, pass: string): Promise<{ error: string | null }> => {
+  const signIn = async (phone: string, pass: string, captchaToken?: string): Promise<{ error: string | null }> => {
     setLoading(true);
 
     const trimmedPhone = phone.trim();
@@ -753,6 +753,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       result = await supabase.auth.signInWithPassword({
         phone: formattedPhone,
         password: pass,
+        options: {
+          ...(captchaToken ? { captchaToken } : {}),
+        },
       });
     } catch (netError: any) {
       setLoading(false);

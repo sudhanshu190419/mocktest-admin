@@ -30,6 +30,10 @@ export function messageForError(error: unknown): string {
   }
 
   // Supabase Auth specific error codes & patterns
+  if (err.code === 'captcha_failed' || lower.includes('captcha')) {
+    return 'Captcha check failed';
+  }
+
   if (err.code === 'user_already_exists' || lower.includes('user already registered')) {
     return 'An account with this phone number already exists. Please log in instead.';
   }

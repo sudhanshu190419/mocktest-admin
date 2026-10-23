@@ -198,6 +198,8 @@ export interface SignUpInput {
   phone: string;
   password: string;
   name: string;
+  /** Verification token received when the user completes Cloudflare Turnstile */
+  captchaToken?: string;
 }
 
 /**
@@ -206,6 +208,8 @@ export interface SignUpInput {
 export interface SignInInput {
   phone: string;
   password: string;
+  /** Verification token received when the user completes Cloudflare Turnstile */
+  captchaToken?: string;
 }
 
 /**

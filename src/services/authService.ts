@@ -30,7 +30,7 @@
  */
 
 import { supabase } from '../config/supabase';
-import { AuthError, PostgrestError } from '@supabase/supabase-js';
+import { AuthError, AuthApiError, PostgrestError } from '@supabase/supabase-js';
 import { getTokenExpirySummary } from '../utils/supabase';
 import { auditService } from './audit/auditService';
 import { registerActiveWebSession, deactivateActiveWebSession } from './device/webDeviceSessionService';
@@ -196,7 +196,64 @@ function buildUserProfile(
 
 // ---- Error Helpers ----------------------------------------------------------
 
-function extractErrorMessage(error: unknown): string {
+/**
+ * Detects whether an error represents a Supabase GoTrue CAPTCHA verification failure.
+ *
+ * Supabase Auth emits HTTP 400 with structured code `captcha_failed` when CAPTCHA
+ * verification fails on the server. In the client SDK, this is returned as an
+ * `AuthApiError` with `code: 'captcha_failed'`.
+ *
+ * This function:
+ * 1. Checks structured error code (`code` or `error_code` === 'captcha_failed')
+ * 2. Falls back to inspecting message if code is absent but indicates captcha failure
+ * 3. Never treats unrelated HTTP 400 errors (e.g. validation_failed) as CAPTCHA failures.
+ */
+export function isCaptchaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const err = error as {
+    code?: unknown;
+    error_code?: unknown;
+    status?: unknown;
+    message?: unknown;
+    name?: unknown;
+  };
+
+  // Primary check: structured error code
+  if (err.code === 'captcha_failed' || err.error_code === 'captcha_failed') {
+    return true;
+  }
+
+  // Fallback: error message check when code is not set
+  if (typeof err.message === 'string' && /captcha/i.test(err.message)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Safely extracts a human-readable message from any error value.
+ *
+ * Normalises `AuthError`, `PostgrestError`, and plain `Error` instances
+ * into a single string so that callers never need to inspect error types.
+ *
+ * Genuine CAPTCHA failures (code: 'captcha_failed') are mapped to a clear
+ * user-friendly message ('Captcha check failed') rather than a generic error.
+ */
+export function extractErrorMessage(error: unknown): string {
+  if (!error) {
+    return 'An unexpected authentication error occurred.';
+  }
+
+  // 1. CAPTCHA verification failure takes precedence
+  if (isCaptchaError(error)) {
+    return 'Captcha check failed';
+  }
+
+  // 2. Typed Supabase / PostgREST / JS errors
   if (error instanceof AuthError) {
     return error.message;
   }
@@ -207,6 +264,16 @@ function extractErrorMessage(error: unknown): string {
 
   if (error instanceof Error) {
     return error.message;
+  }
+
+  // 3. Structured error objects with message property (e.g. plain object mocks or response payloads)
+  if (
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as any).message === 'string' &&
+    (error as any).message.trim().length > 0
+  ) {
+    return (error as any).message;
   }
 
   return 'An unexpected authentication error occurred.';
@@ -223,7 +290,7 @@ export async function signUp(
       return { success: false, error: validation.error };
     }
 
-    const { phone, password, name } = input;
+    const { phone, password, name, captchaToken } = input;
 
     const instituteId = process.env.NEXT_PUBLIC_INSTITUTE_ID || 'e97ebfd2-ca4d-4637-a583-1078568f1b2f';
 
@@ -236,6 +303,7 @@ export async function signUp(
           institute_id: instituteId,
           role: 'student',
         },
+        ...(captchaToken ? { captchaToken } : {}),
       },
     });
 
@@ -312,12 +380,13 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<AuthResponse<Use
   }
 }
 
-export async function resendOtp(phone: string): Promise<AuthResponse<null>> {
+export async function resendOtp(phone: string, captchaToken?: string): Promise<AuthResponse<null>> {
   try {
     const { error } = await supabase.auth.signInWithOtp({
       phone,
       options: {
         shouldCreateUser: false,
+        ...(captchaToken ? { captchaToken } : {}),
       },
     });
 
@@ -338,7 +407,7 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
       return { success: false, error: validation.error };
     }
 
-    const { phone, password } = input;
+    const { phone, password, captchaToken } = input;
     const trimmedPhone = phone.trim();
     const formattedPhone = trimmedPhone.startsWith('+')
       ? trimmedPhone
@@ -352,6 +421,9 @@ export async function signIn(input: SignInInput): Promise<AuthResponse<UserProfi
       await supabase.auth.signInWithPassword({
         phone: formattedPhone,
         password,
+        options: {
+          ...(captchaToken ? { captchaToken } : {}),
+        },
       });
 
     if (authError) {
