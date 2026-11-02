@@ -2116,7 +2116,7 @@ export async function fetchStudentCourseHubData(
       courseMap.set(enrolled.courseId, {
         courseId: enrolled.courseId,
         title: enrolled.title,
-        description: enrolled.description,
+        description: enrolled.description ?? null,
         thumbnailUrl: enrolled.thumbnailUrl,
         category: enrolled.category,
         academicYear: enrolled.academicYear,

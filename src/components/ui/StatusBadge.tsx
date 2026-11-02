@@ -46,6 +46,11 @@ const statusStyles: Record<string, { bg: string; text: string; dot: string }> = 
     text: 'text-emerald-700 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
+  inactive: {
+    bg: 'bg-gray-100 dark:bg-gray-800/50',
+    text: 'text-gray-600 dark:text-gray-400',
+    dot: 'bg-gray-400',
+  },
   paused: {
     bg: 'bg-amber-50 dark:bg-amber-900/20',
     text: 'text-amber-700 dark:text-amber-400',
@@ -97,16 +102,19 @@ const fallbackStyle = {
 
 interface StatusBadgeProps {
   status: BadgeStatus;
+  label?: string;
   showDot?: boolean;
   className?: string;
 }
 
-export function StatusBadge({ status, showDot = true, className }: StatusBadgeProps) {
+export function StatusBadge({ status, label: customLabel, showDot = true, className }: StatusBadgeProps) {
   const style = statusStyles[status] ?? fallbackStyle;
 
-  const label = status
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const label =
+    customLabel ??
+    status
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <span

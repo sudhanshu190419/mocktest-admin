@@ -331,7 +331,6 @@ function InstallmentPlansView() {
         render: (item) => (
           <StatusBadge
             status={item.isActive ? 'active' : 'inactive'}
-            label={item.isActive ? 'Active' : 'Inactive'}
           />
         ),
       },
