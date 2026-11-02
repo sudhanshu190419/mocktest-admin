@@ -24,7 +24,7 @@
  */
 
 import { supabase } from '@/config/supabase';
-import { resolveCurrentStudentId, isUuidString } from './studentCourseWebService';
+import { resolveCurrentStudentId, isUuidString, isInstallmentArrearsError } from './studentCourseWebService';
 import {
   fetchBatchRecordingProgress,
   fetchSingleRecordingProgress,
@@ -44,6 +44,7 @@ export interface StudentRecording {
   subjectName: string | null;
   batchName: string | null;
   batchId: string | null;
+  courseId?: string | null;
   courseName: string | null;
   thumbnailPath: string | null;
   durationSeconds: number;
@@ -1155,6 +1156,28 @@ export async function fetchStudentRecordingById(
 
     const progress = progressResult.data;
 
+    // 6. Resolve courseId and courseName from course_batches if batchId exists
+    let resolvedCourseId: string | null = null;
+    let resolvedCourseName: string | null = null;
+    if (bsInfo?.batchId) {
+      try {
+        const { data: cbRow } = await supabase
+          .from('course_batches')
+          .select('course_id, courses:course_id (title)')
+          .eq('batch_id', bsInfo.batchId)
+          .limit(1)
+          .maybeSingle();
+
+        if (cbRow?.course_id) {
+          resolvedCourseId = cbRow.course_id;
+          const cObj = Array.isArray(cbRow.courses) ? cbRow.courses[0] : cbRow.courses;
+          resolvedCourseName = cObj?.title ?? null;
+        }
+      } catch (cbErr) {
+        console.warn('[studentRecordingWebService] course_batches lookup warn:', cbErr);
+      }
+    }
+
     const studentRecording: StudentRecording = {
       recordingId,
       classId: rec.class_id || rec.live_classes?.class_id || null,
@@ -1164,7 +1187,8 @@ export async function fetchStudentRecordingById(
       subjectName: bsInfo?.subjectName ?? null,
       batchName: bsInfo?.batchName ?? null,
       batchId: bsInfo?.batchId ?? null,
-      courseName: null,
+      courseId: resolvedCourseId,
+      courseName: resolvedCourseName,
       thumbnailPath: rec.thumbnail_path || null,
       durationSeconds,
       scheduledAt,
@@ -1194,7 +1218,7 @@ export async function fetchStudentRecordingById(
  */
 export async function getStudentPlaybackUrl(
   recordingId: string,
-): Promise<{ data: StudentPlaybackUrlResult | null; error: string | null }> {
+): Promise<{ data: StudentPlaybackUrlResult | null; error: string | null; errorCode?: string | null }> {
   if (!recordingId || !isUuidString(recordingId)) {
     return { data: null, error: 'Invalid recording ID format.' };
   }
@@ -1213,7 +1237,22 @@ export async function getStudentPlaybackUrl(
 
     if (error) {
       console.error('[studentRecordingWebService] Playback URL Edge Function error:', error);
-      return { data: null, error: error.message || 'Failed to generate playback URL.' };
+      let errorCode: string | null = null;
+      let errorMessage = error.message || 'Failed to generate playback URL.';
+      try {
+        const resp = (error as any).context as Response | undefined;
+        if (resp) {
+          const body = await resp.clone().json().catch(() => null);
+          if (body?.code) errorCode = body.code;
+          if (body?.error) errorMessage = body.error;
+        }
+      } catch {
+        // Fallback
+      }
+      if (isInstallmentArrearsError(errorMessage, errorCode)) {
+        errorCode = 'INSTALLMENT_ARREARS_BLOCKED';
+      }
+      return { data: null, error: errorMessage, errorCode };
     }
 
     if (!data?.url) {
@@ -1234,3 +1273,5 @@ export async function getStudentPlaybackUrl(
     return { data: null, error: msg };
   }
 }
+
+export { isInstallmentArrearsError };

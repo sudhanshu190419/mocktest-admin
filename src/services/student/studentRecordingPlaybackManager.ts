@@ -184,6 +184,7 @@ export interface RefreshResult {
   data: StudentPlaybackUrlResult | null;
   generation: number;
   error: string | null;
+  errorCode?: string | null;
 }
 
 /**
@@ -192,7 +193,7 @@ export interface RefreshResult {
  * request a refreshed URL simultaneously.
  */
 export class StudentPlaybackRefreshController {
-  private inFlightPromise: Promise<{ data: StudentPlaybackUrlResult | null; error: string | null }> | null = null;
+  private inFlightPromise: Promise<{ data: StudentPlaybackUrlResult | null; error: string | null; errorCode?: string | null }> | null = null;
   private currentGeneration = 0;
 
   /**

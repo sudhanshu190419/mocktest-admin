@@ -17,7 +17,7 @@
  */
 
 import { supabase } from '@/config/supabase';
-import { resolveCurrentStudentId, isUuidString } from './studentCourseWebService';
+import { resolveCurrentStudentId, isUuidString, isInstallmentArrearsError } from './studentCourseWebService';
 import type { StudentLiveClassStatus, LiveSessionStatus } from './studentLiveClassWebService';
 
 export interface AuthorizedLiveClassRoomData {
@@ -30,6 +30,7 @@ export interface AuthorizedLiveClassRoomData {
   teacherId: string | null;
   batchName: string;
   batchId: string;
+  courseId?: string | null;
   scheduledAt: string;
   durationMin: number;
   roomName: string | null;
@@ -55,7 +56,7 @@ export interface LiveKitTokenResponse {
 export async function fetchStudentAuthorizedLiveClass(
   classId: string,
   userId?: string
-): Promise<{ data: AuthorizedLiveClassRoomData | null; error: string | null }> {
+): Promise<{ data: AuthorizedLiveClassRoomData | null; error: string | null; errorCode?: string | null }> {
   if (!isUuidString(classId)) {
     return { data: null, error: 'Invalid class identifier format.' };
   }
@@ -257,6 +258,24 @@ export async function fetchStudentAuthorizedLiveClass(
     const status = (c.status || 'scheduled') as StudentLiveClassStatus;
     const canJoin = status === 'live';
 
+    // Resolve courseId from course_batches if batchId exists
+    let resolvedCourseId: string | null = null;
+    if (batchId) {
+      try {
+        const { data: cbRow } = await supabase
+          .from('course_batches')
+          .select('course_id')
+          .eq('batch_id', batchId)
+          .limit(1)
+          .maybeSingle();
+        if (cbRow?.course_id) {
+          resolvedCourseId = cbRow.course_id;
+        }
+      } catch (cbErr) {
+        console.warn('[studentLiveClassRoomWebService] course_batches lookup warn:', cbErr);
+      }
+    }
+
     return {
       data: {
         classId: c.class_id,
@@ -268,6 +287,7 @@ export async function fetchStudentAuthorizedLiveClass(
         teacherId: c.teacher_id || null,
         batchName,
         batchId,
+        courseId: resolvedCourseId,
         scheduledAt: c.scheduled_at,
         durationMin: Number(c.duration_min) ?? 0,
         roomName: c.room_name || null,
@@ -295,7 +315,7 @@ export async function fetchStudentAuthorizedLiveClass(
 export async function requestStudentLiveKitToken(
   classId: string,
   participantName?: string
-): Promise<{ data: LiveKitTokenResponse | null; error: string | null }> {
+): Promise<{ data: LiveKitTokenResponse | null; error: string | null; errorCode?: string | null }> {
   if (!isUuidString(classId)) {
     return { data: null, error: 'Invalid class ID format.' };
   }
@@ -326,7 +346,22 @@ export async function requestStudentLiveKitToken(
 
     if (error) {
       console.error('[studentLiveClassRoomWebService] livekit-token function error:', error);
-      return { data: null, error: error.message || 'Unable to join classroom. Please try again.' };
+      let errorCode: string | null = null;
+      let errorMessage = error.message || 'Unable to join classroom. Please try again.';
+      try {
+        const resp = (error as any).context as Response | undefined;
+        if (resp) {
+          const body = await resp.clone().json().catch(() => null);
+          if (body?.code) errorCode = body.code;
+          if (body?.error) errorMessage = body.error;
+        }
+      } catch {
+        // Fallback
+      }
+      if (isInstallmentArrearsError(errorMessage, errorCode)) {
+        errorCode = 'INSTALLMENT_ARREARS_BLOCKED';
+      }
+      return { data: null, error: errorMessage, errorCode };
     }
 
     if (!data?.token || !data?.url) {
@@ -374,3 +409,4 @@ export async function checkLiveClassStatus(
     return { status: null, sessionStatus: null };
   }
 }
+export { isInstallmentArrearsError };

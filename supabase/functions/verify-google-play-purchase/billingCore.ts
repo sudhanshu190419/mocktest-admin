@@ -36,6 +36,7 @@ export interface RtdnTransitionInput {
   notificationType: number;
   currentStatus: "pending" | "active" | "grace" | "expired" | "cancelled" | "refunded";
   currentEndDate?: string | null;
+  currentStartDate?: string | null;
   authoritativeGoogleSub?: any;
   productId?: string;
   planDurationDays?: number;
@@ -431,6 +432,7 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
     notificationType,
     currentStatus,
     currentEndDate,
+    currentStartDate,
     authoritativeGoogleSub,
     productId,
     nowMs = Date.now(),
@@ -463,6 +465,20 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
 
   const googleSubState = authoritativeGoogleSub?.subscriptionState;
 
+  const isTestPurchase = Boolean(
+    authoritativeGoogleSub?.testPurchase !== undefined &&
+    authoritativeGoogleSub?.testPurchase !== null
+  );
+
+  // Assess whether authoritative Google expiry falls on or before start_date (same-day license test expiry)
+  const isSameDayOrEarlierExpiry = Boolean(
+    newEndDateStr && currentStartDate && newEndDateStr <= currentStartDate
+  );
+
+  // Accelerated test subscription: strictly requires Google's explicit testPurchase indicator.
+  // A same-day expiry alone in production is only a heuristic and must not classify a production subscription as a test.
+  const isAcceleratedTest = isTestPurchase;
+
   // 2b. Terminal Refund & Revocation Guard: A refunded or revoked subscription is in a terminal state for that transaction.
   // Stale notifications (e.g. Pub/Sub delayed renewal/recovery) or delayed/cached Google API responses
   // reporting ACTIVE MUST NEVER resurrect entitlement for an already refunded or revoked transaction.
@@ -485,6 +501,10 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
   const isCurrentDateExpired = currentEndDate ? currentEndDate < todayStr : false;
   const isCurrentStatusExpired = (currentStatus === "expired" || currentStatus === "cancelled");
   const isCurrentlyExpired = isCurrentStatusExpired || isCurrentDateExpired;
+
+  // Local verified future entitlement guard:
+  // True when the local database holds an established, paid entitlement extending through today or into the future.
+  const hasFutureLocalEntitlement = Boolean(currentEndDate && currentEndDate >= todayStr);
 
   let mappedStatus: "pending" | "active" | "grace" | "expired" | "cancelled" | "refunded" = currentStatus;
   let mappedReason: "new_purchase" | "renewal" | "upgrade" | "downgrade" | "manual_activation" | "payment_failure" | "payment_recovery" | "admin_action" | "expiry" | "cancellation" | "refund" = "renewal";
@@ -618,18 +638,54 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
     case 3: // SUBSCRIPTION_CANCELED (Auto-renew turned off by user)
       mappedReason = "cancellation";
       isAutoRenew = false;
-      if (isExpiredByGoogleTime || googleSubState === "SUBSCRIPTION_STATE_EXPIRED" || isCurrentlyExpired) {
-        mappedStatus = "expired";
-        isEntitlementActive = false;
-      } else {
+
+      // Monotonic Entitlement Protection on Cancellation:
+      // A cancellation notification (type 3) signifies that auto-renewal has been turned off by the user.
+      // It does NOT terminate current entitlement. The user has already paid for the current billing cycle.
+      //
+      // Rule 1: A production subscription canceled with an authoritative future expiry remains entitled until that expiry.
+      // Rule 2: A production subscription that Google authoritatively confirms as expired cannot remain active solely because its local end_date is in the future.
+      // Rule 3: An accelerated Google Play test subscription (isAcceleratedTest === true) preserves logical entitlement
+      //         established by verified captured renewal payments (hasFutureLocalEntitlement).
+      const hasUnexpiredGooglePeriod = Boolean(
+        newEndDateStr && newEndDateStr >= todayStr && !isExpiredByGoogleTime && googleSubState !== "SUBSCRIPTION_STATE_EXPIRED"
+      );
+
+      const isEntitledUntilFuture =
+        hasUnexpiredGooglePeriod ||
+        (isAcceleratedTest && hasFutureLocalEntitlement) ||
+        (!authoritativeGoogleSub && hasFutureLocalEntitlement);
+
+      if (isEntitledUntilFuture) {
         // Paid entitlement preserved until expiry date
         mappedStatus = currentStatus === "grace" ? "grace" : "active";
         isEntitlementActive = true;
-      }
-      if (newEndDateStr) {
-        calculatedEndDate = newEndDateStr;
+        // Preserve current paid-through dates; monotonic protection guarantees end_date never shrinks
+        if (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate) && (!currentEndDate || newEndDateStr >= currentEndDate)) {
+          calculatedEndDate = newEndDateStr;
+        } else {
+          calculatedEndDate = currentEndDate || null;
+        }
+        if (calculatedEndDate) {
+          graceEndDate = addDays(calculatedEndDate, graceDays);
+          contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+        }
       } else {
-        calculatedEndDate = currentEndDate || null;
+        mappedStatus = "expired";
+        isEntitlementActive = false;
+        if (isSameDayOrEarlierExpiry) {
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
+        } else {
+          calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+            ? newEndDateStr
+            : (currentEndDate || null);
+          if (calculatedEndDate) {
+            graceEndDate = addDays(calculatedEndDate, graceDays);
+            contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          }
+        }
       }
       break;
 
@@ -644,87 +700,113 @@ export function calculateRtdnTransition(params: RtdnTransitionInput): RtdnTransi
 
     case 13: // SUBSCRIPTION_EXPIRED
     default:
-      if (googleSubState === "SUBSCRIPTION_STATE_ACTIVE" && googleExpiryTime && !isExpiredByGoogleTime) {
-        // Out-of-order EXPIRED notification: Google confirms subscription is active with future expiry.
+      if ((googleSubState === "SUBSCRIPTION_STATE_ACTIVE" || googleSubState === "SUBSCRIPTION_STATE_CANCELED") && googleExpiryTime && !isExpiredByGoogleTime) {
+        // Rule 4: Out-of-order EXPIRED notification: Google confirms subscription is active with future expiry.
         // Preserve active entitlement and renewal state.
-        mappedStatus = "active";
-        mappedReason = "renewal";
-        isAutoRenew = Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
+        mappedStatus = currentStatus === "grace" ? "grace" : "active";
+        mappedReason = googleSubState === "SUBSCRIPTION_STATE_CANCELED" ? "cancellation" : "renewal";
+        isAutoRenew = googleSubState === "SUBSCRIPTION_STATE_CANCELED" ? false : Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
         isEntitlementActive = true;
-        calculatedEndDate = newEndDateStr || currentEndDate || null;
+        calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+          ? newEndDateStr
+          : (currentEndDate || null);
+        if (calculatedEndDate) {
+          graceEndDate = addDays(calculatedEndDate, graceDays);
+          contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+        }
+      } else if (isAcceleratedTest && hasFutureLocalEntitlement) {
+        // Rule 3: Accelerated test subscription whose Google test clock reached expiration,
+        // but whose verified captured renewal payments established future logical entitlement.
+        mappedStatus = currentStatus === "grace" ? "grace" : "active";
+        mappedReason = "expiry";
+        isAutoRenew = false;
+        isEntitlementActive = true;
+        calculatedEndDate = currentEndDate || null;
         if (calculatedEndDate) {
           graceEndDate = addDays(calculatedEndDate, graceDays);
           contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
         }
       } else {
+        // Rule 2: Production expiration (or accelerated test whose logical entitlement has also passed)
         mappedStatus = "expired";
         mappedReason = "expiry";
         isAutoRenew = false;
         isEntitlementActive = false;
-        if (newEndDateStr) {
-          calculatedEndDate = newEndDateStr;
+        if (isSameDayOrEarlierExpiry) {
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
         } else {
-          calculatedEndDate = currentEndDate || null;
-        }
-        if (calculatedEndDate) {
-          graceEndDate = addDays(calculatedEndDate, graceDays);
-          contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          calculatedEndDate = (newEndDateStr && (!currentStartDate || newEndDateStr > currentStartDate))
+            ? newEndDateStr
+            : (currentEndDate || null);
+          if (calculatedEndDate) {
+            graceEndDate = addDays(calculatedEndDate, graceDays);
+            contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
+          }
         }
       }
       break;
   }
 
+
   // 4. Authoritative Google State Override (Google API ground truth takes precedence):
   if (authoritativeGoogleSub) {
-    if (googleSubState === "SUBSCRIPTION_STATE_ACTIVE" && googleExpiryTime && !isExpiredByGoogleTime) {
-      // If Google explicitly confirms ACTIVE and unexpired, override any stale expired/pending state.
+    if ((googleSubState === "SUBSCRIPTION_STATE_ACTIVE" || googleSubState === "SUBSCRIPTION_STATE_CANCELED") && googleExpiryTime && !isExpiredByGoogleTime) {
+      // 4a. Google explicitly confirms ACTIVE or CANCELED with future expiry.
+      // Overrides any stale expired/pending state, protecting newer renewals or unexpired cancellations.
       // Terminal states (refunded) are NEVER overridden (guarded at Step 2b).
       if (mappedStatus === "expired" || mappedStatus === "pending") {
-        mappedStatus = "active";
-        mappedReason = "renewal";
+        mappedStatus = currentStatus === "grace" ? "grace" : "active";
+        mappedReason = googleSubState === "SUBSCRIPTION_STATE_CANCELED" ? "cancellation" : "renewal";
         isEntitlementActive = true;
-        isAutoRenew = Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
-        calculatedEndDate = newEndDateStr || calculatedEndDate;
+        isAutoRenew = googleSubState === "SUBSCRIPTION_STATE_CANCELED" ? false : Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
+        calculatedEndDate = (newEndDateStr && (!currentEndDate || newEndDateStr >= currentEndDate))
+          ? newEndDateStr
+          : (calculatedEndDate || currentEndDate || null);
         if (calculatedEndDate) {
           graceEndDate = addDays(calculatedEndDate, graceDays);
           contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
         }
       }
     } else if (googleSubState === "SUBSCRIPTION_STATE_EXPIRED" || (googleExpiryTime && isExpiredByGoogleTime)) {
-      if (mappedStatus !== "refunded") {
+      // 4b. Google authoritatively confirms the subscription is EXPIRED (or Google expiry timestamp has passed).
+      //
+      // Rule 2 (Production Safety):
+      // In production (!isAcceleratedTest), Google's expired verdict is strictly authoritative.
+      // A production subscription cannot remain active solely because its local end_date is in the future.
+      //
+      // Rule 3 (Test Policy):
+      // An accelerated test subscription (isAcceleratedTest === true) preserves logical entitlement
+      // established by verified captured renewal payments (hasFutureLocalEntitlement).
+      const shouldPreserveTestEntitlement = isAcceleratedTest && hasFutureLocalEntitlement;
+
+      if (mappedStatus !== "refunded" && !shouldPreserveTestEntitlement) {
         mappedStatus = "expired";
+        mappedReason = "expiry";
         isEntitlementActive = false;
         isAutoRenew = false;
-        if (calculatedEndDate) {
+        if (isSameDayOrEarlierExpiry) {
+          calculatedEndDate = null;
+          graceEndDate = null;
+          contentAccessEndDate = null;
+        } else if (calculatedEndDate) {
           graceEndDate = addDays(calculatedEndDate, graceDays);
           contentAccessEndDate = addDays(graceEndDate, contentAccessDays);
         }
       }
     } else if (googleSubState === "SUBSCRIPTION_STATE_REVOKED") {
+      // 4c. Rule 5: Immediate Revocation
       mappedStatus = "refunded";
       mappedReason = "refund";
       isEntitlementActive = false;
       isAutoRenew = false;
       graceEndDate = null;
       contentAccessEndDate = null;
-    } else if (googleSubState === "SUBSCRIPTION_STATE_ON_HOLD") {
-      if (mappedStatus !== "refunded") {
-        mappedStatus = "pending";
-        mappedReason = "payment_failure";
-        isEntitlementActive = false;
-        isAutoRenew = false;
-        graceEndDate = null;
-        contentAccessEndDate = null;
-      }
-    } else if (googleSubState === "SUBSCRIPTION_STATE_PAUSED") {
-      if (mappedStatus !== "refunded") {
-        mappedStatus = "pending";
-        mappedReason = "admin_action";
-        isEntitlementActive = false;
-        isAutoRenew = false;
-        graceEndDate = null;
-        contentAccessEndDate = null;
-      }
+    } else if (googleSubState === "SUBSCRIPTION_STATE_ON_HOLD" || googleSubState === "SUBSCRIPTION_STATE_PAUSED") {
+      mappedStatus = "pending";
+      mappedReason = googleSubState === "SUBSCRIPTION_STATE_ON_HOLD" ? "payment_failure" : "admin_action";
+      isEntitlementActive = false;
     }
   }
 
@@ -940,8 +1022,8 @@ export function buildInvoiceSnapshotPayload(params: {
  * Direct JavaScript verification of the PostgreSQL constraint:
  * CHECK (paid_at IS NULL OR paid_at >= created_at)
  */
-export function validatePaymentTimestampConstraint(createdAt: string, paidAt: string | null): boolean {
-  if (paidAt === null) return true;
+export function validatePaymentTimestampConstraint(createdAt: string, paidAt?: string | null): boolean {
+  if (paidAt === null || paidAt === undefined) return true;
   const createdMs = Date.parse(createdAt);
   const paidMs = Date.parse(paidAt);
   if (isNaN(createdMs) || isNaN(paidMs)) return false;
@@ -957,9 +1039,19 @@ export function buildGooglePlayPaymentPayload(params: {
   effectiveOrderId: string;
   amount: number;
   currency: string;
-  transactionTimestamp: string;
+  transactionTimestamp?: string | null;
   gatewayResponse: any;
+  purchaseToken?: string;
 }) {
+  const enhancedResponse =
+    params.gatewayResponse && typeof params.gatewayResponse === 'object'
+      ? {
+          ...params.gatewayResponse,
+          ...(params.purchaseToken ? { purchaseToken: params.purchaseToken } : {}),
+        }
+      : params.gatewayResponse;
+
+  const ts = params.transactionTimestamp || new Date().toISOString();
   return {
     order_id: params.orderId,
     institute_id: params.instituteId,
@@ -967,13 +1059,13 @@ export function buildGooglePlayPaymentPayload(params: {
     gateway: 'google_play',
     gateway_order_id: params.effectiveOrderId,
     gateway_payment_id: params.effectiveOrderId,
-    gateway_response: params.gatewayResponse,
+    gateway_response: enhancedResponse,
     amount: params.amount,
     currency: params.currency,
     status: 'captured',
-    created_at: params.transactionTimestamp,
-    paid_at: params.transactionTimestamp,
-    updated_at: params.transactionTimestamp,
+    created_at: ts,
+    paid_at: ts,
+    updated_at: ts,
   };
 }
 
@@ -1005,11 +1097,25 @@ export function findMatchingUnfulfilledOrder(
     if (!o || !o.notes) continue;
     try {
       const parsed = typeof o.notes === 'string' ? JSON.parse(o.notes) : o.notes;
-      if (parsed.purchaseToken === purchaseToken || (orderId && parsed.orderId === orderId)) {
-        return o.order_id;
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.purchaseToken === purchaseToken || (orderId && parsed.orderId === orderId)) {
+          return o.order_id;
+        }
       }
     } catch {
-      // Ignore unparseable notes
+      // If JSON.parse fails due to trailing text or malformed JSON, fallback to safe regex extraction
+      if (typeof o.notes === 'string') {
+        const tokenMatch = o.notes.match(/"purchaseToken"\s*:\s*"([^"]+)"/);
+        if (tokenMatch && tokenMatch[1] === purchaseToken) {
+          return o.order_id;
+        }
+        if (orderId) {
+          const orderMatch = o.notes.match(/"orderId"\s*:\s*"([^"]+)"/);
+          if (orderMatch && orderMatch[1] === orderId) {
+            return o.order_id;
+          }
+        }
+      }
     }
   }
   return null;
@@ -1467,13 +1573,20 @@ export function buildGooglePlayRpcPayload(params: {
     p_effective_order_id: params.effectiveOrderId,
     p_purchase_token: params.purchaseToken,
     p_product_id: params.productId,
-    p_gateway_response: params.googleVerificationResult || {
-      verified: true,
-      productId: params.productId,
-      purchaseToken: params.purchaseToken,
-      verified_at: params.transactionTimestamp,
-    },
-    p_transaction_timestamp: params.transactionTimestamp,
+    p_gateway_response: params.googleVerificationResult && typeof params.googleVerificationResult === 'object'
+      ? {
+          ...params.googleVerificationResult,
+          purchaseToken: params.purchaseToken,
+          verified: true,
+          verified_at: params.transactionTimestamp,
+        }
+      : {
+          verified: true,
+          productId: params.productId,
+          purchaseToken: params.purchaseToken,
+          verified_at: params.transactionTimestamp,
+        },
+    p_transaction_timestamp: params.transactionTimestamp || new Date().toISOString(),
     p_subscription_end_date: params.subscriptionEndDate || null,
     p_is_auto_renew: params.autoRenewSetting !== undefined ? params.autoRenewSetting : true,
     p_billing_name: params.billingName || 'Student',
@@ -1541,4 +1654,1483 @@ export function handleGooglePlayRpcResponse(
       ...(rpcData?.orderId ? { orderId: rpcData.orderId } : {}),
     },
   };
+}
+export interface AuthoritativeOrderResolution {
+  authoritativeOrderId: string;
+  isAuthoritative: boolean;
+  source:
+    | 'google_subscription_line_item_order_id'
+    | 'google_inapp_order_id'
+    | 'google_subscription_latest_order_id'
+    | 'deterministic_token_hash';
+  diagnosticClientOrderId?: string | null;
+}
+
+/**
+ * Computes a standard SHA-256 cryptographic digest of a purchase token using the Web Crypto API.
+ * Returns a 32-character (128-bit) uppercase hexadecimal prefix for collision-resistant,
+ * deterministic transaction identity when Google Play Developer API omits an order ID.
+ */
+export async function computeTokenDigest(token: string): Promise<string> {
+  const safeToken = token || '';
+  const encoder = new TextEncoder();
+  const data = encoder.encode(safeToken);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const fullHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  return fullHex.slice(0, 32);
+}
+
+/**
+ * Backward-compatible async helper for computeTokenDigest.
+ */
+export async function deterministicTokenHash(token: string): Promise<string> {
+  return computeTokenDigest(token);
+}
+
+/**
+ * Resolves authoritative order ID for Google Play purchase verification.
+ *
+ * Strict Security Principles (F-09 Final Review):
+ * 1. Prefers authoritative identifier returned by Google Play Developer API:
+ *    - For subscriptions: googleVerificationResult.latestOrderId
+ *    - For in-app products: googleVerificationResult.orderId
+ * 2. NEVER uses client-provided orderId for payment identity or replay detection.
+ *    Client-supplied orderId is an untrusted client string that an attacker can modify
+ *    to bypass replay checks or trigger false renewal processing.
+ * 3. Fallback (sandbox / test purchases where Google Developer API omits orderId):
+ *    Derives a cryptographic SHA-256 digest strictly from purchaseToken:
+ *    - For subscriptions: GPA.SUB.<SHA256_32HEX>
+ *    - For in-app products: GPA.TOK.<SHA256_32HEX>
+ *    Because purchaseToken is identical across retries and validated by Google,
+ *    this identifier is 100% deterministic, collision-resistant, and immune to client manipulation.
+ */
+export async function resolveAuthoritativeOrderId(params: {
+  isSub: boolean;
+  googleVerificationResult?: any;
+  clientOrderId?: string | null;
+  purchaseToken: string;
+  productId?: string | null;
+}): Promise<AuthoritativeOrderResolution> {
+  const { isSub, googleVerificationResult, clientOrderId, purchaseToken, productId } = params;
+  const diagnosticClientOrderId = (clientOrderId && typeof clientOrderId === 'string' && clientOrderId.trim() !== '')
+    ? clientOrderId.trim()
+    : null;
+
+  const lineItems = Array.isArray(googleVerificationResult?.lineItems) ? googleVerificationResult.lineItems : [];
+  const normalizedProductId = (productId && typeof productId === 'string' && productId.trim() !== '')
+    ? productId.trim()
+    : null;
+
+  // 1. Authoritative line item selection:
+  // - If productId is supplied: ONLY match the line item for that specific product.
+  //   Never select an unrelated product's line item.
+  // - If productId is NOT supplied: match ONLY if there is exactly 1 line item.
+  //   If there are multiple line items and no productId, the response is ambiguous across items.
+  let matchedLineItem: any = null;
+  if (normalizedProductId) {
+    matchedLineItem = lineItems.find(
+      (item: any) =>
+        item?.productId === normalizedProductId &&
+        typeof item?.latestSuccessfulOrderId === 'string' &&
+        item.latestSuccessfulOrderId.trim() !== ''
+    ) || null;
+  } else if (lineItems.length === 1) {
+    const singleItem = lineItems[0];
+    if (typeof singleItem?.latestSuccessfulOrderId === 'string' && singleItem.latestSuccessfulOrderId.trim() !== '') {
+      matchedLineItem = singleItem;
+    }
+  }
+
+  // 2. Authoritative root-level latestOrderId eligibility:
+  // Root latestOrderId on SubscriptionPurchaseV2 is only justified when:
+  // a) Subscription state supports it (ACTIVE, IN_GRACE_PERIOD, CANCELED).
+  // b) Product context is unambiguous:
+  //    - No productId supplied AND lineItems.length <= 1; OR
+  //    - ProductId supplied AND lineItems.length <= 1 (if 1 item, item.productId must match normalizedProductId).
+  // If lineItems.length > 1, root latestOrderId is ambiguous across products and MUST NOT be used.
+  // If lineItems has 1 item and item.productId !== normalizedProductId, root latestOrderId belongs to another product and MUST NOT be used.
+  const isRootOrderIdJustified = (): boolean => {
+    const subState = googleVerificationResult?.subscriptionState;
+    const isStateSupported = !subState || subState === 'SUBSCRIPTION_STATE_ACTIVE' || subState === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD' || subState === 'SUBSCRIPTION_STATE_CANCELED';
+    if (!isStateSupported) return false;
+
+    if (lineItems.length === 0) return true;
+    if (lineItems.length === 1) {
+      return !normalizedProductId || lineItems[0]?.productId === normalizedProductId;
+    }
+    return false;
+  };
+
+  if (isSub) {
+    // Subscription flow:
+    if (matchedLineItem?.latestSuccessfulOrderId) {
+      return {
+        authoritativeOrderId: matchedLineItem.latestSuccessfulOrderId.trim(),
+        isAuthoritative: true,
+        source: 'google_subscription_line_item_order_id',
+        diagnosticClientOrderId,
+      };
+    }
+
+    if (
+      isRootOrderIdJustified() &&
+      googleVerificationResult?.latestOrderId &&
+      typeof googleVerificationResult.latestOrderId === 'string' &&
+      googleVerificationResult.latestOrderId.trim() !== ''
+    ) {
+      return {
+        authoritativeOrderId: googleVerificationResult.latestOrderId.trim(),
+        isAuthoritative: true,
+        source: 'google_subscription_latest_order_id',
+        diagnosticClientOrderId,
+      };
+    }
+  } else {
+    // In-app one-time purchase flow:
+    if (
+      googleVerificationResult?.orderId &&
+      typeof googleVerificationResult.orderId === 'string' &&
+      googleVerificationResult.orderId.trim() !== ''
+    ) {
+      return {
+        authoritativeOrderId: googleVerificationResult.orderId.trim(),
+        isAuthoritative: true,
+        source: 'google_inapp_order_id',
+        diagnosticClientOrderId,
+      };
+    }
+
+    // Cross-fallback: check unambiguous subscription line item or root order ID if payload is a subscription
+    if (matchedLineItem?.latestSuccessfulOrderId) {
+      return {
+        authoritativeOrderId: matchedLineItem.latestSuccessfulOrderId.trim(),
+        isAuthoritative: true,
+        source: 'google_subscription_line_item_order_id',
+        diagnosticClientOrderId,
+      };
+    }
+
+    if (
+      isRootOrderIdJustified() &&
+      googleVerificationResult?.latestOrderId &&
+      typeof googleVerificationResult.latestOrderId === 'string' &&
+      googleVerificationResult.latestOrderId.trim() !== ''
+    ) {
+      return {
+        authoritativeOrderId: googleVerificationResult.latestOrderId.trim(),
+        isAuthoritative: true,
+        source: 'google_subscription_latest_order_id',
+        diagnosticClientOrderId,
+      };
+    }
+  }
+
+  // Deterministic SHA-256 fallback derived strictly from purchaseToken.
+  // CRITICAL: clientOrderId is NEVER used as fallback identity.
+  // When an order is missing, ambiguous, or belonging to another product,
+  // this returns isAuthoritative = false, guaranteeing it fails closed in evaluateExistingPaymentMatch.
+  const hash = await computeTokenDigest(purchaseToken);
+  const prefix = isSub ? 'GPA.SUB' : 'GPA.TOK';
+
+  return {
+    authoritativeOrderId: prefix + '.' + hash,
+    isAuthoritative: false,
+    source: 'deterministic_token_hash',
+    diagnosticClientOrderId,
+  };
+}
+
+export interface ExistingPaymentCheckParams {
+  isSub: boolean;
+  authoritativeOrderId: string;
+  purchaseToken: string;
+  existingPayment: {
+    payment_id: string;
+    order_id: string;
+    status: string;
+    gateway_payment_id?: string | null;
+    gateway_order_id?: string | null;
+    gateway_response?: any;
+    orders?: {
+      profile_id?: string | null;
+      student_id?: string | null;
+      notes?: any;
+    } | null;
+  } | null;
+  currentProfileId: string;
+  googleVerificationResult?: any;
+  existingSubscriptionEndDate?: string | null;
+  existingSubscriptionOrderId?: string | null;
+  transactionTimestamp?: string | number | Date | null;
+  productId?: string | null;
+}
+
+export interface ExistingPaymentCheckResult {
+  isDuplicate: boolean;
+  isAccountMismatch: boolean;
+  isSubscriptionRenewal: boolean;
+  isEntitlementRecovery?: boolean;
+  isMissingSubscriptionEvidence?: boolean;
+  paymentOwnerProfileId?: string | null;
+  existingOrderId?: string;
+  decisionReason?: string;
+}
+
+/**
+ * Extracts Google Play order renewal cycle index.
+ * - Suffix '..0' -> cycle 0 (1st renewal)
+ * - Suffix '..1' -> cycle 1 (2nd renewal)
+ * - Suffix '..N' -> cycle N
+ * - Unsuffixed base order (GPA.xxxx) -> cycle -1 (initial purchase)
+ * - Synthetic token fallback (GPA.SUB.xxxx) -> cycle -1
+ */
+export function extractOrderCycle(orderId: string | null | undefined): number | null {
+  if (!orderId || typeof orderId !== 'string') return null;
+  const trimmed = orderId.trim();
+  const match = trimmed.match(/\.\.(\d+)$/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  if (trimmed.length > 0) {
+    return -1;
+  }
+  return null;
+}
+
+/**
+ * Evaluates whether an existing captured payment in PostgreSQL represents:
+ * 1. An unauthorized cross-account token replay (account mismatch).
+ * 2. An idempotent retry of the exact same transaction (duplicate).
+ * 3. The reconciliation of a previously recorded fallback ID to a delayed Google-issued ID.
+ * 4. A legitimate recurring subscription renewal cycle (new latestOrderId with cycle >= 1).
+ * 5. An entitlement recovery for an already-recorded payment with missing local subscription state.
+ */
+export function evaluateExistingPaymentMatch(
+  params: ExistingPaymentCheckParams
+): ExistingPaymentCheckResult {
+  const {
+    isSub,
+    authoritativeOrderId,
+    existingPayment,
+    currentProfileId,
+    googleVerificationResult,
+    existingSubscriptionEndDate,
+    existingSubscriptionOrderId,
+    transactionTimestamp,
+    productId,
+  } = params;
+
+  if (!existingPayment) {
+    return {
+      isDuplicate: false,
+      isAccountMismatch: false,
+      isSubscriptionRenewal: false,
+      decisionReason: 'no_existing_payment',
+    };
+  }
+
+  const paymentOwnerProfileId = existingPayment.orders?.profile_id || null;
+  const isAccountMismatch = Boolean(paymentOwnerProfileId && paymentOwnerProfileId !== currentProfileId);
+
+  if (isAccountMismatch) {
+    return {
+      isDuplicate: true,
+      isAccountMismatch: true,
+      isSubscriptionRenewal: false,
+      paymentOwnerProfileId,
+      existingOrderId: existingPayment.order_id,
+      decisionReason: 'account_mismatch',
+    };
+  }
+
+  // For subscriptions: distinguish renewal from idempotent retry or transition from fallback ID
+  if (isSub) {
+    const existingRecordedId = existingPayment.gateway_payment_id || existingPayment.gateway_order_id || '';
+
+    // A renewal requires an authoritative incoming order ID distinct from the recorded payment
+    const isDistinctOrder = Boolean(
+      existingRecordedId &&
+      authoritativeOrderId &&
+      existingRecordedId !== authoritativeOrderId
+    );
+
+    const isIncomingFallback = authoritativeOrderId.startsWith('GPA.SUB.');
+    const isExistingFallback = existingRecordedId.startsWith('GPA.SUB.');
+
+    if (isDistinctOrder && !isIncomingFallback) {
+      // In Google Play, the initial subscription purchase uses an unsuffixed order ID (e.g. GPA.xxxx).
+      // The 1st renewal receives cycle index 0 suffix: ..0 (e.g. GPA.xxxx..0).
+      // The 2nd renewal receives cycle index 1 suffix: ..1 (e.g. GPA.xxxx..1).
+      // Subsequent renewals receive incrementing cycle indexes (..2, ..3, etc.).
+      // Any genuine renewal cycle suffix matches /\.\.\d+$/
+      const isValidRenewalCycle = /\.\.\d+$/.test(authoritativeOrderId);
+      if (!isValidRenewalCycle) {
+        return {
+          isDuplicate: true,
+          isAccountMismatch: false,
+          isSubscriptionRenewal: false,
+          paymentOwnerProfileId,
+          existingOrderId: existingPayment.order_id,
+          decisionReason: 'invalid_renewal_cycle_format',
+        };
+      }
+
+      const incomingCycle = extractOrderCycle(authoritativeOrderId);
+      const recordedCycle = extractOrderCycle(existingRecordedId);
+      const isNewerCycle = (incomingCycle !== null && recordedCycle !== null && incomingCycle > recordedCycle);
+
+      // Strictly fail-closed renewal verification:
+      // Require ALL mandatory evidence:
+      // 1. Google-verified subscription expiry must be non-null and parseable.
+      // 2. Google-verified expiry must be strictly later than current transaction reference time.
+      // 3. Google subscription state must not indicate an expired/canceled subscription.
+      // 4. If a previously granted subscription expiry is established, the Google-verified expiry
+      //    must advance beyond it, be an RTDN-synchronized reconciliation, or be a verified license-test renewal.
+      const lineItems = Array.isArray(googleVerificationResult?.lineItems) ? googleVerificationResult.lineItems : [];
+      let matchedItem = (productId && typeof productId === 'string')
+        ? lineItems.find((item: any) => item?.productId === productId && item?.expiryTime)
+        : null;
+      if (!matchedItem && (!productId || lineItems.length === 1)) {
+        matchedItem = lineItems.find((item: any) => item?.expiryTime);
+      }
+      const googleExpiry = matchedItem?.expiryTime || (lineItems.length === 0 ? googleVerificationResult?.expiryTimeMillis : null);
+
+      if (!googleExpiry) {
+        // Missing required expiry evidence: fail closed, treat as duplicate/already processed
+        return {
+          isDuplicate: true,
+          isAccountMismatch: false,
+          isSubscriptionRenewal: false,
+          paymentOwnerProfileId,
+          existingOrderId: existingPayment.order_id,
+          decisionReason: 'missing_expiry_evidence',
+        };
+      }
+
+      const gTime = new Date(/^\d+$/.test(String(googleExpiry)) ? parseInt(String(googleExpiry), 10) : String(googleExpiry)).getTime();
+      if (isNaN(gTime)) {
+        return {
+          isDuplicate: true,
+          isAccountMismatch: false,
+          isSubscriptionRenewal: false,
+          paymentOwnerProfileId,
+          existingOrderId: existingPayment.order_id,
+          decisionReason: 'unparseable_google_expiry',
+        };
+      }
+
+      // Verify Google-verified expiry is strictly in the future relative to the transaction timestamp
+      const refTime = transactionTimestamp ? new Date(transactionTimestamp).getTime() : Date.now();
+      if (gTime <= refTime) {
+        // Expiry has already lapsed or is not strictly in the future: fail closed
+        return {
+          isDuplicate: true,
+          isAccountMismatch: false,
+          isSubscriptionRenewal: false,
+          paymentOwnerProfileId,
+          existingOrderId: existingPayment.order_id,
+          decisionReason: 'google_expiry_in_past',
+        };
+      }
+
+      // Verify Google subscription state if present
+      const subState = googleVerificationResult?.subscriptionState;
+      if (subState && subState !== 'SUBSCRIPTION_STATE_ACTIVE' && subState !== 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD') {
+        return {
+          isDuplicate: true,
+          isAccountMismatch: false,
+          isSubscriptionRenewal: false,
+          paymentOwnerProfileId,
+          existingOrderId: existingPayment.order_id,
+          decisionReason: 'inactive_subscription_state',
+        };
+      }
+
+      // Detect official Google Play license test purchase
+      // Google Play Developer API SubscriptionsV2 returns testPurchase: {} for license test purchases.
+      const isTestPurchase = Boolean(
+        googleVerificationResult?.testPurchase !== undefined &&
+        googleVerificationResult?.testPurchase !== null
+      );
+
+      // If existing subscription end date exists, require incoming expiry to strictly advance beyond it.
+      // EXCEPTION 1: Safe RTDN Webhook Reconciliation.
+      // If the RTDN webhook has already run for this renewal, it updated existingSubscriptionEndDate
+      // to the new expiry date, BUT left student_subscriptions.order_id referencing the PREVIOUS order.
+      // In that specific case (gDateStr === eDateStr && existingSubscriptionOrderId === existingPayment.order_id),
+      // the financial ledger payment for this new renewal cycle is still unrecorded and must be safely reconciled.
+      //
+      // EXCEPTION 2: Accelerated Test Renewal (License Testing).
+      // In Google Play license testing, subscriptions renew on accelerated schedules (e.g. 5-15 mins).
+      // The initial purchase stored_expiry was set to +30 days by plan-duration fallback
+      // to satisfy PostgreSQL check constraint ck_student_subscriptions_end_date (end_date > start_date).
+      // Consequently, Google's genuine future test expiry (today + 5 mins) will be <= eTime (+30 days).
+      // When:
+      //  1. isTestPurchase is true (verified license test purchase),
+      //  2. isNewerCycle is true (incoming renewal cycle is strictly newer than recorded cycle),
+      //  3. gTime > refTime (verified Google expiry is strictly in the future),
+      //  4. Subscription still references prior order (or missing order),
+      // this is an unrecorded accelerated test renewal that must be permitted to reach the database RPC.
+      // Migration 217: the ledger, not this pre-check, is authoritative for entitlement windows.
+      let isNonAdvancingVerifiedCycle = false;
+      let rtdnReconciliationApplied = false;
+
+      if (existingSubscriptionEndDate) {
+        const eTime = new Date(existingSubscriptionEndDate).getTime();
+        const gDateStr = new Date(gTime).toISOString().slice(0, 10);
+        const eDateStr = existingSubscriptionEndDate.slice(0, 10);
+
+        const isRtdnReconciliation = Boolean(
+          gDateStr === eDateStr &&
+          existingSubscriptionOrderId &&
+          existingPayment?.order_id &&
+          existingSubscriptionOrderId === existingPayment.order_id
+        );
+
+        const isAcceleratedTestRenewal = Boolean(
+          isTestPurchase &&
+          isNewerCycle &&
+          gTime > refTime &&
+          (existingSubscriptionOrderId === null || existingSubscriptionOrderId === existingPayment.order_id)
+        );
+
+        // Migration 217: a strictly newer, verified Google Play cycle must reach the database RPC
+        // even when its expiry does not advance the persisted date. Accelerated (non-test)
+        // renewals, the plan-duration fallback for degenerate same-day expiries, and locally
+        // extended windows all produce that shape. complete_google_play_purchase records the
+        // payment for the EXACT order id and applies greatest(), so entitlement can never
+        // regress; duplicate protection now rests on exact-order-id idempotency instead of an
+        // expiry-ordering heuristic. Older/equal cycles and replayed order ids stay fail-closed.
+        const isVerifiedNewerCycle = Boolean(
+          isNewerCycle &&
+          gTime > refTime &&
+          authoritativeOrderId !== existingRecordedId &&
+          !isIncomingFallback
+        );
+
+        const isAdvancedExpiry = !isNaN(eTime) && gDateStr > eDateStr && gTime > eTime;
+        const isExpiryValid = isAdvancedExpiry || isRtdnReconciliation || isAcceleratedTestRenewal || isVerifiedNewerCycle;
+
+        rtdnReconciliationApplied = isRtdnReconciliation;
+        isNonAdvancingVerifiedCycle = Boolean(isVerifiedNewerCycle && !isAdvancedExpiry && !isRtdnReconciliation);
+
+        if (!isExpiryValid) {
+          // Google expiry has not advanced strictly beyond persisted entitlement: fail closed
+          return {
+            isDuplicate: true,
+            isAccountMismatch: false,
+            isSubscriptionRenewal: false,
+            paymentOwnerProfileId,
+            existingOrderId: existingPayment.order_id,
+            decisionReason: 'expiry_not_advanced',
+          };
+        }
+      }
+
+      const decisionReason = isTestPurchase && isNewerCycle && gTime <= (existingSubscriptionEndDate ? new Date(existingSubscriptionEndDate).getTime() : 0)
+        ? 'accelerated_test_renewal'
+        : (rtdnReconciliationApplied
+            ? 'rtdn_reconciliation'
+            : (isNonAdvancingVerifiedCycle
+                ? 'verified_newer_cycle_non_advancing_expiry'
+                : 'valid_new_renewal_cycle'));
+
+      // Valid renewal cycle confirmed with all mandatory evidence established:
+      return {
+        isDuplicate: false,
+        isAccountMismatch: false,
+        isSubscriptionRenewal: true,
+        paymentOwnerProfileId,
+        existingOrderId: existingPayment.order_id,
+        decisionReason,
+      };
+    }
+
+    // Check if entitlement is missing in DB for an already-recorded payment (Recovery of already-processed purchase or renewal)
+    if (!existingSubscriptionEndDate) {
+      const lineItems = Array.isArray(googleVerificationResult?.lineItems) ? googleVerificationResult.lineItems : [];
+      let matchedItem = (productId && typeof productId === 'string')
+        ? lineItems.find((item: any) => item?.productId === productId && item?.expiryTime)
+        : null;
+      if (!matchedItem && (!productId || lineItems.length === 1)) {
+        matchedItem = lineItems.find((item: any) => item?.expiryTime);
+      }
+      const googleExpiry = matchedItem?.expiryTime || (lineItems.length === 0 ? googleVerificationResult?.expiryTimeMillis : null);
+      if (googleExpiry) {
+        const gTime = new Date(/^\d+$/.test(String(googleExpiry)) ? parseInt(String(googleExpiry), 10) : String(googleExpiry)).getTime();
+        const refTime = transactionTimestamp ? new Date(transactionTimestamp).getTime() : Date.now();
+        if (!isNaN(gTime) && gTime > refTime) {
+          // Entitlement missing in DB but valid future Google expiry exists: needs entitlement recovery via RPC
+          return {
+            isDuplicate: true,
+            isAccountMismatch: false,
+            isSubscriptionRenewal: false,
+            isEntitlementRecovery: true,
+            paymentOwnerProfileId,
+            existingOrderId: existingPayment.order_id,
+          };
+        }
+      }
+
+      // Existing payment found but subscription record is missing and Google-verified expiry is missing or invalid:
+      // FAIL CLOSED. Do not return 200 OK duplicate claiming entitlement is active.
+      return {
+        isDuplicate: true,
+        isAccountMismatch: false,
+        isSubscriptionRenewal: false,
+        isEntitlementRecovery: false,
+        isMissingSubscriptionEvidence: true,
+        paymentOwnerProfileId,
+        existingOrderId: existingPayment.order_id,
+      };
+    }
+  }
+
+  return {
+    isDuplicate: true,
+    isAccountMismatch: false,
+    isSubscriptionRenewal: false,
+    paymentOwnerProfileId,
+    existingOrderId: existingPayment.order_id,
+    decisionReason: 'idempotent_duplicate_same_order',
+  };
+}
+
+
+export interface GoogleMoney {
+  currencyCode: string; // ISO 4217 three-letter currency code (e.g., "INR", "USD")
+  units?: string;       // Whole units as a decimal string representing int64 (e.g., "499")
+  nanos?: number;       // Fractional units as int32 representing 10^-9 units (e.g., 500000000 = 0.50)
+}
+
+export interface GoogleSubscriptionOfferPhaseDetails {
+  pricingPhase?: string;
+  recurrenceMode?: string;
+  billingPeriod?: string;
+  price?: GoogleMoney;
+  freeTrialDetails?: Record<string, any>;
+  introductoryPriceDetails?: Record<string, any>;
+  baseDetails?: Record<string, any>;
+  prorationPeriodDetails?: Record<string, any>;
+}
+
+export interface GoogleSubscriptionDetails {
+  basePlanId?: string;
+  offerId?: string;
+  offerPhaseDetails?: GoogleSubscriptionOfferPhaseDetails[];
+  servicePeriodStartTime?: string;
+}
+
+export interface GoogleOrderLineItem {
+  productId?: string;
+  productTitle?: string;
+  listingPrice?: GoogleMoney;
+  total?: GoogleMoney;
+  tax?: GoogleMoney;
+  subscriptionDetails?: GoogleSubscriptionDetails;
+  oneTimePurchaseDetails?: any;
+  paidAppDetails?: any;
+}
+
+export interface GoogleOrderHistoryProcessedEvent {
+  eventTime?: string; // RFC 3339 timestamp when order was processed
+}
+
+export interface GoogleOrderHistoryRefundEvent {
+  eventTime?: string;
+  refundType?: string;
+}
+
+export interface GoogleOrderHistory {
+  processedEvent?: GoogleOrderHistoryProcessedEvent;
+  refundEvent?: GoogleOrderHistoryRefundEvent;
+}
+
+/**
+ * Official Google Play Orders API Order resource:
+ * https://developers.google.com/android-publisher/api-ref/rest/v3/orders
+ */
+export interface GoogleOrderDetails {
+  taxInclusive?: boolean;
+  taxIncluded?: GoogleMoney;
+  taxExcluded?: GoogleMoney;
+}
+
+export interface GoogleOrderResponse {
+  orderId: string;
+  purchaseToken?: string;
+  state?: 'PENDING' | 'PROCESSED' | 'CANCELED' | 'PENDING_REFUND' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | string;
+  createTime?: string; // RFC 3339 timestamp string when order was created (e.g., "2026-10-24T15:14:33.000Z")
+  lastEventTime?: string;
+  orderHistory?: GoogleOrderHistory;
+  orderDetails?: GoogleOrderDetails;
+  lineItems?: GoogleOrderLineItem[];
+  total?: GoogleMoney;
+  tax?: GoogleMoney;
+}
+
+/**
+ * Supported platform currencies and their ISO 4217 minor unit decimal places.
+ * Default platform currency is INR (2 decimal places).
+ */
+export const DEFAULT_PLATFORM_CURRENCY = 'INR';
+
+export const ISO_4217_CURRENCY_DECIMALS: Record<string, number> = {
+  // 0 decimal places
+  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0,
+  PYG: 0, RWF: 0, UGX: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+  // 3 decimal places
+  BHD: 3, IQD: 3, JOD: 3, KWD: 3, OMR: 3, TND: 3,
+};
+
+export function getCurrencyDecimalPlaces(currencyCode: string): number {
+  const code = (currencyCode || '').trim().toUpperCase();
+  if (code in ISO_4217_CURRENCY_DECIMALS) {
+    return ISO_4217_CURRENCY_DECIMALS[code];
+  }
+  return 2; // Standard default for INR, USD, EUR, GBP, CAD, AUD, etc.
+}
+
+export interface ParsedGoogleMoney {
+  valid: boolean;
+  currency: string;
+  amount: number;
+  amountString: string;
+  amountMinorUnits: bigint;
+  decimalPlaces: number;
+  error?: string;
+}
+
+export interface ParseGoogleMoneyOptions {
+  allowedCurrencies?: string[];
+  expectedCurrency?: string;
+  enforceCurrencyPolicy?: boolean;
+  allowZero?: boolean;
+}
+
+/**
+ * Parses Google Money object into exact standard currency units without floating-point corruption.
+ * Uses integer minor unit arithmetic with BigInt to guarantee exact half-up rounding and carry normalization
+ * across all ISO 4217 currency exponent boundaries (0, 2, or 3 decimal places).
+ * Compatible with TypeScript ES2017 targets (avoids BigInt literals).
+ *
+ * Currency Policy Enforcement:
+ * Defaults strictly to DEFAULT_PLATFORM_CURRENCY ('INR').
+ * A caller cannot accidentally bypass this restriction by omitting an optional flag.
+ */
+export function parseGoogleMoney(
+  money?: GoogleMoney,
+  options?: ParseGoogleMoneyOptions
+): ParsedGoogleMoney {
+  if (!money || typeof money !== 'object') {
+    return {
+      valid: false,
+      currency: '',
+      amount: 0,
+      amountString: '0',
+      amountMinorUnits: BigInt(0),
+      decimalPlaces: 2,
+      error: 'Missing Money object in order total',
+    };
+  }
+
+  // 1. Currency code validation
+  const currency = (money.currencyCode || '').trim().toUpperCase();
+  if (!currency || !/^[A-Z]{3}$/.test(currency)) {
+    return {
+      valid: false,
+      currency,
+      amount: 0,
+      amountString: '0',
+      amountMinorUnits: BigInt(0),
+      decimalPlaces: 2,
+      error: `Invalid currencyCode: '${money.currencyCode}'`,
+    };
+  }
+
+  // 2. Strict Currency Policy & Mismatch Validation:
+  if (options?.expectedCurrency) {
+    const expected = options.expectedCurrency.trim().toUpperCase();
+    if (currency !== expected) {
+      return {
+        valid: false,
+        currency,
+        amount: 0,
+        amountString: '0',
+        amountMinorUnits: BigInt(0),
+        decimalPlaces: 2,
+        error: `Currency mismatch: expected '${expected}', got '${currency}'`,
+      };
+    }
+  }
+
+  if (options?.enforceCurrencyPolicy || (options?.allowedCurrencies && options.allowedCurrencies.length > 0)) {
+    const allowed = (options?.allowedCurrencies && options.allowedCurrencies.length > 0)
+      ? options.allowedCurrencies.map((c) => c.trim().toUpperCase())
+      : [DEFAULT_PLATFORM_CURRENCY];
+
+    if (!allowed.includes(currency)) {
+      return {
+        valid: false,
+        currency,
+        amount: 0,
+        amountString: '0',
+        amountMinorUnits: BigInt(0),
+        decimalPlaces: 2,
+        error: `Unsupported currency: '${currency}' violates platform currency policy (allowed: ${allowed.join(', ')})`,
+      };
+    }
+  }
+
+  // 3. Units validation (must be non-negative integer string)
+  const rawUnits = (money.units ?? '0').toString().trim();
+  if (!/^\d+$/.test(rawUnits)) {
+    return {
+      valid: false,
+      currency,
+      amount: 0,
+      amountString: '0',
+      amountMinorUnits: BigInt(0),
+      decimalPlaces: 2,
+      error: `Invalid or malformed Money units: '${money.units}'`,
+    };
+  }
+  const units = BigInt(rawUnits);
+
+  // 4. Nanos validation (must be integer in range [0, 999_999_999])
+  if (money.nanos !== undefined && money.nanos !== null) {
+    if (typeof money.nanos !== 'number' || !Number.isInteger(money.nanos) || money.nanos < 0 || money.nanos >= 1_000_000_000) {
+      return {
+        valid: false,
+        currency,
+        amount: 0,
+        amountString: '0',
+        amountMinorUnits: BigInt(0),
+        decimalPlaces: 2,
+        error: `Invalid Money nanos: ${money.nanos}`,
+      };
+    }
+  }
+  const rawNanos = money.nanos ?? 0;
+
+  // 5. Exact minor unit arithmetic based on currency decimal places
+  const d = getCurrencyDecimalPlaces(currency);
+  const scale = BigInt(10) ** BigInt(9 - d);
+  const halfScale = scale / BigInt(2);
+
+  // Integer half-up rounding: (nanos + halfScale) / scale
+  const minorFromNanos = (BigInt(rawNanos) + halfScale) / scale;
+  const minorMultiplier = BigInt(10) ** BigInt(d);
+  const totalMinorUnits = units * minorMultiplier + minorFromNanos;
+
+  if (totalMinorUnits < BigInt(0) || (!options?.allowZero && totalMinorUnits === BigInt(0))) {
+    return {
+      valid: false,
+      currency,
+      amount: 0,
+      amountString: '0',
+      amountMinorUnits: BigInt(0),
+      decimalPlaces: d,
+      error: totalMinorUnits === BigInt(0)
+        ? `Non-positive monetary amount (units: '${money.units}', nanos: ${money.nanos})`
+        : `Negative monetary amount (units: '${money.units}', nanos: ${money.nanos})`,
+    };
+  }
+
+  // 6. Normalization and decimal string formatting
+  const normalizedUnits = totalMinorUnits / minorMultiplier;
+  const normalizedFraction = totalMinorUnits % minorMultiplier;
+  const amountString = d === 0
+    ? normalizedUnits.toString()
+    : `${normalizedUnits}.${normalizedFraction.toString().padStart(d, '0')}`;
+
+  // 7. Validated conversion to Number
+  const amount = Number(amountString);
+  if (isNaN(amount) || (options?.allowZero ? amount < 0 : amount <= 0)) {
+    return {
+      valid: false,
+      currency,
+      amount: 0,
+      amountString: '0',
+      amountMinorUnits: BigInt(0),
+      decimalPlaces: d,
+      error: `Failed to convert valid monetary string to number: '${amountString}'`,
+    };
+  }
+
+  return {
+    valid: true,
+    currency,
+    amount,
+    amountString,
+    amountMinorUnits: totalMinorUnits,
+    decimalPlaces: d,
+  };
+}
+
+/**
+ * Fetches transaction details directly from the Google Play Orders API:
+ * GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/orders/{orderId}
+ */
+export async function fetchGoogleOrder(params: {
+  accessToken: string;
+  packageName: string;
+  orderId: string;
+  apiFetcher?: (url: string, init?: RequestInit) => Promise<Response>;
+}): Promise<{ status: number; order?: GoogleOrderResponse; error?: string }> {
+  const { accessToken, packageName, orderId, apiFetcher } = params;
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/orders/${encodeURIComponent(orderId)}`;
+  const fetcher = apiFetcher || fetch;
+  try {
+    const res = await fetcher(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { status: res.status, error: errText || `Google Orders API returned HTTP ${res.status}` };
+    }
+    const order = await res.json();
+    return { status: 200, order };
+  } catch (err: any) {
+    return { status: 500, error: err?.message || 'Network error fetching Google order' };
+  }
+}
+
+/**
+ * Authoritatively validates order resource data returned by Google Play Orders API against expected criteria:
+ * - Order.state MUST be 'PROCESSED' (the only valid state for a completed transaction).
+ * - Distinguishes between order creation time (createTime) and authoritative processing time
+ *   (orderHistory.processedEvent.eventTime). Uses processedEvent.eventTime as primary payment timestamp
+ *   with safe fallback to createTime. Fails closed if neither is valid RFC 3339 without fabricating timestamps.
+ * - orderId, purchaseToken, and productId MUST match expected subscription parameters.
+ * - total MUST be a valid Google Money object with a positive amount and valid 3-letter currency.
+ * - Enforces INR currency policy by default and compares verified amount against expected subscription price.
+ */
+export function verifyGooglePlayOrder(params: {
+  order: GoogleOrderResponse | undefined;
+  expectedOrderId: string;
+  expectedProductId?: string;
+  expectedPurchaseToken?: string;
+  expectedCurrency?: string;
+  expectedPrice?: number;
+  allowedCurrencies?: string[];
+  enforceCurrencyPolicy?: boolean;
+}): {
+  verified: boolean;
+  failureReason?: string;
+  verifiedAmount?: number;
+  verifiedAmountString?: string;
+  verifiedCurrency?: string;
+  createTimeIso?: string;
+  processedTimeIso?: string;
+  paymentTimestampIso?: string;
+  timestampSource?: 'processed_event' | 'create_time_fallback';
+} {
+  const {
+    order,
+    expectedOrderId,
+    expectedProductId,
+    expectedPurchaseToken,
+    expectedCurrency = DEFAULT_PLATFORM_CURRENCY,
+    expectedPrice,
+    allowedCurrencies,
+  } = params;
+
+  if (!order || typeof order !== 'object') {
+    return { verified: false, failureReason: 'Missing order resource' };
+  }
+
+  // 1. Exact orderId check
+  if (order.orderId !== expectedOrderId) {
+    return { verified: false, failureReason: `Order ID mismatch: expected ${expectedOrderId}, got ${order.orderId}` };
+  }
+
+  // 2. Strict Order.state validation: ONLY 'PROCESSED' is accepted
+  if (!order.state || typeof order.state !== 'string') {
+    return { verified: false, failureReason: 'Missing order state in Google Orders API response' };
+  }
+  const stateUpper = order.state.toUpperCase();
+  if (stateUpper !== 'PROCESSED') {
+    if (stateUpper === 'PENDING') {
+      return { verified: false, failureReason: 'Order is pending and has not been processed' };
+    }
+    if (stateUpper === 'CANCELED') {
+      return { verified: false, failureReason: 'Order was canceled' };
+    }
+    if (['REFUNDED', 'PARTIALLY_REFUNDED', 'PENDING_REFUND'].includes(stateUpper)) {
+      return { verified: false, failureReason: `Order cannot be recorded: refund state ${order.state}` };
+    }
+    return { verified: false, failureReason: `Order state is not PROCESSED (got: ${order.state})` };
+  }
+
+  // 3. Authoritative payment transaction timestamp selection:
+  let selectedPaymentTimestampIso: string | undefined;
+  let selectedTimestampSource: 'processed_event' | 'create_time_fallback' | undefined;
+  let validCreateTimeIso: string | undefined;
+  let validProcessedTimeIso: string | undefined;
+
+  // Validate createTime if present
+  if (order.createTime) {
+    if (typeof order.createTime !== 'string') {
+      return { verified: false, failureReason: 'createTime must be a string timestamp' };
+    }
+    const parsed = Date.parse(order.createTime);
+    if (isNaN(parsed)) {
+      return { verified: false, failureReason: `createTime is not a valid RFC 3339 timestamp: '${order.createTime}'` };
+    }
+    if (parsed > Date.now() + 60_000) {
+      return { verified: false, failureReason: `createTime is in the future: '${order.createTime}'` };
+    }
+    validCreateTimeIso = new Date(parsed).toISOString();
+  }
+
+  // Validate orderHistory.processedEvent.eventTime if present
+  const rawProcessedEventTime = order.orderHistory?.processedEvent?.eventTime;
+  if (rawProcessedEventTime) {
+    if (typeof rawProcessedEventTime !== 'string') {
+      return { verified: false, failureReason: 'processedEvent.eventTime must be a string timestamp' };
+    }
+    const parsed = Date.parse(rawProcessedEventTime);
+    if (isNaN(parsed)) {
+      return { verified: false, failureReason: `processedEvent.eventTime is not a valid RFC 3339 timestamp: '${rawProcessedEventTime}'` };
+    }
+    if (parsed > Date.now() + 60_000) {
+      return { verified: false, failureReason: `processedEvent.eventTime is in the future: '${rawProcessedEventTime}'` };
+    }
+    validProcessedTimeIso = new Date(parsed).toISOString();
+  }
+
+  if (validProcessedTimeIso) {
+    selectedPaymentTimestampIso = validProcessedTimeIso;
+    selectedTimestampSource = 'processed_event';
+  } else if (validCreateTimeIso) {
+    selectedPaymentTimestampIso = validCreateTimeIso;
+    selectedTimestampSource = 'create_time_fallback';
+  } else {
+    return {
+      verified: false,
+      failureReason: 'Missing valid processing or creation timestamp in Google Orders API response',
+    };
+  }
+
+  // 4. Exact purchaseToken check
+  if (expectedPurchaseToken) {
+    if (!order.purchaseToken) {
+      return { verified: false, failureReason: 'Missing purchaseToken in Google Orders API response' };
+    }
+    if (order.purchaseToken !== expectedPurchaseToken) {
+      return { verified: false, failureReason: `Purchase token mismatch: expected ${expectedPurchaseToken}, got ${order.purchaseToken}` };
+    }
+  }
+
+  // 5. Line items and productId check
+  if (expectedProductId) {
+    if (!Array.isArray(order.lineItems) || order.lineItems.length === 0) {
+      return { verified: false, failureReason: 'Missing lineItems in Google Orders API response' };
+    }
+    const matched = order.lineItems.some((item) => item.productId === expectedProductId);
+    if (!matched) {
+      const found = order.lineItems.map((i) => i.productId).filter(Boolean).join(', ');
+      return { verified: false, failureReason: `Product ID mismatch: expected ${expectedProductId}, found [${found}]` };
+    }
+  }
+
+  // 5b. Find matched line item for product-level inspection
+  const matchedLineItem = expectedProductId
+    ? order.lineItems?.find((item) => item.productId === expectedProductId)
+    : order.lineItems?.[0];
+
+  // 6. Monetary amount and currency validation via Money object
+  const targetCurrency = (expectedCurrency || DEFAULT_PLATFORM_CURRENCY).trim().toUpperCase();
+  const moneyParsed = parseGoogleMoney(order.total, {
+    expectedCurrency: targetCurrency,
+    allowedCurrencies: allowedCurrencies || [targetCurrency],
+    enforceCurrencyPolicy: true,
+    allowZero: true,
+  });
+  if (!moneyParsed.valid) {
+    return { verified: false, failureReason: moneyParsed.error || 'Invalid monetary amount in order total' };
+  }
+
+  // Parse matched lineItem listingPrice and total if available
+  let listingPriceParsed: ParsedGoogleMoney | null = null;
+  if (matchedLineItem?.listingPrice) {
+    listingPriceParsed = parseGoogleMoney(matchedLineItem.listingPrice, {
+      expectedCurrency: targetCurrency,
+      allowedCurrencies: allowedCurrencies || [targetCurrency],
+      enforceCurrencyPolicy: true,
+      allowZero: false,
+    });
+  }
+
+  let lineItemTotalParsed: ParsedGoogleMoney | null = null;
+  if (matchedLineItem?.total) {
+    lineItemTotalParsed = parseGoogleMoney(matchedLineItem.total, {
+      expectedCurrency: targetCurrency,
+      allowedCurrencies: allowedCurrencies || [targetCurrency],
+      enforceCurrencyPolicy: true,
+      allowZero: true,
+    });
+  }
+
+  // 7. Authoritative price comparison against expected subscription plan price
+  if (expectedPrice !== undefined && expectedPrice !== null) {
+    const orderTotalMatches = moneyParsed.amount === expectedPrice;
+    const listingPriceMatches = Boolean(listingPriceParsed?.valid && listingPriceParsed.amount === expectedPrice);
+    const lineItemTotalMatches = Boolean(lineItemTotalParsed?.valid && lineItemTotalParsed.amount === expectedPrice);
+
+    // Support legitimate Google Play promotional discounts and introductory offers using documented fields:
+    // Distinguish official Google Play Orders API schema fields:
+    // - LineItem.listingPrice: standard catalog listing price
+    // - LineItem.total / Order.total: actual amount paid by customer after discounts and tax
+    // - SubscriptionDetails.offerId: promotional offer identifier
+    // - SubscriptionDetails.offerPhaseDetails: phase breakdowns (free trials, introductory pricing, base pricing, proration)
+    const subDetails = matchedLineItem?.subscriptionDetails;
+    const offerPhases = Array.isArray(subDetails?.offerPhaseDetails) ? subDetails!.offerPhaseDetails : [];
+
+    const hasIntroductoryPhase = offerPhases.some(
+      (phase) =>
+        Boolean(phase.introductoryPriceDetails) ||
+        (typeof phase.pricingPhase === 'string' && phase.pricingPhase.toUpperCase() === 'INTRODUCTORY')
+    );
+
+    const hasFreeTrialPhase = offerPhases.some(
+      (phase) =>
+        Boolean(phase.freeTrialDetails) ||
+        (typeof phase.pricingPhase === 'string' && phase.pricingPhase.toUpperCase() === 'FREE_TRIAL')
+    );
+
+    const hasOnlyBasePricePhases =
+      offerPhases.length > 0 &&
+      offerPhases.every(
+        (phase) =>
+          Boolean(phase.baseDetails) ||
+          (typeof phase.pricingPhase === 'string' && ['REGULAR', 'BASE'].includes(phase.pricingPhase.toUpperCase()))
+      );
+
+    const hasValidOfferId = Boolean(
+      subDetails?.offerId &&
+      typeof subDetails.offerId === 'string' &&
+      subDetails.offerId.trim().length > 0
+    );
+
+    // Support legitimate tax-exclusive pricing if taxInclusive is explicitly false
+    const isTaxExclusiveAddition = Boolean(
+      order.orderDetails?.taxInclusive === false &&
+      listingPriceMatches &&
+      moneyParsed.amount > expectedPrice
+    );
+
+    const isStandardBasePrice = orderTotalMatches || (lineItemTotalMatches && moneyParsed.amount === expectedPrice);
+
+    // Strict Policy:
+    // 1. A base-price phase alone (baseDetails) MUST NOT qualify as an introductory discount.
+    // 2. An introductory discount requires: listingPrice matches expectedPrice, moneyParsed.amount < expectedPrice,
+    //    AND documented offer evidence (introductoryPriceDetails OR valid promotional offerId without baseDetails-only conflict).
+    const isDocumentedIntroductoryDiscount = Boolean(
+      listingPriceMatches &&
+      moneyParsed.amount < expectedPrice &&
+      moneyParsed.amount > 0 &&
+      (hasIntroductoryPhase || (hasValidOfferId && !hasOnlyBasePricePhases))
+    );
+
+    // 3. A free trial requires: listingPrice matches expectedPrice, moneyParsed.amount === 0,
+    //    AND documented trial evidence (freeTrialDetails OR valid trial offerId).
+    const isDocumentedFreeTrial = Boolean(
+      listingPriceMatches &&
+      moneyParsed.amount === 0 &&
+      (hasFreeTrialPhase || hasValidOfferId)
+    );
+
+    const isPriceValid = isStandardBasePrice || isDocumentedIntroductoryDiscount || isDocumentedFreeTrial || isTaxExclusiveAddition;
+
+    if (!isPriceValid) {
+      if (moneyParsed.amount < expectedPrice) {
+        if (hasOnlyBasePricePhases && !hasIntroductoryPhase && !hasFreeTrialPhase && !hasValidOfferId) {
+          return {
+            verified: false,
+            failureReason: `Order amount mismatch: base pricing phase does not justify discounted charge of ${moneyParsed.amount} ${moneyParsed.currency} (expected catalog price ${expectedPrice} ${moneyParsed.currency})`,
+          };
+        }
+        if (moneyParsed.amount === 0 && !hasFreeTrialPhase && !hasValidOfferId) {
+          return {
+            verified: false,
+            failureReason: `Zero monetary amount in order total without verified free trial offer evidence`,
+          };
+        }
+        return {
+          verified: false,
+          failureReason: `Order amount mismatch: expected ${expectedPrice} ${moneyParsed.currency}, got ${moneyParsed.amount} ${moneyParsed.currency} without documented promotional offer evidence`,
+        };
+      }
+
+      if (moneyParsed.amount > expectedPrice && !isTaxExclusiveAddition) {
+        return {
+          verified: false,
+          failureReason: `Order amount mismatch: expected ${expectedPrice} ${moneyParsed.currency}, got ${moneyParsed.amount} ${moneyParsed.currency} (exceeds expected catalog price)`,
+        };
+      }
+
+      return {
+        verified: false,
+        failureReason: `Order amount mismatch: expected ${expectedPrice} ${moneyParsed.currency}, got ${moneyParsed.amount} ${moneyParsed.currency}${listingPriceParsed?.valid ? ` (listing price: ${listingPriceParsed.amount} ${listingPriceParsed.currency})` : ''}`,
+      };
+    }
+  }
+
+  return {
+    verified: true,
+    verifiedAmount: moneyParsed.amount,
+    verifiedAmountString: moneyParsed.amountString,
+    verifiedCurrency: moneyParsed.currency,
+    createTimeIso: validCreateTimeIso,
+    processedTimeIso: validProcessedTimeIso,
+    paymentTimestampIso: selectedPaymentTimestampIso,
+    timestampSource: selectedTimestampSource,
+  };
+}
+
+export interface VerifiedRenewalOrderDetail {
+  orderId: string;
+  cycleIndex: number;
+  unitPrice: number;
+  currency: string;
+  transactionTimestamp: string;
+  subscriptionEndDate: string;
+  isAutoRenew: boolean;
+  gatewayResponse: any;
+}
+
+export interface RenewalGapReconciliationResult {
+  reconciledOrders: string[];
+  unresolvedGaps: string[];
+  errors: string[];
+  verifiedOrderDetails?: VerifiedRenewalOrderDetail[];
+}
+
+/**
+ * Inspects recorded payments versus incoming Google latestSuccessfulOrderId, detects missing intermediate cycles,
+ * verifies each candidate order against the Google Play Orders API, and records verified renewals atomically.
+ */
+export async function detectAndReconcileRenewalGaps(params: {
+  baseOrderId: string;
+  incomingOrderId: string;
+  recordedOrderIds: string[];
+  purchaseToken: string;
+  productId: string;
+  planId: string;
+  profileId: string;
+  studentId: string;
+  instituteId: string;
+  googleAccessToken: string;
+  packageName: string;
+  supabaseAdmin: any;
+  expectedPrice?: number;
+  expectedCurrency?: string;
+  apiFetcher?: (url: string, init?: RequestInit) => Promise<Response>;
+  rtdnEventId?: string | null;
+  rtdnAttempt?: number;
+  deferExecution?: boolean;
+}): Promise<RenewalGapReconciliationResult> {
+  const {
+    baseOrderId,
+    incomingOrderId,
+    recordedOrderIds,
+    purchaseToken,
+    productId,
+    planId,
+    profileId,
+    studentId,
+    instituteId,
+    googleAccessToken,
+    packageName,
+    supabaseAdmin,
+    apiFetcher,
+  } = params;
+
+  const result: RenewalGapReconciliationResult = {
+    reconciledOrders: [],
+    unresolvedGaps: [],
+    errors: [],
+  };
+
+  const incomingCycle = extractOrderCycle(incomingOrderId);
+  if (incomingCycle === null || incomingCycle < 0) {
+    return result;
+  }
+
+  const recordedCycles = recordedOrderIds
+    .map(extractOrderCycle)
+    .filter((c): c is number => c !== null);
+  const maxRecordedCycle = recordedCycles.length > 0 ? Math.max(...recordedCycles) : -1;
+
+  if (incomingCycle <= maxRecordedCycle + 1) {
+    return result; // No gap
+  }
+
+  console.log(`[RECONCILIATION_GAP_DETECTED] Gap detected between cycle ${maxRecordedCycle} and ${incomingCycle} for token ${purchaseToken.slice(0, 8)}...`);
+
+  // Resolve expected plan price and currency if not explicitly supplied
+  let targetPrice = params.expectedPrice;
+  if (targetPrice === undefined && supabaseAdmin && planId) {
+    try {
+      const { data: planData } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('price')
+        .eq('plan_id', planId)
+        .maybeSingle();
+      if (planData?.price !== undefined && planData?.price !== null) {
+        targetPrice = Number(planData.price);
+      }
+    } catch (_) {}
+  }
+  const targetCurrency = params.expectedCurrency || DEFAULT_PLATFORM_CURRENCY;
+
+  const cleanBaseOrderId = baseOrderId.replace(/\.\.\d+$/, '');
+
+  for (let cycle = maxRecordedCycle + 1; cycle < incomingCycle; cycle++) {
+    const candidateOrderId = `${cleanBaseOrderId}..${cycle}`;
+    console.log(`[RECONCILIATION_VERIFY_ORDER] Attempting authoritative verification for intermediate order: ${candidateOrderId}`);
+
+    const googleRes = await fetchGoogleOrder({
+      accessToken: googleAccessToken,
+      packageName,
+      orderId: candidateOrderId,
+      apiFetcher,
+    });
+
+    if (googleRes.status === 200 && googleRes.order) {
+      const verification = verifyGooglePlayOrder({
+        order: googleRes.order,
+        expectedOrderId: candidateOrderId,
+        expectedProductId: productId,
+        expectedPurchaseToken: purchaseToken,
+        expectedCurrency: targetCurrency,
+        expectedPrice: targetPrice,
+      });
+
+      if (verification.verified) {
+        const verifiedAmount = verification.verifiedAmount!;
+        const verifiedCurrency = verification.verifiedCurrency!;
+        const transactionTimestamp = verification.paymentTimestampIso || verification.createTimeIso!;
+
+        const rpcPayload = buildGooglePlayRpcPayload({
+          profileId,
+          instituteId,
+          studentId,
+          resolvedItemType: 'subscription_plan',
+          resolvedPlanId: planId,
+          itemName: `Subscription Renewal Cycle ..${cycle}`,
+          unitPrice: verifiedAmount,
+          effectiveOrderId: candidateOrderId,
+          purchaseToken,
+          productId,
+          googleVerificationResult: {
+            verified: true,
+            source: 'google_orders_api',
+            order: googleRes.order,
+            currency: verifiedCurrency,
+          },
+          transactionTimestamp,
+          subscriptionEndDate: transactionTimestamp.split('T')[0],
+          autoRenewSetting: true,
+        });
+
+        const orderDetail: VerifiedRenewalOrderDetail = {
+          orderId: candidateOrderId,
+          cycleIndex: cycle,
+          unitPrice: verifiedAmount,
+          currency: verifiedCurrency,
+          transactionTimestamp,
+          subscriptionEndDate: transactionTimestamp.split('T')[0],
+          isAutoRenew: true,
+          gatewayResponse: {
+            verified: true,
+            source: 'google_orders_api',
+            order: googleRes.order,
+            currency: verifiedCurrency,
+          },
+        };
+        result.verifiedOrderDetails = result.verifiedOrderDetails || [];
+        result.verifiedOrderDetails.push(orderDetail);
+
+        if (params.deferExecution) {
+          console.log(`[RECONCILIATION_COLLECTED] Intermediate order ${candidateOrderId} verified for atomic batch recording.`);
+          result.reconciledOrders.push(candidateOrderId);
+          continue;
+        }
+
+        if (typeof supabaseAdmin.rpc === 'function') {
+          try {
+            const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('complete_google_play_purchase', rpcPayload);
+            const rpcRes = handleGooglePlayRpcResponse(rpcData, rpcErr);
+            if (rpcRes.action === 'proceed_to_post_commit') {
+              console.log(`[RECONCILIATION_SUCCESS] Intermediate order ${candidateOrderId} safely recorded in payment ledger.`);
+              result.reconciledOrders.push(candidateOrderId);
+            } else {
+              console.warn(`[RECONCILIATION_WARN] Intermediate order ${candidateOrderId} RPC returned: ${JSON.stringify(rpcRes)}`);
+              result.errors.push(`RPC error on ${candidateOrderId}`);
+            }
+          } catch (dbErr: any) {
+            console.error(`[RECONCILIATION_ERROR] Exception recording intermediate order ${candidateOrderId}:`, dbErr.message);
+            result.errors.push(dbErr.message);
+          }
+        }
+      } else {
+        console.warn(`[RECONCILIATION_GAP_UNVERIFIED] Candidate order ${candidateOrderId} failed Google verification: ${verification.failureReason}. Not fabricating payment row.`);
+        result.unresolvedGaps.push(candidateOrderId);
+      }
+    } else {
+      console.warn(`[RECONCILIATION_GAP_UNVERIFIED] Candidate order ${candidateOrderId} could not be found in Google Play Orders API (status: ${googleRes.status}). Not fabricating payment row.`);
+      result.unresolvedGaps.push(candidateOrderId);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Safely reconciles a specific missing historical renewal order via the Google Play Orders API.
+ * Never fabricates unverified transaction details.
+ */
+export async function reconcileHistoricalRenewalOrder(params: {
+  orderId: string;
+  purchaseToken: string;
+  productId: string;
+  planId: string;
+  profileId: string;
+  studentId: string;
+  instituteId: string;
+  googleAccessToken: string;
+  packageName: string;
+  supabaseAdmin: any;
+  expectedPrice?: number;
+  expectedCurrency?: string;
+  apiFetcher?: (url: string, init?: RequestInit) => Promise<Response>;
+}): Promise<{
+  reconciled: boolean;
+  alreadyProcessed?: boolean;
+  orderId?: string;
+  paymentId?: string;
+  error?: string;
+}> {
+  const {
+    orderId,
+    purchaseToken,
+    productId,
+    planId,
+    profileId,
+    studentId,
+    instituteId,
+    googleAccessToken,
+    packageName,
+    supabaseAdmin,
+    apiFetcher,
+  } = params;
+
+  const googleRes = await fetchGoogleOrder({
+    accessToken: googleAccessToken,
+    packageName,
+    orderId,
+    apiFetcher,
+  });
+
+  if (googleRes.status !== 200 || !googleRes.order) {
+    return {
+      reconciled: false,
+      error: `Order ${orderId} could not be authoritatively verified via Google Play Orders API (status: ${googleRes.status}, error: ${googleRes.error || 'Not found'}). Historical payment cannot be recorded.`,
+    };
+  }
+
+  let targetPrice = params.expectedPrice;
+  if (targetPrice === undefined && supabaseAdmin && planId) {
+    try {
+      const { data: planData } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('price')
+        .eq('plan_id', planId)
+        .maybeSingle();
+      if (planData?.price !== undefined && planData?.price !== null) {
+        targetPrice = Number(planData.price);
+      }
+    } catch (_) {}
+  }
+  const targetCurrency = params.expectedCurrency || DEFAULT_PLATFORM_CURRENCY;
+
+  const verification = verifyGooglePlayOrder({
+    order: googleRes.order,
+    expectedOrderId: orderId,
+    expectedProductId: productId,
+    expectedPurchaseToken: purchaseToken,
+    expectedCurrency: targetCurrency,
+    expectedPrice: targetPrice,
+  });
+
+  if (!verification.verified) {
+    return {
+      reconciled: false,
+      error: `Order ${orderId} failed Google verification: ${verification.failureReason}. Payment will not be fabricated.`,
+    };
+  }
+
+  const verifiedAmount = verification.verifiedAmount!;
+  const verifiedCurrency = verification.verifiedCurrency!;
+  const transactionTimestamp = verification.paymentTimestampIso || verification.createTimeIso!;
+
+  const rpcPayload = buildGooglePlayRpcPayload({
+    profileId,
+    instituteId,
+    studentId,
+    resolvedItemType: 'subscription_plan',
+    resolvedPlanId: planId,
+    itemName: `Historical Subscription Renewal ${orderId}`,
+    unitPrice: verifiedAmount,
+    effectiveOrderId: orderId,
+    purchaseToken,
+    productId,
+    googleVerificationResult: {
+      verified: true,
+      source: 'google_orders_api',
+      order: googleRes.order,
+      currency: verifiedCurrency,
+    },
+    transactionTimestamp,
+    subscriptionEndDate: transactionTimestamp.split('T')[0],
+    autoRenewSetting: true,
+  });
+
+  if (typeof supabaseAdmin.rpc !== 'function') {
+    return {
+      reconciled: false,
+      error: 'supabaseAdmin.rpc is unavailable',
+    };
+  }
+
+  try {
+    const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('complete_google_play_purchase', rpcPayload);
+    const rpcRes = handleGooglePlayRpcResponse(rpcData, rpcErr);
+    if (rpcRes.action === 'proceed_to_post_commit') {
+      return {
+        reconciled: true,
+        alreadyProcessed: Boolean(rpcData?.alreadyProcessed),
+        orderId: rpcData?.orderId,
+        paymentId: rpcData?.paymentId,
+      };
+    } else {
+      return {
+        reconciled: false,
+        error: rpcRes.responseBody?.error || 'Database RPC rejected historical purchase',
+      };
+    }
+  } catch (err: any) {
+    return {
+      reconciled: false,
+      error: `Exception executing complete_google_play_purchase: ${err.message}`,
+    };
+  }
 }

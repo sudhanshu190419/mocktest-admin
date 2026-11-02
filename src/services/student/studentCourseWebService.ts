@@ -616,6 +616,66 @@ export function getMockTestAvailability(
   return 'available';
 }
 
+// ─── Thumbnail Resolution Helpers ──────────────────────────────────────────
+
+/**
+ * Known public buckets in Supabase Storage.
+ * Public buckets serve content directly via getPublicUrl without authentication tokens.
+ * Private buckets require a signed URL via createSignedUrl.
+ */
+const PUBLIC_STORAGE_BUCKETS = new Set<string>([
+  'content-thumbnails',
+  'system-assets',
+]);
+
+/**
+ * Resolves a thumbnail URL safely from thumbnail_bucket and thumbnail_path.
+ * - Handles missing bucket/path values safely (returns null) so a course without a thumbnail does not break.
+ * - For known public buckets (e.g. 'content-thumbnails'), uses getPublicUrl.
+ * - For private or non-standard buckets, generates a signed URL with a 1-hour expiry.
+ */
+export async function resolveCourseThumbnailUrl(
+  bucket?: string | null,
+  path?: string | null,
+  expiresIn: number = 3600
+): Promise<string | null> {
+  if (!bucket || !path) return null;
+
+  try {
+    const trimmedBucket = bucket.trim();
+    const trimmedPath = path.trim();
+    if (!trimmedBucket || !trimmedPath) return null;
+
+    if (PUBLIC_STORAGE_BUCKETS.has(trimmedBucket)) {
+      const { data } = supabase.storage.from(trimmedBucket).getPublicUrl(trimmedPath);
+      return data?.publicUrl || null;
+    }
+
+    // For private buckets, generate a signed URL
+    const { data, error } = await supabase.storage
+      .from(trimmedBucket)
+      .createSignedUrl(trimmedPath, expiresIn);
+
+    if (error) {
+      console.warn(
+        `[studentCourseWebService] Failed to create signed thumbnail URL for bucket="${trimmedBucket}" path="${trimmedPath}":`,
+        error.message
+      );
+      // Defensive fallback to publicUrl in case bucket access configuration differs
+      const { data: pubData } = supabase.storage.from(trimmedBucket).getPublicUrl(trimmedPath);
+      return pubData?.publicUrl || null;
+    }
+
+    return data?.signedUrl || null;
+  } catch (err) {
+    console.warn(
+      `[studentCourseWebService] Error resolving thumbnail URL for bucket="${bucket}" path="${path}":`,
+      err
+    );
+    return null;
+  }
+}
+
 // ─── Service API Methods ───────────────────────────────────────────────────
 
 /**
@@ -765,7 +825,8 @@ export async function fetchStudentEnrolledCourses(
     }
 
     // 6. Map each course item to EnrolledCourseCardItem with REAL progress calculation
-    const courses: EnrolledCourseCardItem[] = rawEnrolled.map((c) => {
+    const courses: EnrolledCourseCardItem[] = await Promise.all(
+      rawEnrolled.map(async (c) => {
       const cid = c.course_id;
       const batchInfo = courseBatchMap.get(cid) || {};
       const targetBatchId = c.batch_id || batchInfo?.batch_id || '';
@@ -832,12 +893,13 @@ export async function fetchStudentEnrolledCourses(
 
       // Real calculated course progress (0 if no items)
       const realProgress = calculateProgressPercent(completedCourseItems, totalCourseItems);
+      const resolvedThumbnailUrl = await resolveCourseThumbnailUrl(c.thumbnail_bucket, c.thumbnail_path);
 
       return {
         courseId: cid,
         title: c.title || 'Course',
         description: c.description || c.short_description || null,
-        thumbnailUrl: c.thumbnail_url || null,
+        thumbnailUrl: resolvedThumbnailUrl || c.thumbnail_url || null,
         category: c.category || batchInfo?.streams?.name || 'Academic Course',
         batchId: targetBatchId,
         batchName: c.batch_name || batchInfo?.name || 'Primary Batch',
@@ -854,7 +916,8 @@ export async function fetchStudentEnrolledCourses(
         firstAvailableSubjectId: firstSub?.subjectId,
         firstAvailableBatchSubjectId: firstSub?.batchSubjectId,
       };
-    });
+    })
+  );
 
     return { courses, error: null };
   } catch (err: any) {
@@ -1581,5 +1644,575 @@ export async function getStorageSignedUrl(
   } catch (err) {
     console.warn('[studentCourseWebService] Failed to create signed url:', err);
     return null;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Centralized Course Hub & Installment Management Data Models (§3, §4, §5)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface InstallmentScheduleItem {
+  schedule_id: string;
+  agreement_id: string;
+  installment_index: number;
+  due_date: string;
+  revised_due_date: string | null;
+  amount_due: number;
+  amount_paid: number;
+  waiver_amount: number;
+  status: 'pending' | 'paid' | 'overdue' | 'waived' | 'payment_reversed';
+  paid_at: string | null;
+  payment_id: string | null;
+}
+
+export interface StudentCourseAgreement {
+  agreement_id: string;
+  student_id: string;
+  course_id: string;
+  plan_id: string;
+  agreement_date: string | null;
+  total_fee: number;
+  outstanding_balance: number;
+  overdue_balance: number;
+  agreement_status:
+    | 'pending_initial_payment'
+    | 'active'
+    | 'in_arrears'
+    | 'completed'
+    | 'cancelled_by_admin'
+    | 'defaulted'
+    | 'withdrawn';
+  requires_admin_review: boolean;
+  created_at: string;
+}
+
+export type CourseAcquisitionType = 'one_time' | 'installment';
+export type BatchAssignmentStatus = 'assigned' | 'pending_assignment';
+
+export interface NextMilestoneSummary {
+  installmentIndex: number;
+  amountDue: number;
+  amountPaid: number;
+  remainingAmount: number;
+  effectiveDueDate: string;
+  isOverdue: boolean;
+  isDueToday: boolean;
+  isPayableNow: boolean;
+  revisedDueDate: string | null;
+  isReversed?: boolean;
+}
+
+export interface StudentCourseHubFinancialSummary {
+  totalFee: number;
+  totalPaid: number;
+  totalWaived: number;
+  outstandingBalance: number;
+  overdueBalance: number;
+  hasArrears: boolean;
+  requiresAdminReview: boolean;
+  isFullyPaid: boolean;
+  hasStatusDiscrepancy: boolean;
+  statusDiscrepancyNotice?: string | null;
+  nextMilestone: NextMilestoneSummary | null;
+}
+
+export interface StudentCourseHubItem {
+  courseId: string;
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  category: string;
+  academicYear?: string;
+  streamName?: string;
+
+  // Acquisition & Batch Status
+  acquisitionType: CourseAcquisitionType;
+  batchStatus: BatchAssignmentStatus;
+  batchId?: string;
+  batchName: string;
+  batchCode?: string;
+
+  // Academic Progress (real when assigned, 0 when pending)
+  progress: number;
+  subjects: SubjectBadgeSummary[];
+  totalLectures: number;
+  totalPdfs: number;
+  totalNotes: number;
+  totalAssignments: number;
+  totalMockTests: number;
+  firstAvailableSubjectId?: string;
+  firstAvailableBatchSubjectId?: string;
+
+  // Installment Details (if acquisitionType === 'installment')
+  agreement: StudentCourseAgreement | null;
+  schedule: InstallmentScheduleItem[];
+  financialSummary: StudentCourseHubFinancialSummary | null;
+  scheduleError?: string | null;
+}
+
+/**
+ * Authoritative recognition of installment arrears access denial matching Migration 239:
+ * - Checks structured error code 'INSTALLMENT_ARREARS_BLOCKED'
+ * - Checks observed API response strings containing 'installment' and ('overdue' or 'arrears')
+ * - Does NOT misclassify unrelated 403 or recording errors as installment arrears
+ */
+export function isInstallmentArrearsError(
+  errorMessage?: string | null,
+  errorCode?: string | null
+): boolean {
+  if (errorCode === 'INSTALLMENT_ARREARS_BLOCKED') return true;
+  if (!errorMessage || typeof errorMessage !== 'string') return false;
+  const lower = errorMessage.toLowerCase();
+  if (lower.includes('installment_arrears_blocked')) return true;
+  return lower.includes('installment') && (lower.includes('overdue') || lower.includes('arrears'));
+}
+
+/**
+ * Dynamic calculation of installment financial metrics matching Migration 239 authoritative rules:
+ * - Effective due date = coalesce(revised_due_date, due_date)
+ * - Due date itself is an access day; restriction begins on the next local calendar day if unpaid.
+ *   Authoritative check: isOverdue = effectiveDueDate < todayStr && remainingPayable > 0.
+ *   Do not let a stale database column status='overdue' override a valid revised due date in the future.
+ * - Outstanding balance = sum of actual remaining payable across all milestones (accounting for waivers):
+ *   remaining = Math.max(0, amount_due - amount_paid - waiver_amount)
+ * - Total paid is strictly cash paid, never confused with waived amounts.
+ * - Waivers reduce outstanding balance; fully waived milestones are treated as settled.
+ * - Earliest unpaid milestone selection includes 'pending', 'overdue', and 'payment_reversed' milestones.
+ * - FIFO enforcement: only the earliest unpaid milestone is payable.
+ */
+export function calculateDynamicInstallmentMetrics(
+  agreement: StudentCourseAgreement,
+  schedule: InstallmentScheduleItem[]
+): StudentCourseHubFinancialSummary {
+  // Use Indian Standard Time (Asia/Kolkata) or local date in YYYY-MM-DD
+  let todayStr: string;
+  try {
+    todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  } catch {
+    todayStr = new Date().toISOString().split('T')[0];
+  }
+
+  // Sort schedule by installment_index ascending
+  const sorted = [...schedule].sort((a, b) => a.installment_index - b.installment_index);
+
+  let dynamicTotalPaid = 0;
+  let dynamicTotalWaived = 0;
+  let dynamicOverdueBalance = 0;
+  let dynamicOutstandingBalance = 0;
+  let nextMilestone: NextMilestoneSummary | null = null;
+
+  // Find lowest unpaid milestone (covers 'pending', 'overdue', and 'payment_reversed')
+  const firstUnpaidIndex = sorted.findIndex((item) => {
+    const isPaid = item.status === 'paid';
+    const isWaived = item.status === 'waived';
+    const remaining = Math.max(
+      0,
+      Number(item.amount_due) - Number(item.amount_paid) - Number(item.waiver_amount)
+    );
+    return !isPaid && !isWaived && remaining > 0;
+  });
+
+  sorted.forEach((item, idx) => {
+    const amountDue = Number(item.amount_due) || 0;
+    const amountPaid = Number(item.amount_paid) || 0;
+    const waiverAmount = Number(item.waiver_amount) || 0;
+    const remaining = Math.max(0, amountDue - amountPaid - waiverAmount);
+    const isPaid = item.status === 'paid';
+    const isWaived = item.status === 'waived';
+
+    dynamicTotalPaid += amountPaid;
+    dynamicTotalWaived += waiverAmount;
+    dynamicOutstandingBalance += remaining;
+
+    const effectiveDueDate = item.revised_due_date || item.due_date;
+    // Migration 239 rule: Overdue strictly on subsequent local calendar day if unpaid.
+    // Stale status='overdue' does NOT override a future revised_due_date.
+    const isOverdue =
+      !isPaid &&
+      !isWaived &&
+      remaining > 0 &&
+      effectiveDueDate < todayStr;
+    const isDueToday =
+      !isPaid && !isWaived && remaining > 0 && effectiveDueDate === todayStr;
+
+    if (isOverdue) {
+      dynamicOverdueBalance += remaining;
+    }
+
+    if (idx === firstUnpaidIndex && !nextMilestone) {
+      const isReversed = item.status === 'payment_reversed';
+      // FIFO payable eligibility: milestone is payable if it has arrived (or is overdue/due today),
+      // agreement is not under administrative review, and milestone is NOT payment_reversed
+      // (Backend reserve_subsequent_installment_order strictly queries status in ('pending', 'overdue');
+      // paying a payment_reversed milestone online requires backend/administrative status reset first).
+      const isPayableNow =
+        (isOverdue || isDueToday || effectiveDueDate <= todayStr) &&
+        !agreement.requires_admin_review &&
+        !isReversed;
+
+      nextMilestone = {
+        installmentIndex: item.installment_index,
+        amountDue,
+        amountPaid,
+        remainingAmount: remaining,
+        effectiveDueDate,
+        isOverdue,
+        isDueToday,
+        isPayableNow,
+        revisedDueDate: item.revised_due_date || null,
+        isReversed,
+      };
+    }
+  });
+
+  const totalFee = Number(agreement.total_fee) || 0;
+  const isScheduleAuthoritative = sorted.length > 0;
+
+  // 1. Authoritative Outstanding Balance (§1):
+  // Schedule's remaining payable amounts strictly determine financial values.
+  // Do NOT silently display zero outstanding if agreement status is completed but schedule has unpaid balance.
+  const outstandingBalance = isScheduleAuthoritative
+    ? dynamicOutstandingBalance
+    : (agreement.agreement_status === 'completed' ? 0 : Math.max(0, totalFee - dynamicTotalPaid));
+
+  // 2. Authoritative Settlement State (§1):
+  // Course is only fully settled if schedule remaining balance is zero (or agreement is completed with no schedule).
+  const isFullyPaid = isScheduleAuthoritative
+    ? dynamicOutstandingBalance <= 0
+    : (agreement.agreement_status === 'completed' || outstandingBalance <= 0);
+
+  // 3. Authoritative Arrears State (§1):
+  // Strictly driven by dynamic overdue balance (effectiveDueDate < todayStr && remaining > 0).
+  // Do NOT display overdue state solely because stored agreement status is in_arrears.
+  const hasArrears = dynamicOverdueBalance > 0;
+
+  // 4. Data-Consistency Discrepancy Detection (§1):
+  let hasStatusDiscrepancy = false;
+  let statusDiscrepancyNotice: string | null = null;
+
+  if (isScheduleAuthoritative) {
+    if (agreement.agreement_status === 'completed' && dynamicOutstandingBalance > 0) {
+      // Case A: Agreement marked completed, but schedule has unpaid milestones
+      hasStatusDiscrepancy = true;
+      statusDiscrepancyNotice = `Agreement record is marked completed, but the installment schedule indicates an unsettled balance of ₹${dynamicOutstandingBalance.toLocaleString('en-IN')}. Please contact institute administration for data reconciliation.`;
+    } else if (agreement.agreement_status === 'in_arrears' && dynamicOverdueBalance === 0) {
+      // Case B: Agreement marked in_arrears, but dynamic overdue balance is zero
+      hasStatusDiscrepancy = true;
+      statusDiscrepancyNotice = dynamicOutstandingBalance > 0
+        ? 'Agreement record reflects in_arrears, but all overdue installments are cleared. Next installment is not yet due.'
+        : 'Agreement record reflects in_arrears, but all installments have been fully settled.';
+    }
+  }
+
+  return {
+    totalFee,
+    totalPaid: dynamicTotalPaid,
+    totalWaived: dynamicTotalWaived,
+    outstandingBalance,
+    overdueBalance: dynamicOverdueBalance,
+    hasArrears,
+    requiresAdminReview: agreement.requires_admin_review || false,
+    isFullyPaid,
+    hasStatusDiscrepancy,
+    statusDiscrepancyNotice,
+    nextMilestone,
+  };
+}
+
+/**
+ * Centralized Course Hub Query (§4, §11).
+ *
+ * Integrates:
+ *   1. Existing enrolled courses & batch progress from get_home_screen_bootstrap
+ *   2. Authenticated student's active/in_arrears/completed installment agreements
+ *   3. Authoritative milestone schedules from public.student_installment_schedule
+ *   4. Seamless inclusion of installment purchases BEFORE batch assignment occurs
+ *   5. Deduplication by course_id with dynamic financial metrics
+ */
+export async function fetchStudentCourseHubData(
+  userId?: string
+): Promise<{ courses: StudentCourseHubItem[]; error: string | null }> {
+  try {
+    // 1. Authoritatively resolve student_id for the caller
+    const studentId = await resolveCurrentStudentId(userId);
+
+    // 2. Concurrently fetch existing enrolled courses and student course agreements
+    const [enrolledResult, agreementsResult] = await Promise.all([
+      fetchStudentEnrolledCourses(userId),
+      (async () => {
+        if (!studentId) return { data: null, error: null };
+        return await supabase
+          .from('student_course_agreements')
+          .select(`
+            agreement_id,
+            student_id,
+            course_id,
+            plan_id,
+            agreement_date,
+            total_fee,
+            outstanding_balance,
+            overdue_balance,
+            requires_admin_review,
+            agreement_status,
+            created_at,
+            courses:course_id (
+              course_id,
+              title,
+              description,
+              short_description,
+              thumbnail_bucket,
+              thumbnail_path,
+              stream_id,
+              streams:stream_id (
+                name
+              )
+            )
+          `)
+          .eq('student_id', studentId)
+          .in('agreement_status', [
+            'active',
+            'in_arrears',
+            'completed',
+          ])
+          .order('created_at', { ascending: false });
+      })(),
+    ]);
+
+    // Handle database query failures properly (§7)
+    if (agreementsResult.error) {
+      console.error('[studentCourseWebService] agreements query error:', agreementsResult.error);
+      return {
+        courses: [],
+        error: `Failed to load course agreements: ${agreementsResult.error.message}`,
+      };
+    }
+
+    const enrolledCourses = enrolledResult.courses || [];
+    const rawAgreements = (agreementsResult.data || []) as any[];
+
+    // 3. Batch fetch installment schedule for all retrieved agreements
+    const agreementMap = new Map<string, StudentCourseAgreement>();
+    const courseToAgreementMap = new Map<string, StudentCourseAgreement>();
+    const agreementIds: string[] = [];
+
+    rawAgreements.forEach((agr) => {
+      if (!agr.agreement_id || !agr.course_id) return;
+      // Deduplicate: keep latest agreement per course_id
+      if (!courseToAgreementMap.has(agr.course_id)) {
+        const parsedAgr: StudentCourseAgreement = {
+          agreement_id: agr.agreement_id,
+          student_id: agr.student_id,
+          course_id: agr.course_id,
+          plan_id: agr.plan_id,
+          agreement_date: agr.agreement_date,
+          total_fee: Number(agr.total_fee) || 0,
+          outstanding_balance: Number(agr.outstanding_balance) || 0,
+          overdue_balance: Number(agr.overdue_balance) || 0,
+          requires_admin_review: Boolean(agr.requires_admin_review),
+          agreement_status: agr.agreement_status,
+          created_at: agr.created_at,
+        };
+        courseToAgreementMap.set(agr.course_id, parsedAgr);
+        agreementMap.set(agr.agreement_id, parsedAgr);
+        agreementIds.push(agr.agreement_id);
+      }
+    });
+
+    const scheduleMap = new Map<string, InstallmentScheduleItem[]>();
+    let scheduleQueryError: string | null = null;
+
+    if (agreementIds.length > 0) {
+      const { data: schedData, error: schedErr } = await supabase
+        .from('student_installment_schedule')
+        .select('*')
+        .in('agreement_id', agreementIds)
+        .order('installment_index', { ascending: true });
+
+      if (schedErr) {
+        console.error('[studentCourseWebService] schedule query error:', schedErr);
+        scheduleQueryError = schedErr.message || 'Failed to load installment schedule';
+      } else if (schedData) {
+        (schedData as any[]).forEach((row) => {
+          if (!scheduleMap.has(row.agreement_id)) {
+            scheduleMap.set(row.agreement_id, []);
+          }
+          scheduleMap.get(row.agreement_id)!.push({
+            schedule_id: row.schedule_id,
+            agreement_id: row.agreement_id,
+            installment_index: row.installment_index,
+            due_date: row.due_date,
+            revised_due_date: row.revised_due_date || null,
+            amount_due: Number(row.amount_due) || 0,
+            amount_paid: Number(row.amount_paid) || 0,
+            waiver_amount: Number(row.waiver_amount) || 0,
+            status: row.status,
+            paid_at: row.paid_at || null,
+            payment_id: row.payment_id || null,
+          });
+        });
+      }
+    }
+
+    // Check for any unassigned agreement whose course data wasn't joined
+    const unjoinedCourseIds: string[] = [];
+    rawAgreements.forEach((agr) => {
+      const c = Array.isArray(agr.courses) ? agr.courses[0] : agr.courses;
+      if (!c?.title && isUuidString(agr.course_id)) {
+        unjoinedCourseIds.push(agr.course_id);
+      }
+    });
+
+    const fallbackCourseDataMap = new Map<string, any>();
+    if (unjoinedCourseIds.length > 0) {
+      const { data: fallbackRows, error: fallbackErr } = await supabase
+        .from('courses')
+        .select(`
+          course_id,
+          title,
+          description,
+          short_description,
+          thumbnail_bucket,
+          thumbnail_path,
+          stream_id,
+          streams:stream_id (
+            name
+          )
+        `)
+        .in('course_id', unjoinedCourseIds);
+
+      if (fallbackErr) {
+        console.warn('[studentCourseWebService] fallback course lookup error:', fallbackErr);
+      } else if (fallbackRows) {
+        fallbackRows.forEach((row: any) => {
+          fallbackCourseDataMap.set(row.course_id, row);
+        });
+      }
+    }
+
+    // 4. Merge and deduplicate by courseId
+    const courseMap = new Map<string, StudentCourseHubItem>();
+
+    // First: Map all enrolled courses from RPC (academic progress & batch info available)
+    enrolledCourses.forEach((enrolled) => {
+      const agr = courseToAgreementMap.get(enrolled.courseId) || null;
+      const isInstallment = !!agr;
+      let sched: InstallmentScheduleItem[] = [];
+      let financialSummary: StudentCourseHubFinancialSummary | null = null;
+      let scheduleError: string | null = null;
+
+      if (agr) {
+        if (scheduleQueryError) {
+          // Do not present missing schedule information as zero financial values (§7)
+          scheduleError = 'Installment schedule details are temporarily unavailable.';
+          sched = [];
+          financialSummary = null;
+        } else {
+          sched = scheduleMap.get(agr.agreement_id) || [];
+          financialSummary = calculateDynamicInstallmentMetrics(agr, sched);
+        }
+      }
+
+      courseMap.set(enrolled.courseId, {
+        courseId: enrolled.courseId,
+        title: enrolled.title,
+        description: enrolled.description,
+        thumbnailUrl: enrolled.thumbnailUrl,
+        category: enrolled.category,
+        academicYear: enrolled.academicYear,
+        streamName: enrolled.streamName,
+        acquisitionType: isInstallment ? 'installment' : 'one_time',
+        batchStatus: 'assigned',
+        batchId: enrolled.batchId,
+        batchName: enrolled.batchName,
+        batchCode: enrolled.batchCode,
+        progress: enrolled.progress,
+        subjects: enrolled.subjects,
+        totalLectures: enrolled.totalLectures,
+        totalPdfs: enrolled.totalPdfs,
+        totalNotes: enrolled.totalNotes,
+        totalAssignments: enrolled.totalAssignments,
+        totalMockTests: enrolled.totalMockTests,
+        firstAvailableSubjectId: enrolled.firstAvailableSubjectId,
+        firstAvailableBatchSubjectId: enrolled.firstAvailableBatchSubjectId,
+        agreement: agr,
+        schedule: sched,
+        financialSummary,
+        scheduleError,
+      });
+    });
+
+    // Second: Merge unassigned installment courses (student bought via installment but no batch_students record yet)
+    for (const agr of rawAgreements) {
+      const cid = agr.course_id;
+      if (courseMap.has(cid)) continue; // Already present from enrolled courses!
+
+      const agreementObj = courseToAgreementMap.get(cid);
+      if (!agreementObj) continue;
+
+      let sched: InstallmentScheduleItem[] = [];
+      let financialSummary: StudentCourseHubFinancialSummary | null = null;
+      let scheduleError: string | null = null;
+
+      if (scheduleQueryError) {
+        scheduleError = 'Installment schedule details are temporarily unavailable.';
+        sched = [];
+        financialSummary = null;
+      } else {
+        sched = scheduleMap.get(agreementObj.agreement_id) || [];
+        financialSummary = calculateDynamicInstallmentMetrics(agreementObj, sched);
+      }
+
+      const cData = Array.isArray(agr.courses) ? agr.courses[0] : agr.courses;
+      const fallbackData = fallbackCourseDataMap.get(cid);
+
+      const courseTitle = cData?.title || fallbackData?.title || 'Enrolled Course';
+      const courseDesc =
+        cData?.description ||
+        cData?.short_description ||
+        fallbackData?.description ||
+        fallbackData?.short_description ||
+        null;
+      const thumbBucket = cData?.thumbnail_bucket || fallbackData?.thumbnail_bucket || null;
+      const thumbPath = cData?.thumbnail_path || fallbackData?.thumbnail_path || null;
+      const courseThumb = await resolveCourseThumbnailUrl(thumbBucket, thumbPath);
+
+      const sData = Array.isArray(cData?.streams) ? cData?.streams[0] : cData?.streams;
+      const fallbackStream = Array.isArray(fallbackData?.streams) ? fallbackData?.streams[0] : fallbackData?.streams;
+      const streamName = sData?.name || fallbackStream?.name || null;
+      const courseCategory = streamName || 'Academic Course';
+
+      courseMap.set(cid, {
+        courseId: cid,
+        title: courseTitle,
+        description: courseDesc,
+        thumbnailUrl: courseThumb,
+        category: courseCategory,
+        streamName: streamName || undefined,
+        acquisitionType: 'installment',
+        batchStatus: 'pending_assignment',
+        batchName: 'Batch Assignment Pending',
+        batchCode: undefined,
+        progress: 0,
+        subjects: [],
+        totalLectures: 0,
+        totalPdfs: 0,
+        totalNotes: 0,
+        totalAssignments: 0,
+        totalMockTests: 0,
+        agreement: agreementObj,
+        schedule: sched,
+        financialSummary,
+        scheduleError,
+      });
+    }
+
+    return {
+      courses: Array.from(courseMap.values()),
+      error: enrolledResult.error || scheduleQueryError || null,
+    };
+  } catch (err: any) {
+    console.error('[studentCourseWebService] fetchStudentCourseHubData exception:', err);
+    return { courses: [], error: err?.message || 'Failed to load course hub data' };
   }
 }

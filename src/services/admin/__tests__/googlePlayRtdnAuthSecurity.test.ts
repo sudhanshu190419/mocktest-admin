@@ -752,7 +752,7 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
 
       // Verify that updatePayload did not set end_date to todayStr
       const updateCall = spies.dbUpdateSpy.mock.calls.find((call) => call[0] === 'student_subscriptions');
-      expect(updateCall[1].end_date).toBeUndefined();
+      expect(updateCall![1].end_date).toBeUndefined();
 
       // History record is inserted because status changed from active to expired
       expect(spies.dbInsertSpy).toHaveBeenCalledWith(
@@ -927,7 +927,7 @@ describe('F-03 RTDN Real HTTP Handler & Authentication Security Suite', () => {
 
       // Verifies existing end_date is preserved exactly and NOT shrunk to same-day Google test expiry
       const updateCall = spies.dbUpdateSpy.mock.calls.find((call) => call[0] === 'student_subscriptions');
-      expect(updateCall[1].end_date).toBe(futureEndDate);
+      expect(updateCall![1].end_date).toBe(futureEndDate);
 
       // Confirms no invalid active -> active history record inserted
       expect(spies.dbInsertSpy).not.toHaveBeenCalled();

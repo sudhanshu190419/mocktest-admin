@@ -135,9 +135,9 @@ function jsonResponse(body: FunctionResponse, status = 200): Response {
   });
 }
 
-function errorResponse(error: string, status = 400): Response {
-  structuredLog('PLAYBACK_URL_ERROR', { error, statusCode: status });
-  return jsonResponse({ error }, status);
+function errorResponse(error: string, status = 400, code?: string | null): Response {
+  structuredLog('PLAYBACK_URL_ERROR', { error, statusCode: status, ...(code ? { code } : {}) });
+  return jsonResponse({ error, ...(code ? { code } : {}) }, status);
 }
 
 function isValidUuid(value: string): boolean {
@@ -313,6 +313,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         accessResult.error_message ?? CONTENT_BLOCKED_MESSAGE,
         accessResult.status_code ?? 403,
+        accessResult.error_code,
       );
     }
 

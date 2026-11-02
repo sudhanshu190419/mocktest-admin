@@ -33,6 +33,8 @@ import React, {
   useState,
   useCallback,
 } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Play,
   Pause,
@@ -47,11 +49,14 @@ import {
   ArrowsClockwise,
   CheckCircle,
   Spinner,
+  CreditCard,
+  ArrowLeft,
 } from '@phosphor-icons/react';
 import {
   saveStudentRecordingProgress,
   markStudentRecordingCompleted,
 } from '@/services/student/studentRecordingProgressWebService';
+import { isInstallmentArrearsError } from '@/services/student/studentCourseWebService';
 import {
   StudentPlaybackRefreshController,
   calculateRefreshDelayMs,
@@ -73,6 +78,8 @@ export interface StudentRecordingPlayerProps {
   isCompleted?: boolean;
   studentId?: string;
   thumbnailUrl?: string | null;
+  courseId?: string | null;
+  initialErrorCode?: string | null;
   onProgressUpdate?: (position: number, isCompleted: boolean) => void;
 }
 
@@ -108,8 +115,12 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
   isCompleted: initialCompleted = false,
   studentId,
   thumbnailUrl,
+  courseId = null,
+  initialErrorCode = null,
   onProgressUpdate,
 }) => {
+  const router = useRouter();
+  const [errorCode, setErrorCode] = useState<string | null>(initialErrorCode ?? null);
   // ── Player Refs ────────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -148,7 +159,11 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
-  const [playerError, setPlayerError] = useState<string | null>(null);
+  const [playerError, setPlayerError] = useState<string | null>(
+    isInstallmentArrearsError(null, initialErrorCode)
+      ? 'Your access to live and recorded classes is temporarily paused because an installment payment is overdue. Complete the pending payment to restore access.'
+      : null
+  );
   const [isRefreshingUrl, setIsRefreshingUrl] = useState<boolean>(false);
 
   const [resumeNotification, setResumeNotification] = useState<string | null>(null);
@@ -200,6 +215,13 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
 
         if (result.error || !result.data?.playbackUrl) {
           console.error('[StudentRecordingPlayer] Refresh failed:', result.error);
+          if (isInstallmentArrearsError(result.error, result.errorCode)) {
+            setErrorCode('INSTALLMENT_ARREARS_BLOCKED');
+            setPlayerError(
+              'Your access to live and recorded classes is temporarily paused because an installment payment is overdue. Complete the pending payment to restore access.'
+            );
+            return false;
+          }
           if (isReactive) {
             setPlayerError('Playback link expired and could not be renewed. Please refresh the page.');
           }
@@ -732,23 +754,60 @@ export const StudentRecordingPlayer: React.FC<StudentRecordingPlayerProps> = ({
         </div>
       )}
 
-      {/* ── Error State Overlay ──────────────────────────────────────── */}
+      {/* ── Error State Overlay (§8 - Lockout Recovery Experience) ──── */}
       {playerError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/95 z-40 p-6 text-center">
-          <div className="p-3 bg-red-950/50 border border-red-800/80 rounded-card mb-3 text-red-400">
-            <WarningCircle className="w-8 h-8" weight="fill" />
-          </div>
-          <h3 className="text-base font-semibold text-white mb-1">Playback Issue</h3>
-          <p className="text-xs text-neutral-400 max-w-sm mb-4 leading-relaxed">
-            {playerError}
-          </p>
-          <button
-            onClick={() => executeUrlRefresh(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-field bg-brand hover:bg-brand text-white text-xs font-semibold shadow-lg shadow-card transition-all active:scale-[0.98]"
-          >
-            <ArrowsClockwise className="w-4 h-4" />
-            Retry Playback
-          </button>
+          {isInstallmentArrearsError(playerError, errorCode) ? (
+            <div className="max-w-md w-full space-y-4">
+              <div className="p-3.5 bg-amber-500/20 border border-amber-500/40 rounded-card mx-auto w-fit text-amber-400">
+                <WarningCircle className="w-9 h-9" weight="fill" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-black text-white">Installment Payment Overdue</h3>
+                <p className="text-xs text-neutral-300 max-w-sm mx-auto leading-relaxed">
+                  Your access to live and recorded classes is temporarily paused because an installment payment is overdue. Complete the pending payment to restore access.
+                </p>
+              </div>
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <Link
+                  href={
+                    courseId
+                      ? `/student/courses?courseId=${courseId}&openInstallments=true`
+                      : '/student/courses?openInstallments=true'
+                  }
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold shadow-lg transition-all min-h-[44px]"
+                >
+                  <CreditCard className="w-4 h-4" weight="bold" />
+                  <span>View & Pay Installment</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-field border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold transition-colors min-h-[44px]"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Go Back</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="p-3 bg-red-950/50 border border-red-800/80 rounded-card mb-3 text-red-400">
+                <WarningCircle className="w-8 h-8" weight="fill" />
+              </div>
+              <h3 className="text-base font-semibold text-white mb-1">Playback Issue</h3>
+              <p className="text-xs text-neutral-400 max-w-sm mb-4 leading-relaxed">
+                {playerError}
+              </p>
+              <button
+                onClick={() => executeUrlRefresh(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-field bg-brand hover:bg-brand text-white text-xs font-semibold shadow-lg shadow-card transition-all active:scale-[0.98]"
+              >
+                <ArrowsClockwise className="w-4 h-4" />
+                Retry Playback
+              </button>
+            </>
+          )}
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { supabase } from '@/config/supabase';
-import type { Course, SubscriptionPlan } from '@/types/courseCatalog';
+import type { Course, SubscriptionPlan, CourseInstallmentPlan } from '@/types/courseCatalog';
 
 export function formatCoursePrice(amount: number, currency: string = 'INR'): string {
   return new Intl.NumberFormat('en-IN', {
@@ -7,6 +7,115 @@ export function formatCoursePrice(amount: number, currency: string = 'INR'): str
     currency,
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+
+export interface InstallmentScheduleBreakdown {
+  totalFee: number;
+  numberOfInstallments: number;
+  intervalMonths: number;
+  standardTranche: number;
+  finalTranche: number;
+  hasRoundingAdjustment: boolean;
+  schedule: Array<{
+    index: number;
+    amount: number;
+    isFinal: boolean;
+  }>;
+}
+
+/**
+ * Calculates the installment schedule using exact remainder absorption matching Migration 221.
+ * Standard tranches 1..(N-1) are rounded to 2 decimals, and the final tranche N absorbs the remainder
+ * so that the sum of all installments equals totalFee exactly.
+ */
+export function calculateInstallmentSchedule(
+  totalFee: number,
+  numberOfInstallments: number,
+  intervalMonths: number = 1
+): InstallmentScheduleBreakdown {
+  if (numberOfInstallments <= 0) {
+    return {
+      totalFee,
+      numberOfInstallments: 0,
+      intervalMonths,
+      standardTranche: 0,
+      finalTranche: 0,
+      hasRoundingAdjustment: false,
+      schedule: [],
+    };
+  }
+
+  const standardTranche = Math.round((totalFee / numberOfInstallments) * 100) / 100;
+  const finalTranche = Math.round((totalFee - standardTranche * (numberOfInstallments - 1)) * 100) / 100;
+  const hasRoundingAdjustment = finalTranche !== standardTranche;
+
+  const schedule = [];
+  for (let i = 1; i <= numberOfInstallments; i++) {
+    const isFinal = i === numberOfInstallments;
+    schedule.push({
+      index: i,
+      amount: isFinal ? finalTranche : standardTranche,
+      isFinal,
+    });
+  }
+
+  return {
+    totalFee,
+    numberOfInstallments,
+    intervalMonths,
+    standardTranche,
+    finalTranche,
+    hasRoundingAdjustment,
+    schedule,
+  };
+}
+
+/**
+ * Fetches active installment plans for a course directly from `course_installment_plans`.
+ * Filters strictly by course_id and is_active = true.
+ */
+export async function fetchActiveCourseInstallmentPlans(
+  courseId: string
+): Promise<CourseInstallmentPlan[]> {
+  try {
+    const { data, error } = await supabase
+      .from('course_installment_plans')
+      .select(`
+        plan_id,
+        course_id,
+        plan_name,
+        total_fee,
+        number_of_installments,
+        interval_months,
+        is_active,
+        created_at,
+        updated_at
+      `)
+      .eq('course_id', courseId)
+      .eq('is_active', true)
+      .order('number_of_installments', { ascending: true });
+
+    if (error) {
+      console.warn('Could not fetch course installment plans:', error.message);
+      return [];
+    }
+
+    return (data || []).map((p: any) => ({
+      planId: p.plan_id,
+      courseId: p.course_id,
+      planName: p.plan_name,
+      totalFee: Number(p.total_fee),
+      numberOfInstallments: Number(p.number_of_installments),
+      intervalMonths: Number(p.interval_months),
+      isActive: p.is_active ?? true,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+    }));
+  } catch (err) {
+    console.warn('Error in fetchActiveCourseInstallmentPlans:', err);
+    return [];
+  }
 }
 
 function mapDbCourseRow(row: any): Course {
@@ -28,6 +137,20 @@ function mapDbCourseRow(row: any): Course {
     isActive: p.is_active ?? true,
     features: [],
   }));
+
+  const installmentPlans: CourseInstallmentPlan[] = (row.course_installment_plans || [])
+    .filter((p: any) => p.is_active ?? true)
+    .map((p: any) => ({
+      planId: p.plan_id,
+      courseId: p.course_id,
+      planName: p.plan_name,
+      totalFee: Number(p.total_fee),
+      numberOfInstallments: Number(p.number_of_installments),
+      intervalMonths: Number(p.interval_months),
+      isActive: p.is_active ?? true,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+    }));
 
   return {
     courseId: row.course_id,
@@ -82,6 +205,7 @@ function mapDbCourseRow(row: any): Course {
       ],
     },
     plans,
+    installmentPlans,
   };
 }
 
@@ -118,6 +242,15 @@ export async function getCourses(): Promise<Course[]> {
           stream_id,
           name,
           code
+        ),
+        course_installment_plans (
+          plan_id,
+          course_id,
+          plan_name,
+          total_fee,
+          number_of_installments,
+          interval_months,
+          is_active
         ),
         subscription_plans (
           plan_id,
@@ -198,6 +331,15 @@ export async function getHomepageTrendingCourses(): Promise<Course[]> {
           stream_id,
           name,
           code
+        ),
+        course_installment_plans (
+          plan_id,
+          course_id,
+          plan_name,
+          total_fee,
+          number_of_installments,
+          interval_months,
+          is_active
         ),
         subscription_plans (
           plan_id,

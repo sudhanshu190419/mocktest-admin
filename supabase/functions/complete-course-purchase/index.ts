@@ -1033,631 +1033,59 @@ Deno.serve(async (req: Request): Promise<Response> => {
   );
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 4: Verify the course exists
+  // Step 4: Atomic Transactional Course Fulfillment RPC
   // ═════════════════════════════════════════════════════════════════════
-  structuredLog('checking_course', { courseId: body.courseId });
-
-  const { data: course, error: courseError } = await serviceClient
-    .from('courses')
-    .select('course_id, institute_id, title, status')
-    .eq('course_id', body.courseId)
-    .is('deleted_at', null)
-    .single();
-
-  if (courseError || !course) {
-    structuredLog('COURSE_LOOKUP_FAILED', {
-      courseId: body.courseId,
-      error: courseError?.message ?? 'Course not found',
-    });
-    return errorResponse(
-      `Course not found: ${body.courseId}`,
-      404,
-      courseError?.message,
-    );
-  }
-
-  structuredLog('COURSE_LOOKUP_SUCCESS', {
-    courseId: course.course_id,
-    title: course.title,
-    instituteId: course.institute_id,
-    status: course.status,
-  });
-
-  const instituteId: string = course.institute_id;
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 5: Upgrade profile role from 'user' to 'student'
-  // ═════════════════════════════════════════════════════════════════════
-  // After confirming the course exists, read the current role and upgrade
-  // it from 'user' to 'student' if applicable. This MUST happen BEFORE
-  // creating student_details because the create_student_after_purchase RPC
-  // requires role = 'student'.
-  //
-  // Rules:
-  //   'user'    → upgrade to 'student'
-  //   'student' → no-op (idempotent)
-  //   'teacher' → return error (cannot convert)
-  //   'admin'   → return error (cannot convert)
-  // ═════════════════════════════════════════════════════════════════════
-  structuredLog('ROLE_BEFORE_UPGRADE', { profileId });
-
-  const { data: profileRow, error: profileRowError } = await serviceClient
-    .from('profiles')
-    .select('role')
-    .eq('profile_id', profileId)
-    .single();
-
-  if (profileRowError || !profileRow) {
-    structuredLog('ROLE_LOOKUP_FAILED', {
-      profileId,
-      error: profileRowError?.message ?? 'Profile not found',
-    });
-    return errorResponse('Profile not found. Cannot complete course purchase.', 404);
-  }
-
-  const currentRole = profileRow.role;
-
-  if (currentRole === 'user') {
-    structuredLog('ROLE_UPGRADE_STARTED', {
-      profileId,
-      fromRole: currentRole,
-      toRole: 'student',
-    });
-
-    const { error: updateError } = await serviceClient
-      .from('profiles')
-      .update({ role: 'student' })
-      .eq('profile_id', profileId);
-
-    if (updateError) {
-      structuredLog('ROLE_UPGRADE_FAILED', {
-        profileId,
-        error: updateError.message,
-      });
-      return errorResponse('Failed to upgrade profile role. Please contact support.', 500);
-    }
-
-    structuredLog('ROLE_UPGRADE_SUCCESS', { profileId });
-    structuredLog('ROLE_AFTER_UPGRADE', { profileId, newRole: 'student' });
-  } else if (currentRole === 'student') {
-    structuredLog('ROLE_ALREADY_STUDENT', { profileId });
-  } else if (currentRole === 'teacher' || currentRole === 'admin') {
-    structuredLog('ROLE_INVALID', {
-      profileId,
-      currentRole,
-      message: `Profile role '${currentRole}' cannot be converted to student through purchase flow`,
-    });
-    return errorResponse(
-      `Profile role '${currentRole}' cannot be converted to student. ` +
-      'Only user and student roles are valid for course purchases.',
-      403,
-    );
-  } else {
-    // Unknown role — treat as invalid
-    structuredLog('ROLE_INVALID', {
-      profileId,
-      currentRole,
-      message: `Unknown profile role '${currentRole}' — cannot complete purchase`,
-    });
-    return errorResponse(
-      `Unknown profile role '${currentRole}'. Cannot complete course purchase.`,
-      403,
-    );
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 6: Check whether the user already has a student_details row
-  // ═════════════════════════════════════════════════════════════════════
-  structuredLog('checking_existing_student', { profileId });
-
-  const { data: existingStudent } = await serviceClient
-    .from('student_details')
-    .select('student_id, enrollment_no')
-    .eq('profile_id', profileId)
-    .maybeSingle();
-
-  let studentId: string | null = existingStudent?.student_id ?? null;
-  let enrollmentNo: string | null = existingStudent?.enrollment_no ?? null;
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 7: Create student_details if not already present
-  // ═════════════════════════════════════════════════════════════════════
-  if (!studentId) {
-    structuredLog('CREATE_STUDENT_RPC_START', {
-      profileId,
-      hasGuardianName: !!body.guardianName,
-      hasGuardianMobile: !!body.guardianMobile,
-      hasTargetYear: !!body.targetYear,
-      hasDob: !!body.dob,
-    });
-
-    const { data: rpcResult, error: rpcError } = await serviceClient.rpc(
-      'create_student_after_purchase',
-      {
-        p_profile_id: profileId,
-        p_guardian_name: body.guardianName,
-        p_guardian_mobile: body.guardianMobile,
-        p_guardian_email: body.guardianEmail ?? null,
-        p_target_year: body.targetYear,
-        p_dob: body.dob ?? null,
-      },
-    );
-
-    if (rpcError) {
-      structuredLog('CREATE_STUDENT_RPC_FAILED', {
-        profileId,
-        sqlState: rpcError.code ?? 'unknown',
-        message: rpcError.message,
-        stack: rpcError.details ?? undefined,
-      });
-      const safeMessage = sanitizeErrorMessage(
-        rpcError.message,
-        'create_student_after_purchase RPC',
-      );
-      return errorResponse(safeMessage, 500, rpcError.message);
-    }
-
-    // The RPC returns a JSON object. Check for a business-logic error
-    // (e.g. duplicate student_details, which returns { error: "..." }
-    // instead of raising an exception).
-    const rpcData = rpcResult as Record<string, unknown> | null;
-    if (!rpcData) {
-      structuredLog('CREATE_STUDENT_RPC_FAILED', {
-        profileId,
-        message: 'RPC returned empty response',
-      });
-      return errorResponse(
-        'Student creation returned an empty response.',
-        500,
-      );
-    }
-
-    if (rpcData.error) {
-      // ── Idempotency: handle concurrent webhook deliveries ──────────
-      // If two requests arrive simultaneously, both can pass the "existing
-      // student_details" check, but only the first RPC call succeeds. The
-      // second call receives { error: "..." }. Instead of returning an error,
-      // re-query for the student that was just created by the first request.
-      structuredLog('CREATE_STUDENT_RPC_RACE', {
-        error: String(rpcData.error),
-        profileId,
-      });
-
-      const { data: recovered } = await serviceClient
-        .from('student_details')
-        .select('student_id, enrollment_no')
-        .eq('profile_id', profileId)
-        .maybeSingle();
-
-      if (recovered) {
-        studentId = recovered.student_id;
-        enrollmentNo = recovered.enrollment_no;
-        structuredLog('student_recovered_after_race', { studentId });
-      } else {
-        structuredLog('CREATE_STUDENT_RPC_FAILED', {
-          profileId,
-          message: String(rpcData.error),
-        });
-        return errorResponse(
-          sanitizeErrorMessage(String(rpcData.error), 'RPC business logic'),
-          409,
-          String(rpcData.error),
-        );
-      }
-    }
-
-    if (!studentId) {
-      studentId = rpcData.student_id as string;
-      enrollmentNo = rpcData.enrollment_no as string;
-    }
-
-    structuredLog('CREATE_STUDENT_RPC_SUCCESS', {
-      studentId,
-      enrollmentNo,
-      instituteId: rpcData?.institute_id as string ?? instituteId,
-    });
-
-    structuredLog('STUDENT_DETAILS_CREATED', { studentId, enrollmentNo });
-  } else {
-    structuredLog('STUDENT_DETAILS_CREATED', {
-      studentId,
-      enrollmentNo,
-      note: 'Already existed (idempotent)',
-    });
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 8: Check for existing course_enrollment (idempotent)
-  // ═════════════════════════════════════════════════════════════════════
-  structuredLog('checking_existing_enrollment', {
+  structuredLog('FULFILLMENT_RPC_START', {
+    orderId: body.orderId,
     courseId: body.courseId,
-    studentId,
-    conversion: body.conversion === true,
+    profileId,
+    conversion: body.conversion,
   });
 
-  // ── Phase 11K.6: duplicate Full Course conversion detection ────────
-  // Only ONE conversion payment may ever succeed per student/course. If a
-  // prior CONFIRMED conversion order exists for the same profile + course
-  // (a different order), this payment is a duplicate: mark it for refund /
-  // admin review and return a deterministic status WITHOUT touching
-  // enrollment or subscription again. Ownership is already granted.
-  if (body.conversion === true) {
-    const priorConversion = await findPriorConfirmedCourseOrder(
-      serviceClient,
-      profileId,
-      body.courseId,
-      body.orderId,
-      true,
-    );
-
-    if (priorConversion) {
-      structuredLog('CONVERSION_DUPLICATE_DETECTED', {
-        courseId: body.courseId,
-        studentId,
-        currentOrderId: body.orderId ?? null,
-        priorOrderId: priorConversion.order_id,
-      });
-
-      await markOrderAsDuplicate(
-        serviceClient,
-        body.orderId,
-        priorConversion.order_id,
-        'conversion',
-      );
-
-      return jsonResponse({
-        success: true,
-        duplicate: true,
-        duplicateOfOrderId: priorConversion.order_id,
-        studentId,
-        enrollmentId: '', // Not re-granted — ownership already exists.
-        enrollmentNumber: '',
-        courseId: body.courseId,
-        message: 'This course was already converted to full ownership by an earlier payment. ' +
-          'The duplicate payment has been flagged for refund.',
-      });
+  const { data: fulfillData, error: fulfillError } = await serviceClient.rpc(
+    'fulfill_standard_course_order',
+    {
+      p_order_id: body.orderId,
+      p_course_id: body.courseId,
+      p_profile_id: profileId,
+      p_conversion: body.conversion === true,
+      p_guardian_name: body.guardianName ?? null,
+      p_guardian_mobile: body.guardianMobile ?? null,
+      p_guardian_email: body.guardianEmail ?? null,
+      p_target_year: body.targetYear ?? null,
+      p_dob: body.dob ?? null,
     }
-  }
+  );
 
-  const { data: existingEnrollment } = await serviceClient
-    .from('course_enrollments')
-    .select('enrollment_id, enrollment_type')
-    .eq('course_id', body.courseId)
-    .eq('student_id', studentId)
-    .maybeSingle();
+  if (fulfillError || !fulfillData?.success) {
+    const code = fulfillData?.code || 'FULFILLMENT_FAILED';
+    const msg = fulfillError?.message || fulfillData?.error || 'Course fulfillment failed';
 
-  if (existingEnrollment) {
-    structuredLog('enrollment_already_exists', {
-      enrollmentId: existingEnrollment.enrollment_id,
-      enrollmentType: existingEnrollment.enrollment_type,
-      conversion: body.conversion === true,
-    });
-
-    // ── M4 Fix B: duplicate confirmed NORMAL course order ──────────────
-    // A prior CONFIRMED course order for the same profile + course (a
-    // DIFFERENT order) means this payment is a duplicate: the student was
-    // already charged once and granted the course. Flag it for refund/admin
-    // review and return a deterministic duplicate response — never a second
-    // grant and never a silent "already enrolled" success. (Conversion
-    // duplicates are handled by the conversion-only check above.) A webhook
-    // RETRY of this same order is excluded by orderId and falls through to
-    // the normal idempotent success below.
-    if (body.conversion !== true) {
-      const priorCourseOrder = await findPriorConfirmedCourseOrder(
-        serviceClient,
-        profileId,
-        body.courseId,
-        body.orderId,
-      );
-
-      if (priorCourseOrder) {
-        structuredLog('COURSE_DUPLICATE_DETECTED', {
-          courseId: body.courseId,
-          studentId,
-          currentOrderId: body.orderId ?? null,
-          priorOrderId: priorCourseOrder.order_id,
-        });
-
-        await markOrderAsDuplicate(
-          serviceClient,
-          body.orderId,
-          priorCourseOrder.order_id,
-          'course_purchase',
-        );
-
-        return jsonResponse({
-          success: true,
-          duplicate: true,
-          duplicateOfOrderId: priorCourseOrder.order_id,
-          studentId,
-          enrollmentId: existingEnrollment.enrollment_id,
-          enrollmentNumber: enrollmentNo ?? '',
-          courseId: body.courseId,
-          message: 'This course was already purchased by an earlier payment. ' +
-            'The duplicate payment has been flagged for refund.',
-        });
-      }
-    }
-
-    // ── Phase 11K.5: Full Course conversion on an existing enrollment ──
-    // A subscription purchase created a 'subscription'-type enrollment
-    // (Phase 11I.2 sync). Conversion upgrades it to 'purchase' so
-    // is_permanent_course_owner() returns TRUE - never a duplicate row
-    // (uq_course_enrollments_course_student enforces one per student/course).
-    if (body.conversion === true && existingEnrollment.enrollment_type !== 'purchase') {
-      structuredLog('CONVERSION_UPGRADE_ENROLLMENT', {
-        enrollmentId: existingEnrollment.enrollment_id,
-        fromType: existingEnrollment.enrollment_type,
-        toType: 'purchase',
-      });
-
-      const { error: upgradeError } = await serviceClient
-        .from('course_enrollments')
-        .update({ enrollment_type: 'purchase', is_active: true })
-        .eq('enrollment_id', existingEnrollment.enrollment_id);
-
-      if (upgradeError) {
-        structuredLog('CONVERSION_UPGRADE_ENROLLMENT_FAILED', {
-          enrollmentId: existingEnrollment.enrollment_id,
-          error: upgradeError.message,
-        });
-      }
-    }
-
-    // ── Phase 11K.5: cancel the subscription (idempotent) ─────────────
-    if (body.conversion === true) {
-      await applyFullCourseConversion(serviceClient, {
-        studentId,
-        courseId: body.courseId,
-        instituteId,
-        profileId,
-        orderId: body.orderId,
-        paymentReference: null,
-      });
-    }
-
-    // ── Ensure notifications exist (idempotent) ────────────────────────
-    // If a previous webhook delivery succeeded for enrollment but failed
-    // before creating notifications, this call creates them now. The
-    // idempotency check inside createCommerceNotification prevents dupes.
-    structuredLog('NOTIFICATION_FLOW_START', {
-      profileId,
-      studentId,
-      courseId: body.courseId,
-      orderId: body.orderId ?? null,
-      eventTypes: ['course_purchased', 'course_enrolled'],
-      context: 'existing_enrollment',
-    });
-
-    await createCommerceNotification(serviceClient, {
-      eventType: 'course_purchased',
-      title: 'Course Purchased Successfully',
-      body: 'Your payment was successful. You now own this course.',
-      profileId,
-      instituteId,
-      referenceType: 'course',
-      referenceId: body.courseId,
-    });
-
-    // ── Send push notification (awaited) ─────────────────────────────
-    // After the in-app notification is created, send a push
-    // notification to the user's active devices. We await it so the
-    // Edge Function does not return before push delivery completes.
-    // Errors are caught inside and NEVER propagate to the caller.
-    try {
-      await sendCoursePurchasedPushNotification(
-        serviceClient,
-        profileId,
-        body.courseId,
-      );
-    } catch (error) {
-      structuredLog('PUSH_NOTIFICATION_FAILED', {
-        error: String(error),
-      });
-    }
-
-    structuredLog('NOTIFICATION_FLOW_START', {
-      profileId,
-      studentId,
-      courseId: body.courseId,
-      orderId: body.orderId ?? null,
-      eventTypes: ['course_enrolled'],
-      context: 'existing_enrollment',
-    });
-
-    await createCommerceNotification(serviceClient, {
-      eventType: 'course_enrolled',
-      title: 'Enrollment Successful',
-      body: 'You have been successfully enrolled. Start learning anytime.',
-      profileId,
-      instituteId,
-      referenceType: 'course',
-      referenceId: body.courseId,
-    });
-
-    return jsonResponse({
-      success: true,
-      studentId,
-      enrollmentId: existingEnrollment.enrollment_id,
-      enrollmentNumber: enrollmentNo ?? '',
-      courseId: body.courseId,
-      message: 'Student is already enrolled in this course.',
-    });
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 9: Create the course_enrollment record
-  // ═════════════════════════════════════════════════════════════════════
-  structuredLog('COURSE_ENROLLMENT_INSERT_START', {
-    courseId: body.courseId,
-    studentId,
-    instituteId,
-  });
-
-  const { data: newEnrollment, error: enrollmentError } = await serviceClient
-    .from('course_enrollments')
-    .insert({
-      course_id: body.courseId,
-      student_id: studentId,
-      institute_id: instituteId,
-      enrollment_type: 'purchase',
-    })
-    .select('enrollment_id')
-    .single();
-
-  if (enrollmentError || !newEnrollment) {
-    structuredLog('COURSE_ENROLLMENT_INSERT_FAILED', {
-      courseId: body.courseId,
-      studentId,
-      error: enrollmentError?.message ?? 'Insert returned no data',
-      sqlState: (enrollmentError as { code?: string })?.code ?? 'unknown',
-    });
-
-    // ── M4 Fix B: concurrent webhook race on the enrollment insert ─────
-    // uq_course_enrollments_course_student allows only one enrollment per
-    // (course, student). A concurrent delivery (or a racing double payment)
-    // may have inserted it between our SELECT and INSERT. Recover
-    // deterministically: a prior CONFIRMED order for a DIFFERENT order id
-    // means this payment is a duplicate (flag it); otherwise it is an
-    // idempotent retry of this same order (return the already-enrolled
-    // success, mirroring complete-pyq-purchase / complete-subscription-
-    // purchase 23505 recovery).
-    if (
-      (enrollmentError as { code?: string })?.code === '23505' ||
-      /duplicate key/i.test(enrollmentError?.message ?? '')
-    ) {
-      const { data: recoveredEnrollment } = await serviceClient
-        .from('course_enrollments')
-        .select('enrollment_id, enrollment_type')
-        .eq('course_id', body.courseId)
-        .eq('student_id', studentId)
-        .maybeSingle();
-
-      if (recoveredEnrollment) {
-        structuredLog('COURSE_ENROLLMENT_RACE_RECOVERED', {
-          enrollmentId: recoveredEnrollment.enrollment_id,
-          courseId: body.courseId,
-          studentId,
-        });
-
-        // Conversion semantics: do NOT short-circuit a conversion here. A
-        // conversion must run the full conversion path (enrollment upgrade +
-        // subscription cancellation) — returning success without it would
-        // leave the student with permanent ownership AND an active
-        // subscription. Fall through to the 500 below so Razorpay retries
-        // and the normal conversion branch executes (exact pre-M4 behavior).
-        if (body.conversion !== true) {
-          const priorCourseOrder = await findPriorConfirmedCourseOrder(
-            serviceClient,
-            profileId,
-            body.courseId,
-            body.orderId,
-          );
-
-          if (priorCourseOrder) {
-            structuredLog('COURSE_DUPLICATE_DETECTED_RACE', {
-              courseId: body.courseId,
-              studentId,
-              currentOrderId: body.orderId ?? null,
-              priorOrderId: priorCourseOrder.order_id,
-            });
-
-            await markOrderAsDuplicate(
-              serviceClient,
-              body.orderId,
-              priorCourseOrder.order_id,
-              'course_purchase',
-            );
-
-            return jsonResponse({
-              success: true,
-              duplicate: true,
-              duplicateOfOrderId: priorCourseOrder.order_id,
-              studentId,
-              enrollmentId: recoveredEnrollment.enrollment_id,
-              enrollmentNumber: enrollmentNo ?? '',
-              courseId: body.courseId,
-              message: 'This course was already purchased by an earlier payment. ' +
-                'The duplicate payment has been flagged for refund.',
-            });
-          }
-
-          return jsonResponse({
-            success: true,
-            studentId,
-            enrollmentId: recoveredEnrollment.enrollment_id,
-            enrollmentNumber: enrollmentNo ?? '',
-            courseId: body.courseId,
-            message: 'Student is already enrolled in this course.',
-          });
-        }
-      }
-    }
-
-    const safeMessage = sanitizeErrorMessage(
-      enrollmentError?.message ?? 'Insert returned no data.',
-      'course_enrollments insert',
-    );
-    return errorResponse(safeMessage, 500, enrollmentError?.message);
-  }
-
-  structuredLog('COURSE_ENROLLMENT_INSERT_SUCCESS', {
-    enrollmentId: newEnrollment.enrollment_id,
-    courseId: body.courseId,
-    studentId,
-  });
-
-  // ── Phase 11K.5: Full Course conversion — cancel the subscription ──
-  // (The insert above already used enrollment_type='purchase', so
-  // permanent ownership is in place; the subscription lifecycle must end.)
-  if (body.conversion === true) {
-    await applyFullCourseConversion(serviceClient, {
-      studentId,
-      courseId: body.courseId,
-      instituteId,
-      profileId,
+    structuredLog('FULFILLMENT_RPC_FAILED', {
       orderId: body.orderId,
-      paymentReference: null,
-    });
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Step 10: Update orders.student_id
-  // ═════════════════════════════════════════════════════════════════════
-  // After creating the student_details and course_enrollment, link the
-  // order to the student record so subsequent queries can resolve the
-  // student_id directly from the order.
-  if (body.orderId) {
-    structuredLog('UPDATE_ORDER_STUDENT_ID', {
-      orderId: body.orderId,
-      studentId,
-      profileId,
+      courseId: body.courseId,
+      code,
+      error: msg,
     });
 
-    const { error: orderUpdateError } = await serviceClient
-      .from('orders')
-      .update({ student_id: studentId })
-      .eq('order_id', body.orderId);
-
-    if (orderUpdateError) {
-      // Non-fatal: the student is already created and enrolled.
-      // The order can be linked later via admin panel.
-      structuredLog('UPDATE_ORDER_STUDENT_ID_FAILED', {
-        orderId: body.orderId,
-        studentId,
-        error: orderUpdateError.message,
-      });
-    } else {
-      structuredLog('UPDATE_ORDER_STUDENT_ID_SUCCESS', {
-        orderId: body.orderId,
-        studentId,
-      });
+    if (code === 'ORDER_CANCELLED_OR_REFUNDED' || code === 'ORDER_REQUIRES_ADMIN_REVIEW' || code === 'PAYMENT_NOT_SETTLED') {
+      return errorResponse(msg, 409, code);
     }
-  } else {
-    structuredLog('UPDATE_ORDER_STUDENT_ID_SKIPPED', {
-      note: 'No orderId provided — caller should update orders.student_id separately',
-    });
+    return errorResponse(msg, 500, code);
   }
+
+  const studentId = fulfillData.student_id;
+  const enrollmentId = fulfillData.enrollment_id;
+  const enrollmentNo = fulfillData.enrollment_number;
+  const instituteId = fulfillData.institute_id;
+
+  structuredLog('FULFILLMENT_RPC_SUCCESS', {
+    studentId,
+    enrollmentId,
+    enrollmentNo,
+    courseId: body.courseId,
+    orderId: body.orderId ?? null,
+  });
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 11: Create purchase notifications
@@ -1729,7 +1157,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ═════════════════════════════════════════════════════════════════════
   structuredLog('ONBOARDING_COMPLETE', {
     studentId,
-    enrollmentId: newEnrollment.enrollment_id,
+    enrollmentId: enrollmentId,
     courseId: body.courseId,
     orderId: body.orderId ?? null,
   });
@@ -1737,7 +1165,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   return jsonResponse({
     success: true,
     studentId,
-    enrollmentId: newEnrollment.enrollment_id,
+    enrollmentId: enrollmentId,
     enrollmentNumber: enrollmentNo ?? '',
     courseId: body.courseId,
     message: 'Student onboarding completed successfully.',

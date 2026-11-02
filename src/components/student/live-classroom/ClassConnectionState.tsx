@@ -2,49 +2,86 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { CircleNotch, WarningCircle, ArrowLeft, ArrowsClockwise } from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowLeft, ArrowsClockwise, CreditCard } from '@phosphor-icons/react';
+import { isInstallmentArrearsError } from '@/services/student/studentCourseWebService';
 
 interface ClassConnectionStateProps {
   type: 'authorizing' | 'connecting' | 'reconnecting' | 'error';
   errorMessage?: string;
+  errorCode?: string | null;
+  courseId?: string | null;
   onRetry?: () => void;
 }
 
 export const ClassConnectionState: React.FC<ClassConnectionStateProps> = ({
   type,
   errorMessage,
+  errorCode,
+  courseId,
   onRetry,
 }) => {
   if (type === 'error') {
+    const isInstallmentBlocked = isInstallmentArrearsError(errorMessage, errorCode);
+
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 rounded-sheet bg-ink border border-ink text-center text-white space-y-4 shadow-2xl">
-          <div className="w-14 h-14 rounded-card bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
+        <div
+          className={`max-w-md w-full p-8 rounded-sheet text-center text-white space-y-4 shadow-2xl ${
+            isInstallmentBlocked
+              ? 'bg-ink border border-amber-500/50'
+              : 'bg-ink border border-ink'
+          }`}
+        >
+          <div
+            className={`w-14 h-14 rounded-card flex items-center justify-center mx-auto border ${
+              isInstallmentBlocked
+                ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+            }`}
+          >
             <WarningCircle size={28} weight="bold" />
           </div>
 
           <div className="space-y-1.5">
-            <h2 className="text-lg font-black text-white">Classroom Access Notice</h2>
+            <h2 className="text-lg font-black text-white">
+              {isInstallmentBlocked ? 'Installment Payment Overdue' : 'Classroom Access Notice'}
+            </h2>
             <p className="text-xs text-ink-muted leading-relaxed">
-              {errorMessage || 'Unable to join this live classroom session.'}
+              {isInstallmentBlocked
+                ? 'Your access to live and recorded classes is temporarily paused because an installment payment is overdue. Complete the pending payment to restore access.'
+                : errorMessage || 'Unable to join this live classroom session.'}
             </p>
           </div>
 
           <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
-            {onRetry && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-md"
+            {isInstallmentBlocked ? (
+              <Link
+                href={
+                  courseId
+                    ? `/student/courses?courseId=${courseId}&openInstallments=true`
+                    : '/student/courses?openInstallments=true'
+                }
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white font-bold text-xs transition-colors shadow-md min-h-[44px]"
               >
-                <ArrowsClockwise size={14} weight="bold" />
-                <span>Retry Connection</span>
-              </button>
+                <CreditCard size={15} weight="bold" />
+                <span>View & Pay Installment</span>
+              </Link>
+            ) : (
+              onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-brand hover:bg-brand text-white font-bold text-xs transition-colors shadow-md min-h-[44px]"
+                >
+                  <ArrowsClockwise size={14} weight="bold" />
+                  <span>Retry Connection</span>
+                </button>
+              )
             )}
 
             <Link
               href="/student/classes"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-ink hover:bg-ink text-ink-muted font-bold text-xs transition-colors border border-ink"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-field bg-ink hover:bg-neutral-800 text-ink-muted font-bold text-xs transition-colors border border-ink min-h-[44px]"
             >
               <ArrowLeft size={14} weight="bold" />
               <span>Back to Classes</span>

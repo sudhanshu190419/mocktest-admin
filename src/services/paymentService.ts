@@ -10,6 +10,8 @@ export interface CreatePaymentOrderInput {
   courseId?: string;
   packageId?: string;
   planId?: string;
+  installmentPlanId?: string;
+  agreementId?: string;
   conversion?: boolean;
   studentId: string;
   instituteId?: string;
@@ -101,6 +103,8 @@ export async function createPaymentOrder(
     if (input.courseId) payload.courseId = input.courseId;
     if (input.packageId) payload.packageId = input.packageId;
     if (cleanPlanId) payload.planId = cleanPlanId;
+    if (input.installmentPlanId) payload.installmentPlanId = input.installmentPlanId;
+    if (input.agreementId) payload.agreementId = input.agreementId;
     if (input.conversion) payload.conversion = true;
 
     const { data, error } = await supabase.functions.invoke('create-payment-order', {
@@ -128,6 +132,20 @@ export async function createPaymentOrder(
           success: false,
           code: 'ALREADY_OWNED',
           error: 'You already have permanent access to this course.',
+        };
+      }
+      if (details === 'AGREEMENT_ALREADY_EXISTS') {
+        return {
+          success: false,
+          code: 'ALREADY_SUBSCRIBED',
+          error: 'An active installment agreement already exists for this course.',
+        };
+      }
+      if (details === 'PLAN_INACTIVE') {
+        return {
+          success: false,
+          code: 'SERVER',
+          error: 'This installment plan is inactive and no longer accepting checkouts.',
         };
       }
       if (details === 'ALREADY_SUBSCRIBED') {
@@ -242,6 +260,40 @@ export async function pollPYQEnrollment(
         .eq('is_active', true);
 
       if (!error && (count ?? 0) > 0) {
+        return true;
+      }
+    } catch {
+      // Ignore polling errors and continue retry
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  return false;
+}
+
+/**
+ * Polls the student_installment_schedule table until the specified installment is marked 'paid'.
+ * Used for verifying subsequent installment settlements.
+ */
+export async function pollInstallmentSettlement(
+  agreementId: string,
+  installmentIndex: number,
+  timeoutMs: number = 60000,
+  intervalMs: number = 2000
+): Promise<boolean> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const { data, error } = await supabase
+        .from('student_installment_schedule')
+        .select('status')
+        .eq('agreement_id', agreementId)
+        .eq('installment_index', installmentIndex)
+        .maybeSingle();
+
+      if (!error && data?.status === 'paid') {
         return true;
       }
     } catch {

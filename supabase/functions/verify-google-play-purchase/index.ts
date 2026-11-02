@@ -31,6 +31,8 @@ import {
   classifyRpcError,
   buildOrderItemPayload,
   validateExistingOrderItem,
+  resolveAuthoritativeOrderId,
+  evaluateExistingPaymentMatch,
 } from "./billingCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -175,68 +177,11 @@ serve(async (req) => {
       });
     }
 
-    const effectiveOrderId = orderId || `GPA.${purchaseToken.slice(-16)}`;
+    // Determine product categorization
+    const isSub = productType === "subs" || Boolean(planId) || productId.startsWith("sub_");
+    const transactionTimestamp = new Date().toISOString();
 
-    // cleanHexToUuid imported from billingCore.ts
-
-    // ── 1. Replay / Cross-Account Ownership Check ──────────────────────────
-    const { data: existingPayment } = await supabaseAdmin
-      .from("payments")
-      .select("payment_id, order_id, status, orders(profile_id, student_id)")
-      .eq("gateway", "google_play")
-      .or(`gateway_payment_id.eq.${effectiveOrderId},gateway_order_id.eq.${effectiveOrderId},gateway_order_id.eq.${purchaseToken}`)
-      .eq("status", "captured")
-      .maybeSingle();
-
-    if (existingPayment) {
-      const paymentOwnerProfileId = (existingPayment as any).orders?.profile_id;
-      if (paymentOwnerProfileId && paymentOwnerProfileId !== profileId) {
-        console.warn(`[VERIFY_PLAY_SECURITY] Token replay by different user. Original: ${paymentOwnerProfileId}, Attempted: ${profileId}`);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "This purchase has already been claimed by another account. Please sign in with the original account or contact support.",
-          }),
-          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      console.log(`[VERIFY_PLAY] Payment ${effectiveOrderId} already captured by current user. Returning success idempotently.`);
-
-      // Ensure Google Play acknowledgment was not interrupted during earlier attempt
-      try {
-        const saValidation = validateServiceAccountJson(GOOGLE_SERVICE_ACCOUNT_JSON);
-        if (saValidation.valid) {
-          const accessToken = await getGoogleAccessToken(GOOGLE_SERVICE_ACCOUNT_JSON);
-          if (accessToken) {
-            const isSub = productId.startsWith("sub_") || productType === "subs";
-            const ackUrl = isSub
-              ? `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/subscriptions/${productId}/tokens/${purchaseToken}:acknowledge`
-              : `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/products/${productId}/tokens/${purchaseToken}:acknowledge`;
-            await fetch(ackUrl, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ developerPayload: profileId }),
-            });
-          }
-        }
-      } catch (replayAckErr) {
-        console.warn("[VERIFY_PLAY] Idempotent replay acknowledge non-fatal warning:", replayAckErr);
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          verified: true,
-          alreadyProcessed: true,
-          orderId: existingPayment.order_id,
-          message: "Purchase already processed and entitlement active",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ── 2. Server-to-Server Google Play Verification (FAIL-CLOSED) ─────────
+    // ── 1. Authoritative Server-to-Server Google Play Verification (FAIL-CLOSED) ──
     // A. Validate Google Service Account Credentials
     const saValidation = validateServiceAccountJson(GOOGLE_SERVICE_ACCOUNT_JSON);
     if (!saValidation.valid) {
@@ -264,7 +209,6 @@ serve(async (req) => {
     }
 
     // C. Query Google Play Developer API
-    const isSub = productType === "subs" || Boolean(planId) || productId.startsWith("sub_");
     const verifyUrl = isSub
       ? `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/subscriptionsv2/tokens/${purchaseToken}`
       : `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/products/${productId}/tokens/${purchaseToken}`;
@@ -333,6 +277,164 @@ serve(async (req) => {
         }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── 2. Authoritative Order ID Resolution (CodeRabbit F-09 Fix) ─────────
+    // Prefer authoritative identifier returned by Google Play Developer API:
+    //  - Subscriptions: latestOrderId (e.g. GPA.xxxx..0)
+    //  - In-App Products: orderId (e.g. GPA.xxxx)
+    //  - Fallback: deterministic server-derived token hash (GPA.TOK.<hash> / GPA.SUB.<hash>) - client-supplied orderId is NEVER used for identity
+    const orderResolution = await resolveAuthoritativeOrderId({
+      isSub,
+      googleVerificationResult,
+      clientOrderId: orderId,
+      purchaseToken,
+      productId,
+    });
+    const effectiveOrderId = orderResolution.authoritativeOrderId;
+    console.log(`[VERIFY_PLAY_DIAGNOSTIC] Authoritative order resolved: ${effectiveOrderId} (source: ${orderResolution.source})`);
+
+    // ── 3. Post-Verification Replay & Ownership Check ──────────────────────
+    // Query payments using authoritative order ID and durable purchaseToken:
+    // Prioritize exact match on authoritative order ID first, fallback to durable purchaseToken
+    let { data: existingPayment } = await supabaseAdmin
+      .from("payments")
+      .select("payment_id, order_id, status, gateway_payment_id, gateway_order_id, gateway_response, orders(profile_id, student_id)")
+      .eq("gateway", "google_play")
+      .or(`gateway_payment_id.eq.${effectiveOrderId},gateway_order_id.eq.${effectiveOrderId}`)
+      .eq("status", "captured")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingPayment && purchaseToken) {
+      const { data: tokenPayment } = await supabaseAdmin
+        .from("payments")
+        .select("payment_id, order_id, status, gateway_payment_id, gateway_order_id, gateway_response, orders(profile_id, student_id)")
+        .eq("gateway", "google_play")
+        .eq("gateway_response->>purchaseToken", purchaseToken)
+        .eq("status", "captured")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      existingPayment = tokenPayment;
+    }
+
+    if (existingPayment) {
+      let existingSubscriptionEndDate: string | null = null;
+      let existingSubscriptionOrderId: string | null = null;
+      if (isSub) {
+        const studentId = (existingPayment.orders as any)?.student_id;
+        if (studentId) {
+          let targetPlanId = planId || null;
+          if (!targetPlanId && existingPayment.order_id) {
+            const { data: itemData } = await supabaseAdmin
+              .from("order_items")
+              .select("plan_id")
+              .eq("order_id", existingPayment.order_id)
+              .maybeSingle();
+            if (itemData?.plan_id) {
+              targetPlanId = itemData.plan_id;
+            }
+          }
+
+          if (targetPlanId) {
+            const { data: subData } = await supabaseAdmin
+              .from("student_subscriptions")
+              .select("end_date, order_id")
+              .eq("student_id", studentId)
+              .eq("plan_id", targetPlanId)
+              .order("end_date", { ascending: false, nullsFirst: false })
+              .limit(1)
+              .maybeSingle();
+            if (subData?.end_date) {
+              existingSubscriptionEndDate = subData.end_date;
+              existingSubscriptionOrderId = subData.order_id || null;
+            }
+          }
+        }
+      }
+
+      const matchEval = evaluateExistingPaymentMatch({
+        isSub,
+        authoritativeOrderId: effectiveOrderId,
+        purchaseToken,
+        existingPayment: existingPayment as any,
+        currentProfileId: profileId,
+        googleVerificationResult,
+        existingSubscriptionEndDate,
+        existingSubscriptionOrderId,
+        transactionTimestamp,
+        productId,
+      });
+
+      console.log(`[VERIFY_PLAY_DIAGNOSTIC] Payment evaluation: order=${effectiveOrderId}, recorded=${(existingPayment as any).gateway_payment_id || (existingPayment as any).gateway_order_id}, isSub=${isSub}, isTestPurchase=${Boolean(googleVerificationResult?.testPurchase)}, isDuplicate=${matchEval.isDuplicate}, isRenewal=${matchEval.isSubscriptionRenewal}, reason=${matchEval.decisionReason || 'unspecified'}`);
+
+      if (matchEval.isAccountMismatch) {
+        console.warn(`[VERIFY_PLAY_SECURITY] Token replay by different user. Original: ${matchEval.paymentOwnerProfileId}, Attempted: ${profileId}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "This purchase has already been claimed by another account. Please sign in with the original account or contact support.",
+          }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (matchEval.isMissingSubscriptionEvidence) {
+        console.warn(`[VERIFY_PLAY] Existing captured payment found (${effectiveOrderId}) but subscription record is missing and Google expiry is missing or invalid. Failing closed.`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Existing payment found but subscription record is missing and incoming verified expiry is missing or invalid. Refusing to fabricate entitlement.",
+            code: "MISSING_SUBSCRIPTION_EVIDENCE",
+            orderId: existingPayment.order_id,
+          }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (matchEval.isDuplicate && !matchEval.isEntitlementRecovery) {
+        console.log(`[VERIFY_PLAY] Payment ${effectiveOrderId} already captured by current user. Returning success idempotently.`);
+
+        // Ensure Google Play acknowledgment was not interrupted during earlier attempt
+        try {
+          if (accessToken) {
+            const ackUrl = isSub
+              ? `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/subscriptions/${productId}/tokens/${purchaseToken}:acknowledge`
+              : `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${ANDROID_PACKAGE_NAME}/purchases/products/${productId}/tokens/${purchaseToken}:acknowledge`;
+            await fetch(ackUrl, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ developerPayload: profileId }),
+            });
+          }
+        } catch (replayAckErr) {
+          console.warn("[VERIFY_PLAY] Idempotent replay acknowledge non-fatal warning:", replayAckErr);
+        }
+
+        const isExpired = existingSubscriptionEndDate && new Date(existingSubscriptionEndDate).getTime() < new Date(transactionTimestamp).getTime();
+        const msg = isExpired
+          ? "Purchase already processed and entitlement expired"
+          : "Purchase already processed and entitlement active";
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            verified: true,
+            alreadyProcessed: true,
+            orderId: existingPayment.order_id,
+            message: msg,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (matchEval.isSubscriptionRenewal) {
+        console.log(`[VERIFY_PLAY] Valid subscription renewal cycle detected for ${productId} (new orderId: ${effectiveOrderId}). Proceeding to grant renewal.`);
+      } else if (matchEval.isEntitlementRecovery) {
+        console.log(`[VERIFY_PLAY] Existing captured payment found with missing entitlement for ${productId}. Proceeding to RPC for safe entitlement recovery.`);
+      }
     }
 
     // F. Pre-commit check completed.
@@ -466,7 +568,6 @@ serve(async (req) => {
     }
 
     // ── 5. Create Order & Payment Record (Atomic RPC with Resilient Client Fallback) ──
-    const transactionTimestamp = new Date().toISOString();
     let effectiveFinalOrderId = "";
     let entitlementGranted = "";
 
@@ -664,7 +765,8 @@ serve(async (req) => {
         gateway: "google_play",
         gateway_order_id: effectiveOrderId,
         gateway_payment_id: effectiveOrderId,
-        gateway_response: googleVerificationResult || {
+        gateway_response: {
+          ...(typeof googleVerificationResult === "object" && googleVerificationResult !== null ? googleVerificationResult : {}),
           verified: true,
           productId,
           purchaseToken,

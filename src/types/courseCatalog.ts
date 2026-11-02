@@ -57,6 +57,19 @@ export interface SubscriptionPlan {
   features: PlanFeature[];
 }
 
+
+export interface CourseInstallmentPlan {
+  planId: string;
+  courseId: string;
+  planName: string;
+  totalFee: number;
+  numberOfInstallments: number;
+  intervalMonths: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Course {
   courseId: string;
   slug: string;
@@ -84,4 +97,5 @@ export interface Course {
   sortOrder: number;
   presentation: CoursePresentation;
   plans: SubscriptionPlan[];
+  installmentPlans?: CourseInstallmentPlan[];
 }

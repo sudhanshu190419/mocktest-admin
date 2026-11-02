@@ -231,6 +231,7 @@ const navItems: AdminNavItem[] = [
     children: [
       { label: 'Overview', href: '/admin/commerce', permission: 'accessFinance' },
       { label: 'Subscription Plans', href: '/admin/commerce/subscription-plans', permission: 'accessFinance' },
+      { label: 'Installment Plans', href: '/admin/commerce/installment-plans', permission: 'accessFinance' },
       { label: 'Orders', href: '/admin/commerce/orders', permission: 'accessFinance' },
       { label: 'Payments', href: '/admin/commerce/payments', permission: 'accessFinance' },
       { label: 'Course Purchases', href: '/admin/commerce/courses', permission: 'accessFinance' },

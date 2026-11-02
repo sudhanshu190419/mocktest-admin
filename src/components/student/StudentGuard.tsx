@@ -1,14 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 
 export function StudentGuard({ children }: { children: React.ReactNode }) {
   const { user, teacherProfile, loading, retryAuth } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Full destination path including query parameters (§9 - Deep-Link Preservation)
+  const fullPath = useMemo(() => {
+    const qs = searchParams?.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams]);
+
   const [redirected, setRedirected] = useState(false);
   const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -47,10 +55,10 @@ export function StudentGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading || redirected) return;
 
-    // 1. If not authenticated, redirect to login
+    // 1. If not authenticated, redirect to login preserving full destination
     if (!user) {
       setRedirected(true);
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/login?next=${encodeURIComponent(fullPath)}`);
       return;
     }
 
@@ -60,7 +68,7 @@ export function StudentGuard({ children }: { children: React.ReactNode }) {
       router.replace('/teacher');
       return;
     }
-  }, [user, teacherProfile, loading, pathname, router, redirected]);
+  }, [user, teacherProfile, loading, fullPath, router, redirected]);
 
   // 1. Timeout State (Design A Styled)
   if (loadTimedOut && loading) {
@@ -96,7 +104,7 @@ export function StudentGuard({ children }: { children: React.ReactNode }) {
             </button>
             <button
               type="button"
-              onClick={() => router.replace(`/login?next=${encodeURIComponent(pathname)}`)}
+              onClick={() => router.replace(`/login?next=${encodeURIComponent(fullPath)}`)}
               className="py-2.5 px-4 rounded-field border border-line hover:bg-paper text-ink font-semibold text-xs transition-all"
             >
               Sign In Again

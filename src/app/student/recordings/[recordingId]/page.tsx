@@ -27,6 +27,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   fetchStudentRecordingById,
   getStudentPlaybackUrl,
+  isInstallmentArrearsError,
   type StudentRecording,
   type StudentPlaybackUrlResult,
 } from '@/services/student/studentRecordingWebService';
@@ -59,6 +60,7 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
 
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [initialErrorCode, setInitialErrorCode] = useState<string | null>(null);
   const [recording, setRecording] = useState<StudentRecording | null>(null);
   const [playbackUrlData, setPlaybackUrlData] = useState<StudentPlaybackUrlResult | null>(null);
 
@@ -105,7 +107,9 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
       const urlResult = await getStudentPlaybackUrl(recordingId);
       if (urlResult.error || !urlResult.data) {
         console.warn('[RecordingPage] Initial playback URL request failed:', urlResult.error);
-        // We still render the player; it has built-in retry and reactive refresh
+        if (isInstallmentArrearsError(urlResult.error, urlResult.errorCode)) {
+          setInitialErrorCode('INSTALLMENT_ARREARS_BLOCKED');
+        }
       } else {
         setPlaybackUrlData(urlResult.data);
       }
@@ -162,32 +166,56 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
     );
   }
 
-  // ── Error / Unauthorized State ─────────────────────────────────────────
+  // ── Error / Unauthorized State (§8 - Lockout Recovery Experience) ───────
   if (errorMessage || !recording) {
+    const isInstallmentBlocked = isInstallmentArrearsError(errorMessage, initialErrorCode);
+
     return (
       <div className="min-h-screen bg-sand flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-surface rounded-sheet border border-line p-8 text-center shadow-card space-y-5">
-          <div className="w-16 h-16 rounded-card bg-rose-50 border border-rose-200 mx-auto flex items-center justify-center text-rose-600 shadow-xs">
+          <div
+            className={`w-16 h-16 rounded-card mx-auto flex items-center justify-center shadow-xs border ${
+              isInstallmentBlocked
+                ? 'bg-amber-50 border-amber-200 text-amber-600'
+                : 'bg-rose-50 border-rose-200 text-rose-600'
+            }`}
+          >
             <IconWarning className="w-8 h-8" />
           </div>
 
           <div className="space-y-2">
             <h2 className="text-lg font-bold text-ink">
-              Recorded Class Unavailable
+              {isInstallmentBlocked ? 'Installment Payment Overdue' : 'Recorded Class Unavailable'}
             </h2>
             <p className="text-xs text-ink-secondary leading-relaxed">
-              {errorMessage || 'This recording is either not found or you are not enrolled in the corresponding batch.'}
+              {isInstallmentBlocked
+                ? 'Your access to live and recorded classes is temporarily paused because an installment payment is overdue. Complete the pending payment to restore access.'
+                : errorMessage ||
+                  'This recording is either not found or you are not enrolled in the corresponding batch.'}
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-            <button
-              onClick={loadRecordingData}
-              className="w-full inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 rounded-field bg-paper hover:bg-sky-tint text-ink text-xs font-semibold border border-line transition-colors"
-            >
-              <IconRefresh className="w-4 h-4" />
-              <span>Retry</span>
-            </button>
+            {isInstallmentBlocked ? (
+              <Link
+                href={
+                  recording?.courseId
+                    ? `/student/courses?courseId=${recording.courseId}&openInstallments=true`
+                    : '/student/courses?openInstallments=true'
+                }
+                className="w-full inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 rounded-field bg-brand hover:bg-brand-hover text-white text-xs font-bold shadow-xs transition-all"
+              >
+                <span>View & Pay Installment</span>
+              </Link>
+            ) : (
+              <button
+                onClick={loadRecordingData}
+                className="w-full inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 rounded-field bg-paper hover:bg-sky-tint text-ink text-xs font-semibold border border-line transition-colors"
+              >
+                <IconRefresh className="w-4 h-4" />
+                <span>Retry</span>
+              </button>
+            )}
 
             <Link
               href="/student/recordings"
@@ -227,6 +255,8 @@ export default function StudentRecordingPlayerPage({ params }: PageProps) {
             isCompleted={recording.progress?.isCompleted ?? false}
             studentId={user?.id}
             thumbnailUrl={recording.thumbnailPath}
+            courseId={recording.courseId}
+            initialErrorCode={initialErrorCode}
             onProgressUpdate={handleProgressUpdate}
           />
         </section>

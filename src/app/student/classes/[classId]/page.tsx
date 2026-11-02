@@ -50,6 +50,7 @@ export default function StudentLiveClassroomPage({ params }: PageProps) {
 
   const [lifecycle, setLifecycle] = useState<PageLifecycle>('authorizing');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [classData, setClassData] = useState<AuthorizedLiveClassRoomData | null>(null);
   const [livekitToken, setLivekitToken] = useState<string | null>(null);
   const [livekitUrl, setLivekitUrl] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export default function StudentLiveClassroomPage({ params }: PageProps) {
       if (authRes.error || !authRes.data) {
         setLifecycle('error');
         setErrorMessage(authRes.error || 'You do not have permission to join this live class.');
+        if (authRes.errorCode) setErrorCode(authRes.errorCode);
         return;
       }
 
@@ -98,6 +100,7 @@ export default function StudentLiveClassroomPage({ params }: PageProps) {
       if (tokenRes.error || !tokenRes.data) {
         setLifecycle('error');
         setErrorMessage(tokenRes.error || 'Failed to acquire classroom access credentials.');
+        if (tokenRes.errorCode) setErrorCode(tokenRes.errorCode);
         return;
       }
 
@@ -152,6 +155,8 @@ export default function StudentLiveClassroomPage({ params }: PageProps) {
       <ClassConnectionState
         type="error"
         errorMessage={errorMessage || undefined}
+        errorCode={errorCode}
+        courseId={classData?.courseId}
         onRetry={initializeClassroom}
       />
     );

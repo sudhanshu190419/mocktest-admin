@@ -18,10 +18,12 @@ import {
   loadRazorpayScript,
   createPaymentOrder,
   pollCourseEnrollment,
+  pollInstallmentSettlement,
   pollPYQEnrollment,
   resolveStudentId,
 } from '@/services/paymentService';
 import { formatCoursePrice } from '@/services/courseCatalogService';
+import type { CourseInstallmentPlan } from '@/types/courseCatalog';
 
 export interface PaymentModalProps {
   isOpen: boolean;
@@ -35,7 +37,12 @@ export interface PaymentModalProps {
   currency?: string;
   planId?: string;
   planName?: string;
-  accessDurationLabel: string;
+  accessDurationLabel?: string;
+  paymentMode?: 'purchase' | 'subscription' | 'installment';
+  installmentPlan?: CourseInstallmentPlan;
+  firstTrancheAmount?: number;
+  agreementId?: string;
+  installmentIndex?: number;
   onSuccess?: () => void;
 }
 
@@ -71,6 +78,11 @@ export function PaymentModal({
   planId,
   planName,
   accessDurationLabel,
+  paymentMode,
+  installmentPlan,
+  firstTrancheAmount,
+  agreementId,
+  installmentIndex,
   onSuccess,
 }: PaymentModalProps) {
   const { user, teacherProfile } = useAuth();
@@ -108,6 +120,7 @@ export function PaymentModal({
     setErrorMessage(null);
 
     try {
+
       // 1. Ensure Razorpay checkout script is loaded
       const scriptReady = await loadRazorpayScript();
       if (!scriptReady) {
@@ -120,10 +133,13 @@ export function PaymentModal({
       const studentId = await resolveStudentId(user.id);
 
       // 3. Create verified Razorpay order via Edge Function
+      const isInstallment = paymentMode === 'installment';
       const orderRes = await createPaymentOrder({
         courseId: itemType === 'course' ? itemId : undefined,
         packageId: itemType === 'pyq' ? itemId : undefined,
-        planId: planId,
+        planId: isInstallment ? undefined : planId,
+        installmentPlanId: isInstallment && !agreementId ? (installmentPlan?.planId || planId) : undefined,
+        agreementId: isInstallment && agreementId ? agreementId : undefined,
         studentId: studentId,
       });
 
@@ -170,7 +186,9 @@ export function PaymentModal({
           setStatus('verifying');
 
           const grantConfirmed =
-            itemType === 'course'
+            isInstallment && agreementId && installmentIndex
+              ? await pollInstallmentSettlement(agreementId, installmentIndex, 45000, 2000)
+              : itemType === 'course'
               ? await pollCourseEnrollment(itemId, studentId, 45000, 2000)
               : await pollPYQEnrollment(itemId, studentId, 45000, 2000);
 
@@ -212,8 +230,11 @@ export function PaymentModal({
 
     try {
       const studentId = await resolveStudentId(user.id);
+      const isInstallment = paymentMode === 'installment';
       const grantConfirmed =
-        itemType === 'course'
+        isInstallment && agreementId && installmentIndex
+          ? await pollInstallmentSettlement(agreementId, installmentIndex, 30000, 2000)
+          : itemType === 'course'
           ? await pollCourseEnrollment(itemId, studentId, 30000, 2000)
           : await pollPYQEnrollment(itemId, studentId, 30000, 2000);
 
@@ -375,13 +396,21 @@ export function PaymentModal({
                   {planName || (itemType === 'course' ? 'Full-Course Access' : 'Lifetime Archive')}
                 </strong>
               </div>
+              {paymentMode === 'installment' && installmentPlan && (
+                <div className="flex items-center justify-between text-caption sm:text-sm text-ink-secondary">
+                  <span>Total Course Fee</span>
+                  <strong className="text-ink font-semibold">
+                    {formatCoursePrice(installmentPlan.totalFee, currency)} ({installmentPlan.numberOfInstallments} payments)
+                  </strong>
+                </div>
+              )}
               <div className="flex items-center justify-between text-caption sm:text-sm text-ink-secondary">
-                <span>Validity Duration</span>
+                <span>{paymentMode === 'installment' ? 'Payment Terms' : 'Validity Duration'}</span>
                 <strong className="text-ink font-semibold">{accessDurationLabel}</strong>
               </div>
               <div className="pt-2.5 border-t border-line flex items-baseline justify-between">
                 <span className="text-caption font-bold text-ink uppercase tracking-wide">
-                  Total Payable
+                  {paymentMode === 'installment' ? (installmentIndex ? `Due Now (Installment ${installmentIndex})` : 'Due Today (Installment 1)') : 'Total Payable'}
                 </span>
                 <div className="text-right">
                   <span className="text-2xl font-bold text-ink tabular-nums">

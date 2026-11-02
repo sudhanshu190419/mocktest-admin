@@ -825,6 +825,19 @@ export const adminKeys = {
     subscriptionPlansList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
       [...adminKeys.commerce.subscriptionPlans(), filters, pagination] as const,
 
+    // ── Installment Plan Management ──────────────────────────────────
+
+    /** Key for every installment plan list query. */
+    installmentPlans: () => [...adminKeys.commerce.all(), 'installmentPlans'] as const,
+
+    /** Key for a specific paginated installment plan list. */
+    installmentPlansList: (filters?: Record<string, unknown>, pagination?: Record<string, unknown>) =>
+      [...adminKeys.commerce.installmentPlans(), filters, pagination] as const,
+
+    /** Key for a specific installment plan detail query. */
+    installmentPlanDetail: (planId: string) =>
+      [...adminKeys.commerce.installmentPlans(), 'detail', planId] as const,
+
     /** Key for every subscription metrics query. */
     subscriptionMetrics: () => [...adminKeys.commerce.all(), 'subscriptionMetrics'] as const,
 

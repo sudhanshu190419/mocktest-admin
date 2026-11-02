@@ -19,6 +19,7 @@ import {
 } from '@/services/student/studentCourseWebService';
 import { Skeleton, ErrorState } from '@/components/ui/mmt';
 import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
+import { StudentCourseInstallmentSchedule } from '@/components/student/StudentCourseInstallmentSchedule';
 
 export default function StudentCourseDetailPage() {
   const params = useParams();
@@ -138,6 +139,12 @@ export default function StudentCourseDetailPage() {
           </div>
         </div>
       </section>
+
+      {/* ── Installment Payment Schedule (Active/In-Arrears Agreements) ── */}
+      <StudentCourseInstallmentSchedule
+        courseId={course.courseId}
+        courseTitle={course.title}
+      />
 
       {/* ── Section 1: Subject Learning Tracks ──────────────────────────────── */}
       <section className="space-y-4">

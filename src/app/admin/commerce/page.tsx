@@ -15,6 +15,7 @@ import {
   Package,
   CreditCard,
   Tag,
+  CalendarCheck,
 } from '@phosphor-icons/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -172,6 +173,22 @@ export default function CommercePage() {
           </p>
           <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-cyan-600 group-hover:gap-1.5 transition-all">
             View PYQ Purchases →
+          </span>
+        </Link>
+
+        <Link
+          href="/admin/commerce/installment-plans"
+          className="group rounded-xl border border-gray-200 bg-white p-6 transition-all hover:border-amber-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+            <CalendarCheck size={24} weight="duotone" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Installment Plans</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Create, configure, and manage course installment plans and payment schedules.
+          </p>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-600 group-hover:gap-1.5 transition-all">
+            Manage Installments →
           </span>
         </Link>
 
