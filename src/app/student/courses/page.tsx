@@ -21,7 +21,7 @@ import { EmptyState, ErrorState, Skeleton, ButtonLink } from '@/components/ui/mm
 
 type CourseFilterTab = 'all' | 'installments' | 'settled';
 
-export default function StudentCoursesPage() {
+function StudentCoursesContent() {
   const searchParams = useSearchParams();
   const deepCourseId = searchParams.get('courseId');
   const shouldOpenInstallments = searchParams.get('openInstallments') === 'true';
@@ -310,5 +310,23 @@ export default function StudentCoursesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function StudentCoursesPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-64 rounded-field" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Skeleton className="h-64 rounded-card" />
+            <Skeleton className="h-64 rounded-card" />
+          </div>
+        </div>
+      }
+    >
+      <StudentCoursesContent />
+    </React.Suspense>
   );
 }

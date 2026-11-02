@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 
-export function StudentGuard({ children }: { children: React.ReactNode }) {
+function StudentGuardInner({ children }: { children: React.ReactNode }) {
   const { user, teacherProfile, loading, retryAuth } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -137,4 +137,25 @@ export function StudentGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+export function StudentGuard({ children }: { children: React.ReactNode }) {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen w-full bg-paper flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <span className="w-10 h-10 rounded-card bg-sky-tint border border-line flex items-center justify-center text-brand shadow-xs">
+              <CircleNotch size={22} className="animate-spin text-brand" />
+            </span>
+            <p className="text-xs font-semibold text-ink-secondary font-display tracking-tight">
+              Opening Student Workspace...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <StudentGuardInner>{children}</StudentGuardInner>
+    </React.Suspense>
+  );
 }
