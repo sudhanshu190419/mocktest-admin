@@ -36,7 +36,7 @@ const SCREEN_COPY: Record<AuthScreen, { eyebrow: string; title: string; descript
   onboarding: {
     eyebrow: 'MAKE IT YOURS',
     title: 'What are you working towards?',
-    description: 'Choose your learning goal, then add an email if you like.',
+    description: 'Choose your learning goal, then add your registered email address.',
   },
   'forgot-password': {
     eyebrow: 'LET’S GET YOU BACK',
@@ -541,6 +541,16 @@ function OnboardingForm({ next }: { next: string }) {
           return { success: true };
         }
 
+        const trimmedEmail = email.trim();
+        if (!trimmedEmail) {
+          return { success: false, error: 'Email address is required to complete onboarding.' };
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) {
+          return { success: false, error: 'Please enter a valid email address (e.g. student@example.com).' };
+        }
+
         try {
           const {
             data: { user },
@@ -559,18 +569,15 @@ function OnboardingForm({ next }: { next: string }) {
 
           const streamId = streamRow?.stream_id || null;
 
-          const updatePayload: Record<string, any> = {};
+          const updatePayload: Record<string, any> = { email: trimmedEmail };
           if (streamId) updatePayload.selected_stream_id = streamId;
-          if (email.trim()) updatePayload.email = email.trim();
 
-          if (Object.keys(updatePayload).length > 0) {
-            await supabase.from('profiles').update(updatePayload).eq('profile_id', user.id);
-            if (streamId) {
-              await supabase
-                .from('student_details')
-                .update({ selected_stream_id: streamId })
-                .eq('student_id', user.id);
-            }
+          await supabase.from('profiles').update(updatePayload).eq('profile_id', user.id);
+          if (streamId) {
+            await supabase
+              .from('student_details')
+              .update({ selected_stream_id: streamId })
+              .eq('student_id', user.id);
           }
 
           router.replace(next);
@@ -622,19 +629,21 @@ function OnboardingForm({ next }: { next: string }) {
             </button>
           </p>
           <label className="auth-field" htmlFor="auth-email">
-            Email address <span>(optional)</span>
+            Email address <span>*</span>
             <input
               id="auth-email"
               name="email"
               type="email"
               autoComplete="email"
+              required
               maxLength={254}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              placeholder="student@example.com"
               autoFocus
             />
           </label>
-          <p className="auth-note">Leave this blank if you prefer to add it later.</p>
+          <p className="auth-note">We&apos;ll send your welcome email and important notifications here.</p>
         </>
       )}
     </AuthForm>

@@ -11,6 +11,8 @@
 // @module edge-functions/user-account-delete/accountDeleteCore
 // ============================================================================
 
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
+
 export const MAX_OTP_REAUTH_AGE_SECONDS = 300; // 5 minutes maximum freshness window
 export const CLOCK_SKEW_TOLERANCE_SECONDS = 10; // 10 seconds allowable clock skew
 export const MAX_STORAGE_PAGE_LIMIT = 100;
@@ -1108,7 +1110,7 @@ export async function handleUserAccountDelete(
     // Retrieve trusted profile from server-side database; NEVER trust client claims.
     const { data: profileRow, error: profileErr } = await adminClient
       .from('profiles')
-      .select('profile_id, role')
+      .select('profile_id, role, email, name')
       .eq('profile_id', userId)
       .maybeSingle();
 
@@ -1116,6 +1118,10 @@ export async function handleUserAccountDelete(
       console.error(`[user-account-delete] Profile query failed for user ${userId}:`, profileErr.message);
       return errorResponse('Failed to verify account authorization.', 500);
     }
+
+    // ACC-04: Retain the user's verified contact email and name before deletion cascade
+    const userEmail = profileRow?.email?.trim() || user?.email?.trim() || null;
+    const userName = profileRow?.name?.trim() || (user?.user_metadata?.full_name as string)?.trim() || 'Student';
 
     let isAuthorizedStudent = false;
     let existingOutboxRow: any = null;
@@ -1394,6 +1400,31 @@ export async function handleUserAccountDelete(
     }
 
     console.log(`[user-account-delete] Account deletion completed successfully for user: ${userId}`);
+
+    // ACC-04: Enqueue account deletion confirmation email to the captured email address
+    if (userEmail) {
+      try {
+        await enqueueEmailSafe(adminClient, {
+          recipientEmail: userEmail,
+          recipientName: userName,
+          recipientProfileId: null,
+          eventType: 'ACC-04',
+          templateId: 'ACC-04',
+          subject: 'Your Make Me Topper Account Has Been Deleted',
+          idempotencyKey: `acct_delete:${userId}`,
+          priority: 'high',
+          payload: {
+            recipientName: userName,
+            recipientEmail: userEmail,
+            deletionDate: new Date().toISOString(),
+            supportEmail: 'support@inovoxy.com',
+          },
+        });
+      } catch (emailErr) {
+        // Non-fatal: email queue failures must not crash the successful deletion response
+        console.warn(`[user-account-delete] ACC-04 confirmation email enqueue warning for user ${userId}:`, emailErr);
+      }
+    }
 
     return jsonResponse({
       success: true,

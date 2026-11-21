@@ -30,7 +30,7 @@ import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } 
 
 export type OrderStatus = 'pending' | 'confirmed' | 'cancelled' | 'refunded';
 export type PaymentStatus = 'pending' | 'captured' | 'failed' | 'refunded' | 'partially_refunded';
-export type ItemType = 'subscription_plan' | 'pyq_package' | 'course';
+export type ItemType = 'course' | 'pyq_package' | 'installment';
 
 export interface OrderListItem {
   orderId: string;

@@ -53,8 +53,6 @@ export type NotificationType =
   | 'live_class_started'
   | 'content_approved'
   | 'content_rejected'
-  | 'subscription_expiring'
-  | 'subscription_expired'
   | 'batch_assigned'
   // ── Doubt System (migration 117 + 118 events) ───────────────────────
   | 'doubt_submitted'

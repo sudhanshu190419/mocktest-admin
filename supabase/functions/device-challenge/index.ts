@@ -57,6 +57,7 @@ import {
   hashDeviceToken,
   writeDeviceAudit,
 } from '../_shared/trustedDevice.ts';
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -437,6 +438,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_ip_address: clientIp,
       p_user_agent: userAgent,
     });
+
+    // ACC-03: Enqueue untrusted device security alert email to the user
+    try {
+      await enqueueEmailSafe(serviceClient, {
+        recipientProfileId: callerProfileId,
+        eventType: 'ACC-03',
+        templateId: 'ACC-03',
+        subject: 'Security Alert: New Device Sign-in Attempt',
+        idempotencyKey: `device_alert:${newDevice.device_id}`,
+        priority: 'high',
+        payload: {
+          deviceName,
+          userAgent: userAgent || 'Unknown browser',
+          attemptedAt: nowIso,
+          supportEmail: 'support@inovoxy.com',
+        },
+      });
+    } catch (emailErr) {
+      // Non-fatal: email queue failures must NEVER disrupt authentication or device challenge
+      structuredLog('DEVICE_ALERT_EMAIL_FAILED', {
+        deviceId: newDevice.device_id,
+        profileId: callerProfileId,
+        error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      });
+    }
 
     structuredLog('DEVICE_CREATED_PENDING', {
       deviceId: newDevice.device_id,

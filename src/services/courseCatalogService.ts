@@ -1,5 +1,5 @@
 import { supabase } from '@/config/supabase';
-import type { Course, SubscriptionPlan, CourseInstallmentPlan } from '@/types/courseCatalog';
+import type { Course, CourseInstallmentPlan } from '@/types/courseCatalog';
 
 export function formatCoursePrice(amount: number, currency: string = 'INR'): string {
   return new Intl.NumberFormat('en-IN', {
@@ -121,22 +121,6 @@ export async function fetchActiveCourseInstallmentPlans(
 function mapDbCourseRow(row: any): Course {
   const stream = row.streams || {};
   const streamCode = (stream.code || 'NEET').toUpperCase();
-  const plans: SubscriptionPlan[] = (row.subscription_plans || []).map((p: any) => ({
-    planId: p.plan_id,
-    courseId: p.course_id,
-    name: p.name,
-    slug: p.slug,
-    description: p.description || '',
-    price: p.price,
-    currencyCode: p.currency_code || 'INR',
-    billingCycle: p.billing_cycle,
-    durationDays: p.duration_days,
-    trialDays: p.trial_days || 0,
-    isFeatured: !!p.is_featured,
-    sortOrder: p.sort_order || 0,
-    isActive: p.is_active ?? true,
-    features: [],
-  }));
 
   const installmentPlans: CourseInstallmentPlan[] = (row.course_installment_plans || [])
     .filter((p: any) => p.is_active ?? true)
@@ -204,7 +188,6 @@ function mapDbCourseRow(row: any): Course {
         },
       ],
     },
-    plans,
     installmentPlans,
   };
 }
@@ -250,21 +233,6 @@ export async function getCourses(): Promise<Course[]> {
           total_fee,
           number_of_installments,
           interval_months,
-          is_active
-        ),
-        subscription_plans (
-          plan_id,
-          course_id,
-          name,
-          slug,
-          description,
-          price,
-          currency_code,
-          billing_cycle,
-          duration_days,
-          trial_days,
-          is_featured,
-          sort_order,
           is_active
         )
       `)
@@ -339,21 +307,6 @@ export async function getHomepageTrendingCourses(): Promise<Course[]> {
           total_fee,
           number_of_installments,
           interval_months,
-          is_active
-        ),
-        subscription_plans (
-          plan_id,
-          course_id,
-          name,
-          slug,
-          description,
-          price,
-          currency_code,
-          billing_cycle,
-          duration_days,
-          trial_days,
-          is_featured,
-          sort_order,
           is_active
         )
       `)

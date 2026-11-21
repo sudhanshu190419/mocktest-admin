@@ -46,7 +46,6 @@ const ACCESS_TYPE_OPTIONS = [
   { value: '', label: 'All Access Types' },
   { value: 'purchase', label: 'Purchase' },
   { value: 'admin_grant', label: 'Admin Grant' },
-  { value: 'subscription', label: 'Subscription' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -38,6 +38,11 @@ export interface CourseInstallmentPlan {
 
 export type InstallmentPlanListItem = CourseInstallmentPlan;
 
+export interface InstallmentCourseOption {
+  courseId: string;
+  title: string;
+}
+
 export interface CreateInstallmentPlanInput {
   courseId: string;
   planName: string;
@@ -451,5 +456,39 @@ export const installmentPlanAdminService = {
     isActive: boolean,
   ): Promise<ApiResponse<CourseInstallmentPlan>> {
     return this.updateInstallmentPlan(planId, { isActive });
+  },
+
+  /**
+   * Fetches the list of courses for installment plan creation/selection.
+   */
+  async getInstallmentCourses(
+    instituteId?: string | null,
+  ): Promise<ApiResponse<InstallmentCourseOption[]>> {
+    try {
+      let query = supabase
+        .from('courses')
+        .select('course_id, title')
+        .order('title', { ascending: true })
+        .limit(200);
+
+      if (instituteId) {
+        query = query.eq('institute_id', instituteId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const items: InstallmentCourseOption[] = (data ?? []).map((row: { course_id: string; title: string }) => ({
+        courseId: row.course_id,
+        title: row.title,
+      }));
+
+      return { success: true, data: items };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
   },
 };

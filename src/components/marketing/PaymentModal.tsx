@@ -38,7 +38,7 @@ export interface PaymentModalProps {
   planId?: string;
   planName?: string;
   accessDurationLabel?: string;
-  paymentMode?: 'purchase' | 'subscription' | 'installment';
+  paymentMode?: 'purchase' | 'installment';
   installmentPlan?: CourseInstallmentPlan;
   firstTrancheAmount?: number;
   agreementId?: string;

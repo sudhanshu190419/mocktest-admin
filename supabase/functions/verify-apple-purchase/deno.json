@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "./appleBillingCore": "./appleBillingCore.ts",
+    "./appleCrypto": "./appleCrypto.ts"
+  }
+}
+

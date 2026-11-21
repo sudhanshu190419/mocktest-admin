@@ -68,6 +68,14 @@ function StudentGuardInner({ children }: { children: React.ReactNode }) {
       router.replace('/teacher');
       return;
     }
+
+    // 3. If student has no registered email, redirect to onboarding to collect mandatory email
+    const studentEmail = teacherProfile?.email?.trim() || user?.email?.trim();
+    if (teacherProfile && teacherProfile.role === 'student' && !studentEmail) {
+      setRedirected(true);
+      router.replace(`/onboarding?next=${encodeURIComponent(fullPath)}`);
+      return;
+    }
   }, [user, teacherProfile, loading, fullPath, router, redirected]);
 
   // 1. Timeout State (Design A Styled)

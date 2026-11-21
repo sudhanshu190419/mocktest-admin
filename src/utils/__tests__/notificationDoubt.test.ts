@@ -54,8 +54,6 @@ describe('doubt notification mapping (Phase 7E)', () => {
     expect(buildActionUrl('teacher_leave_request', 'leave-123', 'admin')).toBe('/admin/leave-requests/leave-123');
     expect(buildActionUrl('leave_request', 'leave-123', 'admin')).toBe('/admin/leave-requests/leave-123');
     expect(buildActionUrl('leave', 'leave-123', 'admin')).toBe('/admin/leave-requests/leave-123');
-    expect(buildActionUrl('subscription', 'sub-123', 'admin')).toBe('/admin/commerce/subscriptions/sub-123');
-    expect(buildActionUrl('subscription_plan', 'plan-123', 'admin')).toBe('/admin/commerce/subscription-plans');
   });
 
   it('routes Teacher reference types to correct Teacher-scoped routes', () => {

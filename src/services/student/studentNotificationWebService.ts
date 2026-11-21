@@ -96,7 +96,7 @@ const UI_TYPE_TO_DB_EVENT_TYPES: Record<string, string[]> = {
   result: ['result_available', 'result_published'],
   'live-class': ['live_class_reminder', 'live_class_started'],
   course: ['new_content_uploaded', 'batch_assigned', 'course_enrolled', 'pyq_access_granted'],
-  payment: ['subscription_expiring', 'subscription_expired', 'course_purchased', 'pyq_purchased'],
+  payment: ['course_purchased', 'pyq_purchased'],
   doubt: ['student_doubt'],
   announcement: ['announcement'],
   system: ['content_approved', 'content_rejected', 'custom'],

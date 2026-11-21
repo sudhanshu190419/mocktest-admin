@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "./emailWebhookCore": "./emailWebhookCore.ts"
+  }
+}
+

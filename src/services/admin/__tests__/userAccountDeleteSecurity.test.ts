@@ -1166,7 +1166,9 @@ describe('F-02: User Account Deletion Server-Side OTP Re-authentication & Durabl
       expect(freshRes.status).toBe(200);
       const freshBody = await freshRes.json();
       expect(freshBody.success).toBe(true);
-      expect(spies.rpcSpy).toHaveBeenCalledTimes(1);
+      expect(spies.rpcSpy).toHaveBeenCalledWith('delete_user_account_data', {
+        p_target_profile_id: testUserId,
+      });
       expect(spies.deleteUserAdminSpy).toHaveBeenCalledTimes(1);
     });
   });

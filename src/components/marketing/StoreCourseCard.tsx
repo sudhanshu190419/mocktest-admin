@@ -93,7 +93,6 @@ export function CourseArtwork({
 
 export function StoreCourseCard({ course, isEnrolled = false }: { course: Course; isEnrolled?: boolean }) {
   const price = course.discountedPrice ?? course.originalPrice;
-  const monthly = course.plans.find((plan) => plan.billingCycle === 'monthly' && plan.isActive);
   const STREAM_COVER_IMAGES: Record<string, string> = {
     NEET: '/course/neet.png',
     CUET: '/course/cuet.png',
@@ -160,9 +159,9 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
                 </>
               )}
             </div>
-            {!isEnrolled && monthly && (
-              <p className="store-monthly-line">
-                or <b className="tabular-nums">{formatCoursePrice(monthly.price, monthly.currencyCode)}</b> / mo
+            {!isEnrolled && course.installmentPlans && course.installmentPlans.length > 0 && (
+              <p className="store-monthly-line text-xs text-slate-500">
+                Installment plans available
               </p>
             )}
           </div>

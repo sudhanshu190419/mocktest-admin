@@ -2,7 +2,7 @@
  * Admin Course Installment Plan Management Hooks
  *
  * React Query hooks for the Admin Commerce → Installment Plans module.
- * Follows the established conventions of `useSubscriptionPlanAdmin.ts`.
+ * Manages installment plan queries, mutations, and course lookups.
  *
  * @module hooks/admin/useInstallmentPlanAdmin
  */
@@ -124,5 +124,22 @@ export function useSetInstallmentPlanActive() {
         });
       }
     },
+  });
+}
+
+/**
+ * Courses dropdown list query for installment plan creation/filtering.
+ */
+export function useInstallmentCourses(instituteId?: string | null) {
+  return useQuery({
+    queryKey: adminKeys.commerce.installmentCourses(instituteId),
+    queryFn: async () => {
+      const result = await installmentPlanAdminService.getInstallmentCourses(instituteId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch courses.');
+      }
+      return result.data!;
+    },
+    staleTime: 10 * 60 * 1000,
   });
 }

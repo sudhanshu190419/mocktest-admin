@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useSubscriptionCourses } from '@/hooks/admin/useSubscriptionAdmin';
 import {
   useCreateInstallmentPlan,
   useUpdateInstallmentPlan,
+  useInstallmentCourses,
 } from '@/hooks/admin/useInstallmentPlanAdmin';
+
 import {
   calculateInstallmentSchedulePreview,
   formatIntervalLabel,
@@ -97,7 +98,7 @@ export function InstallmentPlanFormModal({
   onSuccess,
 }: InstallmentPlanFormModalProps) {
   const { instituteId } = useAuth();
-  const { data: courses, isLoading: coursesLoading } = useSubscriptionCourses(instituteId);
+  const { data: courses, isLoading: coursesLoading } = useInstallmentCourses(instituteId);
 
   const [form, setForm] = useState<FormState>(() =>
     plan && mode === 'edit' ? stateFromPlan(plan) : EMPTY_STATE,

@@ -7,8 +7,8 @@ import { usePermissions } from '@/hooks/admin/usePermissions';
 import {
   useInstallmentPlanList,
   useSetInstallmentPlanActive,
+  useInstallmentCourses,
 } from '@/hooks/admin/useInstallmentPlanAdmin';
-import { useSubscriptionCourses } from '@/hooks/admin/useSubscriptionAdmin';
 import {
   formatIntervalLabel,
   type InstallmentPlanListItem,
@@ -196,7 +196,7 @@ function InstallmentPlansView() {
   } = useInstallmentPlanList(filters, getSortValue(sortKey), { page, pageSize });
 
   // Fetch courses for dropdown
-  const { data: courses } = useSubscriptionCourses(instituteId);
+  const { data: courses } = useInstallmentCourses(instituteId);
 
   const courseOptions = useMemo(
     () => [

@@ -2,8 +2,6 @@ import type { ExamStreamCode } from './learnerGoal';
 
 export type CourseStatus = 'draft' | 'published' | 'archived';
 
-export type BillingCycle = 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
-
 export interface CourseFacultyMember {
   name: string;
   subject: string;
@@ -34,29 +32,6 @@ export interface CoursePresentation {
   curriculum: CourseCurriculumModule[];
   faqs: CourseFaq[];
 }
-
-export interface PlanFeature {
-  featureKey: string;
-  displayName: string;
-}
-
-export interface SubscriptionPlan {
-  planId: string;
-  courseId: string;
-  name: string;
-  slug: string;
-  description: string;
-  price: number;
-  currencyCode: string;
-  billingCycle: BillingCycle;
-  durationDays: number;
-  trialDays: number;
-  isFeatured: boolean;
-  sortOrder: number;
-  isActive: boolean;
-  features: PlanFeature[];
-}
-
 
 export interface CourseInstallmentPlan {
   planId: string;
@@ -96,6 +71,5 @@ export interface Course {
   publishedAt?: string | null;
   sortOrder: number;
   presentation: CoursePresentation;
-  plans: SubscriptionPlan[];
   installmentPlans?: CourseInstallmentPlan[];
 }

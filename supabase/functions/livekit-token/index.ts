@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Supabase Edge Function — livekit-token
  *
  * Generates an authoritative, server-verified LiveKit Access Token so an
@@ -75,6 +75,46 @@ interface AuthRpcResponse {
   status?: string;
   error?: string;
   code?: string;
+}
+
+interface JwtUser {
+  id: string;
+  email?: string;
+  user_metadata?: { full_name?: string; [key: string]: unknown };
+}
+
+/**
+ * Extracts authenticated user claims from a gateway-verified Supabase JWT.
+ * Because verify_jwt = true is enforced by the Supabase Edge Runtime gateway,
+ * the signature and token validity have already been verified before execution.
+ */
+function extractUserFromVerifiedJwt(token: string): JwtUser | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = atob(padded);
+    const payload = JSON.parse(jsonStr) as Record<string, unknown>;
+
+    if (!payload.sub || typeof payload.sub !== 'string') {
+      return null;
+    }
+    if (typeof payload.exp === 'number' && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return {
+      id: payload.sub,
+      email: typeof payload.email === 'string' ? payload.email : undefined,
+      user_metadata: (payload.user_metadata && typeof payload.user_metadata === 'object')
+        ? (payload.user_metadata as { full_name?: string; [key: string]: unknown })
+        : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -160,30 +200,24 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── Verify authenticated user via Supabase Auth ────────────────
   const authHeader = req.headers.get('authorization');
-  if (!authHeader) {
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
     logStructured('warn', 'Unauthenticated request: missing Authorization header', { requestId });
+    return jsonResponse({ error: 'Unauthenticated. A valid Supabase JWT is required.' }, 401);
+  }
+
+  const token = authHeader.replace(/^bearer\s+/i, '').trim();
+  const user = extractUserFromVerifiedJwt(token);
+
+  if (!user) {
+    logStructured('warn', 'Unauthenticated request: invalid token', { requestId }, {
+      error: 'Invalid JWT payload or expired token',
+    });
     return jsonResponse({ error: 'Unauthenticated. A valid Supabase JWT is required.' }, 401);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? supabaseAnonKey;
-
-  const supabaseUserClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseUserClient.auth.getUser();
-
-  if (authError || !user) {
-    logStructured('warn', 'Unauthenticated request: invalid token', { requestId }, {
-      error: authError?.message ?? 'User is null',
-    });
-    return jsonResponse({ error: 'Unauthenticated. A valid Supabase JWT is required.' }, 401);
-  }
 
   // ── Parse request body ─────────────────────────────────────────
   let body: TokenRequestBody;
@@ -200,6 +234,34 @@ serve(async (req: Request): Promise<Response> => {
 
   if (!classIdParam && !roomNameParam) {
     return jsonResponse({ error: 'Missing classId or roomName in request body.' }, 400);
+  }
+
+  // ── Defensive validation of classIdParam (reject synthetic / malformed IDs) ──
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (classIdParam) {
+    if (classIdParam.startsWith('projected_')) {
+      logStructured('info', 'Projected timetable class not started yet', {
+        requestId,
+        userId: user.id,
+        classId: classIdParam,
+      });
+      return jsonResponse({
+        error: 'The live class has not started yet.',
+        code: 'CLASS_NOT_STARTED',
+      }, 409);
+    }
+
+    if (!UUID_REGEX.test(classIdParam)) {
+      logStructured('warn', 'Malformed class ID rejected', {
+        requestId,
+        userId: user.id,
+        classId: classIdParam,
+      });
+      return jsonResponse({
+        error: 'Invalid class ID format.',
+        code: 'INVALID_PARAMETERS',
+      }, 400);
+    }
   }
 
   // ── Authorize user via SECURITY DEFINER database RPC ──────────

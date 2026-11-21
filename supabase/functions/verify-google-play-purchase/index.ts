@@ -15,13 +15,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enqueueEmailSafe } from "../_shared/email/enqueue.ts";
 import {
   validateServiceAccountJson,
   verifyGooglePlayPurchaseState,
-  calculateSubscriptionExpiry,
-  calculateSubscriptionWindows,
-  getInstituteSubscriptionSettings,
-  validateSubscriptionCourseAssociation,
   cleanHexToUuid,
   authenticatePlayPurchaseRequest,
   sanitizeGoogleApiError,
@@ -179,6 +176,19 @@ serve(async (req) => {
 
     // Determine product categorization
     const isSub = productType === "subs" || Boolean(planId) || productId.startsWith("sub_");
+    if (isSub) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Subscription purchasing has been discontinued.",
+          code: "SUBSCRIPTIONS_DISCONTINUED",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
     const transactionTimestamp = new Date().toISOString();
 
     // ── 1. Authoritative Server-to-Server Google Play Verification (FAIL-CLOSED) ──
@@ -323,37 +333,6 @@ serve(async (req) => {
     if (existingPayment) {
       let existingSubscriptionEndDate: string | null = null;
       let existingSubscriptionOrderId: string | null = null;
-      if (isSub) {
-        const studentId = (existingPayment.orders as any)?.student_id;
-        if (studentId) {
-          let targetPlanId = planId || null;
-          if (!targetPlanId && existingPayment.order_id) {
-            const { data: itemData } = await supabaseAdmin
-              .from("order_items")
-              .select("plan_id")
-              .eq("order_id", existingPayment.order_id)
-              .maybeSingle();
-            if (itemData?.plan_id) {
-              targetPlanId = itemData.plan_id;
-            }
-          }
-
-          if (targetPlanId) {
-            const { data: subData } = await supabaseAdmin
-              .from("student_subscriptions")
-              .select("end_date, order_id")
-              .eq("student_id", studentId)
-              .eq("plan_id", targetPlanId)
-              .order("end_date", { ascending: false, nullsFirst: false })
-              .limit(1)
-              .maybeSingle();
-            if (subData?.end_date) {
-              existingSubscriptionEndDate = subData.end_date;
-              existingSubscriptionOrderId = subData.order_id || null;
-            }
-          }
-        }
-      }
 
       const matchEval = evaluateExistingPaymentMatch({
         isSub,
@@ -490,50 +469,13 @@ serve(async (req) => {
     }
 
     // ── 4. Server-Authoritative Product & Price Resolution ─────────────────
-    let resolvedItemType: "course" | "subscription_plan" | "pyq_package" = "course";
-    let itemName = "Educational Product";
-    let unitPrice = 0;
-    let resolvedCourseId = courseId;
-    let resolvedPlanId = planId;
-    let resolvedPackageId = packageId;
-    let resolvedDurationDays = 30;
+    let resolvedItemType: "course" | "pyq_package" = "course";
+let itemName = "Educational Product";
+let unitPrice = 0;
+let resolvedCourseId = courseId;
+let resolvedPackageId = packageId;
 
-    if (productId.startsWith("sub_") || planId || productType === "subs") {
-      resolvedItemType = "subscription_plan";
-      const planUuidFromSku = productId.startsWith("sub_") ? cleanHexToUuid(productId.slice(4)) : null;
-      const targetPlanId = planUuidFromSku || planId;
-
-      const { data: planData } = await supabaseAdmin
-        .from("subscription_plans")
-        .select("plan_id, name, price, course_id, billing_cycle, duration_days")
-        .eq("plan_id", targetPlanId)
-        .maybeSingle();
-
-      if (planData) {
-        resolvedPlanId = planData.plan_id;
-        resolvedCourseId = planData.course_id;
-        itemName = planData.name;
-        unitPrice = Number(planData.price) || 0;
-        resolvedDurationDays = Number(planData.duration_days) ||
-          (planData.billing_cycle === 'yearly' ? 365 :
-           planData.billing_cycle === 'half_yearly' ? 182 :
-           planData.billing_cycle === 'quarterly' ? 90 : 30);
-      }
-
-      // Migration 090 requirement: validate subscription course association
-      const courseAssoc = validateSubscriptionCourseAssociation(planData);
-      if (!courseAssoc.valid) {
-        console.error(`[VERIFY_PLAY_ERROR] Plan ${targetPlanId}: ${courseAssoc.error}`);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: courseAssoc.error,
-          }),
-          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      resolvedCourseId = courseAssoc.courseId;
-    } else if (productId.startsWith("pyq_") || packageId) {
+if (productId.startsWith("pyq_") || packageId) {
       resolvedItemType = "pyq_package";
       const pkgUuidFromSku = productId.startsWith("pyq_") ? cleanHexToUuid(productId.slice(4)) : null;
       const targetPackageId = pkgUuidFromSku || packageId;
@@ -572,13 +514,7 @@ serve(async (req) => {
     let entitlementGranted = "";
 
     const autoRenewSetting = stateValidation.isAutoRenew !== undefined ? stateValidation.isAutoRenew : true;
-    const subscriptionEndDate = resolvedItemType === "subscription_plan"
-      ? calculateSubscriptionExpiry({
-          startDate: new Date(),
-          planDurationDays: resolvedDurationDays,
-          googleExpiryTime: stateValidation.expiryTime || googleVerificationResult?.lineItems?.[0]?.expiryTime,
-        })
-      : null;
+    const subscriptionEndDate = null;
 
     const rpcPayload = buildGooglePlayRpcPayload({
       profileId,
@@ -663,7 +599,7 @@ serve(async (req) => {
       // Check if an order already exists for this profile with this specific purchaseToken
       const { data: existingOrders } = await supabaseAdmin
         .from("orders")
-        .select("order_id, status, notes, order_items(item_id, item_type, course_id, plan_id, package_id)")
+        .select("order_id, status, notes, order_items(item_id, item_type, course_id, package_id)")
         .eq("profile_id", profileId)
         .order("placed_at", { ascending: false });
 
@@ -805,99 +741,7 @@ serve(async (req) => {
           throw new Error(`Failed to grant course enrollment: ${enrollErr.message}`);
         }
         entitlementGranted = `course_enrollment:${resolvedCourseId}`;
-      } else if (resolvedItemType === "subscription_plan" && resolvedPlanId) {
-        // Enforce Migration 086 invariant: update existing active/grace row if present
-        const { data: existingSub } = await supabaseAdmin
-          .from("student_subscriptions")
-          .select("subscription_id, status")
-          .eq("student_id", studentId)
-          .eq("plan_id", resolvedPlanId)
-          .in("status", ["active", "grace"])
-          .maybeSingle();
 
-        const instSettings = await getInstituteSubscriptionSettings(supabaseAdmin, instituteId);
-        const subWindows = subscriptionEndDate
-          ? calculateSubscriptionWindows({
-              endDate: subscriptionEndDate,
-              graceDays: instSettings.graceDays,
-              contentAccessDays: instSettings.contentAccessDays,
-            })
-          : { graceEndDate: null, contentAccessEndDate: null };
-
-        if (existingSub) {
-          const { error: subUpdateErr } = await supabaseAdmin
-            .from("student_subscriptions")
-            .update({
-              order_id: effectiveFinalOrderId,
-              status: "active",
-              start_date: new Date(transactionTimestamp).toISOString().split("T")[0],
-              end_date: subscriptionEndDate,
-              grace_end_date: subWindows.graceEndDate,
-              content_access_end_date: subWindows.contentAccessEndDate,
-              is_auto_renew: autoRenewSetting,
-              payment_method_id: purchaseToken,
-              updated_at: transactionTimestamp,
-            })
-            .eq("subscription_id", existingSub.subscription_id);
-
-          if (subUpdateErr) {
-            throw new Error(`Failed to update student subscription: ${subUpdateErr.message}`);
-          }
-        } else {
-          const { error: subInsertErr } = await supabaseAdmin
-            .from("student_subscriptions")
-            .insert({
-              student_id: studentId,
-              plan_id: resolvedPlanId,
-              course_id: resolvedCourseId,
-              institute_id: instituteId,
-              order_id: effectiveFinalOrderId,
-              status: "active",
-              start_date: new Date(transactionTimestamp).toISOString().split("T")[0],
-              end_date: subscriptionEndDate,
-              grace_end_date: subWindows.graceEndDate,
-              content_access_end_date: subWindows.contentAccessEndDate,
-              is_auto_renew: autoRenewSetting,
-              payment_method_id: purchaseToken,
-              created_at: transactionTimestamp,
-              updated_at: transactionTimestamp,
-            });
-
-          if (subInsertErr) {
-            throw new Error(`Failed to create student subscription: ${subInsertErr.message}`);
-          }
-        }
-
-        if (resolvedCourseId) {
-          // Check if student already holds permanent ownership (enrollment_type = 'purchase') per Migration 096
-          const { data: existingEnrollment } = await supabaseAdmin
-            .from("course_enrollments")
-            .select("enrollment_id, enrollment_type, enrolled_at")
-            .eq("course_id", resolvedCourseId)
-            .eq("student_id", studentId)
-            .maybeSingle();
-
-          const targetEnrollmentType = (existingEnrollment?.enrollment_type === "purchase") ? "purchase" : "subscription";
-
-          const { error: enrollSubErr } = await supabaseAdmin.from("course_enrollments").upsert(
-            {
-              course_id: resolvedCourseId,
-              student_id: studentId,
-              institute_id: instituteId,
-              enrollment_type: targetEnrollmentType,
-              is_active: true,
-              enrolled_at: existingEnrollment?.enrolled_at || transactionTimestamp,
-              revoked_at: null,
-              revoked_reason: null,
-            },
-            { onConflict: "course_id,student_id" }
-          );
-
-          if (enrollSubErr) {
-            throw new Error(`Failed to grant subscription course enrollment: ${enrollSubErr.message}`);
-          }
-        }
-        entitlementGranted = `student_subscription:${resolvedPlanId}`;
       } else if (resolvedItemType === "pyq_package" && resolvedPackageId) {
         const { error: pyqErr } = await supabaseAdmin.from("student_pyq_purchases").upsert(
           {
@@ -971,6 +815,90 @@ serve(async (req) => {
       console.warn("[VERIFY_PLAY] Post-commit acknowledge network error (non-fatal, entitlement committed):", ackErr);
     }
 console.log(`[VERIFY_PLAY_SUCCESS] Order ${effectiveFinalOrderId} verified. Entitlement: ${entitlementGranted}`);
+
+    // ── 8. Asynchronous Transactional Email Enqueue (PAY-01 / PAY-02) ─────────
+    // Non-blocking: Email enqueue failures must NEVER fail or rollback purchase verification.
+    try {
+      let resolvedStudentId = studentId;
+      if (!resolvedStudentId && effectiveFinalOrderId) {
+        const { data: oRow } = await supabaseAdmin
+          .from("orders")
+          .select("student_id")
+          .eq("order_id", effectiveFinalOrderId)
+          .maybeSingle();
+        resolvedStudentId = oRow?.student_id || null;
+      }
+      if (!resolvedStudentId) {
+        const { data: sRow } = await supabaseAdmin
+          .from("student_details")
+          .select("student_id")
+          .eq("profile_id", profileId)
+          .maybeSingle();
+        resolvedStudentId = sRow?.student_id || null;
+      }
+
+      if (resolvedItemType === "course" && resolvedCourseId && resolvedStudentId) {
+        const { data: enrData } = await supabaseAdmin
+          .from("course_enrollments")
+          .select("enrollment_id")
+          .eq("course_id", resolvedCourseId)
+          .eq("student_id", resolvedStudentId)
+          .maybeSingle();
+
+        const enrollmentId = enrData?.enrollment_id;
+        const idempotencyKey = enrollmentId
+          ? `course_enrolled:${enrollmentId}`
+          : `course_enrolled:play:${effectiveFinalOrderId}`;
+
+        await enqueueEmailSafe(supabaseAdmin, {
+          recipientProfileId: profileId,
+          studentId: resolvedStudentId,
+          eventType: "PAY-01",
+          subject: `Order Confirmed: ${itemName} — Make Me Topper`,
+          templateId: "PAY-01",
+          payload: {
+            courseName: itemName,
+            enrollmentNumber: "Active",
+            orderId: effectiveFinalOrderId,
+            amount: unitPrice,
+            purchaseDate: new Date().toLocaleDateString("en-IN", { dateStyle: "medium" }),
+          },
+          priority: "high",
+          idempotencyKey,
+        });
+      } else if (resolvedItemType === "pyq_package" && resolvedPackageId && resolvedStudentId) {
+        const { data: pyqData } = await supabaseAdmin
+          .from("student_pyq_purchases")
+          .select("purchase_id")
+          .eq("package_id", resolvedPackageId)
+          .eq("student_id", resolvedStudentId)
+          .maybeSingle();
+
+        const purchaseId = pyqData?.purchase_id;
+        const idempotencyKey = purchaseId
+          ? `pyq_purchase:${purchaseId}`
+          : `pyq_purchase:play:${effectiveFinalOrderId}`;
+
+        await enqueueEmailSafe(supabaseAdmin, {
+          recipientProfileId: profileId,
+          studentId: resolvedStudentId,
+          eventType: "PAY-02",
+          subject: `Access Granted: ${itemName} — Make Me Topper`,
+          templateId: "PAY-02",
+          payload: {
+            packageName: itemName,
+            purchaseId: purchaseId || effectiveFinalOrderId,
+            orderId: effectiveFinalOrderId,
+            amount: unitPrice,
+            purchaseDate: new Date().toLocaleDateString("en-IN", { dateStyle: "medium" }),
+          },
+          priority: "high",
+          idempotencyKey,
+        });
+      }
+    } catch (emailErr) {
+      console.warn("[VERIFY_PLAY] Email enqueue non-blocking exception:", emailErr);
+    }
 
     return new Response(
       JSON.stringify({

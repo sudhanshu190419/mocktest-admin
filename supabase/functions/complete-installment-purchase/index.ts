@@ -15,7 +15,7 @@
 //   5. Resolves or inserts student_course_agreements (status='pending_initial_payment')
 //   6. Validates context and establishes order linkages (orders.student_id & order_items.agreement_id) pre-settlement
 //   7. Invokes public.process_installment_payment() with internal payments.payment_id UUID
-//   8. Calls syncCourseEnrollment() with enrollment_type = 'subscription'
+//   8. Calls syncCourseEnrollment() with enrollment_type = 'installment'
 //   9. Returns discriminated result: 'success' | 'requires_review' | 'error'
 //
 // @module edge-functions/complete-installment-purchase
@@ -24,6 +24,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { syncCourseEnrollment } from '../_shared/courseEnrollment.ts';
 import { isServiceRoleCall } from '../_shared/serviceRoleAuth.ts';
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -235,14 +236,15 @@ Deno.serve(async (req: Request) => {
 
   const courseId = plan.course_id;
 
-  // Resolve institute_id from course
+  // Resolve institute_id & course title from course
   const { data: courseRow } = await serviceClient
     .from('courses')
-    .select('institute_id')
+    .select('institute_id, title')
     .eq('course_id', courseId)
     .single();
 
   const instituteId = courseRow?.institute_id;
+  const courseTitle = courseRow?.title || plan.plan_name || 'Your Course';
   if (!instituteId) {
     return jsonResponse(
       { success: false, status: 'error', error: 'Course missing institute association' },
@@ -257,6 +259,10 @@ Deno.serve(async (req: Request) => {
     .eq('student_id', studentId)
     .eq('course_id', courseId)
     .maybeSingle();
+
+  const isInitialInstallment =
+    !existingAgreement ||
+    existingAgreement.agreement_status === 'pending_initial_payment';
 
   let agreementId: string;
 
@@ -335,7 +341,7 @@ Deno.serve(async (req: Request) => {
   // Step 6: Validate Context & Establish Pre-Settlement Order Linkages
   // ═════════════════════════════════════════════════════════════════════
   // The settlement RPC (public.process_installment_payment) joins orders
-  // and order_items to verify payment context and synchronize student_subscriptions.
+  // and order_items to verify payment context and synchronize installment agreements.
   // Establishing the verified student_id on orders and agreement_id on order_items
   // prior to settlement prevents NULL student constraint violations and ensures
   // atomic idempotency on retries.
@@ -587,20 +593,70 @@ Deno.serve(async (req: Request) => {
     consecutiveMilestone: parsedSettlement.consecutively_funded_milestone,
   });
 
-  // 8. Synchronize Course Enrollment (Phase 11I.2 pattern: subscription type, NOT purchase)
+  // 8. Synchronize Course Enrollment with genuine installment classification
   // Note: order linkages (orders.student_id & order_items.agreement_id) were validated
   // and established pre-settlement in Step 6.
   const enrollResult = await syncCourseEnrollment(serviceClient, {
     studentId,
     courseId,
     instituteId,
-    enrollmentType: 'subscription', // Retains subscription semantics; NEVER permanent purchase
+    enrollmentType: 'installment', // Genuine installment classification; decoupled from subscription
   });
 
   structuredLog('ENROLLMENT_SYNC_COMPLETE', {
     enrollResult,
     note: 'Course visible on student home screen; batch_students not touched (manual admin batch assignment retained)',
   });
+
+  // 9. Enqueue Installment Transactional Email (INS-01 or INS-02)
+  // Non-blocking: caught internally; failures never roll back settlement
+  try {
+    if (isInitialInstallment) {
+      await enqueueEmailSafe(serviceClient, {
+        recipientProfileId: body.profileId,
+        studentId,
+        eventType: 'INS-01',
+        subject: `Installment Plan Activated: ${courseTitle} — Make Me Topper`,
+        templateId: 'INS-01',
+        payload: {
+          courseName: courseTitle,
+          agreementId,
+          initialAmount: parsedSettlement.allocated_amount,
+          totalFee: plan.total_fee,
+          outstandingBalance: parsedSettlement.outstanding_balance,
+          nextDueDate: parsedSettlement.paid_through_end_date || 'According to schedule',
+        },
+        priority: 'high',
+        idempotencyKey: `inst_init:${agreementId}`,
+      });
+    } else {
+      const isCompleted = Number(parsedSettlement.outstanding_balance ?? 0) <= 0;
+      await enqueueEmailSafe(serviceClient, {
+        recipientProfileId: body.profileId,
+        studentId,
+        eventType: 'INS-02',
+        subject: `Installment Payment Received: ${courseTitle} — Make Me Topper`,
+        templateId: 'INS-02',
+        payload: {
+          courseName: courseTitle,
+          paymentId: body.paymentId,
+          installmentNumber: parsedSettlement.consecutively_funded_milestone,
+          amount: parsedSettlement.allocated_amount,
+          outstandingBalance: parsedSettlement.outstanding_balance,
+          nextDueDate: parsedSettlement.paid_through_end_date,
+          isCompleted,
+        },
+        priority: 'high',
+        idempotencyKey: `inst_payment:${body.paymentId}`,
+      });
+    }
+  } catch (emailErr) {
+    structuredLog('EMAIL_ENQUEUE_INSTALLMENT_FAILED_NON_BLOCKING', {
+      error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      agreementId,
+      paymentId: body.paymentId,
+    });
+  }
 
   return jsonResponse({
     success: true,

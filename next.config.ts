@@ -18,6 +18,25 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/admin/commerce/subscription-plans',
+        destination: '/admin/commerce',
+        permanent: false,
+      },
+      {
+        source: '/admin/commerce/subscriptions',
+        destination: '/admin/commerce',
+        permanent: false,
+      },
+      {
+        source: '/admin/commerce/subscriptions/:id',
+        destination: '/admin/commerce',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

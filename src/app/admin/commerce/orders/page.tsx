@@ -32,7 +32,7 @@ const PRODUCT_TYPE_OPTIONS = [
   { value: '', label: 'All Types' },
   { value: 'course', label: 'Course' },
   { value: 'pyq_package', label: 'PYQ Package' },
-  { value: 'subscription_plan', label: 'Subscription' },
+  { value: 'installment', label: 'Installment' },
 ];
 
 const SORT_OPTIONS = [
@@ -79,7 +79,7 @@ function getProductTypeLabel(type: string): string {
   switch (type) {
     case 'course': return 'Course';
     case 'pyq_package': return 'PYQ Package';
-    case 'subscription_plan': return 'Subscription';
+    case 'installment': return 'Installment';
     default: return type;
   }
 }

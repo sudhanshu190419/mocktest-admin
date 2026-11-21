@@ -51,6 +51,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { sendPushNotification } from '../_shared/pushNotification.ts';
 import { isServiceRoleCall } from '../_shared/serviceRoleAuth.ts';
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -635,207 +636,6 @@ async function findPriorConfirmedCourseOrder(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Phase 11K.5 - Full Course Conversion helper
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Cancel the student's current subscription for the course because of a
- * Full Course conversion (Phase 11K.5).
- *
- * Rules (authoritative):
- *   - The EXISTING student_subscriptions row is UPDATED in place - never a
- *     new row (revised renewal architecture).
- *   - status -> 'cancelled', cancelled_at = now(), updated_at = now().
- *   - Only 'active' and 'grace' can transition to 'cancelled' (the
- *     trgfn_subscription_validate_status trigger allows both, but NOT
- *     expired->cancelled - an expired row is left untouched and ownership is
- *     granted regardless via the enrollment upgrade).
- *   - History: one 'cancellation' event in subscription_history. The
- *     auto-history trigger writes a 'system_action' row on the status
- *     change; it is enriched (per its own TODO) - never duplicated.
- *
- * Idempotent: safe to call on webhook retries.
- */
-async function applyFullCourseConversion(
-  serviceClient: any,
-  params: {
-    studentId: string;
-    courseId: string;
-    instituteId: string;
-    profileId: string;
-    orderId?: string;
-    paymentReference?: string | null;
-  },
-): Promise<void> {
-  const { studentId, courseId, instituteId, profileId, orderId, paymentReference } = params;
-
-  structuredLog('CONVERSION_CANCEL_START', {
-    studentId,
-    courseId,
-    orderId: orderId ?? null,
-  });
-
-  // Current subscription row (newest by created_at - 11K.1 D3)
-  const { data: sub } = await serviceClient
-    .from('student_subscriptions')
-    .select('subscription_id, status, plan_id')
-    .eq('course_id', courseId)
-    .eq('student_id', studentId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!sub) {
-    structuredLog('CONVERSION_NO_SUBSCRIPTION', { studentId, courseId });
-    return;
-  }
-
-  // Idempotency: already converted (retry)
-  if (sub.status === 'cancelled') {
-    const { data: existingHistory } = await serviceClient
-      .from('subscription_history')
-      .select('history_id')
-      .eq('subscription_id', sub.subscription_id)
-      .eq('change_reason', 'cancellation')
-      .eq('metadata->>reason', 'full_course_conversion')
-      .maybeSingle();
-
-    if (existingHistory) {
-      structuredLog('CONVERSION_ALREADY_APPLIED', {
-        subscriptionId: sub.subscription_id,
-      });
-      return;
-    }
-    // Cancelled by support earlier but no conversion event - fall through
-    // to record the conversion history event below (but never re-cancel).
-  }
-
-  // Only active/grace can transition to cancelled (trigger)
-  const oldStatus = sub.status;
-  if (oldStatus !== 'active' && oldStatus !== 'grace') {
-    structuredLog('CONVERSION_SKIP_CANCEL_STATUS', {
-      subscriptionId: sub.subscription_id,
-      status: oldStatus,
-    });
-    return;
-  }
-
-  const { data: updatedRows, error: cancelError } = await serviceClient
-    .from('student_subscriptions')
-    .update({
-      status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('subscription_id', sub.subscription_id)
-    .eq('status', oldStatus) // optimistic guard - 0 rows if concurrently changed
-    .select('subscription_id'); // return the row so the race guard sees the real match count
-
-  if (cancelError) {
-    structuredLog('CONVERSION_CANCEL_FAILED', {
-      subscriptionId: sub.subscription_id,
-      error: cancelError.message,
-      sqlState: (cancelError as { code?: string })?.code ?? 'unknown',
-    });
-    // Non-fatal: permanent ownership (enrollment upgrade) is granted
-    // regardless; the cancellation can be completed by support.
-    return;
-  }
-
-  // Race guard (11K.5 review, HIGH): a concurrent webhook delivery that
-  // also loaded status='active' may have won the UPDATE. If we matched 0
-  // rows, the other invocation owns the cancellation + history write -
-  // return without touching history (prevents a duplicate 'cancellation'
-  // event when the winner already enriched the auto-history row).
-  if (!updatedRows || updatedRows.length === 0) {
-    structuredLog('CONVERSION_CANCEL_RACE_SKIPPED', {
-      subscriptionId: sub.subscription_id,
-      oldStatus,
-    });
-    return;
-  }
-
-  const conversionMetadata = {
-    reason: 'full_course_conversion',
-    order_id: orderId ?? null,
-    course_id: courseId,
-    plan_id: sub.plan_id,
-  };
-
-  // Enrich the auto-history trigger row (never duplicate)
-  const { data: autoRow } = await serviceClient
-    .from('subscription_history')
-    .select('history_id')
-    .eq('subscription_id', sub.subscription_id)
-    .eq('change_reason', 'system_action')
-    .eq('status_before', oldStatus)
-    .eq('status_after', 'cancelled')
-    .order('occurred_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (autoRow) {
-    const { error: enrichError } = await serviceClient
-      .from('subscription_history')
-      .update({
-        change_reason: 'cancellation',
-        changed_by: profileId,
-        changed_by_role: 'student',
-        payment_reference: paymentReference ?? null,
-        metadata: conversionMetadata,
-      })
-      .eq('history_id', autoRow.history_id);
-
-    if (enrichError) {
-      structuredLog('CONVERSION_HISTORY_ENRICH_FAILED', {
-        historyId: autoRow.history_id,
-        error: enrichError.message,
-      });
-    } else {
-      structuredLog('CONVERSION_HISTORY_ENRICHED', {
-        historyId: autoRow.history_id,
-        changeReason: 'cancellation',
-      });
-    }
-  } else {
-    // No auto row (edge) - insert the cancellation event explicitly.
-    const { error: insertError } = await serviceClient
-      .from('subscription_history')
-      .insert({
-        subscription_id: sub.subscription_id,
-        student_id: studentId,
-        institute_id: instituteId,
-        status_before: oldStatus,
-        status_after: 'cancelled',
-        change_reason: 'cancellation',
-        changed_by: profileId,
-        changed_by_role: 'student',
-        payment_reference: paymentReference ?? null,
-        metadata: conversionMetadata,
-      });
-
-    if (insertError) {
-      structuredLog('CONVERSION_HISTORY_INSERT_FAILED', {
-        subscriptionId: sub.subscription_id,
-        error: insertError.message,
-      });
-    } else {
-      structuredLog('CONVERSION_HISTORY_INSERT_SUCCESS', {
-        subscriptionId: sub.subscription_id,
-        changeReason: 'cancellation',
-      });
-    }
-  }
-
-  structuredLog('CONVERSION_CANCEL_SUCCESS', {
-    subscriptionId: sub.subscription_id,
-    oldStatus,
-    courseId,
-  });
-}
-
-// =========================================================================
-// Main Handler
 // =========================================================================
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -1069,6 +869,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
 
     if (code === 'ORDER_CANCELLED_OR_REFUNDED' || code === 'ORDER_REQUIRES_ADMIN_REVIEW' || code === 'PAYMENT_NOT_SETTLED') {
+      if (code === 'ORDER_REQUIRES_ADMIN_REVIEW' && body.orderId) {
+        try {
+          let courseTitle = 'Your Course';
+          const { data: cData } = await serviceClient
+            .from('courses')
+            .select('title')
+            .eq('course_id', body.courseId)
+            .maybeSingle();
+          if (cData?.title) courseTitle = cData.title;
+
+          await enqueueEmailSafe(serviceClient, {
+            recipientProfileId: profileId,
+            eventType: 'PAY-05',
+            subject: 'We Received Your Payment — Verification in Progress',
+            templateId: 'PAY-05',
+            payload: {
+              orderId: body.orderId,
+              itemTitle: courseTitle,
+            },
+            priority: 'high',
+            idempotencyKey: `pay_review:${body.orderId}`,
+          });
+        } catch (emailErr) {
+          structuredLog('EMAIL_ENQUEUE_PAY05_FAILED_NON_BLOCKING', {
+            error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+            orderId: body.orderId,
+          });
+        }
+      }
       return errorResponse(msg, 409, code);
     }
     return errorResponse(msg, 500, code);
@@ -1151,6 +980,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
       referenceType: 'course',
       referenceId: body.courseId,
     });
+
+  // ── Step 11c: Enqueue PAY-01 transactional email ─────────────────
+  // Non-blocking: failures are trapped internally and never abort success
+  try {
+    let courseTitle = 'Your Course';
+    let orderAmount: number | undefined;
+
+    const { data: cData } = await serviceClient
+      .from('courses')
+      .select('title')
+      .eq('course_id', body.courseId)
+      .maybeSingle();
+    if (cData?.title) courseTitle = cData.title;
+
+    if (body.orderId) {
+      const { data: oData } = await serviceClient
+        .from('orders')
+        .select('total_amount')
+        .eq('order_id', body.orderId)
+        .maybeSingle();
+      if (oData?.total_amount) orderAmount = Number(oData.total_amount);
+    }
+
+    await enqueueEmailSafe(serviceClient, {
+      recipientProfileId: profileId,
+      studentId: studentId,
+      eventType: 'PAY-01',
+      subject: `Order Confirmed: ${courseTitle} — Make Me Topper`,
+      templateId: 'PAY-01',
+      payload: {
+        courseName: courseTitle,
+        enrollmentNumber: enrollmentNo || 'Active',
+        orderId: body.orderId || 'N/A',
+        amount: orderAmount,
+        purchaseDate: new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' }),
+      },
+      priority: 'high',
+      idempotencyKey: `course_enrolled:${enrollmentId}`,
+    });
+  } catch (emailErr) {
+    structuredLog('EMAIL_ENQUEUE_PAY01_FAILED_NON_BLOCKING', {
+      error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      courseId: body.courseId,
+      profileId,
+    });
+  }
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 12: Return the structured success response

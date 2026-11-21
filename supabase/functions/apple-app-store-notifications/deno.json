@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "./appleNotificationCore": "./appleNotificationCore.ts",
+    "./appleCrypto": "./appleCrypto.ts"
+  }
+}
+

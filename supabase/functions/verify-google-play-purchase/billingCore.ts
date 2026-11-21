@@ -2875,20 +2875,8 @@ export async function detectAndReconcileRenewalGaps(params: {
 
   console.log(`[RECONCILIATION_GAP_DETECTED] Gap detected between cycle ${maxRecordedCycle} and ${incomingCycle} for token ${purchaseToken.slice(0, 8)}...`);
 
-  // Resolve expected plan price and currency if not explicitly supplied
+  // Resolve expected plan price and currency if explicitly supplied
   let targetPrice = params.expectedPrice;
-  if (targetPrice === undefined && supabaseAdmin && planId) {
-    try {
-      const { data: planData } = await supabaseAdmin
-        .from('subscription_plans')
-        .select('price')
-        .eq('plan_id', planId)
-        .maybeSingle();
-      if (planData?.price !== undefined && planData?.price !== null) {
-        targetPrice = Number(planData.price);
-      }
-    } catch (_) {}
-  }
   const targetCurrency = params.expectedCurrency || DEFAULT_PLATFORM_CURRENCY;
 
   const cleanBaseOrderId = baseOrderId.replace(/\.\.\d+$/, '');
@@ -3048,18 +3036,6 @@ export async function reconcileHistoricalRenewalOrder(params: {
   }
 
   let targetPrice = params.expectedPrice;
-  if (targetPrice === undefined && supabaseAdmin && planId) {
-    try {
-      const { data: planData } = await supabaseAdmin
-        .from('subscription_plans')
-        .select('price')
-        .eq('plan_id', planId)
-        .maybeSingle();
-      if (planData?.price !== undefined && planData?.price !== null) {
-        targetPrice = Number(planData.price);
-      }
-    } catch (_) {}
-  }
   const targetCurrency = params.expectedCurrency || DEFAULT_PLATFORM_CURRENCY;
 
   const verification = verifyGooglePlayOrder({

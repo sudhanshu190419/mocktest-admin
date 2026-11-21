@@ -83,3 +83,23 @@ verify_jwt = true
 # not Supabase user JWTs. The function authoritatively verifies the Google OIDC token.
 [functions.google-play-rtdn-webhook]
 verify_jwt = false
+
+# Apple App Store Server Notifications V2 webhook.
+# verify_jwt = false is REQUIRED because Apple server-to-server notifications do not
+# supply Supabase user JWTs. The function authoritatively verifies Apple's JWS signature
+# and certificate chain back to Apple Root CA G3.
+[functions.apple-app-store-notifications]
+verify_jwt = false
+
+# Email Queue Worker — background batch processing for public.email_queue.
+# verify_jwt = false allows scheduled triggering by pg_cron / net.http_post / manual admin run.
+# Security is authoritatively verified inside the handler via constant-time service_role bearer check.
+[functions.email-worker]
+verify_jwt = false
+
+# Email Delivery Webhook — handles Resend/Svix webhook events (delivered, bounced, complained).
+# verify_jwt = false is REQUIRED because Resend supplies Svix HMAC signatures, not Supabase JWTs.
+# The function authoritatively validates Svix cryptographic signatures.
+[functions.email-webhook]
+verify_jwt = false
+

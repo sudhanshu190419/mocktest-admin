@@ -54,6 +54,7 @@ import {
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import Razorpay from 'npm:razorpay@^2.9.6';
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -165,7 +166,6 @@ interface OrderItemRow {
   item_type: string;
   course_id: string | null;
   package_id: string | null;
-  plan_id: string | null;
   installment_plan_id?: string | null;
   agreement_id?: string | null;
 }
@@ -762,167 +762,21 @@ async function routeToPyqPurchase(
  */
 async function routeToSubscriptionPurchase(
   orderId: string,
-  orderItem: OrderItemRow,
-  profileId: string,
-  guardian: GuardianInfo,
-  razorpayPaymentId: string,
-  razorpayOrderId: string,
-  meta?: Record<string, unknown>,
+  _orderItem: OrderItemRow,
+  _profileId: string,
+  _guardian: GuardianInfo,
+  _razorpayPaymentId: string,
+  _razorpayOrderId: string,
+  _meta?: Record<string, unknown>,
 ): Promise<OnboardingResult> {
-  const planId = orderItem.plan_id;
-  if (!planId) {
-    structuredError('WEBHOOK_ERROR', {
-      ...meta,
-      eventType: 'missing_plan_id',
-      message: 'Subscription item missing plan_id',
-      orderId,
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      httpStatus: 200,
-    });
-    return { success: false, message: 'Subscription item missing plan_id.' };
-  }
-
-  structuredLog('ROUTING_TO_SUBSCRIPTION', {
+  structuredError('WEBHOOK_ERROR', {
     orderId,
-    planId,
-    profileId,
-    gatewayOrderId: razorpayOrderId,
-    gatewayPaymentId: razorpayPaymentId,
+    eventType: 'subscriptions_retired',
+    message: 'Subscription plan fulfillment attempted on retired module',
   });
-
-  // ── Invoke complete-subscription-purchase ─────────────────────────
-  structuredLog('CALLING_COMPLETE_SUBSCRIPTION_PURCHASE', {
-    orderId,
-    planId,
-    profileId,
-    hasGuardianName: !!guardian.guardianName,
-    hasGuardianMobile: !!guardian.guardianMobile,
-    hasGuardianEmail: !!guardian.guardianEmail,
-    hasTargetYear: !!guardian.targetYear,
-    hasDob: !!guardian.dateOfBirth,
-    gatewayOrderId: razorpayOrderId,
-    gatewayPaymentId: razorpayPaymentId,
-  });
-
-  try {
-    const functionUrl = `${SUPABASE_URL}/functions/v1/complete-subscription-purchase`;
-
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-      body: JSON.stringify({
-        planId,
-        orderId,
-        profileId,
-        paymentReference: razorpayPaymentId,
-        guardianName: guardian.guardianName,
-        guardianMobile: guardian.guardianMobile,
-        guardianEmail: guardian.guardianEmail,
-        targetYear: guardian.targetYear,
-        dob: guardian.dateOfBirth,
-        internal: true,  // Skip JWT auth; use provided profileId
-      }),
-    });
-
-    // Log the HTTP status first
-    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE_STATUS', {
-      statusCode: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-    });
-
-    // IMPORTANT: Read the raw response body as text BEFORE any JSON parsing.
-    // This ensures we capture the full response even if it's not JSON
-    // (e.g., a 500 HTML error page from Supabase infrastructure).
-    const responseText = await response.text();
-
-    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE_BODY', {
-      bodyLength: responseText.length,
-      bodyPreview: responseText.slice(0, 2000),
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-    });
-
-    // Parse the response text as JSON
-    let result: Record<string, unknown>;
-    try {
-      result = JSON.parse(responseText) as Record<string, unknown>;
-    } catch (parseErr) {
-      // Response was not valid JSON — log the raw text and return
-      structuredError('WEBHOOK_ERROR', {
-        ...meta,
-        eventType: 'onboarding_response_parse',
-        message: 'complete-subscription-purchase returned non-JSON response',
-        responseBody: responseText.slice(0, 1000),
-        statusCode: response.status,
-        gatewayOrderId: razorpayOrderId,
-        gatewayPaymentId: razorpayPaymentId,
-        orderId,
-        httpStatus: 200,
-      });
-      return {
-        success: false,
-        message: `Onboarding returned non-JSON response (HTTP ${response.status}).`,
-      };
-    }
-
-    if (response.ok && result.success) {
-      structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE', {
-        success: true,
-        studentId: result.studentId as string,
-        subscriptionId: result.subscriptionId as string,
-        planId: result.planId as string,
-        gatewayOrderId: razorpayOrderId,
-        gatewayPaymentId: razorpayPaymentId,
-        orderId,
-      });
-      return { success: true, message: 'Subscription onboarding completed successfully.' };
-    }
-
-    // Log the error details but don't fail the webhook
-    structuredLog('COMPLETE_SUBSCRIPTION_PURCHASE_RESPONSE', {
-      success: false,
-      statusCode: response.status,
-      error: result.error as string ?? 'Unknown onboarding error',
-      details: result.details as string ?? null,
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-    });
-
-    return {
-      success: false,
-      message: `Subscription onboarding returned: ${result.error as string ?? 'unknown error'}`,
-    };
-  } catch (err) {
-    structuredError('WEBHOOK_ERROR', {
-      ...meta,
-      eventType: 'onboarding_invocation',
-      message: err instanceof Error ? err.message : 'Network/HTTP error calling complete-subscription-purchase',
-      stack: err instanceof Error ? err.stack : undefined,
-      gatewayOrderId: razorpayOrderId,
-      gatewayPaymentId: razorpayPaymentId,
-      orderId,
-      httpStatus: 200,
-    });
-    return { success: false, message: 'Failed to invoke complete-subscription-purchase.' };
-  }
+  return { success: false, message: 'Subscription products are permanently retired.' };
 }
 
-/**
- * Route an installment purchase to the complete-installment-purchase Edge Function.
- *
- * Calls complete-installment-purchase with internal=true, guardian fields,
- * and the internal payments.payment_id UUID.
- */
 async function routeToInstallmentPurchase(
   orderId: string,
   orderItem: OrderItemRow,
@@ -1108,7 +962,7 @@ async function loadOrderAndItems(
   // plan_id) that determine routing and grant checking.
   const { data: orderItems, error: itemsLoadError } = await serviceClient
     .from('order_items')
-    .select('item_id, item_type, course_id, package_id, plan_id, installment_plan_id, agreement_id')
+    .select('item_id, item_type, course_id, package_id, installment_plan_id, agreement_id')
     .eq('order_id', orderId);
 
   if (itemsLoadError || !orderItems || orderItems.length === 0) {
@@ -1188,32 +1042,9 @@ async function grantExistsForOrder(
     return false;
   }
 
-  // ── Subscription plan: the order-linked subscription row ─────────────
+  // ── Subscription plan: permanently retired ─────────────────────────
   if (orderItem.item_type === 'subscription_plan') {
-    // Primary (overwrite-immune): orders.student_id is set by THIS order's
-    // onboarding as its final step and is never replaced by a later renewal
-    // (renewals overwrite student_subscriptions.order_id with newer orders,
-    // so the order_id lookup alone would misclassify a late retry of an
-    // earlier renewal order as "grant missing" and re-extend the period).
-    if (order.student_id) return true;
-
-    // Spec check: the order-linked subscription row proves onboarding.
-    const { data, error } = await serviceClient
-      .from('student_subscriptions')
-      .select('subscription_id')
-      .eq('order_id', order.order_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      structuredError('GRANT_CHECK_ERROR', {
-        message: error.message,
-        orderId: order.order_id,
-        itemType: orderItem.item_type,
-      });
-      return false;
-    }
-    return !!data;
+    return false;
   }
 
   // ── Course: enrollment for the student linked to THIS order ─────────
@@ -1412,7 +1243,7 @@ async function invokeOnboarding(
     itemType,
     courseId: orderItem.course_id ?? null,
     packageId: orderItem.package_id ?? null,
-    planId: orderItem.plan_id ?? null,
+    installmentPlanId: orderItem.installment_plan_id ?? null,
     itemCount: orderItems.length,
     gatewayOrderId: razorpayOrderId,
     gatewayPaymentId: razorpayPaymentId,
@@ -1511,6 +1342,151 @@ async function invokeOnboarding(
     itemType,
     message: `Unsupported item type "${itemType}". Onboarding not available for this product.`,
   };
+}
+
+/**
+ * Helper to enqueue PAY-04 (Refund Processed) transactional email.
+ * Strictly non-blocking: never fails the webhook.
+ */
+async function sendRefundProcessedEmail(
+  serviceClient: SupabaseClient,
+  orderId: string | null | undefined,
+  refundId: string,
+  refundAmountRupees: number,
+  refundCreatedAtIso: string,
+): Promise<void> {
+  if (!orderId) return;
+  try {
+    const { data: order } = await serviceClient
+      .from('orders')
+      .select('profile_id')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (!order || !order.profile_id) return;
+
+    let itemTitle = 'Your Purchase';
+    const { data: items } = await serviceClient
+      .from('order_items')
+      .select('course_id, package_id')
+      .eq('order_id', orderId)
+      .limit(1);
+
+    if (items && items.length > 0) {
+      if (items[0].course_id) {
+        const { data: c } = await serviceClient
+          .from('courses')
+          .select('title')
+          .eq('course_id', items[0].course_id)
+          .maybeSingle();
+        if (c?.title) itemTitle = c.title;
+      } else if (items[0].package_id) {
+        const { data: p } = await serviceClient
+          .from('pyq_packages')
+          .select('name')
+          .eq('package_id', items[0].package_id)
+          .maybeSingle();
+        if (p?.name) itemTitle = p.name;
+      }
+    }
+
+    await enqueueEmailSafe(serviceClient, {
+      recipientProfileId: order.profile_id,
+      eventType: 'PAY-04',
+      subject: 'Refund Processed — Make Me Topper',
+      templateId: 'PAY-04',
+      payload: {
+        itemTitle,
+        refundId,
+        orderId,
+        amount: refundAmountRupees,
+        refundDate: new Date(refundCreatedAtIso).toLocaleDateString('en-IN', { dateStyle: 'medium' }),
+      },
+      priority: 'high',
+      idempotencyKey: `pay_refund:${refundId}`,
+    });
+  } catch (err) {
+    structuredLog('EMAIL_PAY04_FAILED_NON_BLOCKING', {
+      error: err instanceof Error ? err.message : String(err),
+      orderId,
+      refundId,
+    });
+  }
+}
+
+/**
+ * Helper to enqueue PAY-03 (Payment Failed) transactional email.
+ * Enforces anti-downgrade: skips if the order/payment is already confirmed or captured.
+ * Strictly non-blocking: never fails the webhook.
+ */
+async function sendPaymentFailedEmail(
+  serviceClient: SupabaseClient,
+  orderId: string | null | undefined,
+  razorpayPaymentId: string,
+  amountPaiseOrRupees: number | string | null | undefined,
+  failureReason: string,
+): Promise<void> {
+  if (!orderId) return;
+  try {
+    const { data: order } = await serviceClient
+      .from('orders')
+      .select('profile_id, status, total_amount')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (!order || !order.profile_id) return;
+    // Anti-downgrade check: never send payment failed if order has already been confirmed/captured
+    if (order.status === 'confirmed' || order.status === 'completed') return;
+
+    let itemTitle = 'Your Order';
+    const { data: items } = await serviceClient
+      .from('order_items')
+      .select('course_id, package_id')
+      .eq('order_id', orderId)
+      .limit(1);
+
+    if (items && items.length > 0) {
+      if (items[0].course_id) {
+        const { data: c } = await serviceClient
+          .from('courses')
+          .select('title')
+          .eq('course_id', items[0].course_id)
+          .maybeSingle();
+        if (c?.title) itemTitle = c.title;
+      } else if (items[0].package_id) {
+        const { data: p } = await serviceClient
+          .from('pyq_packages')
+          .select('name')
+          .eq('package_id', items[0].package_id)
+          .maybeSingle();
+        if (p?.name) itemTitle = p.name;
+      }
+    }
+
+    const displayAmount = amountPaiseOrRupees ?? order.total_amount;
+
+    await enqueueEmailSafe(serviceClient, {
+      recipientProfileId: order.profile_id,
+      eventType: 'PAY-03',
+      subject: 'Payment Could Not Be Processed — Make Me Topper',
+      templateId: 'PAY-03',
+      payload: {
+        itemTitle,
+        amount: displayAmount,
+        gatewayPaymentId: razorpayPaymentId,
+        orderId,
+        failureReason,
+      },
+      priority: 'high',
+      idempotencyKey: `pay_failed:${razorpayPaymentId}`,
+    });
+  } catch (err) {
+    structuredLog('EMAIL_PAY03_FAILED_NON_BLOCKING', {
+      error: err instanceof Error ? err.message : String(err),
+      orderId,
+      gatewayPaymentId: razorpayPaymentId,
+    });
+  }
 }
 
 /**
@@ -2054,6 +2030,16 @@ async function handleRazorpayRefund(
       code: refundRecData?.code,
     });
 
+    if (targetStatus === 'processed') {
+      await sendRefundProcessedEmail(
+        serviceClient,
+        localPayment.order_id,
+        refundId,
+        refundAmountRupees,
+        refundCreatedAtIso
+      );
+    }
+
     return jsonResponse({ success: true, message: 'Standard refund ' + targetStatus + ' event processed successfully.' });
   }
 
@@ -2098,6 +2084,16 @@ async function handleRazorpayRefund(
       .from('student_course_agreements')
       .update({ requires_admin_review: true, updated_at: new Date().toISOString() })
       .eq('agreement_id', agreementId);
+  }
+
+  if (targetStatus === 'processed') {
+    await sendRefundProcessedEmail(
+      serviceClient,
+      localPayment.order_id,
+      refundId,
+      refundAmountRupees,
+      refundCreatedAtIso
+    );
   }
 
   return jsonResponse({ success: true, message: 'Refund ' + targetStatus + ' event processed successfully.' });
@@ -2628,6 +2624,14 @@ async function handleRazorpayPaymentFailed(
       status: 'failed',
     });
 
+    await sendPaymentFailedEmail(
+      serviceClient,
+      existingPaymentByGatewayId.order_id,
+      razorpayPaymentId,
+      existingPaymentByGatewayId.amount,
+      failureReason,
+    );
+
     return jsonResponse({
       success: true,
       message: 'Payment failure recorded successfully.',
@@ -2892,6 +2896,14 @@ async function handleRazorpayPaymentFailed(
       status: 'failed',
     });
 
+    await sendPaymentFailedEmail(
+      serviceClient,
+      pendingPlaceholder.order_id,
+      razorpayPaymentId,
+      pendingPlaceholder.amount,
+      failureReason,
+    );
+
     // NOTE: Order remains status='pending' and fulfillment_status='unfulfilled'
     // so the student can retry. Agreement remains pending_initial_payment (not cancelled).
     return jsonResponse({
@@ -2936,6 +2948,14 @@ async function handleRazorpayPaymentFailed(
     gatewayPaymentId: razorpayPaymentId,
     status: 'failed',
   });
+
+  await sendPaymentFailedEmail(
+    serviceClient,
+    newFailedAttempt.order_id,
+    razorpayPaymentId,
+    newFailedAttempt.amount,
+    failureReason,
+  );
 
   return jsonResponse({
     success: true,
@@ -3985,6 +4005,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
         gatewayOrderId: razorpayOrderId,
         gatewayPaymentId: razorpayPaymentId,
       });
+
+      // Enqueue PAY-05: Payment Received — Under Verification
+      try {
+        const { data: oRow } = await serviceClient
+          .from('orders')
+          .select('profile_id, total_amount')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+        if (oRow?.profile_id) {
+          await enqueueEmailSafe(serviceClient, {
+            recipientProfileId: oRow.profile_id,
+            eventType: 'PAY-05',
+            subject: 'We Received Your Payment — Verification in Progress',
+            templateId: 'PAY-05',
+            payload: {
+              orderId,
+              gatewayPaymentId: razorpayPaymentId,
+              amount: localPayment?.amount ?? oRow.total_amount,
+            },
+            priority: 'high',
+            idempotencyKey: `pay_review:${orderId}`,
+          });
+        }
+      } catch (emailErr) {
+        structuredLog('EMAIL_PAY05_FAILED_NON_BLOCKING', {
+          error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+          orderId,
+        });
+      }
 
       // HTTP 200 acknowledged to gateway — conflict is durably recorded for admin review queue
       return jsonResponse({

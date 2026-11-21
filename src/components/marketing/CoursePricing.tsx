@@ -21,13 +21,6 @@ import type { Course, CourseInstallmentPlan } from '@/types/courseCatalog';
 import { supabase } from '@/config/supabase';
 import { resolveStudentId } from '@/services/paymentService';
 
-const cycleLabels: Record<string, string> = {
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-  half_yearly: 'Half-yearly',
-  yearly: 'Annual',
-};
-
 export function CoursePricing({ course }: { course: Course }) {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
@@ -91,12 +84,8 @@ export function CoursePricing({ course }: { course: Course }) {
   const isAgreementPending = agreementData?.agreement_status === 'pending_initial_payment';
   const isAgreementInArrears = agreementData?.agreement_status === 'in_arrears';
 
-  // 4. Payment Options: Buy full course | Subscribe | Pay in Installments
-  const subscriptionPlans = course.plans.filter((plan) => plan.isActive);
-  const [mode, setMode] = useState<'purchase' | 'subscription' | 'installment'>('purchase');
-  const [subPlanId, setSubPlanId] = useState(
-    subscriptionPlans.find((plan) => plan.isFeatured)?.planId ?? subscriptionPlans[0]?.planId ?? ''
-  );
+  // 4. Payment Options: Buy full course | Pay in Installments (Subscriptions removed)
+  const [mode, setMode] = useState<'purchase' | 'installment'>('purchase');
   const [installmentPlanId, setInstallmentPlanId] = useState(
     activeInstallmentPlans[0]?.planId ?? ''
   );
@@ -117,7 +106,6 @@ export function CoursePricing({ course }: { course: Course }) {
 
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
-  const selectedSubPlan = subscriptionPlans.find((plan) => plan.planId === subPlanId);
   const selectedInstallmentPlan =
     activeInstallmentPlans.find((plan) => plan.planId === installmentPlanId) ?? activeInstallmentPlans[0];
 
@@ -136,20 +124,12 @@ export function CoursePricing({ course }: { course: Course }) {
   const price =
     mode === 'purchase'
       ? course.discountedPrice ?? course.originalPrice
-      : mode === 'subscription'
-      ? selectedSubPlan?.price ?? 0
       : initialTrancheAmount;
 
-  const currency =
-    mode === 'purchase'
-      ? course.currency
-      : mode === 'subscription'
-      ? selectedSubPlan?.currencyCode ?? course.currency
-      : course.currency;
+  const currency = course.currency;
 
   const canPreview =
     mode === 'purchase' ||
-    (mode === 'subscription' && Boolean(selectedSubPlan)) ||
     (mode === 'installment' && Boolean(selectedInstallmentPlan));
 
   const formatPrice = (value: number) => formatCoursePrice(value, currency);
@@ -168,76 +148,51 @@ export function CoursePricing({ course }: { course: Course }) {
           <div className="p-4 rounded-field bg-emerald-50 border border-emerald-200 text-emerald-900 my-4">
             <span className="text-caption font-extrabold uppercase tracking-wide text-emerald-700">Access Granted</span>
             <p className="text-xs font-bold text-emerald-950 mt-0.5">
-              You are currently enrolled in this course batch.
+              {isEnrolled
+                ? 'You own full, permanent access to this course.'
+                : 'You have an active installment agreement for this course.'}
             </p>
           </div>
         ) : (
           <>
-            {/* Agreement State Notices */}
             {isAgreementPending && (
               <div className="p-3.5 rounded-field bg-amber-50 border border-amber-200 text-amber-900 my-3 text-xs">
-                <span className="font-extrabold uppercase tracking-wide text-amber-700 block">Agreement Pending Payment</span>
+                <span className="font-bold text-amber-800">Pending Initial Payment:</span>
                 <p className="mt-0.5 font-medium">
-                  An installment agreement exists for this course awaiting initial payment verification.
+                  An installment agreement is initiated for this course. Complete your first installment payment to activate enrollment.
                 </p>
               </div>
             )}
+
             {isAgreementInArrears && (
               <div className="p-3.5 rounded-field bg-red-50 border border-red-200 text-red-900 my-3 text-xs">
-                <span className="font-extrabold uppercase tracking-wide text-red-700 block">Installment In Arrears</span>
+                <span className="font-bold text-red-800">Payment Overdue:</span>
                 <p className="mt-0.5 font-medium">
                   Your agreement has an overdue installment of {formatCoursePrice(agreementData?.overdue_balance ?? 0, course.currency)}. Please settle your overdue balance to maintain access.
                 </p>
               </div>
             )}
 
-            {/* Payment Option Toggle: 3 separate choices if active installment plans exist; exactly 2 if not */}
-            <div className="store-payment-toggle" role="group" aria-label="Payment type">
-              <button onClick={() => setMode('purchase')} aria-pressed={mode === 'purchase'}>
-                Buy full course
-              </button>
-              <button
-                onClick={() => setMode('subscription')}
-                aria-pressed={mode === 'subscription'}
-                disabled={subscriptionPlans.length === 0}
-              >
-                Subscribe
-              </button>
-              {activeInstallmentPlans.length > 0 && (
+            {/* Payment Option Toggle: Rendered only when active installment plans exist */}
+            {activeInstallmentPlans.length > 0 && (
+              <div className="store-payment-toggle" role="group" aria-label="Payment type">
                 <button
+                  type="button"
+                  onClick={() => setMode('purchase')}
+                  aria-pressed={mode === 'purchase'}
+                >
+                  Buy full course
+                </button>
+                <button
+                  type="button"
                   onClick={() => setMode('installment')}
                   aria-pressed={mode === 'installment'}
                 >
                   Pay in Installments
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </>
-        )}
-
-        {/* Subscription Plan Picker */}
-        {!isEnrolled && !hasActiveAgreement && mode === 'subscription' && subscriptionPlans.length > 0 && (
-          <fieldset className="store-plan-options">
-            <legend className="sr-only">Choose subscription duration</legend>
-            {subscriptionPlans.map((plan) => (
-              <label key={plan.planId} className={subPlanId === plan.planId ? 'selected' : ''}>
-                <input
-                  type="radio"
-                  name={`sub-plan-${course.courseId}`}
-                  checked={subPlanId === plan.planId}
-                  onChange={() => setSubPlanId(plan.planId)}
-                />
-                <span>
-                  <b>{cycleLabels[plan.billingCycle] || plan.name}</b>
-                  <small className="tabular-nums">{plan.durationDays} days of access</small>
-                </span>
-                <strong className="tabular-nums">
-                  {formatCoursePrice(plan.price, plan.currencyCode)}
-                </strong>
-                {plan.isFeatured && <em>Featured</em>}
-              </label>
-            ))}
-          </fieldset>
         )}
 
         {/* Installment Plan Picker (rendered when multiple active installment plans exist) */}
@@ -337,10 +292,6 @@ export function CoursePricing({ course }: { course: Course }) {
               ? 'Enrollment Status'
               : mode === 'purchase'
               ? 'One-time purchase'
-              : mode === 'subscription'
-              ? selectedSubPlan
-                ? `${cycleLabels[selectedSubPlan.billingCycle] || selectedSubPlan.name} plan price`
-                : 'No subscription plans'
               : selectedInstallmentPlan
               ? 'First installment due today'
               : 'No installment plans'}
@@ -367,8 +318,6 @@ export function CoursePricing({ course }: { course: Course }) {
               ? 'You have active access to all lessons, live classes, and chapter tests.'
               : mode === 'purchase'
               ? 'Permanent course ownership. One payment.'
-              : mode === 'subscription'
-              ? 'Access to this course for the selected period.'
               : selectedInstallmentPlan
               ? `Pay ${formatCoursePrice(initialTrancheAmount, course.currency)} today to activate enrollment. Remaining balance payable across ${selectedInstallmentPlan.numberOfInstallments - 1} scheduled payments.`
               : 'No active installment plans available for this course.'}
@@ -390,8 +339,6 @@ export function CoursePricing({ course }: { course: Course }) {
           >
             {mode === 'purchase'
               ? 'Enroll in course'
-              : mode === 'subscription'
-              ? 'Enroll in plan'
               : `Pay ${formatCoursePrice(initialTrancheAmount, course.currency)} & Enroll`} <span aria-hidden="true">→</span>
           </Button>
         )}
@@ -400,23 +347,18 @@ export function CoursePricing({ course }: { course: Course }) {
           <h3>
             {mode === 'purchase'
               ? 'Your learning essentials'
-              : mode === 'subscription'
-              ? 'Included with this plan'
               : 'Included with installment enrollment'}
           </h3>
           <ul>
-            {(mode === 'subscription'
-              ? selectedSubPlan?.features.map((feature) => feature.displayName) ?? []
-              : [
-                  'Live-class learning',
-                  'Class recordings for revision',
-                  'Subject-wise PDF notes',
-                  'Full test series & evaluation',
-                  mode === 'purchase'
-                    ? 'Permanent course ownership'
-                    : 'Access active while installments are in good standing',
-                ]
-            ).map((feature) => (
+            {[
+              'Live-class learning',
+              'Class recordings for revision',
+              'Subject-wise PDF notes',
+              'Full test series & evaluation',
+              mode === 'purchase'
+                ? 'Permanent course ownership'
+                : 'Access active while installments are in good standing',
+            ].map((feature) => (
               <li key={feature}>
                 <span aria-hidden="true">✓</span>
                 {feature}
@@ -470,19 +412,14 @@ export function CoursePricing({ course }: { course: Course }) {
         price={price}
         originalPrice={mode === 'purchase' ? course.originalPrice : undefined}
         currency={currency}
-        planId={mode === 'subscription' ? selectedSubPlan?.planId : undefined}
         planName={
-          mode === 'subscription'
-            ? `${cycleLabels[selectedSubPlan?.billingCycle || ''] || selectedSubPlan?.name || 'Subscription'} Plan`
-            : mode === 'installment'
+          mode === 'installment'
             ? `Installment Plan (${selectedInstallmentPlan?.planName || 'Fixed Term'})`
             : 'Full Course (Permanent)'
         }
         accessDurationLabel={
           mode === 'purchase'
             ? 'Permanent Lifetime Ownership'
-            : mode === 'subscription'
-            ? `${selectedSubPlan?.durationDays ?? 30} Days Active Access`
             : `${selectedInstallmentPlan?.numberOfInstallments ?? 1} Installments (${formatCoursePrice(selectedInstallmentPlan?.totalFee ?? 0, course.currency)} Total)`
         }
         paymentMode={mode}

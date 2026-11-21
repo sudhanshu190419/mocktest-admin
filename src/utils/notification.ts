@@ -135,10 +135,6 @@ export function notificationIcon(type: NotificationType): string {
       return '👍';
     case 'content_rejected':
       return '👎';
-    case 'subscription_expiring':
-      return '🕐';
-    case 'subscription_expired':
-      return '🚫';
     case 'batch_assigned':
       return '👥';
     case 'doubt_submitted':
@@ -201,10 +197,6 @@ export function notificationTypeLabel(type: NotificationType): string {
       return 'Content Approved';
     case 'content_rejected':
       return 'Content Rejected';
-    case 'subscription_expiring':
-      return 'Subscription Expiring';
-    case 'subscription_expired':
-      return 'Subscription Expired';
     case 'batch_assigned':
       return 'Batch Assigned';
     case 'doubt_submitted':
@@ -329,10 +321,6 @@ export function buildActionUrl(
       case 'leave_request':
       case 'leave':
         return `/admin/leave-requests/${referenceId}`;
-      case 'subscription':
-        return `/admin/commerce/subscriptions/${referenceId}`;
-      case 'subscription_plan':
-        return `/admin/commerce/subscription-plans`;
       default:
         return `/admin/${referenceType}/${referenceId}`;
     }
@@ -376,11 +364,9 @@ export function inferPriority(type: NotificationType): NotificationPriority {
   switch (type) {
     case 'error':
     case 'warning':
-    case 'subscription_expired':
       return 'high';
     case 'result_published':
     case 'mock_test_submitted':
-    case 'subscription_expiring':
       return 'normal';
     case 'announcement':
     case 'general_message':

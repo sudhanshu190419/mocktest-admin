@@ -32,6 +32,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { isServiceRoleCall } from '../_shared/serviceRoleAuth.ts';
+import { enqueueEmailSafe } from '../_shared/email/enqueue.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -766,6 +767,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
 
     if (code === 'ORDER_CANCELLED_OR_REFUNDED' || code === 'ORDER_REQUIRES_ADMIN_REVIEW' || code === 'PAYMENT_NOT_SETTLED') {
+      if (code === 'ORDER_REQUIRES_ADMIN_REVIEW' && body.orderId) {
+        try {
+          let pkgName = 'PYQ Package';
+          const { data: pData } = await serviceClient
+            .from('pyq_packages')
+            .select('name')
+            .eq('package_id', body.packageId)
+            .maybeSingle();
+          if (pData?.name) pkgName = pData.name;
+
+          await enqueueEmailSafe(serviceClient, {
+            recipientProfileId: profileId,
+            eventType: 'PAY-05',
+            subject: 'We Received Your Payment — Verification in Progress',
+            templateId: 'PAY-05',
+            payload: {
+              orderId: body.orderId,
+              itemTitle: pkgName,
+            },
+            priority: 'high',
+            idempotencyKey: `pay_review:${body.orderId}`,
+          });
+        } catch (emailErr) {
+          structuredLog('EMAIL_ENQUEUE_PAY05_FAILED_NON_BLOCKING', {
+            error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+            orderId: body.orderId,
+          });
+        }
+      }
       return errorResponse(msg, 409, code);
     }
     return errorResponse(msg, 500, code);
@@ -827,6 +857,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
       referenceType: 'pyq_package',
       referenceId: body.packageId,
     });
+
+  // ── Step 12c: Enqueue PAY-02 transactional email ─────────────────
+  // Non-blocking: failures are trapped internally and never abort success
+  try {
+    let packageName = 'PYQ Package';
+    let orderAmount: number | undefined;
+
+    const { data: pData } = await serviceClient
+      .from('pyq_packages')
+      .select('name')
+      .eq('package_id', body.packageId)
+      .maybeSingle();
+    if (pData?.name) packageName = pData.name;
+
+    if (body.orderId) {
+      const { data: oData } = await serviceClient
+        .from('orders')
+        .select('total_amount')
+        .eq('order_id', body.orderId)
+        .maybeSingle();
+      if (oData?.total_amount) orderAmount = Number(oData.total_amount);
+    }
+
+    await enqueueEmailSafe(serviceClient, {
+      recipientProfileId: profileId,
+      studentId: studentId,
+      eventType: 'PAY-02',
+      subject: `Access Granted: ${packageName} — Make Me Topper`,
+      templateId: 'PAY-02',
+      payload: {
+        packageName,
+        purchaseId,
+        orderId: body.orderId || 'N/A',
+        amount: orderAmount,
+        purchaseDate: new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' }),
+      },
+      priority: 'high',
+      idempotencyKey: `pyq_purchase:${purchaseId}`,
+    });
+  } catch (emailErr) {
+    structuredLog('EMAIL_ENQUEUE_PAY02_FAILED_NON_BLOCKING', {
+      error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      packageId: body.packageId,
+      profileId,
+    });
+  }
 
   // ═════════════════════════════════════════════════════════════════════
   // Step 13: Return the structured success response
