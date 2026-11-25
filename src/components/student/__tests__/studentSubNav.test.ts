@@ -5,31 +5,33 @@ import { STUDENT_NAV_ITEMS } from '@/components/student/StudentSubNav';
 import { isExamEnginePath } from '@/lib/routes';
 
 describe('StudentSubNav Destination and Route Matcher Tests', () => {
-  it('defines all 10 core student modules in the correct order', () => {
+  it('defines all core student modules in the correct reorganized order preserving Dashboard', () => {
     const labels = STUDENT_NAV_ITEMS.map((item) => item.label);
     expect(labels).toEqual([
       'Dashboard',
       'My Courses',
+      'Class Timetable',
       'Live Classes',
       'Recordings',
-      'Mock Tests',
-      'Timetable',
+      'PYQ & Sample Paper',
+      'Class Test',
       'My Doubts',
-      'Analytics',
+      'My Performance',
       'Results',
       'Profile',
     ]);
 
     expect(STUDENT_NAV_ITEMS[0].href).toBe('/student/overview');
     expect(STUDENT_NAV_ITEMS[1].href).toBe('/student/courses');
-    expect(STUDENT_NAV_ITEMS[2].href).toBe('/student/classes');
-    expect(STUDENT_NAV_ITEMS[3].href).toBe('/student/recordings');
-    expect(STUDENT_NAV_ITEMS[4].href).toBe('/student/tests');
-    expect(STUDENT_NAV_ITEMS[5].href).toBe('/student/timetable');
-    expect(STUDENT_NAV_ITEMS[6].href).toBe('/student/doubts');
-    expect(STUDENT_NAV_ITEMS[7].href).toBe('/student/analytics');
-    expect(STUDENT_NAV_ITEMS[8].href).toBe('/student/results');
-    expect(STUDENT_NAV_ITEMS[9].href).toBe('/student/profile');
+    expect(STUDENT_NAV_ITEMS[2].href).toBe('/student/timetable');
+    expect(STUDENT_NAV_ITEMS[3].href).toBe('/student/classes');
+    expect(STUDENT_NAV_ITEMS[4].href).toBe('/student/recordings');
+    expect(STUDENT_NAV_ITEMS[5].href).toBe('/pyq');
+    expect(STUDENT_NAV_ITEMS[6].href).toBe('/student/tests');
+    expect(STUDENT_NAV_ITEMS[7].href).toBe('/student/doubts');
+    expect(STUDENT_NAV_ITEMS[8].href).toBe('/student/analytics');
+    expect(STUDENT_NAV_ITEMS[9].href).toBe('/student/results');
+    expect(STUDENT_NAV_ITEMS[10].href).toBe('/student/profile');
   });
 
   it('correctly matches Dashboard routes for /student and /student/overview', () => {
@@ -62,8 +64,15 @@ describe('StudentSubNav Destination and Route Matcher Tests', () => {
     expect(recItem.matches('/student/classes')).toBe(false);
   });
 
-  it('correctly matches Mock Tests routes while isolating Results', () => {
-    const testsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Mock Tests')!;
+  it('correctly matches PYQ & Sample Paper routes', () => {
+    const pyqItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'PYQ & Sample Paper')!;
+    expect(pyqItem.matches('/pyq')).toBe(true);
+    expect(pyqItem.matches('/pyq/pyq-pkg-101')).toBe(true);
+    expect(pyqItem.matches('/student/courses')).toBe(false);
+  });
+
+  it('correctly matches Class Test routes while isolating Results', () => {
+    const testsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Class Test')!;
     const resultsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Results')!;
 
     expect(testsItem.matches('/student/tests')).toBe(true);
@@ -75,10 +84,10 @@ describe('StudentSubNav Destination and Route Matcher Tests', () => {
     expect(resultsItem.matches('/student/tests')).toBe(false);
   });
 
-  it('correctly matches Timetable, Doubts, Analytics, and Profile', () => {
-    const timetableItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Timetable')!;
+  it('correctly matches Time Table, Doubts, My Performance, and Profile', () => {
+    const timetableItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Class Timetable')!;
     const doubtsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'My Doubts')!;
-    const analyticsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Analytics')!;
+    const analyticsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'My Performance')!;
     const profileItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Profile')!;
 
     expect(timetableItem.matches('/student/timetable')).toBe(true);
@@ -89,7 +98,7 @@ describe('StudentSubNav Destination and Route Matcher Tests', () => {
   });
 
   it('correctly isolates badge configuration to tests and doubts', () => {
-    const testsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Mock Tests')!;
+    const testsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'Class Test')!;
     const doubtsItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'My Doubts')!;
     const coursesItem = STUDENT_NAV_ITEMS.find((i) => i.label === 'My Courses')!;
 

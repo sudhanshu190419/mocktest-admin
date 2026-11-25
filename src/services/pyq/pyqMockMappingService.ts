@@ -32,13 +32,19 @@
  */
 
 import { supabase } from '@/config/supabase';
-import { extractErrorMessage, validateUUID } from '@/utils/supabase';
+import { buildPagination, extractErrorMessage, validateUUID } from '@/utils/supabase';
+import { buildPaginatedResponse } from '@/utils/response';
 import { createMockTest } from '@/services/mockTest/mockTestService';
 import { addQuestionsToMockTest } from '@/services/mockTest/mockTestQuestionService';
 import { publishMockTestWorkflow } from '@/services/mockTest/mockTestPublishService';
 import { auditService } from '@/services/audit/auditService';
-import { assertPaperOwnership } from './pyqOwnershipGuard';
-import type { ApiResponse } from '@/types/academic';
+import {
+  assertPaperOwnership,
+  canManagePyq,
+  isCurrentUserSuperAdmin,
+  resolveCurrentProfileId,
+} from './pyqOwnershipGuard';
+import type { ApiResponse, PaginatedResponse } from '@/types/academic';
 import type { MockTest } from '@/types/mockTest';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -65,6 +71,39 @@ export interface PyqMockMapping {
 export interface GenerateMockResult {
   mockMapping: PyqMockMapping;
   mockTest: MockTest;
+}
+
+/**
+ * An available mock test item eligible to be linked to a package paper.
+ */
+export interface AvailableMockTestItem {
+  testId: string;
+  instituteId: string;
+  title: string;
+  description: string | null;
+  durationMin: number;
+  totalMarks: number;
+  passingMarks: number | null;
+  status: string;
+  testType: string;
+  streamId: string;
+  streamName: string | null;
+  subjectId: string | null;
+  subjectName: string | null;
+  questionCount: number;
+  publishedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Options for querying available mock tests.
+ */
+export interface GetAvailableMockTestsParams {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  streamId?: string;
+  subjectId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -183,6 +222,15 @@ export const pyqMockMappingService = {
         return { success: false, error: ownership.error ?? 'Could not verify paper ownership.' };
       }
       const actorProfileId = ownership.data.profileId;
+
+      // ── Pre-flight check: ensure no mapping already exists ──────────
+      const existingMapping = await this.getMockMapping(paperId);
+      if (existingMapping.success && existingMapping.data) {
+        return {
+          success: false,
+          error: 'A mock test is already linked to this paper. Use regenerateMockFromPaper() to replace it.',
+        };
+      }
 
       // ── Fetch paper details ──────────────────────────────────────────
       const { data: paper, error: paperErr } = await supabase
@@ -564,6 +612,433 @@ export const pyqMockMappingService = {
         success: true,
         data: {
           mockMapping: mappingResult.data,
+          mockTest: mappedTest,
+        },
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  5. Get Available Existing Mock Tests
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch published mock tests from the current institute that:
+   * 1. Belong to the current administrator's institute.
+   * 2. Have `status = 'published'`.
+   * 3. Contain at least one usable question (checked via mock_test_questions).
+   * 4. Are not already linked through `public.pyq_mock_mappings`.
+   * 5. Support searching by title, subject name, or stream name.
+   * 6. Support pagination.
+   *
+   * @param instituteId - Target institute UUID (validated server-side against admin profile)
+   * @param searchOrParams - Optional search term or structured options
+   * @param pageParam - 1-based page index (defaults to 1)
+   * @param pageSizeParam - Items per page (defaults to 10)
+   */
+  async getAvailableExistingMockTests(
+    instituteId?: string | null,
+    searchOrParams?: string | GetAvailableMockTestsParams,
+    pageParam: number = 1,
+    pageSizeParam: number = 10,
+  ): Promise<ApiResponse<PaginatedResponse<AvailableMockTestItem>>> {
+    try {
+      // ── Server-side Authorization ────────────────────────────────────
+      const canManage = await canManagePyq();
+      if (!canManage) {
+        return {
+          success: false,
+          error: 'Only a Super Admin or Academic Admin can view available mock tests.',
+        };
+      }
+
+      const profileId = await resolveCurrentProfileId();
+      if (!profileId) {
+        return { success: false, error: 'No authenticated user found.' };
+      }
+
+      // ── Institute Isolation ──────────────────────────────────────────
+      const { data: profile, error: profErr } = await supabase
+        .from('profiles')
+        .select('institute_id')
+        .eq('profile_id', profileId)
+        .single();
+
+      if (profErr || !profile?.institute_id) {
+        return { success: false, error: 'Could not resolve administrator institute.' };
+      }
+
+      const isSuper = await isCurrentUserSuperAdmin();
+      if (!isSuper && instituteId && instituteId !== profile.institute_id) {
+        return {
+          success: false,
+          error: 'Access denied: cannot access mock tests for another institute.',
+        };
+      }
+
+      const effectiveInstituteId = (!isSuper || !instituteId) ? profile.institute_id : instituteId;
+      validateUUID(effectiveInstituteId, 'instituteId');
+
+      // ── Parse options ────────────────────────────────────────────────
+      let search = '';
+      let page = pageParam;
+      let pageSize = pageSizeParam;
+      let streamId: string | undefined;
+      let subjectId: string | undefined;
+
+      if (typeof searchOrParams === 'object' && searchOrParams !== null) {
+        search = searchOrParams.search ?? '';
+        page = searchOrParams.page ?? 1;
+        pageSize = searchOrParams.pageSize ?? 10;
+        streamId = searchOrParams.streamId;
+        subjectId = searchOrParams.subjectId;
+      } else if (typeof searchOrParams === 'string') {
+        search = searchOrParams;
+      }
+
+      // ── Exclude already-mapped tests in pyq_mock_mappings ─────────────
+      const { data: mappedRows, error: mapErr } = await supabase
+        .from('pyq_mock_mappings')
+        .select('test_id')
+        .eq('institute_id', effectiveInstituteId);
+
+      if (mapErr) {
+        return { success: false, error: extractErrorMessage(mapErr) };
+      }
+
+      const mappedTestIds = (mappedRows ?? []).map((m: any) => m.test_id);
+
+      // ── Build query ──────────────────────────────────────────────────
+      let query = supabase
+        .from('mock_tests')
+        .select(
+          `
+          test_id,
+          institute_id,
+          title,
+          description,
+          duration_min,
+          total_marks,
+          passing_marks,
+          status,
+          test_type,
+          stream_id,
+          subject_id,
+          published_at,
+          created_at,
+          streams!left (
+            name
+          ),
+          subjects!left (
+            name
+          ),
+          mock_test_questions!inner (
+            question_id
+          )
+        `,
+          { count: 'exact' },
+        )
+        .eq('institute_id', effectiveInstituteId)
+        .eq('status', 'published')
+        .is('deleted_at', null);
+
+      if (mappedTestIds.length > 0) {
+        query = query.not('test_id', 'in', `(${mappedTestIds.join(',')})`);
+      }
+
+      if (streamId) {
+        query = query.eq('stream_id', streamId);
+      }
+      if (subjectId) {
+        query = query.eq('subject_id', subjectId);
+      }
+
+      // ── Search filter (title, subject name, stream name) ──────────────
+      if (search.trim()) {
+        const term = `%${search.trim()}%`;
+        const [matchingSubjects, matchingStreams] = await Promise.all([
+          supabase.from('subjects').select('subject_id').ilike('name', term),
+          supabase.from('streams').select('stream_id').ilike('name', term),
+        ]);
+
+        const foundSubjectIds = (matchingSubjects.data ?? []).map((s: any) => s.subject_id);
+        const foundStreamIds = (matchingStreams.data ?? []).map((s: any) => s.stream_id);
+
+        const orConditions: string[] = [`title.ilike.${term}`];
+        if (foundSubjectIds.length > 0) {
+          orConditions.push(`subject_id.in.(${foundSubjectIds.join(',')})`);
+        }
+        if (foundStreamIds.length > 0) {
+          orConditions.push(`stream_id.in.(${foundStreamIds.join(',')})`);
+        }
+        query = query.or(orConditions.join(','));
+      }
+
+      // ── Order & Pagination ───────────────────────────────────────────
+      query = query.order('created_at', { ascending: false });
+      const { from, to } = buildPagination({ page, pageSize });
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        return { success: false, error: extractErrorMessage(error) };
+      }
+
+      const items: AvailableMockTestItem[] = (data ?? []).map((row: any) => {
+        let questionCount = 0;
+        if (Array.isArray(row.mock_test_questions)) {
+          if (row.mock_test_questions.length > 0 && typeof row.mock_test_questions[0]?.count === 'number') {
+            questionCount = row.mock_test_questions[0].count;
+          } else {
+            questionCount = row.mock_test_questions.length;
+          }
+        }
+
+        return {
+          testId: row.test_id,
+          instituteId: row.institute_id,
+          title: row.title ?? 'Untitled Test',
+          description: row.description ?? null,
+          durationMin: row.duration_min ?? 0,
+          totalMarks: row.total_marks ?? 0,
+          passingMarks: row.passing_marks ?? null,
+          status: row.status ?? 'published',
+          testType: row.test_type ?? 'mock_test',
+          streamId: row.stream_id,
+          streamName: row.streams?.name ?? null,
+          subjectId: row.subject_id ?? null,
+          subjectName: row.subjects?.name ?? null,
+          questionCount,
+          publishedAt: row.published_at ?? null,
+          createdAt: row.created_at,
+        };
+      });
+
+      return {
+        success: true,
+        data: buildPaginatedResponse(items, count ?? 0, page, pageSize),
+      };
+    } catch (err) {
+      return { success: false, error: extractErrorMessage(err) };
+    }
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  6. Assign Existing Mock Test
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Connects an existing published mock test from the Mock Test Builder to a
+   * package paper via public.pyq_mock_mappings.
+   *
+   * Validates:
+   * 1. Valid UUIDs for paperId and testId
+   * 2. Administrator has permission (Super Admin or Academic Admin)
+   * 3. Target paper exists
+   * 4. Paper does not already have a linked mock test (enforces UNIQUE paper_id)
+   * 5. Target mock test exists and belongs to the same institute
+   * 6. Mock test has status = 'published'
+   * 7. Mock test has at least 1 question in mock_test_questions
+   * 8. Mock test is not already linked to another paper (enforces UNIQUE test_id)
+   * 9. Inserts mapping into public.pyq_mock_mappings
+   * 10. Handles race conditions / unique constraint collisions gracefully
+   * 11. Logs audit event
+   *
+   * @param paperId - UUID of the target PYQ paper
+   * @param testId - UUID of the existing published mock test
+   * @returns GenerateMockResult containing mockMapping and mockTest
+   */
+  async assignExistingMockTest(
+    paperId: string,
+    testId: string,
+  ): Promise<ApiResponse<GenerateMockResult>> {
+    try {
+      validateUUID(paperId, 'paperId');
+      validateUUID(testId, 'testId');
+
+      // ── 1. Authorization: Super Admin or Academic Admin ──────────────
+      const ownership = await assertPaperOwnership(paperId);
+      if (!ownership.success || !ownership.data) {
+        return {
+          success: false,
+          error: ownership.error ?? 'You do not have permission to modify this paper.',
+        };
+      }
+      const actorProfileId = ownership.data.profileId;
+
+      // ── 2. Fetch and validate target paper ───────────────────────────
+      const { data: paper, error: paperErr } = await supabase
+        .from('pyq_papers')
+        .select('paper_id, package_id, institute_id, stream_id, title')
+        .eq('paper_id', paperId)
+        .single<{
+          paper_id: string;
+          package_id: string;
+          institute_id: string;
+          stream_id: string;
+          title: string;
+        }>();
+
+      if (paperErr || !paper) {
+        if (paperErr?.code === 'PGRST116') {
+          return { success: false, error: `PYQ paper not found: ${paperId}` };
+        }
+        return { success: false, error: extractErrorMessage(paperErr) };
+      }
+
+      // ── 3. Preflight check: paper must not already have a mapping ────
+      const existingMapping = await this.getMockMapping(paperId);
+      if (existingMapping.success && existingMapping.data) {
+        return {
+          success: false,
+          error: 'This paper is already linked to a mock test.',
+        };
+      }
+
+      // ── 4. Preflight check: test must not already be mapped ──────────
+      const { data: existingTestMap, error: testMapErr } = await supabase
+        .from('pyq_mock_mappings')
+        .select('mapping_id, paper_id')
+        .eq('test_id', testId)
+        .maybeSingle();
+
+      if (testMapErr) {
+        return { success: false, error: extractErrorMessage(testMapErr) };
+      }
+
+      if (existingTestMap) {
+        return {
+          success: false,
+          error: 'This mock test has already been assigned to another paper. Please select a different test.',
+        };
+      }
+
+      // ── 5. Fetch and validate selected mock test ──────────────────────
+      const { data: mockTest, error: testErr } = await supabase
+        .from('mock_tests')
+        .select('*')
+        .eq('test_id', testId)
+        .is('deleted_at', null)
+        .single();
+
+      if (testErr || !mockTest) {
+        if (testErr?.code === 'PGRST116') {
+          return { success: false, error: `Mock test not found: ${testId}` };
+        }
+        return { success: false, error: extractErrorMessage(testErr) };
+      }
+
+      // ── 6. Institute isolation: test must match paper's institute ────
+      if (mockTest.institute_id !== paper.institute_id) {
+        return {
+          success: false,
+          error: 'The selected mock test belongs to a different institute.',
+        };
+      }
+
+      // ── 7. Status check: test must be published ──────────────────────
+      if (mockTest.status !== 'published') {
+        return {
+          success: false,
+          error: 'Only published mock tests can be linked to a paper.',
+        };
+      }
+
+      // ── 8. Question validation: test must contain >= 1 question ──────
+      const { count: qCount, error: qCountErr } = await supabase
+        .from('mock_test_questions')
+        .select('question_id', { count: 'exact', head: true })
+        .eq('test_id', testId);
+
+      if (qCountErr) {
+        return { success: false, error: extractErrorMessage(qCountErr) };
+      }
+
+      if (!qCount || qCount === 0) {
+        return {
+          success: false,
+          error: 'The selected mock test contains no questions and cannot be linked.',
+        };
+      }
+
+      // ── 9. Insert mapping into public.pyq_mock_mappings ──────────────
+      const { data: mappingData, error: mappingErr } = await supabase
+        .from('pyq_mock_mappings')
+        .insert({
+          paper_id: paperId,
+          test_id: testId,
+          institute_id: paper.institute_id,
+          created_by: actorProfileId,
+        })
+        .select()
+        .single<DbPyqMockMapping>();
+
+      if (mappingErr) {
+        // Concurrency protection: handle unique constraint collisions
+        if (mappingErr.code === '23505') {
+          const detail = (mappingErr.details ?? mappingErr.message ?? '').toLowerCase();
+          if (detail.includes('paper') || detail.includes('uq_pyq_mock_mappings_paper')) {
+            return {
+              success: false,
+              error: 'This paper is already linked to a mock test.',
+            };
+          }
+          return {
+            success: false,
+            error: 'This mock test has already been assigned to another paper. Please select a different test.',
+          };
+        }
+        return { success: false, error: extractErrorMessage(mappingErr) };
+      }
+
+      // ── 10. Audit log ────────────────────────────────────────────────
+      await auditService.logCreate({
+        resourceType: 'pyq_mock_mappings',
+        resourceId: mappingData.mapping_id,
+        metadata: {
+          paperId,
+          testId,
+          linkedExisting: true,
+          paperTitle: paper.title,
+          testTitle: mockTest.title,
+        },
+      });
+
+      // ── 11. Return mapping + mock test details ────────────────────────
+      const mappedTest: MockTest = {
+        testId: mockTest.test_id,
+        instituteId: mockTest.institute_id,
+        teacherId: mockTest.teacher_id,
+        streamId: mockTest.stream_id,
+        subjectId: mockTest.subject_id,
+        title: mockTest.title,
+        description: mockTest.description,
+        durationMin: mockTest.duration_min,
+        totalMarks: mockTest.total_marks,
+        passingMarks: mockTest.passing_marks,
+        negativeMarking: mockTest.negative_marking,
+        attemptLimit: mockTest.attempt_limit,
+        shuffleQuestions: mockTest.shuffle_questions,
+        shuffleOptions: mockTest.shuffle_options,
+        calculatorAllowed: mockTest.calculator_allowed,
+        status: mockTest.status,
+        testType: mockTest.test_type,
+        resultReleaseMode: mockTest.result_release_mode,
+        resultReleaseAt: mockTest.result_release_at,
+        availableFrom: mockTest.available_from,
+        availableUntil: mockTest.available_until,
+        createdAt: mockTest.created_at,
+        updatedAt: mockTest.updated_at,
+        publishedAt: mockTest.published_at,
+      };
+
+      return {
+        success: true,
+        data: {
+          mockMapping: toPyqMockMapping(mappingData),
           mockTest: mappedTest,
         },
       };

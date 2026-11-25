@@ -253,7 +253,9 @@ describe('Make Me Topper — Transactional Email System (Phase 1)', () => {
       });
 
       expect(html).toContain('Make Me Topper');
-      expect(html).toContain('info@makemetopper.com');
+      expect(html).toContain('support@inovoxy.com');
+      expect(html).toContain('mailto:support@inovoxy.com');
+      expect(html).not.toContain('info@makemetopper.com');
       expect(html).toContain('user@example.com');
       expect(html).toContain('Your account is ready.');
       expect(html).toContain('<!DOCTYPE html>');
@@ -298,6 +300,69 @@ describe('Make Me Topper — Transactional Email System (Phase 1)', () => {
 
       expect(rendered.subject).toBe('Custom Alert');
       expect(rendered.html).toContain('Important account alert.');
+    });
+
+    describe('Shared Email Footer Support Address Verification (All Templates)', () => {
+      const templateKeys = [
+        'pay-01',
+        'pay-02',
+        'pay-03',
+        'pay-04',
+        'pay-05',
+        'pay-06',
+        'ins-01',
+        'ins-02',
+        'acc-01',
+        'acc-03',
+        'acc-04',
+        'test-email',
+        'unknown-fallback-template',
+      ];
+
+      const samplePayload = {
+        recipientName: 'Test Student',
+        recipientEmail: 'student@example.com',
+        courseTitle: 'NEET Complete Course',
+        packageTitle: 'Physics PYQ 2024',
+        amount: 2999,
+        orderId: 'ord_test_123',
+        installmentNumber: 1,
+        totalInstallments: 3,
+        dueDate: '2026-12-01',
+        deviceName: 'Chrome on Mac',
+        deletionDate: '2026-11-21',
+      };
+
+      const sampleContext = {
+        recipientName: 'Test Student',
+        recipientEmail: 'student@example.com',
+      };
+
+      for (const templateId of templateKeys) {
+        it(`renders template "${templateId}" with support@inovoxy.com footer and no info@makemetopper.com support email`, () => {
+          const rendered = renderEmail(templateId, samplePayload, sampleContext);
+
+          // 1. HTML footer contains support@inovoxy.com
+          expect(rendered.html).toContain('Questions or support needed? Email us at <a href="mailto:support@inovoxy.com">support@inovoxy.com</a>');
+          expect(rendered.html).toContain('mailto:support@inovoxy.com');
+
+          // 2. HTML does NOT display info@makemetopper.com in footer
+          expect(rendered.html).not.toContain('info@makemetopper.com');
+
+          // 3. Plain-text fallback contains support@inovoxy.com with mailto link
+          expect(rendered.text).toContain('Questions or support needed? Email us at support@inovoxy.com');
+          expect(rendered.text).toContain('mailto:support@inovoxy.com');
+
+          // 4. Plain-text fallback does NOT contain info@makemetopper.com
+          expect(rendered.text).not.toContain('info@makemetopper.com');
+        });
+      }
+
+      it('preserves sender configuration EMAIL_FROM (Make Me Topper <info@makemetopper.com>) and EMAIL_REPLY_TO (support@inovoxy.com)', () => {
+        const provider = new ResendProvider({});
+        expect((provider as any).defaultFrom).toBe('Make Me Topper <info@makemetopper.com>');
+        expect((provider as any).defaultReplyTo).toBe('support@inovoxy.com');
+      });
     });
   });
 

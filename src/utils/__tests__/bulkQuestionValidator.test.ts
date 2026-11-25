@@ -448,5 +448,44 @@ describe('validateQuestionImportRows', () => {
     expect(result.rowIssues.some((i) => i.column === 'Correct Answer' && i.problem.includes('Accepted answer is required'))).toBe(true);
     expect(result.rowIssues.some((i) => i.column === 'Numerical Answer' && i.problem.includes('must be left empty'))).toBe(true);
   });
+
+  it('safely preserves complex JEE & NEET mathematical expressions, chemistry formulas, and matrices without corruption', () => {
+    const rawMathQuestion: RawQuestionSheetRow = {
+      rowNumber: 2,
+      questionText: 'Evaluate the definite integral \\(\\int_0^1 x^2\\,dx\\) and find the determinant of \\(\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}\\) given \\(\\vec{A} = 10^{-3}\\hat{i}\\).',
+      questionType: 'MCQ',
+      subject: 'PHY',
+      chapter: 'Kinematics',
+      topic: 'Motion Under Gravity',
+      difficulty: 'Hard',
+      marks: 4,
+      negativeMarks: 1,
+      optionA: '\\(\\frac{1}{3}\\) and \\(ad-bc\\)',
+      optionB: '\\(\\frac{1}{2}\\) and \\(ab-cd\\)',
+      optionC: '\\(\\sqrt{x^2+y^2}\\)',
+      optionD: '\\(\\ce{2H2 + O2 -> 2H2O}\\) with \\(\\ce{H2SO4}\\)',
+      correctAnswer: 'A',
+      numericalAnswer: null,
+      tolerance: null,
+      explanation: 'Integrating gives \\(\\left[\\frac{x^3}{3}\\right]_0^1 = \\frac{1}{3}\\). The determinant of 2x2 matrix is \\(ad-bc\\).',
+      rawCells: {},
+    };
+
+    const result = validateQuestionImportRows([rawMathQuestion], mockRef);
+    expect(result.ok).toBe(true);
+    expect(result.summary.validRows).toBe(1);
+    expect(result.rowIssues.filter((i) => i.severity === 'error').length).toBe(0);
+
+    const payload = result.validPayloads[0];
+    // Stem preserves backslashes, braces, fractions, matrices
+    expect(payload.question_text).toBe(rawMathQuestion.questionText);
+    // Options preserve math and chemistry
+    expect(payload.options?.[0].option_text).toBe('\\(\\frac{1}{3}\\) and \\(ad-bc\\)');
+    expect(payload.options?.[0].is_correct).toBe(true);
+    expect(payload.options?.[2].option_text).toBe('\\(\\sqrt{x^2+y^2}\\)');
+    expect(payload.options?.[3].option_text).toBe('\\(\\ce{2H2 + O2 -> 2H2O}\\) with \\(\\ce{H2SO4}\\)');
+    // Explanation preserves LaTeX derivation
+    expect(payload.explanation_text).toContain('\\(\\left[\\frac{x^3}{3}\\right]_0^1 = \\frac{1}{3}\\)');
+  });
 });
 

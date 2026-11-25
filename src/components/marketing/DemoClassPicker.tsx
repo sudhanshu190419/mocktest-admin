@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Card } from './Card';
 import { Button } from './Button';
 import { CourseArtwork } from './StoreCourseCard';
@@ -12,31 +13,177 @@ import {
   getDemoClassVideoSignedUrl,
   getDemoClassThumbnailUrl,
 } from '@/services/demoClassService';
+import { getCourses } from '@/services/courseCatalogService';
 import type { DemoClass } from '@/types/demoClass';
+import type { Course } from '@/types/courseCatalog';
 import type { ExamStreamCode } from '@/types/learnerGoal';
 
-const STREAMS: { code: ExamStreamCode | 'ALL'; label: string }[] = [
-  { code: 'ALL', label: 'All demo classes' },
-  { code: 'NEET', label: 'NEET' },
-  { code: 'JEE', label: 'JEE' },
-  { code: 'CUET', label: 'CUET' },
-  { code: 'FOUNDATION', label: 'Foundation' },
-  { code: 'UPSC', label: 'UPSC' },
-  { code: 'K12', label: 'K12' },
-];
+export interface DemoCategoryOption {
+  code: string;
+  label: string;
+}
 
-export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: DemoClass[] }) {
+/**
+ * Returns user-facing label for stream codes, identical to Explore Batches on Courses page.
+ */
+export function getStreamLabel(item: string): string {
+  if (item === 'ALL') return 'All Batches';
+  if (item === '10TH' || item === 'FOUNDATION') return '8–10th Grade';
+  if (item === '12TH' || item === 'K12') return '11–12th Grade';
+  if (item === 'FOR') return 'Special Batches';
+  return item;
+}
+
+/**
+ * Authoritative check for an active, publicly available course.
+ * Must have status 'published' and not be soft-deleted.
+ */
+export function isCourseActive(c: Course): boolean {
+  return c.status === 'published' && !c.deletedAt;
+}
+
+/**
+ * Determines whether an active course supports a given category code.
+ */
+export function courseMatchesCategory(c: Course, categoryCode: string): boolean {
+  if (!isCourseActive(c)) return false;
+  const sc = (c.streamCode || '').toUpperCase();
+  const title = (c.title || '').toUpperCase();
+  const cat = categoryCode.toUpperCase();
+
+  if (cat === 'NEET') {
+    return sc === 'NEET' || sc === 'MEDICAL' || title.includes('NEET');
+  }
+  if (cat === 'JEE') {
+    return sc === 'JEE' || title.includes('JEE');
+  }
+  if (cat === 'CUET') {
+    return sc === 'CUET' || title.includes('CUET');
+  }
+  if (cat === 'FOUNDATION' || cat === '10TH') {
+    return (
+      sc === 'FOUNDATION' ||
+      sc === '10TH' ||
+      sc === 'CLASS_10' ||
+      sc === 'CLASS_9' ||
+      title.includes('FOUNDATION') ||
+      title.includes('10TH')
+    );
+  }
+  if (cat === 'UPSC') {
+    return sc === 'UPSC' || sc === 'GOVERNMENT' || title.includes('UPSC');
+  }
+  if (cat === 'K12' || cat === '12TH') {
+    return (
+      sc === 'K12' ||
+      sc === '12TH' ||
+      sc === 'CLASS_12' ||
+      sc === 'CLASS_11' ||
+      title.includes('12TH') ||
+      title.includes('K12')
+    );
+  }
+  return sc === cat || title.includes(cat);
+}
+
+/**
+ * Derives distinct verified stream codes from active published courses, exactly matching Explore Batches.
+ */
+export function deriveStreams(courses: Course[]): string[] {
+  const activeCourses = courses.filter(isCourseActive);
+  const list = ['ALL'];
+  if (activeCourses.some((c) => (c.streamCode as string) === 'NEET' || (c.streamCode as string) === 'MEDICAL')) list.push('NEET');
+  if (activeCourses.some((c) => (c.streamCode as string) === '10TH' || (c.streamCode as string) === 'FOUNDATION')) list.push('10TH');
+  if (activeCourses.some((c) => (c.streamCode as string) === '12TH' || (c.streamCode as string) === 'K12')) list.push('12TH');
+  if (activeCourses.some((c) => (c.streamCode as string) === 'CUET')) list.push('CUET');
+  if (activeCourses.some((c) => (c.streamCode as string) === 'JEE' || c.title.toUpperCase().includes('JEE'))) list.push('JEE');
+
+  activeCourses.forEach((c) => {
+    const code = (c.streamCode as string)?.toUpperCase();
+    if (code && !list.includes(code) && code !== 'NEN') {
+      list.push(code);
+    }
+  });
+  return list;
+}
+
+/**
+ * Backward-compatible helper returning stream options with labels.
+ */
+export function deriveActiveCategories(activeCourses: Course[]): DemoCategoryOption[] {
+  const streamCodes = deriveStreams(activeCourses);
+  return streamCodes.map((code) => ({
+    code,
+    label: getStreamLabel(code),
+  }));
+}
+
+/**
+ * Determines whether a demo class belongs to a selected stream.
+ * Exactly matches CourseCatalog stream filter conventions.
+ */
+export function demoClassMatchesCategory(item: DemoClass, stream: string): boolean {
+  if (stream === 'ALL') return true;
+  const itemStream = (item.streamCode || item.streamName || '').toUpperCase();
+  const st = stream.toUpperCase();
+
+  return (
+    st === 'ALL' ||
+    itemStream === st ||
+    (st === 'NEET' && (itemStream === 'NEET' || itemStream === 'MEDICAL')) ||
+    (st === 'CUET' && (itemStream === 'CUET' || itemStream === 'UPSC' || itemStream === 'GOVERNMENT')) ||
+    (st === 'FOUNDATION' && (itemStream === 'FOUNDATION' || itemStream === '10TH' || itemStream === 'CLASS_10' || itemStream === 'CLASS_9')) ||
+    (st === '10TH' && (itemStream === '10TH' || itemStream === 'FOUNDATION' || itemStream === 'CLASS_10' || itemStream === 'CLASS_9')) ||
+    (st === '12TH' && (itemStream === '12TH' || itemStream === 'K12' || itemStream === 'CLASS_12' || itemStream === 'CLASS_11')) ||
+    (st === 'K12' && (itemStream === 'K12' || itemStream === '12TH' || itemStream === 'CLASS_12' || itemStream === 'CLASS_11')) ||
+    (st === 'JEE' && (itemStream === 'JEE' || itemStream === 'ENGINEERING' || item.title.toUpperCase().includes('JEE')))
+  );
+}
+
+export interface DemoClassPickerProps {
+  initialClasses?: DemoClass[];
+  courses?: Course[];
+}
+
+export function DemoClassPicker({
+  initialClasses = [],
+  courses: initialCourses,
+}: DemoClassPickerProps) {
   const { user, loading: authLoading } = useAuth();
-  const [stream, setStream] = useState<ExamStreamCode | 'ALL'>('ALL');
+  const searchParams = useSearchParams();
+  const urlStream = searchParams?.get('stream') || searchParams?.get('goal') || searchParams?.get('category');
+
+  const [stream, setStream] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [classes, setClasses] = useState<DemoClass[]>(initialClasses);
+  const [courses, setCourses] = useState<Course[]>(initialCourses || []);
   const [loading, setLoading] = useState(false);
+
+  // Synchronize stream filter with incoming URL search parameters
+  useEffect(() => {
+    if (urlStream) {
+      setStream(urlStream.toUpperCase());
+    } else {
+      setStream('ALL');
+    }
+  }, [urlStream]);
 
   // Video preview modal state
   const [activeVideoClass, setActiveVideoClass] = useState<DemoClass | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+
+  // Client-side fallback if courses are not pre-fetched
+  useEffect(() => {
+    if (initialCourses && initialCourses.length > 0) {
+      setCourses(initialCourses);
+      return;
+    }
+    getCourses()
+      .then((res) => setCourses(res))
+      .catch((err) => console.warn('Could not fetch courses in DemoClassPicker:', err));
+  }, [initialCourses]);
 
   useEffect(() => {
     // If user is logged in, refresh demo classes list
@@ -48,12 +195,28 @@ export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: Demo
     }
   }, [user, initialClasses.length]);
 
+  // Distinct verified stream options derived from published courses (matches CourseCatalog)
+  const streams = useMemo(() => {
+    return deriveStreams(courses);
+  }, [courses]);
+
+  // Reset stream to 'ALL' if the selected stream is no longer valid
+  useEffect(() => {
+    if (
+      stream !== 'ALL' &&
+      !streams.some((s) => s.toUpperCase() === stream.toUpperCase()) &&
+      !(stream.toUpperCase() === 'FOUNDATION' && streams.includes('10TH')) &&
+      !(stream.toUpperCase() === 'K12' && streams.includes('12TH'))
+    ) {
+      setStream('ALL');
+    }
+  }, [streams, stream]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return classes.filter((item) => {
-      if (stream !== 'ALL') {
-        const itemStream = (item.streamCode || item.streamName || '').toUpperCase();
-        if (itemStream !== stream) return false;
+      if (stream !== 'ALL' && !demoClassMatchesCategory(item, stream)) {
+        return false;
       }
       if (!q) return true;
       return (
@@ -182,29 +345,25 @@ export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: Demo
   // ── Logged-in State: Full Demo Classes Catalog ──────────────────
   return (
     <div className="store-demo-picker">
-      <div className="store-section-heading">
+      {/* ── Section Heading: Explore Demo Classes (Replaces competing redundant hero) ── */}
+      <div className="store-section-heading mb-6">
         <div>
-          <p className="store-eyebrow">PREVIEW OUR TEACHING</p>
-          <h2>Free demo classes for every exam stream.</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Explore Demo Classes</h2>
         </div>
-        <p>
-          Stream actual masterclass sessions.
-          <br />
-          Experience interactive problem solving & concept clarity.
-        </p>
       </div>
 
       <div className="store-catalog-controls">
         <div className="store-stream-filters" role="group" aria-label="Filter demo classes by exam stream">
-          {STREAMS.map((item) => (
+          {streams.map((item) => (
             <button
-              key={item.code}
-              onClick={() => setStream(item.code)}
-              aria-pressed={stream === item.code}
-              className={stream === item.code ? 'selected' : ''}
+              key={item}
+              type="button"
+              onClick={() => setStream(item)}
+              aria-pressed={stream === item}
+              className={stream === item ? 'selected' : ''}
             >
-              {item.label}
-              {item.code === 'ALL' && <span className="tabular-nums">{classes.length}</span>}
+              {getStreamLabel(item)}
+              {item === 'ALL' && <span className="tabular-nums">{classes.length}</span>}
             </button>
           ))}
         </div>
@@ -319,10 +478,10 @@ export function DemoClassPicker({ initialClasses = [] }: { initialClasses?: Demo
       ) : (
         <div className="store-empty">
           <span aria-hidden="true">✳</span>
-          <h3>No demo classes found for {stream === 'ALL' ? 'this search' : stream}.</h3>
+          <h3>No demo classes found for {getStreamLabel(stream)}.</h3>
           <p>
             {stream !== 'ALL'
-              ? `We are adding more sample classes for ${stream}. Try exploring all available demo classes or search for another topic.`
+              ? `We are adding more sample classes for ${getStreamLabel(stream)}. Try exploring all available demo classes or search for another topic.`
               : 'Try clearing your search query to see all available demo classes.'}
           </p>
           <Button

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { BookmarkSimple, MagnifyingGlassPlus, X } from '@phosphor-icons/react';
 import type { RunnerQuestion } from '@/services/student/studentTestWebService';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import { AnswerOptions } from './AnswerOptions';
 
 interface QuestionDisplayProps {
@@ -101,8 +102,8 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
       {/* Main Question Stem & Options */}
       <div className="p-5 sm:p-7 flex flex-col gap-6">
         {/* Question Stem (16px / 26px typography on reading scale) */}
-        <div className="text-[16px] leading-[26px] text-ink font-medium whitespace-pre-line">
-          {question.text || 'Question content'}
+        <div className="text-[16px] leading-[26px] text-ink font-medium">
+          <MathRenderer content={question.text || 'Question content'} />
         </div>
 
         {/* Question Stem Image (if present) */}

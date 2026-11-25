@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -91,6 +92,11 @@ export function PaymentModal({
   const [status, setStatus] = useState<CheckoutStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRetryingGrant, setIsRetryingGrant] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Sync scroll lock with modal open/close
   useEffect(() => {
@@ -104,7 +110,7 @@ export function PaymentModal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted || typeof document === 'undefined') return null;
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
   const loginUrl = `/login?next=${encodeURIComponent(currentPath)}`;
@@ -260,16 +266,16 @@ export function PaymentModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-scrim backdrop-blur-xs animate-fade-quick"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-scrim backdrop-blur-xs animate-fade-quick"
       onClick={(e) => {
         if (e.target === e.currentTarget && status !== 'initiating' && status !== 'verifying' && status !== 'pending_grant') {
           onClose();
         }
       }}
     >
-      <div className="relative w-full max-w-lg overflow-hidden bg-white border border-line rounded-sheet shadow-dialog p-6 sm:p-8 text-ink animate-pop-in">
+      <div className="relative z-10 w-full max-w-lg overflow-hidden bg-white border border-line rounded-sheet shadow-dialog p-6 sm:p-8 text-ink animate-pop-in">
         {/* Close Button */}
         {status !== 'initiating' && status !== 'verifying' && status !== 'pending_grant' && (
           <button
@@ -494,6 +500,7 @@ export function PaymentModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

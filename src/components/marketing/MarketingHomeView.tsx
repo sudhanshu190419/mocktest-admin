@@ -1,19 +1,17 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CourseStoreShell } from './CourseStoreShell';
 import { HeroSection } from './HeroSection';
 import { StudentHomeHero } from './StudentHomeHero';
 import { StoreCourseCard } from './StoreCourseCard';
-import { PYQPackageCard } from './PYQCatalog';
 import { AppShowcaseSection } from './AppShowcaseSection';
 import { FreeDemoSection } from './FreeDemoSection';
 import { IconChevronLeft, IconChevronRight } from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { getHomepageTrendingCourses } from '@/services/courseCatalogService';
-import { getPYQPackages } from '@/services/pyqCatalogService';
 import { useStudentPyqPurchases } from '@/hooks/student/useStudentPyqPurchases';
 import { useStoreCarousel } from './useStoreCarousel';
 import {
@@ -21,8 +19,7 @@ import {
   studentDashboardKeys,
   type StudentEnrolledCourse,
 } from '@/services/student/studentDashboardWebService';
-import type { Course } from '@/types/courseCatalog';
-import type { PYQPackage } from '@/types/pyqCatalog';
+import type { Course, CourseBatchItem } from '@/types/courseCatalog';
 import '@/app/courses/courses.css';
 
 const GOALS = [
@@ -75,14 +72,6 @@ export function MarketingHomeView() {
     gcTime: 30 * 60_000,
   });
 
-  // React Query: Public PYQ packages collection
-  const { data: pyqPackages = [], isLoading: pyqLoading } = useQuery({
-    queryKey: ['catalog', 'pyq-packages'],
-    queryFn: () => getPYQPackages(),
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-  });
-
   // React Query: Student courses bootstrap
   const { data: bootstrapResult, isLoading: bootstrapLoading } = useQuery({
     queryKey: studentDashboardKeys.bootstrap(profileId),
@@ -93,8 +82,8 @@ export function MarketingHomeView() {
     refetchOnWindowFocus: false,
   });
 
-  // React Query: Student PYQ purchases
-  const { purchases: pyqPurchases, purchasedPackageIds = [], isLoading: pyqPurchasesLoading } = useStudentPyqPurchases(profileId);
+  // React Query: Student PYQ purchases for hero workspace
+  const { purchases: pyqPurchases, isLoading: pyqPurchasesLoading } = useStudentPyqPurchases(profileId);
 
   const bootstrapData = bootstrapResult?.data ?? null;
   const enrolledCourses: StudentEnrolledCourse[] = bootstrapData?.enrolled_courses || [];
@@ -137,12 +126,44 @@ export function MarketingHomeView() {
       return timeB - timeA;
     })
     .slice(0, 8);
-  const featuredPyq = pyqPackages
-    .filter((item) => item.streamCode === goal.code)
-    .slice(0, 8);
 
-  const courseCarousel = useStoreCarousel(featuredCourses.length);
-  const pyqCarousel = useStoreCarousel(featuredPyq.length);
+  // Derive batches associated with the filtered courses (Section 4 & 6)
+  // Preserves course context, deduplicates batch records, handles courses without batches gracefully
+  const featuredBatches = useMemo(() => {
+    const seenBatchIds = new Set<string>();
+    const batchList: Array<{ course: Course; batch?: CourseBatchItem }> = [];
+
+    for (const course of featuredCourses) {
+      const activeBatches = (course.batches || []).filter((b) => b.isActive);
+      if (activeBatches.length > 0) {
+        for (const b of activeBatches) {
+          if (!seenBatchIds.has(b.id)) {
+            seenBatchIds.add(b.id);
+            batchList.push({ course, batch: b });
+          }
+        }
+      } else {
+        const fallbackId = `course-batch-${course.courseId}`;
+        if (!seenBatchIds.has(fallbackId)) {
+          seenBatchIds.add(fallbackId);
+          batchList.push({
+            course,
+            batch: {
+              id: fallbackId,
+              name: course.title,
+              code: null,
+              isActive: true,
+              status: 'active',
+            },
+          });
+        }
+      }
+    }
+
+    return batchList.slice(0, 8);
+  }, [featuredCourses]);
+
+  const courseCarousel = useStoreCarousel(featuredBatches.length);
 
   return (
     <div className="course-store store-home">
@@ -178,8 +199,7 @@ export function MarketingHomeView() {
           >
             <div className="store-section-heading">
               <div>
-                <p className="store-eyebrow">FIRST, YOUR DIRECTION</p>
-                <h2 id="home-goals-title">What are you working towards?</h2>
+                <h2 id="home-goals-title">Our Courses</h2>
               </div>
               <p>Choose a goal to shape the courses and practice papers below.</p>
             </div>
@@ -208,160 +228,65 @@ export function MarketingHomeView() {
                 </button>
               ))}
             </nav>
-            <p className="store-home-filter-note">
-              Showing <strong>{goal.label}</strong> offerings.
-            </p>
           </section>
 
-          <section
-            className="store-container store-home-section"
-            id="home-courses"
-            aria-labelledby="home-courses-title"
-          >
-            <div className="store-section-heading">
-              <div>
-                <p className="store-eyebrow">THE COURSE COLLECTION · {goal.label.toUpperCase()}</p>
-                <h2 id="home-courses-title">Make room for your ambition.</h2>
-                <p className="store-home-section-copy">
-                  Explore {goal.label} curriculum outlines, subjects, and batch formats.
-                </p>
-              </div>
-              <div className="store-section-heading-actions">
-                {courseCarousel.showControls && (
-                  <div className="store-carousel-nav-arrows" aria-label="Course collection carousel navigation">
-                    <button
-                      type="button"
-                      className="store-carousel-arrow-btn"
-                      onClick={courseCarousel.scrollPrev}
-                      disabled={courseCarousel.isAtStart}
-                      aria-label="Previous courses"
-                    >
-                      <IconChevronLeft size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="store-carousel-arrow-btn"
-                      onClick={courseCarousel.scrollNext}
-                      disabled={courseCarousel.isAtEnd}
-                      aria-label="Next courses"
-                    >
-                      <IconChevronRight size={16} />
-                    </button>
-                  </div>
-                )}
-                <Link className="store-text-link" href="/courses">
-                  All courses, all goals <span aria-hidden="true">↗</span>
-                </Link>
-              </div>
-            </div>
-            {coursesLoading ? (
-              <CatalogGridSkeleton />
-            ) : featuredCourses.length > 0 ? (
-              featuredCourses.length > 3 ? (
-                <div className="store-carousel-wrapper">
-                  <div
-                    ref={courseCarousel.trackRef}
-                    className="store-carousel-track-scroll"
-                    role="region"
-                    aria-label={`${goal.label} courses carousel`}
-                  >
-                    {featuredCourses.map((course) => (
-                      <div key={course.courseId} className="store-carousel-slide-item">
-                        <StoreCourseCard
-                          course={course}
-                          isEnrolled={enrolledCourseIds.includes(course.courseId)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="store-related-grid">
-                  {featuredCourses.map((course) => (
-                    <StoreCourseCard
-                      key={course.courseId}
-                      course={course}
-                      isEnrolled={enrolledCourseIds.includes(course.courseId)}
-                    />
-                  ))}
-                </div>
-              )
-            ) : (
-              <div className="store-home-empty">
-                <span className="store-home-empty-mark" aria-hidden="true">
-                  {goal.symbol}
-                </span>
-                <div>
-                  <p className="store-eyebrow">{goal.label.toUpperCase()} COLLECTION</p>
-                  <h3>No published courses here yet.</h3>
-                  <p>
-                    There are no {goal.label} courses published right now. Choose another goal above,
-                    or explore the full catalog.
-                  </p>
-                  <Link className="store-text-link" href="/courses">
-                    Explore all courses <span aria-hidden="true">↗</span>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="store-home-tint" aria-labelledby="home-pyq-title">
-            <div className="store-container store-home-section" id="home-pyq">
+          <section className="store-home-tint" aria-labelledby="home-courses-title">
+            <div
+              className="store-container store-home-section"
+              id="home-courses"
+            >
               <div className="store-section-heading">
                 <div>
-                  <p className="store-eyebrow">
-                    THE PRACTICE COLLECTION · {goal.label.toUpperCase()}
-                  </p>
-                  <h2 id="home-pyq-title">A fresh look at past papers.</h2>
+                  <h2 id="home-courses-title">Explore Batches</h2>
                   <p className="store-home-section-copy">
-                    Find your next practice direction in the {goal.label} PYQ collection.
+                    Explore {goal.label} curriculum outlines, subjects, and batch formats.
                   </p>
                 </div>
                 <div className="store-section-heading-actions">
-                  {pyqCarousel.showControls && (
-                    <div className="store-carousel-nav-arrows" aria-label="PYQ collection carousel navigation">
+                  {courseCarousel.showControls && (
+                    <div className="store-carousel-nav-arrows" aria-label="Course collection carousel navigation">
                       <button
                         type="button"
                         className="store-carousel-arrow-btn"
-                        onClick={pyqCarousel.scrollPrev}
-                        disabled={pyqCarousel.isAtStart}
-                        aria-label="Previous PYQ packages"
+                        onClick={courseCarousel.scrollPrev}
+                        disabled={courseCarousel.isAtStart}
+                        aria-label="Previous courses"
                       >
                         <IconChevronLeft size={16} />
                       </button>
                       <button
                         type="button"
                         className="store-carousel-arrow-btn"
-                        onClick={pyqCarousel.scrollNext}
-                        disabled={pyqCarousel.isAtEnd}
-                        aria-label="Next PYQ packages"
+                        onClick={courseCarousel.scrollNext}
+                        disabled={courseCarousel.isAtEnd}
+                        aria-label="Next courses"
                       >
                         <IconChevronRight size={16} />
                       </button>
                     </div>
                   )}
-                  <Link className="store-text-link" href="/pyq">
-                    All PYQ packages <span aria-hidden="true">↗</span>
-                  </Link>
                 </div>
               </div>
-              {pyqLoading ? (
+              {coursesLoading ? (
                 <CatalogGridSkeleton />
-              ) : featuredPyq.length > 0 ? (
-                featuredPyq.length > 3 ? (
+              ) : featuredBatches.length > 0 ? (
+                featuredBatches.length > 3 ? (
                   <div className="store-carousel-wrapper">
                     <div
-                      ref={pyqCarousel.trackRef}
+                      ref={courseCarousel.trackRef}
                       className="store-carousel-track-scroll"
                       role="region"
-                      aria-label={`${goal.label} PYQ packages carousel`}
+                      aria-label={`${goal.label} courses carousel`}
                     >
-                      {featuredPyq.map((item) => (
-                        <div key={item.packageId} className="store-carousel-slide-item">
-                          <PYQPackageCard
-                            item={item}
-                            isPurchased={purchasedPackageIds.includes(item.packageId)}
+                      {featuredBatches.map(({ course, batch }) => (
+                        <div
+                          key={batch ? `${course.courseId}-${batch.id}` : course.courseId}
+                          className="store-carousel-slide-item"
+                        >
+                          <StoreCourseCard
+                            course={course}
+                            batch={batch}
+                            isEnrolled={enrolledCourseIds.includes(course.courseId)}
                           />
                         </div>
                       ))}
@@ -369,11 +294,12 @@ export function MarketingHomeView() {
                   </div>
                 ) : (
                   <div className="store-related-grid">
-                    {featuredPyq.map((item) => (
-                      <PYQPackageCard
-                        key={item.packageId}
-                        item={item}
-                        isPurchased={purchasedPackageIds.includes(item.packageId)}
+                    {featuredBatches.map(({ course, batch }) => (
+                      <StoreCourseCard
+                        key={batch ? `${course.courseId}-${batch.id}` : course.courseId}
+                        course={course}
+                        batch={batch}
+                        isEnrolled={enrolledCourseIds.includes(course.courseId)}
                       />
                     ))}
                   </div>
@@ -381,17 +307,17 @@ export function MarketingHomeView() {
               ) : (
                 <div className="store-home-empty">
                   <span className="store-home-empty-mark" aria-hidden="true">
-                    ↗
+                    {goal.symbol}
                   </span>
                   <div>
-                    <p className="store-eyebrow">{goal.label.toUpperCase()} PRACTICE</p>
-                    <h3>No past paper packages here yet.</h3>
+                    <p className="store-eyebrow">{goal.label.toUpperCase()} BATCHES</p>
+                    <h3>No published batches here yet.</h3>
                     <p>
-                      Official papers for {goal.label} are being prepared. Explore our full library of
-                      mock tests.
+                      There are no {goal.label} batches published right now. Choose another goal above,
+                      or explore the full catalog.
                     </p>
-                    <Link className="store-text-link" href="/pyq">
-                      Explore all packages <span aria-hidden="true">↗</span>
+                    <Link className="store-text-link" href="/courses">
+                      Explore all courses <span aria-hidden="true">↗</span>
                     </Link>
                   </div>
                 </div>

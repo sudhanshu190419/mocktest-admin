@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, use, useRef } from 'react';
+import { useState, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { usePyqPackage } from '@/hooks/pyq/usePyqPackages';
@@ -25,13 +25,6 @@ const emptyForm: FormData = {
   durationMin: '',
 };
 
-interface PdfUploadState {
-  file: File | null;
-  status: 'idle' | 'uploading' | 'done' | 'error';
-  progress: number;
-  error: string | null;
-}
-
 export default function CreatePyqPaperPage({
   params,
 }: {
@@ -46,30 +39,6 @@ export default function CreatePyqPaperPage({
 
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // PDF upload state — stored as File object, uploaded during save
-  const [questionPdf, setQuestionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
-
-  const questionInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = useCallback(
-    (file: File | null) => {
-      if (!file) return;
-      if (file.type !== 'application/pdf') {
-        setQuestionPdf((prev) => ({ ...prev, file: null, status: 'error', error: 'Only PDF files are accepted.' }));
-        return;
-      }
-      const state: PdfUploadState = { file, status: 'idle', progress: 0, error: null };
-      setQuestionPdf(state);
-      setErrors((prev) => ({ ...prev, questionPdf: '' }));
-    },
-    [],
-  );
-
-  const handleRemoveFile = useCallback(() => {
-    setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
-    if (questionInputRef.current) questionInputRef.current.value = '';
-  }, []);
 
   const handleChange = useCallback(
     (field: keyof FormData, value: string) => {
@@ -104,23 +73,16 @@ export default function CreatePyqPaperPage({
       }
     }
 
-    if (!questionPdf.file) {
-      newErrors.questionPdf = 'Question paper PDF is required.';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, questionPdf.file]);
+  }, [formData]);
 
-  // Question PDF must be selected before save can proceed
-  const canSave = !createPaper.isPending && questionPdf.file;
+  const canSave = !createPaper.isPending;
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!validate()) return;
-
-      setQuestionPdf((prev) => ({ ...prev, status: 'uploading', progress: 0 }));
 
       createPaper.mutate(
         {
@@ -131,110 +93,21 @@ export default function CreatePyqPaperPage({
           examSession: formData.examSession || null,
           totalMarks: null,
           durationMin: formData.durationMin ? parseInt(formData.durationMin) : null,
-          questionPdfFile: questionPdf.file!,
-          onProgress: (_loaded, _total) => {
-            // Progress callback - updates happen at upload completion
-          },
         },
         {
           onSuccess: () => {
-            setQuestionPdf((prev) => ({ ...prev, status: 'done', progress: 100 }));
             router.push(`/admin/pyq-packages/${packageId}/papers`);
           },
           onError: (error) => {
-            setQuestionPdf((prev) => ({ ...prev, status: 'error', error: error.message }));
             setErrors({ form: error.message });
           },
         },
       );
     },
-    [formData, questionPdf.file, validate, createPaper, packageId, router],
+    [formData, validate, createPaper, packageId, router],
   );
 
-  function PdfUploadSection({
-    label,
-    state,
-    onFile,
-    onRemove,
-    inputRef,
-    error,
-  }: {
-    label: string;
-    state: PdfUploadState;
-    onFile: (file: File | null) => void;
-    onRemove: () => void;
-    inputRef: React.RefObject<HTMLInputElement | null>;
-    error?: string;
-  }) {
-    return (
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          {label} <span className="text-red-500">*</span>
-        </label>
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (e.dataTransfer.files.length > 0) {
-              onFile(e.dataTransfer.files[0]);
-            }
-          }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 text-sm transition-colors ${
-            state.file
-              ? 'border-emerald-300 bg-emerald-50/30 text-emerald-700 hover:border-emerald-400 dark:border-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-400'
-              : 'border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:hover:border-gray-500'
-          }`}
-          onClick={() => inputRef.current?.click()}
-        >
-          {state.file ? (
-            <div className="text-center">
-              <svg className="mx-auto mb-2 h-8 w-8 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="font-medium text-gray-900 dark:text-gray-100">{state.file.name}</p>
-              <p className="mt-1 text-xs text-gray-400">{(state.file.size / 1024 / 1024).toFixed(2)} MB</p>
-              {state.status === 'uploading' && (
-                <div className="mt-2 w-full max-w-[200px] mx-auto">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                    <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${state.progress}%` }} />
-                  </div>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="mt-2 text-xs text-red-500 hover:text-red-700"
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <>
-              <svg className="mb-2 h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M12 3v13.5m0 0l-4.5-4.5M12 16.5l4.5-4.5" />
-              </svg>
-              <span className="font-medium">Click or drag to upload</span>
-              <span className="mt-1 text-xs text-gray-400">PDF only, max 100 MB</span>
-            </>
-          )}
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => {
-            if (e.target.files?.[0]) onFile(e.target.files[0]);
-          }}
-          className="hidden"
-        />
-        {(error || state.error) && (
-          <p className="mt-1 text-xs text-red-500">{error || state.error}</p>
-        )}
-      </div>
-    );
-  }
-
-    if (user?.role === 'teacher') {
+  if (user?.role === 'teacher') {
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
         <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
@@ -346,24 +219,6 @@ export default function CreatePyqPaperPage({
               />
               {errors.durationMin && <p className="mt-1 text-xs text-red-500">{errors.durationMin}</p>}
             </div>
-          </div>
-        </section>
-
-        {/* PDF Upload */}
-        <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Question Paper PDF</h2>
-          <p className="mb-4 text-xs text-gray-500">
-            Upload the question paper PDF. The file is uploaded automatically when you save the paper.
-          </p>
-          <div className="space-y-6">
-            <PdfUploadSection
-              label="Question Paper PDF"
-              state={questionPdf}
-              onFile={handleFileSelect}
-              onRemove={handleRemoveFile}
-              inputRef={questionInputRef}
-              error={errors.questionPdf}
-            />
           </div>
         </section>
 

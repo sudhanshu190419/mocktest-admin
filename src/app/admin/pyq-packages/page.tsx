@@ -39,6 +39,7 @@ export default function AdminPyqPackageListPage() {
   const [search, setSearch] = useState('');
   const [streamFilter, setStreamFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const PAGE_SIZE = 20;
 
   // Fetch streams for filter dropdown
@@ -50,6 +51,7 @@ export default function AdminPyqPackageListPage() {
   if (instituteId) filters.instituteId = instituteId;
   if (search) filters.search = search;
   if (streamFilter) filters.streamId = streamFilter;
+  if (typeFilter) filters.packageType = typeFilter;
   if (statusFilter === 'active') filters.isActive = true;
   else if (statusFilter === 'inactive') filters.isActive = false;
   else if (statusFilter === 'published') filters.isPublished = true;
@@ -82,6 +84,21 @@ export default function AdminPyqPackageListPage() {
             {p.streamName ?? 'Unknown stream'} · ₹{p.price}
           </p>
         </div>
+      ),
+    },
+    {
+      key: 'packageType',
+      header: 'Type',
+      render: (p) => (
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide ${
+            p.packageType === 'mock_test'
+              ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+              : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+          }`}
+        >
+          {p.packageType === 'mock_test' ? 'MOCK TEST' : 'PYQ'}
+        </span>
       ),
     },
     {
@@ -251,6 +268,15 @@ export default function AdminPyqPackageListPage() {
           {streams.map((s) => (
             <option key={s.streamId} value={s.streamId}>{s.name}</option>
           ))}
+        </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+          className="min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">All Types</option>
+          <option value="pyq">PYQ Packages</option>
+          <option value="mock_test">Mock Tests</option>
         </select>
         <select
           value={statusFilter}

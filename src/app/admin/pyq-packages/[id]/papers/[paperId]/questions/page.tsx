@@ -15,6 +15,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
+import { LinkExistingMockTestModal } from '@/features/pyq/components/LinkExistingMockTestModal';
 
 const PAGE_SIZE = 10;
 
@@ -43,6 +44,7 @@ export default function PyqManageQuestionsPage({
   const generateMock = useGeneratePyqMock();
   const regenerateMock = useRegeneratePyqMock();
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   // Question bank search/filter state
   const [page, setPage] = useState(1);
@@ -241,24 +243,36 @@ export default function PyqManageQuestionsPage({
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => generateMock.mutate(paperId)}
-                  disabled={generateMock.isPending || !assignedMappings || assignedMappings.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {generateMock.isPending ? (
-                    <>
-                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Generating...
-                    </>
-                  ) : (
-                    'Generate Mock Test'
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                    </svg>
+                    Link Existing Mock Test
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => generateMock.mutate(paperId)}
+                    disabled={generateMock.isPending || !assignedMappings || assignedMappings.length === 0}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {generateMock.isPending ? (
+                      <>
+                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      'Generate Mock Test'
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -292,6 +306,18 @@ export default function PyqManageQuestionsPage({
         confirmLabel="Regenerate"
         variant="warning"
       />
+
+      {/* Link Existing Mock Test Modal */}
+      {paper && (
+        <LinkExistingMockTestModal
+          open={showLinkModal}
+          onClose={() => setShowLinkModal(false)}
+          paperId={paperId}
+          paperTitle={paper.title}
+          paperStreamId={paper.streamId}
+          instituteId={paper.instituteId}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* ── Left: Assigned Questions ───────────────────────────────── */}

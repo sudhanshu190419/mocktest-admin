@@ -131,5 +131,9 @@ export const pyqKeys = {
     /** Key for a single mock mapping by paper ID. */
     detail: (paperId: string) =>
       [...pyqKeys.mockMappings.details(), paperId] as const,
+
+    /** Key for querying available mock tests eligible to be linked to a paper. */
+    availableMockTests: (instituteId?: string, search?: string, page?: number) =>
+      [...pyqKeys.mockMappings.all(), 'availableMockTests', instituteId, search, page] as const,
   },
 };

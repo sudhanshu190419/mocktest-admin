@@ -20,7 +20,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pyqKeys } from './queryKeys';
 import { pyqMockMappingService } from '@/services/pyq/pyqMockMappingService';
 import { mockTestKeys } from '@/hooks/mockTest/queryKeys';
-import type { GenerateMockResult, PyqMockMapping } from '@/services/pyq/pyqMockMappingService';
+import type {
+  GenerateMockResult,
+  PyqMockMapping,
+  AvailableMockTestItem,
+  GetAvailableMockTestsParams,
+} from '@/services/pyq/pyqMockMappingService';
+import type { PaginatedResponse } from '@/types/academic';
 
 // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -154,3 +160,72 @@ export function useRegeneratePyqMock() {
     },
   });
 }
+
+/**
+ * Query available published mock tests in the institute that can be linked to a paper.
+ *
+ * Scoped to published mock tests with at least 1 question that are not already
+ * mapped to any package paper.
+ *
+ * @param instituteId - Target institute UUID
+ * @param options - Search and pagination filters
+ */
+export function useAvailableMockTestsQuery(
+  instituteId: string | undefined | null,
+  options?: GetAvailableMockTestsParams,
+) {
+  const page = options?.page ?? 1;
+  const search = options?.search ?? '';
+  return useQuery<PaginatedResponse<AvailableMockTestItem>>({
+    queryKey: pyqKeys.mockMappings.availableMockTests(instituteId ?? undefined, search, page),
+    queryFn: async () => {
+      const result = await pyqMockMappingService.getAvailableExistingMockTests(instituteId, options);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to fetch available mock tests.');
+      }
+      return result.data!;
+    },
+    enabled: !!instituteId,
+  });
+}
+
+export const useAvailableExistingMockTests = useAvailableMockTestsQuery;
+
+/**
+ * Assign / link an existing published mock test to an unmapped package paper.
+ *
+ * On success, invalidates:
+ * - Mock mapping detail cache for this paper (updates mapped card immediately)
+ * - Available mock tests list cache
+ * - Mock test lists cache
+ */
+export function useAssignExistingMockTestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    GenerateMockResult,
+    Error,
+    { paperId: string; testId: string }
+  >({
+    mutationFn: async ({ paperId, testId }) => {
+      const result = await pyqMockMappingService.assignExistingMockTest(paperId, testId);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to link mock test.');
+      }
+      return result.data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: pyqKeys.mockMappings.detail(data.mockMapping.paperId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...pyqKeys.mockMappings.all(), 'availableMockTests'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: mockTestKeys.mockTests.lists(),
+      });
+    },
+  });
+}
+
+export const useAssignExistingMockTest = useAssignExistingMockTestMutation;

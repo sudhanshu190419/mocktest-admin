@@ -110,7 +110,12 @@ export class ResendProvider implements EmailProvider {
         };
       }
 
-      // Classify error by status code
+      // Classify error by status code and error details
+      const rawErrorCode =
+        (responseJson.name as string) ||
+        (responseJson.code as string) ||
+        (responseJson.error_code as string) ||
+        '';
       const errorMessage =
         (responseJson.message as string) ||
         (responseJson.error as string) ||
@@ -126,26 +131,116 @@ export class ResendProvider implements EmailProvider {
         return {
           success: false,
           retryable: true,
+          isAmbiguous: true,
+          providerErrorCode: rawErrorCode || 'rate_limit_exceeded',
           statusCode,
           retryAfterSeconds,
           error: `Rate limit exceeded: ${errorMessage}`,
         };
       }
 
-      // 5xx Server Errors (500, 502, 503, 504) -> transient, retryable
+      // 409 Conflict: Idempotency concurrency and payload mismatch errors
+      if (statusCode === 409) {
+        const isConcurrent =
+          rawErrorCode === 'concurrent_idempotent_requests' ||
+          errorMessage.toLowerCase().includes('concurrent') ||
+          errorMessage.toLowerCase().includes('in progress');
+
+        if (isConcurrent) {
+          // Another request with the same idempotency key is currently executing on Resend.
+          // This is NOT proof of non-acceptance. Must retain reservation and retry with same key.
+          return {
+            success: false,
+            retryable: true,
+            isAmbiguous: true,
+            providerErrorCode: 'concurrent_idempotent_requests',
+            statusCode,
+            retryAfterSeconds: 5,
+            error: `Resend 409 concurrent request in progress: ${errorMessage}`,
+          };
+        }
+
+        // 409 invalid_idempotent_request: Key reused with different payload
+        // Not a definitive rejection of original request! Must NOT release reservation.
+        return {
+          success: false,
+          retryable: false,
+          isAmbiguous: true,
+          providerErrorCode: 'invalid_idempotent_request',
+          statusCode,
+          error: `Resend 409 payload mismatch for idempotency key: ${errorMessage}`,
+        };
+      }
+
+      // 5xx Server Errors (500, 502, 503, 504) -> transient, ambiguous
       if (statusCode >= 500 && statusCode <= 599) {
         return {
           success: false,
           retryable: true,
+          isAmbiguous: true,
+          providerErrorCode: rawErrorCode || 'server_error',
           statusCode,
           error: `Server error: ${errorMessage}`,
         };
       }
 
-      // 4xx Client Errors (400, 401, 403, 422) -> permanent, do NOT retry
+      // 400 Bad Request
+      if (statusCode === 400) {
+        const isKeyFormatError =
+          rawErrorCode === 'invalid_idempotency_key' ||
+          errorMessage.toLowerCase().includes('idempotency');
+
+        if (isKeyFormatError) {
+          return {
+            success: false,
+            retryable: false,
+            isAmbiguous: true,
+            providerErrorCode: rawErrorCode || 'invalid_idempotency_key',
+            statusCode,
+            error: `Client error (idempotency key): ${errorMessage}`,
+          };
+        }
+
+        return {
+          success: false,
+          retryable: false,
+          isAmbiguous: false,
+          providerErrorCode: rawErrorCode || 'bad_request',
+          statusCode,
+          error: `Client error: ${errorMessage}`,
+        };
+      }
+
+      // 401 / 403 Unauthorized / Forbidden -> definitive rejection if provider rejected request
+      if (statusCode === 401 || statusCode === 403) {
+        return {
+          success: false,
+          retryable: false,
+          isAmbiguous: false,
+          providerErrorCode: rawErrorCode || (statusCode === 401 ? 'unauthorized' : 'forbidden'),
+          statusCode,
+          error: `Auth error: ${errorMessage}`,
+        };
+      }
+
+      // 422 Unprocessable Entity (unverified domain, illegal address, suppressed recipient) -> definitive rejection
+      if (statusCode === 422) {
+        return {
+          success: false,
+          retryable: false,
+          isAmbiguous: false,
+          providerErrorCode: rawErrorCode || 'unprocessable_entity',
+          statusCode,
+          error: `Unprocessable entity: ${errorMessage}`,
+        };
+      }
+
+      // 4xx Client Errors
       return {
         success: false,
         retryable: false,
+        isAmbiguous: false,
+        providerErrorCode: rawErrorCode || 'client_error',
         statusCode,
         error: `Client error: ${errorMessage}`,
       };
@@ -159,6 +254,8 @@ export class ResendProvider implements EmailProvider {
         return {
           success: false,
           retryable: true,
+          isAmbiguous: true,
+          providerErrorCode: 'timeout',
           error: `Request timed out after ${this.timeoutMs}ms`,
           statusCode: 408,
         };
@@ -168,6 +265,8 @@ export class ResendProvider implements EmailProvider {
       return {
         success: false,
         retryable: true,
+        isAmbiguous: true,
+        providerErrorCode: 'network_failure',
         error: `Network failure: ${message}`,
         statusCode: 0,
       };

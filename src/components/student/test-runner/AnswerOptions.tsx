@@ -2,6 +2,7 @@
 
 import React, { useCallback } from 'react';
 import { Check, Backspace, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import type { RunnerQuestionOption } from '@/services/student/studentTestWebService';
 
 interface AnswerOptionsProps {
@@ -101,8 +102,8 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
               {/* Option Text & Optional Image */}
               <div className="flex-1 min-w-0 pt-0.5">
-                <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-line">
-                  {opt.text}
+                <div className="text-sm sm:text-base text-ink leading-relaxed">
+                  <MathRenderer content={opt.text} inline />
                 </div>
                 {opt.imageUrl && (
                   <div className="mt-3 relative max-w-sm rounded-field overflow-hidden border border-line bg-white">
@@ -159,8 +160,8 @@ export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
 
               {/* Option Text & Optional Image */}
               <div className="flex-1 min-w-0 pt-0.5">
-                <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-line">
-                  {opt.text}
+                <div className="text-sm sm:text-base text-ink leading-relaxed">
+                  <MathRenderer content={opt.text} inline />
                 </div>
                 {opt.imageUrl && (
                   <div className="mt-3 relative max-w-sm rounded-field overflow-hidden border border-line bg-white">

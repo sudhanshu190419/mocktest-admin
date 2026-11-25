@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import type { QuestionType } from '@/types/mockTest';
 import {
   ImageProfile,
@@ -44,6 +45,7 @@ const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 export function OptionEditor({ options, questionType, onChange, error }: OptionEditorProps) {
   const isSingleCorrect = questionType === 'mcq' || questionType === 'true_false';
+  const [previewAll, setPreviewAll] = useState(false);
 
   // Refs for file inputs per option
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -207,6 +209,30 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
             <span className="ml-1.5 text-[11px] text-gray-400">(True / False)</span>
           )}
         </label>
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800">
+          <button
+            type="button"
+            onClick={() => setPreviewAll(false)}
+            className={`rounded-md px-2.5 py-1 font-medium transition ${
+              !previewAll
+                ? 'bg-white text-gray-900 shadow-xs dark:bg-gray-700 dark:text-gray-100'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewAll(true)}
+            className={`rounded-md px-2.5 py-1 font-medium transition ${
+              previewAll
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Math Preview
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -230,14 +256,24 @@ export function OptionEditor({ options, questionType, onChange, error }: OptionE
               </div>
 
               {/* Option text */}
-              <div className="flex-1">
-                <textarea
-                  value={option.optionText}
-                  onChange={(e) => updateOption(option.id, 'optionText', e.target.value)}
-                  placeholder={`Enter option ${labels[index]}...`}
-                  rows={2}
-                  className="w-full resize-none rounded-lg border-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
-                />
+              <div className="flex-1 min-w-0">
+                {previewAll ? (
+                  <div className="min-h-[42px] py-1 text-sm text-gray-900 dark:text-gray-100">
+                    {option.optionText ? (
+                      <MathRenderer content={option.optionText} inline />
+                    ) : (
+                      <span className="italic text-gray-400 text-xs">Empty option text</span>
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    value={option.optionText}
+                    onChange={(e) => updateOption(option.id, 'optionText', e.target.value)}
+                    placeholder={`Enter option ${labels[index]}... Supports LaTeX \\(x^2\\)`}
+                    rows={2}
+                    className="w-full resize-none rounded-lg border-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
+                  />
+                )}
               </div>
 
               {/* Correct toggle */}

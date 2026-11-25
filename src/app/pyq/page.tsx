@@ -3,9 +3,9 @@ import { PYQCatalog } from '@/components/marketing/PYQCatalog';
 import { getPYQPackages } from '@/services/pyqCatalogService';
 
 export const metadata: Metadata = {
-  title: 'Previous Year Question Packages — MakeMeTopper',
+  title: 'PYQ & Mock Test — MakeMeTopper',
   description:
-    'Browse solved previous-year question packages for NEET, JEE, CUET, and Foundation. Practice official exam papers under timed exam conditions.',
+    'Browse solved previous-year question packages and mock tests for NEET, JEE, CUET, and Foundation. Practice official exam papers under timed exam conditions.',
 };
 
 export default async function PYQPage() {

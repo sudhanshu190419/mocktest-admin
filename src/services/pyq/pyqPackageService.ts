@@ -38,6 +38,7 @@ import {
 import type { ApiResponse, PaginatedResponse, PaginationParams, SortDirection } from '@/types/academic';
 import type {
   PyqPackage,
+  PyqPackageType,
   CreatePyqPackageInput,
   UpdatePyqPackageInput,
   PyqPackageFilters,
@@ -71,6 +72,7 @@ function mapSortField(sortBy?: PyqPackageSortOptions['sortBy']): string {
 function toPyqPackage(row: any): PyqPackage {
   return {
     packageId: row.package_id,
+    packageType: (row.package_type as PyqPackageType) || 'pyq',
     instituteId: row.institute_id,
     streamId: row.stream_id,
     name: row.name,
@@ -147,6 +149,10 @@ export const pyqPackageService = {
 
       if (filters?.streamId) {
         query = query.eq('stream_id', filters.streamId);
+      }
+
+      if (filters?.packageType) {
+        query = query.eq('package_type', filters.packageType);
       }
 
       if (filters?.isActive !== undefined) {
@@ -291,6 +297,10 @@ export const pyqPackageService = {
         return { success: false, error: 'Price must be 0 or greater.' };
       }
 
+      if (input.packageType !== undefined && input.packageType !== 'pyq' && input.packageType !== 'mock_test') {
+        return { success: false, error: "Package type must be either 'pyq' or 'mock_test'." };
+      }
+
       // ── Validate UUIDs ───────────────────────────────────────────────
       validateUUID(instituteId, 'instituteId');
       validateUUID(input.streamId, 'streamId');
@@ -328,6 +338,7 @@ export const pyqPackageService = {
         is_active: false,
         published_at: null,
         total_papers: 0,
+        package_type: input.packageType ?? 'pyq',
       };
 
       // ── Insert ───────────────────────────────────────────────────────
@@ -448,6 +459,49 @@ export const pyqPackageService = {
         dbRecord.year_to = input.yearTo;
       }
 
+      if (input.packageType !== undefined) {
+        if (input.packageType !== 'pyq' && input.packageType !== 'mock_test') {
+          return { success: false, error: "Package type must be either 'pyq' or 'mock_test'." };
+        }
+
+        // Fetch current package state to ensure it is still a draft
+        const { data: currentPkg, error: currentErr } = await supabase
+          .from('pyq_packages')
+          .select('is_active, published_at')
+          .eq('package_id', packageId)
+          .single();
+
+        if (currentErr) {
+          return { success: false, error: extractErrorMessage(currentErr) };
+        }
+
+        if (currentPkg?.published_at) {
+          return {
+            success: false,
+            error: 'Package type cannot be changed once the package is published.',
+          };
+        }
+
+        // Check if any student has purchased this package
+        const { count: purchaseCount, error: purchaseErr } = await supabase
+          .from('student_pyq_purchases')
+          .select('*', { count: 'exact', head: true })
+          .eq('package_id', packageId);
+
+        if (purchaseErr) {
+          return { success: false, error: extractErrorMessage(purchaseErr) };
+        }
+
+        if (purchaseCount && purchaseCount > 0) {
+          return {
+            success: false,
+            error: 'Package type cannot be changed after purchases have occurred.',
+          };
+        }
+
+        dbRecord.package_type = input.packageType;
+      }
+
       // Validate year range if both are provided or being updated
       if (dbRecord.year_from !== undefined && dbRecord.year_to !== undefined) {
         if (dbRecord.year_from !== null && dbRecord.year_to !== null && dbRecord.year_to < dbRecord.year_from) {
@@ -524,7 +578,7 @@ export const pyqPackageService = {
       // 1. Fetch current package to validate
       const { data: current, error: fetchErr } = await supabase
         .from('pyq_packages')
-        .select('name, price, is_active, published_at')
+        .select('name, price, is_active, published_at, package_type')
         .eq('package_id', packageId)
         .single();
 
@@ -544,6 +598,108 @@ export const pyqPackageService = {
       // 3. If already published, no-op
       if (current.is_active && current.published_at) {
         return { success: true, data: null };
+      }
+
+      // 4. Fetch active non-deleted papers for this package
+      const { data: papers, error: papersErr } = await supabase
+        .from('pyq_papers')
+        .select('paper_id, title, is_published, pdf_storage_path')
+        .eq('package_id', packageId)
+        .is('deleted_at', null);
+
+      if (papersErr) {
+        return { success: false, error: extractErrorMessage(papersErr) };
+      }
+
+      if (!papers || papers.length === 0) {
+        return {
+          success: false,
+          error: 'Add at least one paper before publishing this package.',
+        };
+      }
+
+      // 5. Fetch mock mappings for these papers
+      const paperIds = papers.map((p) => p.paper_id);
+      const { data: mappings, error: mapErr } = await supabase
+        .from('pyq_mock_mappings')
+        .select('paper_id, test_id')
+        .in('paper_id', paperIds);
+
+      if (mapErr) {
+        return { success: false, error: extractErrorMessage(mapErr) };
+      }
+
+      const mappingMap = new Map((mappings ?? []).map((m) => [m.paper_id, m.test_id]));
+      const testIds = (mappings ?? []).map((m) => m.test_id);
+
+      // Fetch mock test statuses and question counts
+      const testMap = new Map<string, { status: string; totalQuestions: number }>();
+      if (testIds.length > 0) {
+        const { data: tests } = await supabase
+          .from('mock_tests')
+          .select('test_id, status')
+          .in('test_id', testIds);
+
+        const { data: qCounts } = await supabase
+          .from('mock_test_questions')
+          .select('test_id')
+          .in('test_id', testIds);
+
+        const countMap = new Map<string, number>();
+        (qCounts ?? []).forEach((row) => {
+          countMap.set(row.test_id, (countMap.get(row.test_id) ?? 0) + 1);
+        });
+
+        (tests ?? []).forEach((t) => {
+          testMap.set(t.test_id, {
+            status: t.status,
+            totalQuestions: countMap.get(t.test_id) ?? 0,
+          });
+        });
+      }
+
+      // Validate each paper has usable content
+      for (const paper of papers) {
+        const testId = mappingMap.get(paper.paper_id);
+        const hasValidMapping = !!testId;
+        const mockTestInfo = testId ? testMap.get(testId) : null;
+        const hasUsableMockTest =
+          hasValidMapping &&
+          mockTestInfo?.status === 'published' &&
+          mockTestInfo.totalQuestions > 0;
+
+        const hasLegacyPdf = !!paper.pdf_storage_path;
+
+        if (current.package_type === 'mock_test') {
+          if (!hasValidMapping) {
+            return {
+              success: false,
+              error: `Generate the mock test for "${paper.title}" before publishing.`,
+            };
+          }
+          if (!hasUsableMockTest) {
+            return {
+              success: false,
+              error: `The mock test associated with "${paper.title}" is not published or contains no questions.`,
+            };
+          }
+        } else {
+          // PYQ package: newly created paper without legacy PDF must have a valid mock test
+          if (!hasLegacyPdf) {
+            if (!hasValidMapping) {
+              return {
+                success: false,
+                error: `Generate the mock test for "${paper.title}" before publishing.`,
+              };
+            }
+            if (!hasUsableMockTest) {
+              return {
+                success: false,
+                error: `The mock test associated with "${paper.title}" is not published or contains no questions.`,
+              };
+            }
+          }
+        }
       }
 
       // 4. Publish

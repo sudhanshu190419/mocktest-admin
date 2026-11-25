@@ -4,12 +4,10 @@ import Link from 'next/link';
 import { Card } from './Card';
 import {
   IconArrowRight,
-  IconSpark,
   IconCalendar,
-  IconProgress,
 } from '@/components/icons/student-icons';
 import { formatCoursePrice } from '@/services/courseCatalogService';
-import type { Course } from '@/types/courseCatalog';
+import type { Course, CourseBatchItem } from '@/types/courseCatalog';
 
 export function CourseArtwork({
   stream,
@@ -24,13 +22,20 @@ export function CourseArtwork({
 }) {
   if (imageUrl) {
     return (
-      <div className={`store-course-card-thumb ${large ? 'store-course-card-thumb-large' : ''}`}>
+      <div className={`store-course-card-thumb ${large ? 'store-course-card-thumb-large' : ''} relative overflow-hidden`}>
         <img
           src={imageUrl}
           alt={title || `${stream} Course`}
           className="store-course-thumb-img"
           loading="lazy"
         />
+        {title && (
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent flex items-end p-3.5 sm:p-4 z-[2] pointer-events-none">
+            <span className="text-white text-sm sm:text-base font-bold font-display leading-snug drop-shadow-sm line-clamp-2">
+              {title}
+            </span>
+          </div>
+        )}
       </div>
     );
   }
@@ -85,27 +90,38 @@ export function CourseArtwork({
         )}
       </svg>
       <span className="art-bottom">
-        MAKE ROOM FOR YOUR AMBITION <span>↗</span>
+        EXPLORE BATCHES <span>↗</span>
       </span>
     </div>
   );
 }
 
-export function StoreCourseCard({ course, isEnrolled = false }: { course: Course; isEnrolled?: boolean }) {
+export function StoreCourseCard({
+  course,
+  batch,
+  isEnrolled = false,
+}: {
+  course: Course;
+  batch?: CourseBatchItem | { id: string; name: string; code?: string | null };
+  isEnrolled?: boolean;
+}) {
   const price = course.discountedPrice ?? course.originalPrice;
   const STREAM_COVER_IMAGES: Record<string, string> = {
     NEET: '/course/neet.png',
     CUET: '/course/cuet.png',
   };
   const streamCode = course.streamCode?.toUpperCase();
-  const topImage = STREAM_COVER_IMAGES[streamCode] || course.thumbnailPath || null;
+  const topImage = STREAM_COVER_IMAGES[streamCode] || course.thumbnailPath || course.bannerPath || null;
+  const batchName = batch?.name || course.presentation?.displayTitle || course.title;
+  const isDedicatedBatch = Boolean(batch?.name && batch.name !== course.title);
+  const courseUrl = isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.slug || course.courseId}`;
 
   return (
     <Card className="store-course-card" interactive>
-      <Link href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`} tabIndex={-1} aria-hidden="true">
+      <Link href={courseUrl} tabIndex={-1} aria-hidden="true">
         <CourseArtwork
           stream={course.streamCode}
-          title={course.presentation?.displayTitle || course.title}
+          title={batchName}
           imageUrl={topImage}
         />
       </Link>
@@ -114,32 +130,27 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
           <span className={`store-stream-tag tag-${course.streamCode.toLowerCase()}`}>
             {course.streamCode === 'FOUNDATION' ? 'Foundation' : course.streamCode}
           </span>
-          {isEnrolled ? (
+          {isEnrolled && (
             <span className="px-2 py-0.5 rounded text-caption font-bold bg-emerald-100 text-emerald-800">
               Enrolled ✓
             </span>
-          ) : (
-            <span>Live + recorded</span>
           )}
         </div>
+        {isDedicatedBatch && (
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 line-clamp-1">
+            {course.title}
+          </p>
+        )}
         <h3>
-          <Link href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`}>
-            {course.presentation.displayTitle}
+          <Link href={courseUrl}>
+            {batchName}
           </Link>
         </h3>
-        <p className="store-card-description">{course.shortDescription}</p>
+        <p className="store-card-description">{course.shortDescription || course.description}</p>
         <div className="store-course-facts">
-          <span className="store-fact-item">
-            <IconSpark size={13} className="store-fact-icon shrink-0" />
-            <span>{course.presentation.languageLabel}</span>
-          </span>
           <span className="store-fact-item">
             <IconCalendar size={13} className="store-fact-icon shrink-0" />
             <span className="tabular-nums">{course.duration} days</span>
-          </span>
-          <span className="store-fact-item">
-            <IconProgress size={13} className="store-fact-icon shrink-0" />
-            <span className="capitalize">{course.difficultyLevel}</span>
           </span>
         </div>
         <div className="store-card-price">
@@ -166,11 +177,11 @@ export function StoreCourseCard({ course, isEnrolled = false }: { course: Course
             )}
           </div>
           <Link
-            href={isEnrolled ? `/student/courses/${course.courseId}` : `/courses/${course.courseId}`}
+            href={courseUrl}
             className={`store-card-cta ${isEnrolled ? 'store-card-cta-enrolled' : 'store-card-cta-explore'}`}
           >
             <span className="store-card-cta-text">
-              {isEnrolled ? 'Go to Course' : 'Explore Course'}
+              {isEnrolled ? 'Go to Course' : 'View Details'}
             </span>
             <span className="store-card-cta-arrow" aria-hidden="true">
               <IconArrowRight size={13} />

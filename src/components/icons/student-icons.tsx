@@ -607,4 +607,45 @@ export const IconEdit = createIcon(
   </>
 );
 
+export const IconBookOpen = createIcon(
+  'IconBookOpen',
+  <>
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+  </>
+);
+
+export const IconStethoscope = createIcon(
+  'IconStethoscope',
+  <>
+    <path d="M4.5 3v5a4.5 4.5 0 0 0 9 0V3" />
+    <path d="M9 12.5v3a4.5 4.5 0 0 0 9 0v-1.5" />
+    <circle cx="18" cy="14" r="2" />
+    <circle cx="4.5" cy="3" r="1" />
+    <circle cx="13.5" cy="3" r="1" />
+  </>
+);
+
+export const IconAtom = createIcon(
+  'IconAtom',
+  <>
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(30 12 12)" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-30 12 12)" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(90 12 12)" />
+  </>
+);
+
+export const IconLandmark = createIcon(
+  'IconLandmark',
+  <>
+    <line x1="3" y1="22" x2="21" y2="22" />
+    <line x1="6" y1="18" x2="6" y2="11" />
+    <line x1="10" y1="18" x2="10" y2="11" />
+    <line x1="14" y1="18" x2="14" y2="11" />
+    <line x1="18" y1="18" x2="18" y2="11" />
+    <polygon points="12 2 20 7 4 7 12 2" />
+  </>
+);
+
 

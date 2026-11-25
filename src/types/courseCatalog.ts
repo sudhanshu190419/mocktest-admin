@@ -33,6 +33,14 @@ export interface CoursePresentation {
   faqs: CourseFaq[];
 }
 
+export interface CourseBatchItem {
+  id: string;
+  name: string;
+  code?: string | null;
+  isActive: boolean;
+  status: string;
+}
+
 export interface CourseInstallmentPlan {
   planId: string;
   courseId: string;
@@ -72,4 +80,5 @@ export interface Course {
   sortOrder: number;
   presentation: CoursePresentation;
   installmentPlans?: CourseInstallmentPlan[];
+  batches?: CourseBatchItem[];
 }

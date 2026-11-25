@@ -42,14 +42,15 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
   const navItems = [
     { label: 'Dashboard', href: '/student/overview', icon: SquaresFour },
     { label: 'My Courses', href: '/student/courses', icon: BookOpen },
+    { label: 'Class Timetable', href: '/student/timetable', icon: CalendarBlank },
     { label: 'Live Classes', href: '/student/classes', icon: VideoCamera, badge: 'Live' },
-    { label: 'Recorded Classes', href: '/student/recordings', icon: FilmSlate },
-    { label: 'Mock Tests', href: '/student/tests', icon: Exam },
-    { label: 'My Test Results', href: '/student/results', icon: Trophy },
-    { label: 'Timetable', href: '/student/timetable', icon: CalendarBlank },
+    { label: 'Recordings', href: '/student/recordings', icon: FilmSlate },
+    { label: 'PYQ & Sample Paper', href: '/pyq', icon: Question },
+    { label: 'Class Test', href: '/student/tests', icon: Exam },
     { label: 'My Doubts', href: '/student/doubts', icon: ChatCircleDots },
-    { label: 'Analytics', href: '/student/analytics', icon: ChartLineUp },
-    { label: 'Profile & Account', href: '/student/profile', icon: User },
+    { label: 'My Performance', href: '/student/analytics', icon: ChartLineUp },
+    { label: 'My Test Results', href: '/student/results', icon: Trophy },
+    { label: 'Profile', href: '/student/profile', icon: User },
   ];
 
   return (

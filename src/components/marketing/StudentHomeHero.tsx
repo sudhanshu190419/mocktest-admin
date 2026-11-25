@@ -52,8 +52,13 @@ export function StudentHomeHero({
   const activeCourse = enrolledCourses[0];
   const activePyq = pyqPurchases[0];
 
-  // 1. Loading Skeleton
-  if (loading && !hasCourses && !hasPyq) {
+  // 1. Guest Variant — always show HeroSection
+  if (isGuest) {
+    return <HeroSection />;
+  }
+
+  // 2. Loading Skeleton — prevent premature display of course workspace
+  if (loading) {
     return (
       <section className="store-container py-10 lg:py-12" aria-busy="true">
         <div className="h-64 rounded-card bg-paper animate-pulse border border-line" />
@@ -61,8 +66,13 @@ export function StudentHomeHero({
     );
   }
 
-  // 2. Guest Variant — restored HeroSection with hero.png, high-impact typography, and feature badges
-  if (isGuest || !studentName) {
+  // 3. Authenticated student without active course enrollment — show HeroSection
+  // Business rules:
+  // - Signup alone must NOT hide the hero.
+  // - Login alone must NOT hide the hero.
+  // - Standalone PYQ purchase must NOT hide the hero.
+  // - Only students with qualifying course enrollments (hasCourses === true) receive the welcome/workspace experience.
+  if (!studentName || !hasCourses) {
     return <HeroSection />;
   }
 

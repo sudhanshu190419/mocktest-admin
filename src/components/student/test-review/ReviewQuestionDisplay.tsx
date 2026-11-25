@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import {
   CheckCircle,
   XCircle,
@@ -128,8 +129,8 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         </div>
 
         {/* Stem Text */}
-        <div className="text-base sm:text-lg text-ink font-medium leading-relaxed whitespace-pre-wrap">
-          {question.questionText}
+        <div className="text-base sm:text-lg text-ink font-medium leading-relaxed">
+          <MathRenderer content={question.questionText} />
         </div>
 
         {/* Question Image */}
@@ -164,7 +165,9 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
                       {opt.label}
                     </span>
                     <div className="flex flex-col gap-2">
-                      <span className="text-sm leading-snug">{opt.text}</span>
+                      <div className="text-sm leading-snug">
+                        <MathRenderer content={opt.text} inline />
+                      </div>
                       {opt.imageUrl && (
                         <div className="relative rounded-lg overflow-hidden border border-line bg-white max-w-xs">
                           <Image
@@ -261,8 +264,8 @@ export const ReviewQuestionDisplay: React.FC<ReviewQuestionDisplayProps> = ({
         </div>
 
         {question.explanationText ? (
-          <div className="text-sm sm:text-base text-ink leading-relaxed whitespace-pre-wrap font-sans">
-            {question.explanationText}
+          <div className="text-sm sm:text-base text-ink leading-relaxed font-sans">
+            <MathRenderer content={question.explanationText} />
           </div>
         ) : (
           <div className="p-4 rounded-field bg-white border border-line text-xs text-ink-secondary italic">

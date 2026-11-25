@@ -501,7 +501,7 @@ describe('Student Profile Web Service & Mobile Parity', () => {
 
     it('StudentProfileView displays all mobile parity sections and fields', () => {
       // Identity & Hero
-      expect(viewContent).toContain('Student Profile & Account');
+      expect(viewContent).toContain('Student Profile');
       expect(viewContent).toContain('Verified Student');
       expect(viewContent).toContain('Active Account');
 

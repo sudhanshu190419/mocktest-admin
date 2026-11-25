@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 130" fill="none" width="100%" height="100%">
+  <!-- Icon Mark on Left -->
+  <g transform="translate(10, 8) scale(0.44)">
+    <!-- Blue Progression Wave -->
+    <path d="M 40 220 C 60 220, 80 162, 104 162 C 128 162, 144 224, 164 224 C 178 224, 192 208, 204 195"
+          stroke="#0A40DF" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Purple Progression Wave -->
+    <path d="M 204 195 C 220 178, 236 124, 256 124 C 276 124, 288 200, 304 200 C 312 200, 320 188, 328 174"
+          stroke="#6023B6" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Green Student Figure -->
+    <path d="M 328 174 C 338 154, 346 124, 352 112 C 362 92, 374 72, 388 56"
+          stroke="#05AD66" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 352 112 L 352 232"
+          stroke="#05AD66" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="352" cy="56" r="15" fill="#05AD66" />
+    
+    <!-- Star -->
+    <path d="M 416 20 Q 416 42 434 42 Q 416 42 416 64 Q 416 42 398 42 Q 416 42 416 20 Z" fill="#FAB416" />
+  </g>
+
+  <!-- Wordmark & Tagline on Right -->
+  <g transform="translate(210, 0)">
+    <text x="0" y="60" 
+          font-family="Arial, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" 
+          font-size="27" 
+          font-weight="900" 
+          letter-spacing="1.4" 
+          fill="#0B132B">MAKE ME TOPPER</text>
+
+    <text x="2" y="90" 
+          font-family="Arial, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" 
+          font-size="13.5" 
+          font-weight="700" 
+          letter-spacing="4" 
+          fill="#0A40DF">Learn. Aspire. Achieve.</text>
+  </g>
+</svg>

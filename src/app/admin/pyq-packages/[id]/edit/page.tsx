@@ -58,6 +58,7 @@ export default function AdminEditPyqPackagePage({
             thumbnailPath: values.thumbnailPath || null,
             yearFrom: values.yearFrom ? parseInt(values.yearFrom) : null,
             yearTo: values.yearTo ? parseInt(values.yearTo) : null,
+            packageType: values.packageType,
           },
         },
         {
@@ -212,7 +213,9 @@ export default function AdminEditPyqPackagePage({
           thumbnailPath: pkg.thumbnailPath ?? '',
           yearFrom: pkg.yearFrom?.toString() ?? '',
           yearTo: pkg.yearTo?.toString() ?? '',
+          packageType: pkg.packageType,
         }}
+        isTypeEditable={!isPublished}
         isSubmitting={updatePackage.isPending}
         submitLabel="Save Changes"
         error={formError}

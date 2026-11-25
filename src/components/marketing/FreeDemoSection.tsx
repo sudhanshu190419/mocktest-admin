@@ -65,10 +65,34 @@ const FEATURES = [
   },
 ];
 
-export function FreeDemoSection() {
+export interface FreeDemoSectionProps {
+  primaryHref?: string;
+  secondaryHref?: string;
+  className?: string;
+}
+
+export function FreeDemoSection({
+  primaryHref = '/demo-class',
+  secondaryHref = '/demo-class',
+  className = '',
+}: FreeDemoSectionProps = {}) {
+  const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith('#')) {
+      e.preventDefault();
+      const targetId = href.slice(1);
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth' });
+        if (typeof window !== 'undefined' && window.history?.pushState) {
+          window.history.pushState(null, '', href);
+        }
+      }
+    }
+  };
+
   return (
     <section
-      className="store-container mb-4 sm:mb-[72px] mt-2 sm:mt-4"
+      className={`store-container mb-4 sm:mb-[72px] mt-2 sm:mt-4 ${className}`.trim()}
       aria-labelledby="home-demo-title"
     >
       <div className="overflow-hidden rounded-[22px] sm:rounded-[28px] border border-[#d9e3ed] bg-white shadow-[0_20px_50px_-24px_rgba(21,43,69,0.22)]">
@@ -146,7 +170,8 @@ export function FreeDemoSection() {
             {/* ── Action buttons ── */}
             <div className="mt-7 sm:mt-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
               <Link
-                href="/demo-class"
+                href={primaryHref}
+                onClick={(e) => handleAnchorClick(e, primaryHref)}
                 className="inline-flex min-h-[46px] sm:min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#1a56db] px-6 text-[13.5px] sm:text-[14px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(26,86,219,0.7)] transition-all duration-200 hover:bg-[#1546b5] hover:shadow-[0_14px_28px_-10px_rgba(26,86,219,0.75)] active:scale-[0.98] sm:active:scale-100"
               >
                 <span>Get Free Demo Class</span>
@@ -154,7 +179,8 @@ export function FreeDemoSection() {
               </Link>
 
               <Link
-                href="/demo-class"
+                href={secondaryHref}
+                onClick={(e) => handleAnchorClick(e, secondaryHref)}
                 className="inline-flex items-center justify-center sm:justify-start gap-2 text-[13px] sm:text-[13.5px] font-semibold text-[#475569] hover:text-[#1a56db] transition-colors"
               >
                 <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

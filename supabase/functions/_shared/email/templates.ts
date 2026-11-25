@@ -82,7 +82,7 @@ export interface BaseLayoutOptions {
 export function renderBaseLayout(options: BaseLayoutOptions): string {
   const preheader = options.preheader ? escapeHtml(options.preheader) : '';
   const title = escapeHtml(options.title);
-  const supportEmail = options.supportEmail || 'info@makemetopper.com';
+  const supportEmail = options.supportEmail || 'support@inovoxy.com';
   const currentYear = new Date().getFullYear();
 
   return `<!DOCTYPE html>
@@ -907,6 +907,540 @@ export function renderInstallmentSubsequentPaidEmail(
 }
 
 /**
+ * INS-03: Installment Due in 3 Days (Pre-Due Reminder)
+ */
+export function renderInstallmentDueIn3DaysEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const installmentNumber = payload.installmentNumber !== undefined ? String(payload.installmentNumber) : '1';
+  const totalInstallments = payload.totalInstallments !== undefined ? ` of ${payload.totalInstallments}` : '';
+  const amountDue = payload.amountDue !== undefined ? formatCurrency(payload.amountDue) : '₹0.00';
+  const dueDate = (payload.dueDate as string) || (payload.effectiveDueDate as string) || 'in 3 days';
+  const paymentUrl = (payload.paymentUrl as string) || 'https://makemetopper.com/student/courses';
+
+  const title = `Your Make Me Topper installment is due in 3 days`;
+  const preheader = `Upcoming installment of ${amountDue} for ${courseName} is due in 3 days on ${dueDate}.`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #1e293b; font-size: 20px; font-weight: 700;">Upcoming Installment Reminder</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      This is a friendly reminder that an upcoming installment for your course <strong>${escapeHtml(courseName)}</strong> is due in 3 days on <strong>${escapeHtml(dueDate)}</strong>.
+    </p>
+
+    <div class="info-card">
+      <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+        Payment Details
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Installment:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">Installment ${escapeHtml(installmentNumber)}${escapeHtml(totalInstallments)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Amount Due:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #0284c7; font-size: 14px;">${amountDue}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(dueDate)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="button-container">
+      <a href="${escapeHtml(paymentUrl)}" class="button" target="_blank">Pay Installment Now</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Completing your payment on time ensures uninterrupted access to your live interactive classes and study materials.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-04: Installment Due Today (08:00 AM IST Reminder)
+ */
+export function renderInstallmentDueTodayEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const installmentNumber = payload.installmentNumber !== undefined ? String(payload.installmentNumber) : '1';
+  const totalInstallments = payload.totalInstallments !== undefined ? ` of ${payload.totalInstallments}` : '';
+  const amountDue = payload.amountDue !== undefined ? formatCurrency(payload.amountDue) : '₹0.00';
+  const dueDate = (payload.dueDate as string) || (payload.effectiveDueDate as string) || 'Today';
+  const paymentUrl = (payload.paymentUrl as string) || 'https://makemetopper.com/student/courses';
+
+  const title = `Reminder: Your installment payment is due today`;
+  const preheader = `Action required: Your installment of ${amountDue} for ${courseName} is due today (${dueDate}).`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #1e293b; font-size: 20px; font-weight: 700;">Installment Payment Due Today</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      This is a reminder that your scheduled installment payment for <strong>${escapeHtml(courseName)}</strong> is due today (<strong>${escapeHtml(dueDate)}</strong>).
+    </p>
+
+    <div class="info-card">
+      <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+        Due Today Details
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Installment:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">Installment ${escapeHtml(installmentNumber)}${escapeHtml(totalInstallments)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Amount Due:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #d97706; font-size: 14px;">${amountDue}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Deadline:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">Today (${escapeHtml(dueDate)})</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="button-container">
+      <a href="${escapeHtml(paymentUrl)}" class="button" target="_blank">Pay Now</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Please ensure your payment is completed today to avoid any interruption to your live interactive classes.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-05: Installment Overdue (T+1 Overdue Alert)
+ */
+export function renderInstallmentOverdueEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const installmentNumber = payload.installmentNumber !== undefined ? String(payload.installmentNumber) : '1';
+  const amountDue = payload.amountDue !== undefined ? formatCurrency(payload.amountDue) : '₹0.00';
+  const originalDueDate = (payload.originalDueDate as string) || (payload.effectiveDueDate as string) || (payload.dueDate as string) || 'Yesterday';
+  const paymentUrl = (payload.paymentUrl as string) || 'https://makemetopper.com/student/courses';
+
+  const title = `Payment Reminder: Your installment is overdue`;
+  const preheader = `Payment reminder: Your installment of ${amountDue} for ${courseName} is past due.`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #dc2626; font-size: 20px; font-weight: 700;">Installment Payment Overdue</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      We noticed that your scheduled installment payment of <strong>${amountDue}</strong> for <strong>${escapeHtml(courseName)}</strong>, which was due on <strong>${escapeHtml(originalDueDate)}</strong>, has not yet been received.
+    </p>
+
+    <div class="info-card" style="border-left: 4px solid #ef4444;">
+      <div style="font-weight: 700; color: #991b1b; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #fee2e2; padding-bottom: 6px;">
+        Overdue Installment Details
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Installment:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">Installment ${escapeHtml(installmentNumber)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Overdue Amount:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #dc2626; font-size: 14px;">${amountDue}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Original Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(originalDueDate)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="button-container">
+      <a href="${escapeHtml(paymentUrl)}" class="button" target="_blank" style="background-color: #dc2626;">Clear Overdue Payment</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Prompt payment is requested to maintain uninterrupted access to your live classes. Please clear this installment as soon as possible.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-06: Arrears Escalation and Academic Access Warning (T+7)
+ */
+export function renderArrearsWarningEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const overdueBalance = payload.overdueBalance !== undefined ? formatCurrency(payload.overdueBalance) : '₹0.00';
+  const earliestDueDate = (payload.earliestDueDate as string) || (payload.effectiveDueDate as string) || '7+ days ago';
+  const paymentUrl = (payload.paymentUrl as string) || 'https://makemetopper.com/student/courses';
+
+  const title = `Important: Outstanding Installment and Academic Access Warning`;
+  const preheader = `Urgent: Installment arrears for ${courseName} exceed 7 days. Review your academic access status.`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #b91c1c; font-size: 20px; font-weight: 700;">Outstanding Installment & Academic Access Warning</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      Your installment payment for <strong>${escapeHtml(courseName)}</strong> is now more than 7 days overdue.
+    </p>
+
+    <div class="info-card" style="border-left: 4px solid #b91c1c; background-color: #fef2f2;">
+      <div style="font-weight: 700; color: #991b1b; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #fee2e2; padding-bottom: 6px;">
+        Account Arrears Summary
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Total Overdue Balance:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #b91c1c; font-size: 14px;">${overdueBalance}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Earliest Unpaid Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(earliestDueDate)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 14px; margin: 18px 0;">
+      <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 6px;">Current Academic Access Status:</div>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #78350f; line-height: 1.6;">
+        <li><strong>Live Classes & Recorded Lectures:</strong> Attendance and recording playback are suspended while account is in arrears.</li>
+        <li><strong>Course Study Material & Notes:</strong> Temporarily accessible under our 30-day academic grace window from your paid-through date.</li>
+      </ul>
+    </div>
+
+    <div class="button-container">
+      <a href="${escapeHtml(paymentUrl)}" class="button" target="_blank" style="background-color: #b91c1c;">Clear Arrears & Restore Access</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Once your overdue payment is settled, full access to live classes and video recordings will be automatically restored immediately.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-07: Installment Plan Completed (Full Settlement)
+ */
+export function renderInstallmentPlanCompletedEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const totalFee = payload.totalFee !== undefined ? formatCurrency(payload.totalFee) : '₹0.00';
+  const agreementId = (payload.agreementId as string) || 'N/A';
+  const certificateUrl = (payload.certificateUrl as string) || null;
+
+  const title = `Congratulations! Your installment plan is complete`;
+  const preheader = `You have successfully completed all installments for ${courseName}. Permanent ownership unlocked!`;
+
+  const certificateHtml = certificateUrl
+    ? `
+    <div class="button-container">
+      <a href="${escapeHtml(certificateUrl)}" class="button" target="_blank">Download Certificate</a>
+    </div>
+  `
+    : `
+    <div class="button-container">
+      <a href="https://makemetopper.com/student/courses" class="button" target="_blank">Go to My Courses</a>
+    </div>
+  `;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #16a34a; font-size: 20px; font-weight: 700;">Installment Plan Complete!</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      Congratulations! You have successfully completed all scheduled installment payments for <strong>${escapeHtml(courseName)}</strong>. Your installment agreement is now fully settled.
+    </p>
+
+    <div class="info-card" style="border-left: 4px solid #16a34a; background-color: #f0fdf4;">
+      <div style="font-weight: 700; color: #166534; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #bbf7d0; padding-bottom: 6px;">
+        Settlement Confirmation
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Agreement Reference:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;"><code>${escapeHtml(agreementId)}</code></td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Total Amount Paid:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">${totalFee}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Enrollment Status:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">Permanent Full Ownership</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Outstanding Balance:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #0f172a; font-size: 14px;">₹0.00</td>
+        </tr>
+      </table>
+    </div>
+
+    ${certificateHtml}
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Your account now holds permanent course ownership with ongoing access to course resources, class recordings, and materials. Thank you for learning with Make Me Topper!
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-08: Installment Due Date Rescheduled
+ */
+export function renderInstallmentRescheduledEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const installmentNumber = payload.installmentNumber !== undefined ? String(payload.installmentNumber) : '1';
+  const originalDueDate = (payload.originalDueDate as string) || 'Previous Date';
+  const newDueDate = (payload.newDueDate as string) || (payload.revisedDueDate as string) || 'Updated Date';
+  const amountDue = payload.amountDue !== undefined ? formatCurrency(payload.amountDue) : '₹0.00';
+  const reason = (payload.reason as string) || 'Approved academic extension';
+
+  const title = `Your Installment Due Date Has Been Updated`;
+  const preheader = `The due date for installment ${installmentNumber} in ${courseName} has been revised to ${newDueDate}.`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #1e293b; font-size: 20px; font-weight: 700;">Installment Due Date Updated</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      This email confirms that the due date for your installment in <strong>${escapeHtml(courseName)}</strong> has been officially updated by an academic administrator or counselor.
+    </p>
+
+    <div class="info-card">
+      <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+        Revised Schedule Information
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Installment:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">Installment ${escapeHtml(installmentNumber)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Original Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #94a3b8; text-decoration: line-through; font-size: 14px;">${escapeHtml(originalDueDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Revised Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">${escapeHtml(newDueDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Amount Due:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${amountDue}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Extension Reason:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #475569; font-size: 14px;">${escapeHtml(reason)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="button-container">
+      <a href="https://makemetopper.com/student/courses" class="button" target="_blank">View Installment Schedule</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Your installment schedule has been adjusted accordingly. Reminders will now align with your new revised due date.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
+ * INS-10: Arrears Cleared and Course Access Restored
+ */
+export function renderArrearsClearedEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || 'Student';
+  const courseName = (payload.courseName as string) || 'Your Course';
+  const amountPaid = payload.amountPaid !== undefined ? formatCurrency(payload.amountPaid) : '₹0.00';
+  const remainingOutstandingBalance = payload.remainingOutstandingBalance !== undefined ? formatCurrency(payload.remainingOutstandingBalance) : '₹0.00';
+  const nextDueDate = (payload.nextDueDate as string) || 'According to schedule';
+
+  const title = `Your Arrears Are Cleared — Course Access Restored`;
+  const preheader = `Payment received. Overdue arrears for ${courseName} are cleared and academic access is restored.`;
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #16a34a; font-size: 20px; font-weight: 700;">Arrears Cleared — Access Restored!</h2>
+    <p>Hello ${escapeHtml(recipientName)},</p>
+    <p>
+      Thank you for your payment. We have received your payment of <strong>${amountPaid}</strong> for <strong>${escapeHtml(courseName)}</strong>. Your overdue balance has been cleared, and your account has been returned to active standing.
+    </p>
+
+    <div class="info-card" style="border-left: 4px solid #16a34a; background-color: #f0fdf4;">
+      <div style="font-weight: 700; color: #166534; margin-bottom: 12px; font-size: 15px; border-bottom: 1px solid #bbf7d0; padding-bottom: 6px;">
+        Account Standing Restored
+      </div>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Course:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(courseName)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Payment Received:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">${amountPaid}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Overdue Balance:</td>
+          <td style="padding: 5px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">₹0.00 (Cleared)</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Remaining Plan Balance:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${remainingOutstandingBalance}</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px 0; color: #64748b; font-size: 14px;">Next Scheduled Due Date:</td>
+          <td style="padding: 5px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(nextDueDate)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 14px; margin: 18px 0;">
+      <div style="font-weight: 700; color: #166534; font-size: 14px; margin-bottom: 6px;">Academic Access Status: Fully Restored</div>
+      <p style="margin: 0; font-size: 13px; color: #14532d; line-height: 1.5;">
+        Full access to attend live classes, join cohort sessions, and play back lecture recordings has been immediately restored.
+      </p>
+    </div>
+
+    <div class="button-container">
+      <a href="https://makemetopper.com/student/live-classes" class="button" target="_blank">Join Live Classes</a>
+    </div>
+
+    <p style="font-size: 14px; color: #475569; margin-top: 20px;">
+      Thank you for keeping your account up to date. Keep up the great work in your studies!
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
  * ACC-01: Student Welcome Email
  */
 export function renderStudentWelcomeEmail(
@@ -1109,6 +1643,155 @@ export function renderAccountDeletedEmail(
 }
 
 /**
+ * Template renderer for 'EXM-01': Official Mock Test Result Published
+ */
+export function renderMockTestResultPublishedEmail(
+  payload: Record<string, unknown>,
+  context: TemplateContext
+): RenderedEmail {
+  const recipientName = context.recipientName || (payload.recipientName as string) || 'Student';
+  const testTitle = (payload.testTitle as string) || (payload.test_title as string) || 'Mock Test';
+  const attemptNumber = payload.attemptNumber ?? payload.attempt_number ?? 1;
+  const score = payload.score ?? payload.totalScore ?? payload.total_score ?? 0;
+  const maxScore = payload.maxScore ?? payload.totalMarks ?? payload.max_score ?? payload.total_marks ?? 0;
+  const percentage = payload.percentage ?? (Number(maxScore) > 0 ? ((Number(score) / Number(maxScore)) * 100).toFixed(1) : '0');
+  const rank = payload.rank !== null && payload.rank !== undefined ? Number(payload.rank) : null;
+  const percentile = payload.percentile !== null && payload.percentile !== undefined ? Number(payload.percentile) : null;
+  const correctCount = payload.correctCount ?? payload.correct_count ?? 0;
+  const wrongCount = payload.wrongCount ?? payload.wrong_count ?? payload.incorrectCount ?? payload.incorrect_count ?? 0;
+  const skippedCount = payload.skippedCount ?? payload.skipped_count ?? 0;
+  const attemptId = payload.attemptId as string | undefined;
+  const testId = payload.testId as string | undefined;
+  const resultsUrl =
+    (payload.resultsUrl as string) ||
+    (testId && attemptId
+      ? `https://makemetopper.com/student/tests/${testId}/results/${attemptId}`
+      : 'https://makemetopper.com/student/results');
+  const supportEmail = 'support@inovoxy.com';
+
+  const title = `Official Result Published: ${testTitle} — Make Me Topper`;
+  const preheader = `Your official scorecard and performance analysis for ${testTitle} are now available.`;
+
+  // Format release date if present
+  let formattedReleasedAt = '';
+  if (payload.releasedAt) {
+    try {
+      const d = new Date(payload.releasedAt as string);
+      if (!isNaN(d.getTime())) {
+        formattedReleasedAt = d.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Kolkata',
+        }) + ' IST';
+      }
+    } catch {
+      formattedReleasedAt = '';
+    }
+  }
+
+  // Construct rank & percentile badges only if values are present and valid
+  const hasRankOrPercentile = rank !== null || percentile !== null;
+  const rankPercentileHtml = hasRankOrPercentile
+    ? `
+      <div style="margin: 16px 0; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;">
+        ${rank !== null ? `
+          <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 130px;">
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #166534; letter-spacing: 0.5px;">All-India Rank</div>
+            <div style="font-size: 20px; font-weight: 800; color: #15803d; margin-top: 2px;">#${escapeHtml(rank)}</div>
+          </div>
+        ` : ''}
+        ${percentile !== null ? `
+          <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 130px;">
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #1e40af; letter-spacing: 0.5px;">Percentile</div>
+            <div style="font-size: 20px; font-weight: 800; color: #2563eb; margin-top: 2px;">${escapeHtml(percentile)}%</div>
+          </div>
+        ` : ''}
+      </div>
+    `
+    : '';
+
+  const contentHtml = `
+    <h2 style="margin-top: 0; color: #1e293b; font-size: 20px; font-weight: 700;">Hello ${escapeHtml(recipientName)},</h2>
+    <p>
+      The official results for <strong>${escapeHtml(testTitle)}</strong> have been finalized and published.
+      Your official evaluation, performance analytics, and question solutions are now ready on Make Me Topper.
+    </p>
+
+    <div style="margin: 24px 0; background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%); border: 1px solid #cbd5e1; border-radius: 10px; padding: 20px; text-align: center;">
+      <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Your Total Score</div>
+      <div style="font-size: 32px; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        ${escapeHtml(score)} <span style="font-size: 18px; font-weight: 500; color: #64748b;">/ ${escapeHtml(maxScore)}</span>
+      </div>
+      <div style="font-size: 14px; font-weight: 600; color: #3b82f6;">
+        Score Percentage: ${escapeHtml(percentage)}%
+      </div>
+      ${rankPercentileHtml}
+    </div>
+
+    <div style="margin: 20px 0; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; background-color: #ffffff;">
+      <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #334155; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">Attempt Summary</h3>
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Attempt Number:</td>
+          <td style="padding: 6px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">#${escapeHtml(attemptNumber)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Correct Answers:</td>
+          <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #16a34a; font-size: 14px;">${escapeHtml(correctCount)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Incorrect Answers:</td>
+          <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #dc2626; font-size: 14px;">${escapeHtml(wrongCount)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Skipped Questions:</td>
+          <td style="padding: 6px 0; font-weight: 600; text-align: right; color: #64748b; font-size: 14px;">${escapeHtml(skippedCount)}</td>
+        </tr>
+        ${formattedReleasedAt ? `
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Published On:</td>
+          <td style="padding: 6px 0; font-weight: 600; text-align: right; color: #0f172a; font-size: 14px;">${escapeHtml(formattedReleasedAt)}</td>
+        </tr>
+        ` : ''}
+      </table>
+    </div>
+
+    <div class="button-container" style="text-align: center; margin: 28px 0;">
+      <a href="${escapeHtml(resultsUrl)}" class="button" target="_blank" style="background-color: #2563eb; color: #ffffff !important; display: inline-block; padding: 12px 28px; font-weight: 600; font-size: 15px; border-radius: 6px; text-decoration: none;">
+        View Detailed Scorecard & Analysis
+      </a>
+    </div>
+
+    <div style="margin: 20px 0; padding: 14px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #475569; line-height: 1.6;">
+      <strong>Pro Tip:</strong>
+      <br>
+      Reviewing your incorrect and skipped questions is the fastest way to improve your score. Log in to your student dashboard to review detailed solution step-throughs, speed analytics, and question-level insights.
+    </div>
+
+    <p style="margin-bottom: 0; font-size: 13px; color: #64748b;">
+      If you have questions regarding this assessment or encounter difficulty accessing your scorecard, our academic support team is here to assist at <a href="mailto:${escapeHtml(supportEmail)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(supportEmail)}</a>.
+    </p>
+  `;
+
+  const html = renderBaseLayout({
+    title,
+    preheader,
+    contentHtml,
+    recipientEmail: (payload.recipientEmail as string) || context?.recipientEmail,
+    supportEmail,
+  });
+
+  return {
+    subject: title,
+    html,
+    text: htmlToPlainText(html),
+  };
+}
+
+/**
  * Template renderer for 'test_email'
  */
 function renderTestEmail(
@@ -1219,6 +1902,49 @@ export function renderEmail(
     case 'installment-subsequent':
       return renderInstallmentSubsequentPaidEmail(payload, context);
 
+    // INS-03: Installment Due in 3 Days
+    case 'ins-03':
+    case 'installment-due-3d':
+    case 'installment-due-in-3-days':
+      return renderInstallmentDueIn3DaysEmail(payload, context);
+
+    // INS-04: Installment Due Today
+    case 'ins-04':
+    case 'installment-due-today':
+    case 'installment-due-0d':
+      return renderInstallmentDueTodayEmail(payload, context);
+
+    // INS-05: Installment Overdue (T+1)
+    case 'ins-05':
+    case 'installment-overdue':
+    case 'installment-od-1d':
+      return renderInstallmentOverdueEmail(payload, context);
+
+    // INS-06: Arrears Escalation and Academic Access Warning (T+7)
+    case 'ins-06':
+    case 'arrears-warning':
+    case 'installment-arrears-7d':
+    case 'installment-arrears-escalation':
+      return renderArrearsWarningEmail(payload, context);
+
+    // INS-07: Installment Plan Completed
+    case 'ins-07':
+    case 'installment-plan-completed':
+    case 'installment-completed':
+      return renderInstallmentPlanCompletedEmail(payload, context);
+
+    // INS-08: Installment Due Date Rescheduled
+    case 'ins-08':
+    case 'installment-rescheduled':
+    case 'installment-due-date-rescheduled':
+      return renderInstallmentRescheduledEmail(payload, context);
+
+    // INS-10: Arrears Cleared and Course Access Restored
+    case 'ins-10':
+    case 'arrears-cleared':
+    case 'arrears-restored':
+      return renderArrearsClearedEmail(payload, context);
+
     // ACC-01: Student Welcome Email
     case 'acc-01':
     case 'student-welcome':
@@ -1238,6 +1964,12 @@ export function renderEmail(
     case 'account-deletion-confirmation':
     case 'acct-delete':
       return renderAccountDeletedEmail(payload, context);
+
+    // EXM-01: Official Mock Test Result Published
+    case 'exm-01':
+    case 'mock-test-result-published':
+    case 'exam-result-published':
+      return renderMockTestResultPublishedEmail(payload, context);
 
     // Test email
     case 'test-email':

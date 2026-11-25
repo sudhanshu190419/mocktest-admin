@@ -1,5 +1,42 @@
 import { supabase } from '@/config/supabase';
-import type { Course, CourseInstallmentPlan } from '@/types/courseCatalog';
+import type { Course, CourseBatchItem, CourseInstallmentPlan } from '@/types/courseCatalog';
+
+export interface NavStreamItem {
+  streamId: string;
+  name: string;
+  code: string;
+  displayOrder: number;
+}
+
+/**
+ * Fetches active academic streams directly from `public.streams` for main navigation.
+ * Uses public anonymous client and respects RLS policies.
+ */
+export async function getPublicNavStreams(): Promise<NavStreamItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('streams')
+      .select('stream_id, name, code, is_active, display_order')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error || !data) {
+      console.warn('Could not fetch public navigation streams:', error?.message);
+      return [];
+    }
+
+    return data.map((s: any) => ({
+      streamId: s.stream_id,
+      name: s.name,
+      code: (s.code || '').toUpperCase(),
+      displayOrder: s.display_order ?? 0,
+    }));
+  } catch (err) {
+    console.warn('Error in getPublicNavStreams:', err);
+    return [];
+  }
+}
 
 export function formatCoursePrice(amount: number, currency: string = 'INR'): string {
   return new Intl.NumberFormat('en-IN', {
@@ -136,6 +173,22 @@ function mapDbCourseRow(row: any): Course {
       updatedAt: p.updated_at,
     }));
 
+  const rawBatches = Array.isArray(row.course_batches) ? row.course_batches : [];
+  const batches: CourseBatchItem[] = rawBatches
+    .map((cb: any) => {
+      const b = Array.isArray(cb.batches) ? cb.batches[0] : cb.batches;
+      if (!b) return null;
+      const isActive = !b.deleted_at && b.status !== 'completed' && b.status !== 'archived';
+      return {
+        id: b.batch_id,
+        name: b.name,
+        code: b.batch_code || null,
+        isActive,
+        status: b.status || 'upcoming',
+      };
+    })
+    .filter((b: CourseBatchItem | null): b is CourseBatchItem => b !== null && b.isActive);
+
   return {
     courseId: row.course_id,
     slug: row.slug || row.course_id,
@@ -189,6 +242,7 @@ function mapDbCourseRow(row: any): Course {
       ],
     },
     installmentPlans,
+    batches,
   };
 }
 
@@ -234,6 +288,16 @@ export async function getCourses(): Promise<Course[]> {
           number_of_installments,
           interval_months,
           is_active
+        ),
+        course_batches (
+          batch_id,
+          batches (
+            batch_id,
+            name,
+            batch_code,
+            status,
+            deleted_at
+          )
         )
       `)
       .eq('status', 'published')
@@ -243,14 +307,70 @@ export async function getCourses(): Promise<Course[]> {
       queryBuilder = queryBuilder.eq('institute_id', defaultInstituteId);
     }
 
+    let rows: any[] = [];
     const { data, error } = await queryBuilder.order('sort_order', { ascending: true });
 
-    if (error || !data) {
-      if (error) console.error('Failed to fetch courses from Supabase:', error.message);
-      return [];
+    if (error) {
+      console.warn('Attempting fallback query for courses without nested batches:', error.message);
+      let fallbackBuilder = supabase
+        .from('courses')
+        .select(`
+          course_id,
+          slug,
+          stream_id,
+          institute_id,
+          title,
+          short_description,
+          description,
+          language,
+          duration,
+          difficulty_level,
+          original_price,
+          discounted_price,
+          currency,
+          thumbnail_bucket,
+          thumbnail_path,
+          banner_bucket,
+          banner_path,
+          featured,
+          trending,
+          status,
+          published_at,
+          deleted_at,
+          sort_order,
+          streams:stream_id (
+            stream_id,
+            name,
+            code
+          ),
+          course_installment_plans (
+            plan_id,
+            course_id,
+            plan_name,
+            total_fee,
+            number_of_installments,
+            interval_months,
+            is_active
+          )
+        `)
+        .eq('status', 'published')
+        .is('deleted_at', null);
+
+      if (defaultInstituteId) {
+        fallbackBuilder = fallbackBuilder.eq('institute_id', defaultInstituteId);
+      }
+
+      const fallbackRes = await fallbackBuilder.order('sort_order', { ascending: true });
+      if (fallbackRes.error || !fallbackRes.data) {
+        if (fallbackRes.error) console.error('Failed to fetch courses fallback from Supabase:', fallbackRes.error.message);
+        return [];
+      }
+      rows = fallbackRes.data;
+    } else {
+      rows = data || [];
     }
 
-    return data.map(mapDbCourseRow);
+    return rows.map(mapDbCourseRow);
   } catch (err) {
     console.error('Error in getCourses:', err);
     return [];
@@ -308,6 +428,16 @@ export async function getHomepageTrendingCourses(): Promise<Course[]> {
           number_of_installments,
           interval_months,
           is_active
+        ),
+        course_batches (
+          batch_id,
+          batches (
+            batch_id,
+            name,
+            batch_code,
+            status,
+            deleted_at
+          )
         )
       `)
       .eq('status', 'published')
@@ -318,16 +448,76 @@ export async function getHomepageTrendingCourses(): Promise<Course[]> {
       queryBuilder = queryBuilder.eq('institute_id', defaultInstituteId);
     }
 
+    let rows: any[] = [];
     const { data, error } = await queryBuilder
       .order('featured', { ascending: false })
       .order('published_at', { ascending: false, nullsFirst: false });
 
-    if (error || !data) {
-      if (error) console.error('Failed to fetch homepage trending courses from Supabase:', error.message);
-      return [];
+    if (error) {
+      console.warn('Attempting fallback query for homepage trending courses without nested batches:', error.message);
+      let fallbackBuilder = supabase
+        .from('courses')
+        .select(`
+          course_id,
+          slug,
+          stream_id,
+          institute_id,
+          title,
+          short_description,
+          description,
+          language,
+          duration,
+          difficulty_level,
+          original_price,
+          discounted_price,
+          currency,
+          thumbnail_bucket,
+          thumbnail_path,
+          banner_bucket,
+          banner_path,
+          featured,
+          trending,
+          status,
+          published_at,
+          deleted_at,
+          sort_order,
+          streams:stream_id (
+            stream_id,
+            name,
+            code
+          ),
+          course_installment_plans (
+            plan_id,
+            course_id,
+            plan_name,
+            total_fee,
+            number_of_installments,
+            interval_months,
+            is_active
+          )
+        `)
+        .eq('status', 'published')
+        .is('deleted_at', null)
+        .eq('trending', true);
+
+      if (defaultInstituteId) {
+        fallbackBuilder = fallbackBuilder.eq('institute_id', defaultInstituteId);
+      }
+
+      const fallbackRes = await fallbackBuilder
+        .order('featured', { ascending: false })
+        .order('published_at', { ascending: false, nullsFirst: false });
+
+      if (fallbackRes.error || !fallbackRes.data) {
+        if (fallbackRes.error) console.error('Failed to fetch homepage trending courses fallback from Supabase:', fallbackRes.error.message);
+        return [];
+      }
+      rows = fallbackRes.data;
+    } else {
+      rows = data || [];
     }
 
-    return data.map(mapDbCourseRow);
+    return rows.map(mapDbCourseRow);
   } catch (err) {
     console.error('Error in getHomepageTrendingCourses:', err);
     return [];

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Select } from '@/components/ui/Select';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import { OptionEditor } from './OptionEditor';
 import { ExplanationEditor } from './ExplanationEditor';
 import { ImageUploader, ImageItem } from './ImageUploader';
@@ -116,6 +117,8 @@ export function QuestionForm({
   errors = {},
   isEditing,
 }: QuestionFormProps) {
+  const [previewStem, setPreviewStem] = useState(false);
+
   const handleFieldChange = useCallback(
     <K extends keyof QuestionFormData>(field: K, value: QuestionFormData[K]) => {
       onChange({ ...data, [field]: value });
@@ -289,16 +292,53 @@ export function QuestionForm({
 
       {/* Question Text */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Question Text <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          value={data.questionText}
-          onChange={(e) => handleFieldChange('questionText', e.target.value)}
-          placeholder="Write the question stem here..."
-          rows={4}
-          className="w-full resize-y rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-        />
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Question Text <span className="text-red-500">*</span>
+          </label>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => setPreviewStem(false)}
+              className={`rounded-md px-2.5 py-1 font-medium transition ${
+                !previewStem
+                  ? 'bg-white text-gray-900 shadow-xs dark:bg-gray-700 dark:text-gray-100'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewStem(true)}
+              className={`rounded-md px-2.5 py-1 font-medium transition ${
+                previewStem
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Math Preview
+            </button>
+          </div>
+        </div>
+
+        {previewStem ? (
+          <div className="min-h-[104px] rounded-lg border border-blue-200 bg-blue-50/20 p-3 text-sm text-gray-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-gray-100">
+            {data.questionText ? (
+              <MathRenderer content={data.questionText} />
+            ) : (
+              <p className="text-xs italic text-gray-400">No question text entered yet. Type LaTeX like \(x^2+y^2=r^2\) in Edit mode.</p>
+            )}
+          </div>
+        ) : (
+          <textarea
+            value={data.questionText}
+            onChange={(e) => handleFieldChange('questionText', e.target.value)}
+            placeholder="Write the question stem here... Supports LaTeX e.g. \(x^2+y^2=r^2\) or \[\int_0^1 x\,dx\]"
+            rows={4}
+            className="w-full resize-y rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          />
+        )}
         {errors.questionText && <p className="text-xs text-red-500">{errors.questionText}</p>}
       </div>
 

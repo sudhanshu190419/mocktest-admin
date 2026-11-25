@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useStreams } from '@/hooks/academic/useStreams';
 import { AddStreamModal } from '@/features/question-bank/components/AddStreamModal';
 import type { Stream } from '@/types/academic';
+import type { PyqPackageType } from '@/types/pyq';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -20,11 +21,14 @@ export interface PyqPackageFormValues {
   thumbnailPath: string;
   yearFrom: string;
   yearTo: string;
+  packageType: PyqPackageType;
 }
 
 export interface PyqPackageFormProps {
   /** Pre-populated values (edit mode). Omit for create mode. */
   initialData?: PyqPackageFormValues | null;
+  /** Whether the package type can be modified (false once published or purchased). */
+  isTypeEditable?: boolean;
   /** True while the parent mutation is pending. */
   isSubmitting?: boolean;
   /** Label for the primary submit button. */
@@ -55,6 +59,7 @@ const EMPTY_VALUES: PyqPackageFormValues = {
   thumbnailPath: '',
   yearFrom: '',
   yearTo: '',
+  packageType: 'pyq',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -63,6 +68,7 @@ const EMPTY_VALUES: PyqPackageFormValues = {
 
 export function PyqPackageForm({
   initialData,
+  isTypeEditable = true,
   isSubmitting = false,
   submitLabel = 'Save Changes',
   error,
@@ -183,6 +189,54 @@ export function PyqPackageForm({
         <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
           <h2 className="mb-4 text-base font-semibold text-gray-900">Basic Information</h2>
           <div className="space-y-4">
+            {/* Package Type */}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Package Type <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  disabled={!isTypeEditable}
+                  onClick={() => handleChange('packageType', 'pyq')}
+                  className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
+                    formData.packageType === 'pyq'
+                      ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600 dark:border-blue-500 dark:bg-blue-950/20'
+                      : 'border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800'
+                  } ${!isTypeEditable ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    PYQ Package
+                  </span>
+                  <span className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Previous year papers with solutions & CBT test
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!isTypeEditable}
+                  onClick={() => handleChange('packageType', 'mock_test')}
+                  className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
+                    formData.packageType === 'mock_test'
+                      ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600 dark:border-purple-500 dark:bg-purple-950/20'
+                      : 'border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800'
+                  } ${!isTypeEditable ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Mock Test Package
+                  </span>
+                  <span className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Standalone full-length online mock test series
+                  </span>
+                </button>
+              </div>
+              {!isTypeEditable && (
+                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  Package type cannot be changed once the package is published or has purchase history.
+                </p>
+              )}
+            </div>
+
             {/* Package Name */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">

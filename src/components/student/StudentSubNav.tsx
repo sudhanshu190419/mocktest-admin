@@ -8,6 +8,7 @@ import {
   IconLibrary,
   IconVideo,
   IconFilm,
+  IconPyq,
   IconTest,
   IconCalendar,
   IconDoubt,
@@ -42,6 +43,13 @@ export const STUDENT_NAV_ITEMS: StudentSubNavItem[] = [
       pathname === '/student/courses' || pathname.startsWith('/student/courses/'),
   },
   {
+    label: 'Class Timetable',
+    href: '/student/timetable',
+    icon: IconCalendar,
+    matches: (pathname: string) =>
+      pathname === '/student/timetable' || pathname.startsWith('/student/timetable/'),
+  },
+  {
     label: 'Live Classes',
     href: '/student/classes',
     icon: IconVideo,
@@ -56,19 +64,19 @@ export const STUDENT_NAV_ITEMS: StudentSubNavItem[] = [
       pathname === '/student/recordings' || pathname.startsWith('/student/recordings/'),
   },
   {
-    label: 'Mock Tests',
+    label: 'PYQ & Sample Paper',
+    href: '/pyq',
+    icon: IconPyq,
+    matches: (pathname: string) =>
+      pathname === '/pyq' || pathname.startsWith('/pyq/'),
+  },
+  {
+    label: 'Class Test',
     href: '/student/tests',
     icon: IconTest,
     badge: 'tests',
     matches: (pathname: string) =>
       pathname === '/student/tests' || pathname.startsWith('/student/tests/'),
-  },
-  {
-    label: 'Timetable',
-    href: '/student/timetable',
-    icon: IconCalendar,
-    matches: (pathname: string) =>
-      pathname === '/student/timetable' || pathname.startsWith('/student/timetable/'),
   },
   {
     label: 'My Doubts',
@@ -79,7 +87,7 @@ export const STUDENT_NAV_ITEMS: StudentSubNavItem[] = [
       pathname === '/student/doubts' || pathname.startsWith('/student/doubts/'),
   },
   {
-    label: 'Analytics',
+    label: 'My Performance',
     href: '/student/analytics',
     icon: IconProgress,
     matches: (pathname: string) =>
@@ -146,7 +154,16 @@ export function StudentSubNav() {
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Icon size={16} className="student-subnav-icon shrink-0" />
-                <span className="student-subnav-label">{item.label}</span>
+                <span className="student-subnav-label text-center leading-tight">
+                  {item.label === 'Class Timetable' ? (
+                    <>
+                      <span>Class</span>
+                      <span className="block">Timetable</span>
+                    </>
+                  ) : (
+                    item.label
+                  )}
+                </span>
                 {badgeCount > 0 && (
                   <span
                     className="student-subnav-badge"

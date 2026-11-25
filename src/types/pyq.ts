@@ -22,6 +22,13 @@ import type { PaginationParams, SortDirection } from './academic';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Allowed package classifications:
+ * - 'pyq': Standard previous year questions package (default).
+ * - 'mock_test': Standalone purchasable mock test package.
+ */
+export type PyqPackageType = 'pyq' | 'mock_test';
+
+/**
  * A PYQ Package — the top-level sellable unit of PYQ content.
  *
  * Mirrors the `pyq_packages` table in PostgreSQL.
@@ -31,6 +38,8 @@ import type { PaginationParams, SortDirection } from './academic';
 export interface PyqPackage {
   /** Primary key. */
   packageId: string;
+  /** Package classification ('pyq' | 'mock_test'). */
+  packageType: PyqPackageType;
   /** Institute that owns this package (FK → public.institutes). */
   instituteId: string;
   /** Exam stream (FK → public.streams). A package is scoped to exactly one stream. */
@@ -92,6 +101,8 @@ export interface CreatePyqPackageInput {
   yearFrom?: number | null;
   /** Latest exam year (optional). Must be ≥ yearFrom if both set. */
   yearTo?: number | null;
+  /** Package classification (defaults to 'pyq'). */
+  packageType?: PyqPackageType;
 }
 
 /**
@@ -108,6 +119,8 @@ export interface UpdatePyqPackageInput {
   thumbnailPath?: string | null;
   yearFrom?: number | null;
   yearTo?: number | null;
+  /** Package classification (can only be updated while draft / no purchases). */
+  packageType?: PyqPackageType;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -120,6 +133,8 @@ export interface UpdatePyqPackageInput {
 export interface PyqPackageFilters {
   instituteId?: string;
   streamId?: string;
+  /** Filter by package classification ('pyq' | 'mock_test'). */
+  packageType?: PyqPackageType;
   /**
    * Filter by active status.
    * - `true`: only active packages

@@ -87,7 +87,7 @@ export function AppShowcaseSection() {
           {/* Bottom Download Action */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 sm:gap-4 pt-1 sm:pt-2">
             <a
-              href="https://play.google.com"
+              href="https://play.google.com/store/apps/details?id=com.makemetopper.app"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center sm:justify-start gap-3 bg-black text-white px-5 py-2.5 rounded-xl hover:bg-neutral-900 active:scale-[0.98] transition-all shadow-md shrink-0 w-full sm:w-fit"

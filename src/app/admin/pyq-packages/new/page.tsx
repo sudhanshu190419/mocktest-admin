@@ -31,6 +31,7 @@ export default function AdminCreatePyqPackagePage() {
           thumbnailPath: values.thumbnailPath || null,
           yearFrom: values.yearFrom ? parseInt(values.yearFrom) : null,
           yearTo: values.yearTo ? parseInt(values.yearTo) : null,
+          packageType: values.packageType,
         },
         {
           onSuccess: (pkg) => {

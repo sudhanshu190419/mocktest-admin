@@ -9,7 +9,6 @@ import {
   IconArrowRight,
   IconCalendar,
   IconPyq,
-  IconTest,
   IconCheck,
   IconSearch,
   IconFileText,
@@ -36,7 +35,7 @@ export function PYQPackageCard({
 
   return (
     <Card className="store-course-card" interactive>
-      <Link href={isPurchased ? '/student/tests' : `/pyq/${item.packageId}`} tabIndex={-1} aria-hidden="true">
+      <Link href={isPurchased ? '/student/tests?type=pyq' : `/pyq/${item.packageId}`} tabIndex={-1} aria-hidden="true">
         <CourseArtwork
           stream={item.streamCode}
           title={item.subjectBreakdown.map((entry) => entry.subject).slice(0, 2).join('\n')}
@@ -53,7 +52,7 @@ export function PYQPackageCard({
               Purchased ✓
             </span>
           ) : (
-            <span>Previous year papers</span>
+            <span>{item.packageType === 'mock_test' ? 'Online Mock Tests' : 'Previous year papers'}</span>
           )}
         </div>
         <h3>
@@ -67,11 +66,11 @@ export function PYQPackageCard({
           </span>
           <span className="store-fact-item">
             <IconPyq size={13} className="store-fact-icon shrink-0" />
-            <span className="tabular-nums">{item.totalPapers} papers</span>
-          </span>
-          <span className="store-fact-item">
-            <IconTest size={13} className="store-fact-icon shrink-0" />
-            <span className="tabular-nums">{item.totalQuestions} questions</span>
+            <span className="tabular-nums">
+              {item.packageType === 'mock_test'
+                ? `${item.totalPapers} ${item.totalPapers === 1 ? 'test' : 'tests'}`
+                : `${item.totalPapers} papers`}
+            </span>
           </span>
         </div>
         <div className="store-card-price">
@@ -94,7 +93,7 @@ export function PYQPackageCard({
               )}
             </div>
             <p className="store-monthly-line">
-              <b>{item.accessType}</b> · Online practice
+              Online practice
             </p>
           </div>
           <Link
@@ -141,6 +140,15 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
       );
     });
   }, [packages, stream, query]);
+
+  const pyqPackages = useMemo(
+    () => filtered.filter((p) => p.packageType !== 'mock_test'),
+    [filtered],
+  );
+  const mockTestPackages = useMemo(
+    () => filtered.filter((p) => p.packageType === 'mock_test'),
+    [filtered],
+  );
 
   return (
     <>
@@ -197,7 +205,7 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
             {/* Eyebrow Badge */}
             <div className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-200/90 bg-[#e6f7ef] px-2.5 py-0.5 sm:px-3.5 sm:py-1.5 text-[9.5px] xs:text-[10.5px] sm:text-xs font-extrabold tracking-[0.08em] sm:tracking-[0.12em] text-[#047857] uppercase shadow-2xs">
               <IconFileText size={12} className="text-[#047857] sm:w-3.5 sm:h-3.5" />
-              <span>PREVIOUS YEAR QUESTIONS</span>
+              <span>PYQ & MOCK TEST</span>
             </div>
 
             {/* Headline */}
@@ -226,7 +234,7 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
                 href="#pyq-catalog"
                 className="inline-flex items-center justify-center rounded-full border border-slate-200/90 bg-white hover:bg-slate-50 active:scale-95 px-4 xs:px-5 sm:px-7 py-2 xs:py-2.5 sm:py-3.5 text-[11.5px] xs:text-xs sm:text-[15px] font-bold text-slate-800 shadow-sm transition-all w-auto"
               >
-                View Sample Questions
+                Explore Mock Test
               </a>
             </div>
           </div>
@@ -236,13 +244,13 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
         <div className="relative z-10 w-full mt-auto hidden lg:block">
           <div className="store-container pb-10 xl:pb-12">
             <div className="grid grid-cols-4 gap-6 xl:gap-8 max-w-2xl">
-              {/* Card 1: Chapter-wise PYQs */}
+              {/* Card 1: Subject-wise PYQs */}
               <div className="flex flex-col items-start gap-2.5">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fee2e2] text-[#ef4444] shrink-0 shadow-2xs">
                   <IconFileText size={20} />
                 </div>
                 <div>
-                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Chapter-wise PYQs</h4>
+                  <h4 className="text-[13.5px] xl:text-[14px] font-bold text-slate-900 leading-tight">Subject-wise PYQs</h4>
                   <p className="text-[11.5px] xl:text-xs text-slate-500 font-normal leading-tight mt-1">Practice topic by topic.</p>
                 </div>
               </div>
@@ -287,14 +295,14 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
       {/* ── 2. Mobile 4 Feature Cards (Directly below image with rounded-t-3xl white sheet container) ── */}
       <section className="block lg:hidden bg-white -mt-6 relative z-20 rounded-t-[28px] border-b border-slate-100 pt-5 pb-5 px-3.5 xs:px-4 shadow-[0_-6px_20px_rgba(0,0,0,0.04)]">
         <div className="grid grid-cols-2 gap-2.5 xs:gap-3">
-          {/* Card 1: Chapter-wise PYQs (Rose) */}
+          {/* Card 1: Subject-wise PYQs (Rose) */}
           <div className="bg-[#fff1f2] border border-[#ffe4e6] rounded-2xl p-2.5 xs:p-3 flex items-center gap-2.5">
             <div className="flex h-8 w-8 xs:h-9 xs:w-9 items-center justify-center rounded-xl bg-[#fee2e2] text-[#ef4444] shrink-0 shadow-2xs">
               <IconFileText size={17} />
             </div>
             <div className="min-w-0">
               <h4 className="text-[11.5px] xs:text-xs font-bold text-slate-900 leading-tight truncate xs:whitespace-normal">
-                Chapter-wise PYQs
+                Subject-wise PYQs
               </h4>
               <p className="text-[9.5px] xs:text-[10.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate xs:whitespace-normal">
                 Practice topic by topic.
@@ -352,15 +360,7 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
       {/* ── 3. PYQ Catalog Listing Section ────────────────────────────── */}
       <section className="store-container store-catalog-section" id="pyq-catalog">
         <div className="store-section-heading">
-          <div>
-            <p className="store-eyebrow">PICK YOUR PAPERS</p>
-            <h2>Official previous year question packages.</h2>
-          </div>
-          <p>
-            Topic-wise practice or timed full-length tests.
-            <br />
-            Choose the package for your stream.
-          </p>
+          <h2>Explore PYQ Packages</h2>
         </div>
 
         <div className="store-catalog-controls">
@@ -389,9 +389,9 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
           </label>
         </div>
 
-        {filtered.length ? (
+        {pyqPackages.length ? (
           <div className="store-course-grid">
-            {filtered.map((item) => (
+            {pyqPackages.map((item) => (
               <PYQPackageCard
                 key={item.packageId}
                 item={item}
@@ -403,6 +403,31 @@ export function PYQCatalog({ packages }: { packages: PYQPackage[] }) {
           <div className="store-empty">
             <span aria-hidden="true">⌕</span>
             <h3>No PYQ packages match your filters.</h3>
+            <p>Try switching streams or clearing your search.</p>
+          </div>
+        )}
+      </section>
+
+      {/* ── 4. Mock Tests Section ────────────────────────────────────────── */}
+      <section className="store-container store-catalog-section pt-8 sm:pt-12" id="mock-test-catalog">
+        <div className="store-section-heading">
+          <h2>Explore Mock Tests</h2>
+        </div>
+
+        {mockTestPackages.length ? (
+          <div className="store-course-grid">
+            {mockTestPackages.map((item) => (
+              <PYQPackageCard
+                key={item.packageId}
+                item={item}
+                isPurchased={purchasedPackageIds.includes(item.packageId)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="store-empty">
+            <span aria-hidden="true">⌕</span>
+            <h3>No Mock Tests match your filters.</h3>
             <p>Try switching streams or clearing your search.</p>
           </div>
         )}

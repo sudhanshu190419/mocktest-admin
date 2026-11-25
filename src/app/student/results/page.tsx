@@ -133,7 +133,7 @@ export default function StudentMyTestResultsPage() {
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-field bg-sky-tint hover:bg-sky-tint/80 border border-line text-brand-hover font-bold text-xs transition-colors self-start md:self-auto shrink-0 shadow-2xs min-h-[44px]"
         >
           <IconChartBar size={16} className="text-brand" />
-          <span>View Performance Analytics</span>
+          <span>View My Performance</span>
           <IconArrowRight size={14} />
         </Link>
       </div>

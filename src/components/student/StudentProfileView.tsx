@@ -247,7 +247,7 @@ export const StudentProfileView: React.FC = () => {
             <IconArrowLeft size={14} />
             <span>Back to Dashboard</span>
           </Link>
-          <h1 className="text-2xl font-black text-ink tracking-tight">Student Profile & Account</h1>
+          <h1 className="text-2xl font-black text-ink tracking-tight">Student Profile</h1>
           <p className="text-xs text-ink-secondary mt-0.5">
             Manage your personal contact details, academic stream, enrolled batches, and account security.
           </p>
@@ -303,7 +303,7 @@ export const StudentProfileView: React.FC = () => {
               </span>
             </div>
 
-            <p className="text-xs text-brand font-medium flex items-center gap-1.5">
+            <p className="text-xs text-white font-medium flex items-center gap-1.5">
               <IconMail size={14} />
               <span>{profile.email}</span>
             </p>

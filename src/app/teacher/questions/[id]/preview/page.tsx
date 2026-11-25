@@ -7,6 +7,7 @@ import { useQuestionOptions } from '@/hooks/mockTest/useQuestionOptions';
 import { useQuestionExplanation } from '@/hooks/mockTest/useQuestionExplanations';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import { cn } from '@/lib/utils';
 
 export default function QuestionPreviewPage({ params }: { params: Promise<{ id: string }> }) {
@@ -82,9 +83,9 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
         </div>
 
         <div className="px-6 py-6">
-          <p className="text-base leading-relaxed text-gray-900 dark:text-gray-100">
-            {question.questionText}
-          </p>
+          <div className="text-base leading-relaxed text-gray-900 dark:text-gray-100">
+            <MathRenderer content={question.questionText} />
+          </div>
         </div>
 
         {!isNumerical && !isSubjective && options && options.length > 0 && (
@@ -106,9 +107,9 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
                   {labels[index]}
                 </div>
                 <div className="flex-1 pt-1.5">
-                  <p className={cn('text-sm', option.isCorrect ? 'font-medium text-emerald-800 dark:text-emerald-300' : 'text-gray-700 dark:text-gray-300')}>
-                    {option.optionText}
-                  </p>
+                  <div className={cn('text-sm', option.isCorrect ? 'font-medium text-emerald-800 dark:text-emerald-300' : 'text-gray-700 dark:text-gray-300')}>
+                    <MathRenderer content={option.optionText} inline />
+                  </div>
                 </div>
                 {option.isCorrect && (
                   <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
@@ -131,7 +132,9 @@ export default function QuestionPreviewPage({ params }: { params: Promise<{ id: 
               Explanation
             </h3>
             {explanation.explanationText && (
-              <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">{explanation.explanationText}</p>
+              <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                <MathRenderer content={explanation.explanationText} />
+              </div>
             )}
             {explanation.correctNumericalAnswer != null && (
               <div className="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">

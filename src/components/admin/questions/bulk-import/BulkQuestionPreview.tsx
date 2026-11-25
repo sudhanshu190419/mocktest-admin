@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { QuestionImportPreviewRow } from '@/types/bulkQuestionImport';
 import { CheckCircle, XCircle } from '@phosphor-icons/react';
+import { MathRenderer } from '@/components/common/MathRenderer';
 
 interface BulkQuestionPreviewProps {
   rows: QuestionImportPreviewRow[];
@@ -108,13 +109,13 @@ export function BulkQuestionPreview({ rows }: BulkQuestionPreviewProps) {
                   <div className="text-[11px] text-gray-500">{r.chapterName}</div>
                 </td>
                 <td className="max-w-xs truncate px-3 py-2.5 font-medium text-gray-800 dark:text-gray-200">
-                  {r.questionText}
+                  <MathRenderer content={r.questionText} inline />
                 </td>
                 <td className="px-3 py-2.5 font-mono text-gray-700 dark:text-gray-300">
                   +{r.marks} / -{r.negativeMarks}
                 </td>
                 <td className="max-w-xs truncate py-2.5 pl-3 pr-4 text-gray-600 dark:text-gray-400">
-                  {r.optionsSummary || r.correctAnswer || '—'}
+                  <MathRenderer content={r.optionsSummary || r.correctAnswer || '—'} inline />
                 </td>
               </tr>
             ))}

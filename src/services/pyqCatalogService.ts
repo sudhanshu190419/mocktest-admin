@@ -59,6 +59,7 @@ export async function getPYQPackages(): Promise<PYQPackage[]> {
         year_to,
         total_papers,
         is_active,
+        package_type,
         published_at,
         created_at,
         streams:stream_id (
@@ -86,16 +87,21 @@ export async function getPYQPackages(): Promise<PYQPackage[]> {
       const streamCode = (stream.code || 'NEET').toUpperCase();
       const yFrom = row.year_from || 2018;
       const yTo = row.year_to || 2024;
+      const isMockTest = row.package_type === 'mock_test';
+      const defaultDesc = isMockTest
+        ? `Full-length online mock test series for ${streamCode}.`
+        : `Past papers from ${yFrom} to ${yTo}.`;
 
       return {
         packageId: row.package_id,
+        packageType: (row.package_type as 'pyq' | 'mock_test') || 'pyq',
         slug: row.package_id,
         streamId: row.stream_id,
         streamCode,
         streamName: stream.name || streamCode,
         title: row.name,
         displayTitle: row.name,
-        shortDescription: row.description || `Past papers from ${yFrom} to ${yTo}.`,
+        shortDescription: row.description || defaultDesc,
         description: row.description || '',
         yearFrom: yFrom,
         yearTo: yTo,
@@ -107,27 +113,48 @@ export async function getPYQPackages(): Promise<PYQPackage[]> {
         currency: row.currency || 'INR',
         accessType: 'Lifetime Access',
         includesDiagnosticPaper: true,
-        features: [
-          `${row.total_papers || 0} Official exam papers`,
-          'Detailed step-by-step solutions',
-          'CBT exam interface simulation',
-          'Section-wise accuracy & time analysis',
-        ],
+        features: isMockTest
+          ? [
+              `${row.total_papers || 0} Full-length mock tests`,
+              'All-India rank & percentile analysis',
+              'CBT exam interface simulation',
+              'Section-wise accuracy & time analysis',
+            ]
+          : [
+              `${row.total_papers || 0} Official exam papers`,
+              'Detailed step-by-step solutions',
+              'CBT exam interface simulation',
+              'Section-wise accuracy & time analysis',
+            ],
         subjectBreakdown: [],
-        inclusions: [
-          'Full question papers with timer',
-          'Answer explanations for every question',
-          'Instant result summary & percentile',
-        ],
-        howItWorks: [
-          'Attempt past papers under real exam timed conditions',
-          'Review comprehensive explanations and identify weak chapters',
-          'Retake questions to solidify concepts',
-        ],
+        inclusions: isMockTest
+          ? [
+              'Full online mock tests with timer',
+              'Detailed solutions for every question',
+              'Instant result summary & percentile',
+            ]
+          : [
+              'Full question papers with timer',
+              'Answer explanations for every question',
+              'Instant result summary & percentile',
+            ],
+        howItWorks: isMockTest
+          ? [
+              'Attempt full mock tests under real exam timed conditions',
+              'Review comprehensive explanations and identify weak chapters',
+              'Track your progress and improve score with each attempt',
+            ]
+          : [
+              'Attempt past papers under real exam timed conditions',
+              'Review comprehensive explanations and identify weak chapters',
+              'Retake questions to solidify concepts',
+            ],
         faqs: [
           {
-            question: 'Can I attempt papers multiple times?',
-            answer: 'Yes, you can practice each past paper multiple times with full review.',
+            question: isMockTest ? 'Can I attempt tests multiple times?' : 'Can I attempt papers multiple times?',
+            answer: isMockTest
+              ? 'Yes, you can attempt each mock test with full post-test review and analysis.'
+              : 'Yes, you can practice each past paper multiple times with full review.',
           },
         ],
         status: 'published',

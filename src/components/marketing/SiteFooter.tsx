@@ -21,7 +21,7 @@ export function SiteFooter() {
   };
 
   return (
-    <footer className="w-full bg-[#f8fafc] border-t border-slate-200/70 pt-8 sm:pt-12 pb-24 sm:pb-8 mt-4 sm:mt-16 font-sans">
+    <footer className="w-full bg-[#def0fe] border-t border-sky-200/60 pt-8 sm:pt-12 pb-24 sm:pb-8 mt-4 sm:mt-16 font-sans">
       <div className="w-full max-w-[1480px] mx-auto px-4 xs:px-6 sm:px-10 lg:px-14 xl:px-16">
         {/* ── 1. Main Column Grid (2-col on mobile, 5-col on desktop) ──── */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-12 gap-x-4 xs:gap-x-6 gap-y-6 sm:gap-8 lg:gap-10 pb-8 sm:pb-12">
@@ -88,6 +88,7 @@ export function SiteFooter() {
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Quick Links</h4>
             <ul className="space-y-1 sm:space-y-2.5 text-xs text-slate-600">
               <li><Link href="/" className="hover:text-sky-600 transition-colors inline-block py-0.5">Home</Link></li>
+              <li><Link href="/about" className="hover:text-sky-600 transition-colors inline-block py-0.5">About Us</Link></li>
               <li><Link href="/courses" className="hover:text-sky-600 transition-colors inline-block py-0.5">Courses</Link></li>
               <li><Link href="/student/tests" className="hover:text-sky-600 transition-colors inline-block py-0.5">Mock Tests</Link></li>
               <li><Link href="/courses" className="hover:text-sky-600 transition-colors inline-block py-0.5">PYQ Packages</Link></li>
@@ -97,16 +98,16 @@ export function SiteFooter() {
             </ul>
           </div>
 
-          {/* Column 3: Popular Exams (col-span-1 lg:col-span-2) */}
+          {/* Column 3: Courses (col-span-1 lg:col-span-2) */}
           <div className="col-span-1 lg:col-span-2">
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Popular Exams</h4>
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 mb-2 sm:mb-3.5">Courses</h4>
             <ul className="space-y-1 sm:space-y-2.5 text-xs text-slate-600">
-              <li><Link href="/courses?stream=NEET" className="hover:text-sky-600 transition-colors inline-block py-0.5">NEET</Link></li>
+              <li><Link href="/courses?stream=Foundation" className="hover:text-sky-600 transition-colors inline-block py-0.5">8–10th Grade</Link></li>
+              <li><Link href="/courses" className="hover:text-sky-600 transition-colors inline-block py-0.5">11–12th Grade</Link></li>
               <li><Link href="/courses?stream=JEE" className="hover:text-sky-600 transition-colors inline-block py-0.5">JEE</Link></li>
-              <li><Link href="/courses?stream=CUET" className="hover:text-sky-600 transition-colors inline-block py-0.5">CUET</Link></li>
+              <li><Link href="/courses?stream=NEET" className="hover:text-sky-600 transition-colors inline-block py-0.5">NEET</Link></li>
               <li><Link href="/courses?stream=UPSC" className="hover:text-sky-600 transition-colors inline-block py-0.5">UPSC</Link></li>
-              <li><Link href="/courses?stream=Foundation" className="hover:text-sky-600 transition-colors inline-block py-0.5">Foundation</Link></li>
-              <li><Link href="/courses" className="hover:text-sky-600 transition-colors inline-block py-0.5">All Exams</Link></li>
+              <li><Link href="/courses?stream=CUET" className="hover:text-sky-600 transition-colors inline-block py-0.5">CUET</Link></li>
             </ul>
           </div>
 
@@ -118,7 +119,6 @@ export function SiteFooter() {
               <li><Link href="/contact" className="hover:text-sky-600 transition-colors inline-block py-0.5">Contact Us</Link></li>
               <li><Link href="/courses#faq" className="hover:text-sky-600 transition-colors inline-block py-0.5">FAQs</Link></li>
               <li><Link href="/privacy-policy" className="hover:text-sky-600 transition-colors inline-block py-0.5">Privacy Policy</Link></li>
-              <li><Link href="/delete-account" className="hover:text-sky-600 transition-colors inline-block py-0.5">Delete Account</Link></li>
               <li><Link href="#" className="hover:text-sky-600 transition-colors inline-block py-0.5">Terms & Conditions</Link></li>
               <li><Link href="#" className="hover:text-sky-600 transition-colors inline-block py-0.5">Refund Policy</Link></li>
             </ul>
@@ -133,7 +133,7 @@ export function SiteFooter() {
             {/* Google Play Only */}
             <div>
               <a
-                href="https://play.google.com"
+                href="https://play.google.com/store/apps/details?id=com.makemetopper.app"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-black text-white hover:bg-slate-800 active:scale-95 transition-all shadow-2xs"
@@ -151,22 +151,15 @@ export function SiteFooter() {
         </div>
 
         {/* ── 2. Bottom Copyright & Utility Bar ──────────────────────── */}
-        <div className="border-t border-slate-200/80 py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 text-center sm:text-left">
+        <div className="border-t border-sky-200/80 py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600 text-center sm:text-left">
           <p>© {currentYear} Make Me Topper. All rights reserved.</p>
 
           <div className="flex flex-wrap items-center justify-center gap-3.5 sm:gap-6">
-            <div className="flex items-center gap-2 font-medium text-slate-500 text-[11px] sm:text-xs">
-              <span>Dream</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-              <span>Learn</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-              <span>Practice</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-              <span>Achieve</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <div className="flex items-center gap-2 font-medium text-slate-600 text-[11px] sm:text-xs">
+              <span>Learn, Aspire, Achieve</span>
             </div>
 
-            <div className="hidden sm:block w-px h-3.5 bg-slate-300" />
+            <div className="hidden sm:block w-px h-3.5 bg-sky-300" />
 
             <button
               type="button"

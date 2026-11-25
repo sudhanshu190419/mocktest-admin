@@ -93,6 +93,7 @@ export interface StudentMockTestCardItem {
   attemptSummary: MockTestAttemptSummary;
   latestResult?: StudentMockTestResultPreview | null;
   assignedAt?: string | null;
+  year?: number | string | null;
 }
 
 export interface StudentTestsHubSummary {
@@ -681,6 +682,9 @@ export async function fetchStudentAssignedMockTests(
                   description,
                   test_type,
                   subject_id,
+                  subjects:subject_id (
+                    name
+                  ),
                   duration_min,
                   total_marks,
                   passing_marks,
@@ -703,6 +707,16 @@ export async function fetchStudentAssignedMockTests(
                 if (!rawTestMap.has(tid)) {
                   uniqueTestIds.push(tid);
                   attemptLimitMap.set(tid, null); // Unlimited practice for lifetime PYQ access
+                  const s = Array.isArray(mt?.subjects) ? mt?.subjects[0] : mt?.subjects;
+                  let derivedSubject = s?.name || null;
+                  if (!derivedSubject && (paper?.title || mt?.title)) {
+                    const lower = `${paper?.title || ''} ${mt?.title || ''}`.toLowerCase();
+                    if (lower.includes('physic')) derivedSubject = 'Physics';
+                    else if (lower.includes('chem')) derivedSubject = 'Chemistry';
+                    else if (lower.includes('math')) derivedSubject = 'Mathematics';
+                    else if (lower.includes('bio') || lower.includes('botan') || lower.includes('zool')) derivedSubject = 'Biology';
+                  }
+
                   rawTestMap.set(tid, {
                     row: {
                       assignment_id: mRow.mapping_id,
@@ -724,7 +738,7 @@ export async function fetchStudentAssignedMockTests(
                       status: 'published',
                     },
                     isPyq: true,
-                    subjectName: paper?.title || 'PYQ Paper',
+                    subjectName: derivedSubject || paper?.title || 'All Subjects',
                     courseTitle: packageName,
                     courseId: paper?.package_id || null,
                     batchName: packageName,
@@ -820,6 +834,7 @@ export async function fetchStudentAssignedMockTests(
         attemptSummary,
         latestResult,
         assignedAt: row.assigned_at || null,
+        year: paperMetadata?.exam_year || (mt?.title?.match(/\b(19\d\d|20\d\d)\b/)?.[0] ?? null),
       });
     });
 

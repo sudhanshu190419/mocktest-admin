@@ -22,7 +22,7 @@ export function SiteHeader({
     : '/signup';
 
   return (
-    <header className="sticky top-0 z-40 border-b border-divider bg-surface/80 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-sky-200/50 bg-[#def0fe]/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
         <Link href="/" className="flex items-center shrink-0" aria-label="Make Me Topper home">
           <Image
@@ -37,7 +37,7 @@ export function SiteHeader({
 
         <nav className="hidden items-center gap-1 md:flex">
           <NavLink href="/courses">Courses</NavLink>
-          <NavLink href="/pyq">PYQ Packages</NavLink>
+          <NavLink href="/pyq">PYQ & Mock Test</NavLink>
           <NavLink href="/demo-class">Demo Class</NavLink>
         </nav>
 

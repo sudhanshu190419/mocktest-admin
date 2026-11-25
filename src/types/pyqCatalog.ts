@@ -27,6 +27,7 @@ export interface PYQPackage {
   faqs: PYQFaq[];
   status: 'published' | 'draft' | 'archived';
   sortOrder: number;
+  packageType?: 'pyq' | 'mock_test';
   papers?: PYQPaperPreviewItem[];
 }
 

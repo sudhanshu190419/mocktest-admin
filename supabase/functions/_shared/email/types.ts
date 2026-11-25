@@ -65,6 +65,8 @@ export interface EmailSendResult {
   error?: string;
   statusCode?: number;
   retryAfterSeconds?: number;
+  providerErrorCode?: string;
+  isAmbiguous?: boolean;
 }
 
 export interface RenderedEmail {

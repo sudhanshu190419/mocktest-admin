@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, useRef, type ReactNode } from 'react';
 import { TurnstileWidget, type TurnstileWidgetRef } from './TurnstileWidget';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { Button } from '@/components/marketing/Button';
 import { authRoute, getSafeNextUrl } from '@/lib/navigation';
 import { digitsOnly, toE164, isValidNationalNumber } from '@/lib/phone';
@@ -237,22 +238,73 @@ function PasswordField({
   onChange: (value: string) => void;
   current?: boolean;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <label className="auth-field" htmlFor="auth-password">
       {current ? 'Password' : 'Choose a password'}
-      <input
-        id="auth-password"
-        name="password"
-        type="password"
-        autoComplete={current ? 'current-password' : 'new-password'}
-        required
-        minLength={6}
-        maxLength={128}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-describedby={current ? undefined : 'auth-password-note'}
-      />
+      <div className="auth-password-input">
+        <input
+          id="auth-password"
+          name="password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete={current ? 'current-password' : 'new-password'}
+          required
+          minLength={6}
+          maxLength={128}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-describedby={current ? undefined : 'auth-password-note'}
+        />
+        <button
+          type="button"
+          className="auth-password-toggle"
+          onClick={() => setShowPassword(!showPassword)}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+          tabIndex={0}
+        >
+          {showPassword ? <EyeSlash size={18} weight="bold" /> : <Eye size={18} weight="bold" />}
+        </button>
+      </div>
       {!current && <small id="auth-password-note">Use at least 6 characters.</small>}
+    </label>
+  );
+}
+
+function ConfirmPasswordField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  return (
+    <label className="auth-field" htmlFor="auth-confirm">
+      Confirm new password
+      <div className="auth-password-input">
+        <input
+          id="auth-confirm"
+          name="confirmPassword"
+          type={showConfirm ? 'text' : 'password'}
+          autoComplete="new-password"
+          required
+          minLength={6}
+          maxLength={128}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          type="button"
+          className="auth-password-toggle"
+          onClick={() => setShowConfirm(!showConfirm)}
+          aria-label={showConfirm ? 'Hide password' : 'Show password'}
+          tabIndex={0}
+        >
+          {showConfirm ? <EyeSlash size={18} weight="bold" /> : <Eye size={18} weight="bold" />}
+        </button>
+      </div>
     </label>
   );
 }
@@ -740,20 +792,7 @@ function PasswordRecovery({ next }: { next: string }) {
         {step === 'password' && (
           <>
             <PasswordField value={password} onChange={setPassword} />
-            <label className="auth-field" htmlFor="auth-confirm">
-              Confirm new password
-              <input
-                id="auth-confirm"
-                name="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={6}
-                maxLength={128}
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-              />
-            </label>
+            <ConfirmPasswordField value={confirmation} onChange={setConfirmation} />
           </>
         )}
       </AuthForm>

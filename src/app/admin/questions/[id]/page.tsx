@@ -21,6 +21,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
+import { MathRenderer } from '@/components/common/MathRenderer';
 import type { QuestionApprovalDetail } from '@/services/admin/questionApprovalService';
 import {
   ArrowLeft,
@@ -242,9 +243,9 @@ function OptionCard({
         {/* Option content */}
         <div className="min-w-0 flex-1 space-y-2">
           {option.optionText && (
-            <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
-              {option.optionText}
-            </p>
+            <div className="text-sm text-gray-900 dark:text-gray-100">
+              <MathRenderer content={option.optionText} inline />
+            </div>
           )}
 
           {/* Option images */}
@@ -740,9 +741,9 @@ export default function QuestionReviewPage() {
             </div>
 
             {/* Question text */}
-            <p className="text-base leading-relaxed text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
-              {question.questionText}
-            </p>
+            <div className="text-base leading-relaxed text-gray-900 dark:text-gray-100">
+              <MathRenderer content={question.questionText} />
+            </div>
 
             {/* Stem images */}
             {stemImages.length > 0 && (
@@ -844,9 +845,9 @@ export default function QuestionReviewPage() {
               <div className="space-y-4">
                 {question.explanation!.explanationText && (
                   <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                      {question.explanation!.explanationText}
-                    </p>
+                    <div className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+                      <MathRenderer content={question.explanation!.explanationText} />
+                    </div>
                   </div>
                 )}
 

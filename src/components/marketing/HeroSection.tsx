@@ -124,7 +124,7 @@ export function HeroSection() {
                   aria-hidden="true"
                 />
 
-                <span className="relative z-10 font-semibold tracking-tight">Explore Courses</span>
+                <span className="relative z-10 font-semibold tracking-tight">Browse Courses</span>
 
                 {/* Sleek pill arrow container with smooth hover glide */}
                 <span className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-all duration-300 ease-out group-hover:translate-x-1 group-hover:bg-white group-hover:text-blue-600">
@@ -133,10 +133,10 @@ export function HeroSection() {
               </Link>
 
               <Link
-                href="/courses"
+                href="/pyq"
                 className="group inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/95 px-7 py-3.5 text-[14px] sm:text-[15px] font-semibold text-slate-800 shadow-sm backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50/90 hover:shadow-md hover:shadow-slate-200/50 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/50 w-full sm:w-auto text-center"
               >
-                <span>Try a Free Mock Test</span>
+                <span>Explore PYQ Packages</span>
               </Link>
             </div>
 

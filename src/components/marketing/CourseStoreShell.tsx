@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { getPublicNavStreams, type NavStreamItem } from '@/services/courseCatalogService';
 import {
   IconChevronDown,
   IconSpark,
@@ -13,6 +14,7 @@ import {
   IconUser,
   IconSearch,
   IconPlay,
+  IconVideo,
   IconCalendar,
   IconTest,
   IconProgress,
@@ -21,6 +23,12 @@ import {
   IconClose,
   IconDoubt,
   IconLifeBuoy,
+  IconPyq,
+  IconBookOpen,
+  IconStethoscope,
+  IconAtom,
+  IconLandmark,
+  IconLayers,
 } from '@/components/icons/student-icons';
 import { useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/components/ui/mmt';
@@ -37,12 +45,22 @@ import {
 export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [coursesMenuOpen, setCoursesMenuOpen] = useState(false);
+  const [mobileCoursesOpen, setMobileCoursesOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const coursesDropdownRef = useRef<HTMLDivElement>(null);
+  const coursesHoverTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { user, teacherProfile, signOut } = useAuth();
   const loggedIn = !!user;
   const pathname = usePathname();
   const router = useRouter();
   const profileId = user?.id ?? null;
+
+  const isAuthPage =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/onboarding');
 
   // Frontend-only enrollment read for Demo visibility:
   // show Demo in navbar only when the student has no purchased course.
@@ -59,16 +77,73 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const enrolledCourses = bootstrapResult?.data?.enrolled_courses ?? [];
   const hasPurchasedCourse = Array.isArray(enrolledCourses) && enrolledCourses.length > 0;
 
+  // Read verified public streams from backend public.streams table
+  const { data: dbStreams = [] } = useQuery<NavStreamItem[]>({
+    queryKey: ['public-nav-streams'],
+    queryFn: () => getPublicNavStreams(),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  // Map backend streams to client labels where verified relationship exists
+  const navStreamItems = useMemo(() => {
+    return (dbStreams || []).map((stream) => {
+      const code = stream.code.toUpperCase();
+      let label = stream.name;
+      let sublabel = 'Academic Program';
+      let IconComponent = IconBookOpen;
+
+      if (code === 'NEET' || stream.name.toUpperCase().includes('NEET')) {
+        label = 'NEET';
+        sublabel = 'Medical Entrance Prep';
+        IconComponent = IconStethoscope;
+      } else if (code === 'CUET' || stream.name.toUpperCase().includes('CUET')) {
+        label = 'CUET';
+        sublabel = 'University Entrance Prep';
+        IconComponent = IconGraduationCap;
+      } else if (code === '10TH' || stream.name.toLowerCase().includes('10th')) {
+        label = '8–10th Grade';
+        sublabel = 'Foundation Science & Maths';
+        IconComponent = IconBookOpen;
+      } else if (code === '12TH' || stream.name.toLowerCase().includes('12th')) {
+        label = '11–12th Grade';
+        sublabel = 'Senior Secondary & Boards';
+        IconComponent = IconLayers;
+      } else if (code === 'JEE' || stream.name.toUpperCase().includes('JEE')) {
+        label = 'JEE';
+        sublabel = 'Engineering Entrance Prep';
+        IconComponent = IconAtom;
+      } else if (code === 'UPSC' || stream.name.toUpperCase().includes('UPSC')) {
+        label = 'UPSC';
+        sublabel = 'Civil Services Exam';
+        IconComponent = IconLandmark;
+      }
+
+      return {
+        ...stream,
+        label,
+        sublabel,
+        IconComponent,
+      };
+    });
+  }, [dbStreams]);
+
   // Close dropdown on click outside or Escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setProfileMenuOpen(false);
       }
+      if (coursesDropdownRef.current && !coursesDropdownRef.current.contains(event.target as Node)) {
+        setCoursesMenuOpen(false);
+      }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setProfileMenuOpen(false);
+        setCoursesMenuOpen(false);
         setMenuOpen(false);
       }
     };
@@ -79,6 +154,23 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  // Close dropdown on route transition
+  useEffect(() => {
+    setCoursesMenuOpen(false);
+    setMenuOpen(false);
+  }, [pathname]);
+
+  const handleCoursesMouseEnter = () => {
+    if (coursesHoverTimerRef.current) clearTimeout(coursesHoverTimerRef.current);
+    setCoursesMenuOpen(true);
+  };
+
+  const handleCoursesMouseLeave = () => {
+    coursesHoverTimerRef.current = setTimeout(() => {
+      setCoursesMenuOpen(false);
+    }, 180);
+  };
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -109,7 +201,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
   const baseLinks = [
     { key: 'nav-home', href: '/', label: 'Home', current: pathname === '/' },
     { key: 'nav-courses', href: '/courses', label: 'Courses', current: pathname.startsWith('/courses') },
-    { key: 'nav-pyq', href: '/pyq', label: 'PYQ Packages', current: pathname.startsWith('/pyq') },
+    { key: 'nav-pyq', href: '/pyq', label: 'PYQ & Mock Test', current: pathname.startsWith('/pyq') },
     ...(!loggedIn || !hasPurchasedCourse
       ? [{ key: 'nav-live', href: '/demo-class', label: 'Demo', current: pathname.startsWith('/demo-class') }]
       : []),
@@ -162,16 +254,89 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
             />
           </Link>
           <nav className="store-desktop-nav" aria-label="Main navigation">
-            {links.map((link) => (
-              <Link
-                key={link.key}
-                href={link.href}
-                className={link.current ? 'is-current' : undefined}
-                aria-current={link.current ? 'page' : undefined}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {links.map((link) => {
+              if (link.key === 'nav-courses') {
+                return (
+                  <div
+                    key={link.key}
+                    ref={coursesDropdownRef}
+                    className="store-nav-item-dropdown relative"
+                    onMouseEnter={handleCoursesMouseEnter}
+                    onMouseLeave={handleCoursesMouseLeave}
+                  >
+                    <button
+                      type="button"
+                      className={`store-nav-link-btn flex items-center gap-1 ${link.current ? 'is-current' : ''}`}
+                      onClick={() => setCoursesMenuOpen((prev) => !prev)}
+                      aria-expanded={coursesMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="Courses menu"
+                    >
+                      <span>Courses</span>
+                      <IconChevronDown
+                        size={12}
+                        className="store-nav-caret transition-transform duration-200"
+                        style={{ transform: coursesMenuOpen ? 'rotate(180deg)' : 'none' }}
+                      />
+                    </button>
+                    {coursesMenuOpen && (
+                      <div className="store-courses-dropdown animate-fadeIn" role="menu" aria-label="Course categories">
+                        <div className="store-courses-dropdown-header">
+                          <span>Explore Streams</span>
+                        </div>
+                        <div className="store-courses-dropdown-list">
+                          <Link
+                            href="/courses"
+                            onClick={() => setCoursesMenuOpen(false)}
+                            className="store-courses-dropdown-item font-semibold"
+                            role="menuitem"
+                          >
+                            <span className="store-courses-dropdown-icon">
+                              <IconLibrary size={18} className="text-blue-600" />
+                            </span>
+                            <div>
+                              <strong>All Courses & Batches</strong>
+                              <small>Browse all available programs</small>
+                            </div>
+                          </Link>
+                          {navStreamItems.map((item) => {
+                            const ItemIcon = item.IconComponent;
+                            return (
+                              <Link
+                                key={item.streamId}
+                                href={`/courses?stream=${encodeURIComponent(item.code)}`}
+                                onClick={() => setCoursesMenuOpen(false)}
+                                className="store-courses-dropdown-item"
+                                role="menuitem"
+                              >
+                                <span className="store-courses-dropdown-icon">
+                                  <ItemIcon size={18} className="text-blue-600" />
+                                </span>
+                                <div>
+                                  <strong>{item.label}</strong>
+                                  <small>{item.sublabel}</small>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={link.key}
+                  href={link.href}
+                  className={link.current ? 'is-current' : undefined}
+                  aria-current={link.current ? 'page' : undefined}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </nav>
           <div className="store-header-actions">
             {loggedIn && <StudentBellButton />}
@@ -212,7 +377,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconSpark size={15} />
-                        <span>My Learning</span>
+                        <span>Dashboard</span>
                       </Link>
                       <Link
                         href="/student/courses"
@@ -221,27 +386,8 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconLibrary size={15} />
-                        <span>My Enrolled Courses</span>
+                        <span>My Courses</span>
                       </Link>
-                      <Link
-                        href="/student/tests"
-                        onClick={() => setProfileMenuOpen(false)}
-                        className="store-user-dropdown-item"
-                        role="menuitem"
-                      >
-                        <IconGraduationCap size={15} />
-                        <span>My Mock Tests</span>
-                      </Link>
-                      <Link
-                        href="/student/doubts"
-                        onClick={() => setProfileMenuOpen(false)}
-                        className="store-user-dropdown-item"
-                        role="menuitem"
-                      >
-                        <IconDoubt size={15} />
-                        <span>My Academic Doubts</span>
-                      </Link>
-                      <div className="store-user-dropdown-sep" role="separator" />
                       <Link
                         href="/student/timetable"
                         onClick={() => setProfileMenuOpen(false)}
@@ -249,7 +395,16 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconCalendar size={15} />
-                        <span>Timetable & Schedule</span>
+                        <span>Time Table</span>
+                      </Link>
+                      <Link
+                        href="/student/classes"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="store-user-dropdown-item"
+                        role="menuitem"
+                      >
+                        <IconVideo size={15} />
+                        <span>Live Classes</span>
                       </Link>
                       <Link
                         href="/student/recordings"
@@ -258,7 +413,34 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconPlay size={15} />
-                        <span>Class Recordings</span>
+                        <span>Recordings</span>
+                      </Link>
+                      <Link
+                        href="/pyq"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="store-user-dropdown-item"
+                        role="menuitem"
+                      >
+                        <IconPyq size={15} />
+                        <span>PYQ & Sample Paper</span>
+                      </Link>
+                      <Link
+                        href="/student/tests"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="store-user-dropdown-item"
+                        role="menuitem"
+                      >
+                        <IconTest size={15} />
+                        <span>Class Test</span>
+                      </Link>
+                      <Link
+                        href="/student/doubts"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="store-user-dropdown-item"
+                        role="menuitem"
+                      >
+                        <IconDoubt size={15} />
+                        <span>My Doubts</span>
                       </Link>
                       <Link
                         href="/student/analytics"
@@ -267,7 +449,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconProgress size={15} />
-                        <span>Performance Analytics</span>
+                        <span>My Performance</span>
                       </Link>
                       <Link
                         href="/student/results"
@@ -275,8 +457,8 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         className="store-user-dropdown-item"
                         role="menuitem"
                       >
-                        <IconTest size={15} />
-                        <span>Test Results & Scorecards</span>
+                        <IconGraduationCap size={15} />
+                        <span>Results</span>
                       </Link>
                       <div className="store-user-dropdown-sep" role="separator" />
                       <Link
@@ -286,7 +468,7 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                         role="menuitem"
                       >
                         <IconUser size={15} />
-                        <span>Profile & Settings</span>
+                        <span>Profile</span>
                       </Link>
                       <Link
                         href="/#contact"
@@ -353,15 +535,75 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
             className="store-mobile-nav animate-fadeIn"
             aria-label="Mobile navigation"
           >
-            {links.map((link) => (
-              <Link
-                key={link.key}
-                href={link.href}
-                onClick={() => setMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {links.map((link) => {
+              if (link.key === 'nav-courses') {
+                return (
+                  <div key={link.key} className="store-mobile-nav-group py-1">
+                    <button
+                      type="button"
+                      className="store-mobile-nav-toggle flex items-center justify-between w-full font-semibold text-slate-800 py-2"
+                      onClick={() => setMobileCoursesOpen((prev) => !prev)}
+                      aria-expanded={mobileCoursesOpen}
+                      aria-label="Toggle courses categories"
+                    >
+                      <span>Courses</span>
+                      <IconChevronDown
+                        size={15}
+                        className="transition-transform duration-200 text-slate-500"
+                        style={{ transform: mobileCoursesOpen ? 'rotate(180deg)' : 'none' }}
+                      />
+                    </button>
+                    {mobileCoursesOpen && (
+                      <div className="store-mobile-subnav flex flex-col pl-3 py-1 gap-1.5 border-l-2 border-blue-200 ml-1.5 my-1">
+                        <Link
+                          href="/courses"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setMobileCoursesOpen(false);
+                          }}
+                          className="text-sm py-1 font-bold text-blue-600 flex items-center gap-2"
+                        >
+                          <IconLibrary size={16} className="text-blue-600 shrink-0" />
+                          <span>All Courses & Batches</span>
+                        </Link>
+                        {navStreamItems.map((item) => {
+                          const ItemIcon = item.IconComponent;
+                          return (
+                            <Link
+                              key={item.streamId}
+                              href={`/courses?stream=${encodeURIComponent(item.code)}`}
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setMobileCoursesOpen(false);
+                              }}
+                              className="text-sm py-1 text-slate-700 hover:text-blue-600 flex items-center justify-between"
+                            >
+                              <span className="flex items-center gap-2">
+                                <ItemIcon size={15} className="text-blue-500 shrink-0" />
+                                <span>{item.label}</span>
+                              </span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono">
+                                {item.code}
+                              </span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={link.key}
+                  href={link.href}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
             {loggedIn ? (
               <>
                 <Link
@@ -369,63 +611,77 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  My Learning
+                  Dashboard
                 </Link>
                 <Link
                   href="/student/courses"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  My Enrolled Courses
-                </Link>
-                <Link
-                  href="/student/tests"
-                  onClick={() => setMenuOpen(false)}
-                  style={{ color: 'var(--color-store-muted)' }}
-                >
-                  My Mock Tests
-                </Link>
-                <Link
-                  href="/student/doubts"
-                  onClick={() => setMenuOpen(false)}
-                  style={{ color: 'var(--color-store-muted)' }}
-                >
-                  My Academic Doubts
+                  My Courses
                 </Link>
                 <Link
                   href="/student/timetable"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  Timetable & Schedule
+                  Time Table
+                </Link>
+                <Link
+                  href="/student/classes"
+                  onClick={() => setMenuOpen(false)}
+                  style={{ color: 'var(--color-store-muted)' }}
+                >
+                  Live Classes
                 </Link>
                 <Link
                   href="/student/recordings"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  Class Recordings
+                  Recordings
                 </Link>
                 <Link
-                  href="/student/results"
+                  href="/pyq"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  Test Results & Scorecards
+                  PYQ & Sample Paper
+                </Link>
+                <Link
+                  href="/student/tests"
+                  onClick={() => setMenuOpen(false)}
+                  style={{ color: 'var(--color-store-muted)' }}
+                >
+                  Class Test
+                </Link>
+                <Link
+                  href="/student/doubts"
+                  onClick={() => setMenuOpen(false)}
+                  style={{ color: 'var(--color-store-muted)' }}
+                >
+                  My Doubts
                 </Link>
                 <Link
                   href="/student/analytics"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  Performance Analytics
+                  My Performance
+                </Link>
+                <Link
+                  href="/student/results"
+                  onClick={() => setMenuOpen(false)}
+                  style={{ color: 'var(--color-store-muted)' }}
+                >
+                  Results
                 </Link>
                 <Link
                   href="/student/profile"
                   onClick={() => setMenuOpen(false)}
                   style={{ color: 'var(--color-store-muted)' }}
                 >
-                  Profile & Settings
+                  Profile
                 </Link>
                 <Link
                   href="/#contact"
@@ -464,8 +720,8 @@ export function CourseStoreShell({ children }: { children: React.ReactNode }) {
         )}
       </header>
       {children}
-      <SiteFooter />
-      <StudentBottomNav />
+      {!isAuthPage && <SiteFooter />}
+      {!isAuthPage && <StudentBottomNav />}
     </ToastProvider>
   );
 }

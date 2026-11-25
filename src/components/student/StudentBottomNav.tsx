@@ -108,12 +108,16 @@ export function StudentBottomNav() {
   const { user } = useAuth();
   const { testsDue } = useNavBadgeCounts();
 
-  // Distraction-free surfaces: exam engine + runner + live room
+  // Distraction-free surfaces: exam engine + runner + live room + auth
   if (
     isExamEnginePath(pathname) ||
     pathname.includes('/runner') ||
     pathname.includes('/student/runner') ||
-    pathname.match(/\/student\/classes\/[^/]+$/)
+    pathname.match(/\/student\/classes\/[^/]+$/) ||
+    pathname?.startsWith('/login') ||
+    pathname?.startsWith('/signup') ||
+    pathname?.startsWith('/forgot-password') ||
+    pathname?.startsWith('/onboarding')
   ) {
     return null;
   }

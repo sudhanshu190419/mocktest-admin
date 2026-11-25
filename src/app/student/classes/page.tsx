@@ -130,9 +130,6 @@ export default function StudentLiveClassesHubPage() {
               </span>
             )}
           </div>
-          <p className="text-body text-ink-secondary leading-relaxed">
-            Attend live interactive lectures, interact with faculty in real-time, and access recorded archives.
-          </p>
         </div>
 
         {/* Action buttons (≥44px) */}

@@ -1065,10 +1065,10 @@ export default function StudentAnalyticsPage() {
           <nav className="store-breadcrumb" aria-label="Breadcrumb">
             <Link href="/student/overview">My Learning</Link>
             <span aria-hidden="true">/</span>
-            <span>Performance Analytics</span>
+            <span>My Performance</span>
           </nav>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight mt-1">
-            Performance Analytics
+            My Performance
           </h1>
           <p className="student-hero-lead">
             Track your mock test accuracy, score trajectories, and identify targeted syllabus areas to improve.

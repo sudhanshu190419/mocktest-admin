@@ -64,6 +64,7 @@ export interface EnrolledCourseCardItem {
   batchCode?: string;
   academicYear?: string;
   streamName?: string;
+  enrolledAt?: string | null;
   progress: number;
   subjects: SubjectBadgeSummary[];
   totalLectures: number;
@@ -906,6 +907,7 @@ export async function fetchStudentEnrolledCourses(
         batchCode: batchInfo?.batch_code || '',
         academicYear: batchInfo?.academic_year || '',
         streamName: batchInfo?.streams?.name || bootstrap?.selected_stream?.name || 'Competitive Exams',
+        enrolledAt: c.enrolled_at || c.created_at || null,
         progress: realProgress,
         subjects,
         totalLectures,
@@ -1725,6 +1727,7 @@ export interface StudentCourseHubItem {
   category: string;
   academicYear?: string;
   streamName?: string;
+  enrolledAt?: string | null;
 
   // Acquisition & Batch Status
   acquisitionType: CourseAcquisitionType;
@@ -2121,6 +2124,7 @@ export async function fetchStudentCourseHubData(
         category: enrolled.category,
         academicYear: enrolled.academicYear,
         streamName: enrolled.streamName,
+        enrolledAt: enrolled.enrolledAt || agr?.agreement_date || agr?.created_at || null,
         acquisitionType: isInstallment ? 'installment' : 'one_time',
         batchStatus: 'assigned',
         batchId: enrolled.batchId,
@@ -2189,6 +2193,7 @@ export async function fetchStudentCourseHubData(
         thumbnailUrl: courseThumb,
         category: courseCategory,
         streamName: streamName || undefined,
+        enrolledAt: agr.agreement_date || agr.created_at || null,
         acquisitionType: 'installment',
         batchStatus: 'pending_assignment',
         batchName: 'Batch Assignment Pending',

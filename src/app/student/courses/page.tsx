@@ -7,7 +7,6 @@ import {
   IconSearch,
   IconArrowRight,
   IconRefresh,
-  IconSpark,
   IconLibrary,
 } from '@/components/icons/student-icons';
 import { Receipt, CheckCircle, WarningCircle } from '@phosphor-icons/react';
@@ -153,53 +152,7 @@ function StudentCoursesContent() {
   }, [courses, searchQuery, activeTab]);
 
   return (
-    <div className="store-container space-y-7 pb-16 max-w-7xl mx-auto">
-      {/* ── Breadcrumb & Top Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <nav className="store-breadcrumb" aria-label="Breadcrumb">
-          <Link href="/student/overview">My Learning</Link>
-          <span aria-hidden="true">/</span>
-          <span>My Courses</span>
-        </nav>
-
-        <button
-          onClick={loadCourses}
-          disabled={isLoading}
-          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-field border border-line bg-surface px-3 py-1.5 text-body font-semibold text-ink-secondary hover:bg-paper disabled:opacity-50 transition-colors shadow-xs"
-        >
-          <IconRefresh className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
-      </div>
-
-      {/* ── Page Header Banner (§3) ─────────────────────────────────────────── */}
-      <section className="rounded-card border border-line bg-surface p-6 sm:p-8 shadow-card">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="max-w-2xl space-y-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-sky-tint px-3 py-1 text-caption font-bold text-brand-hover border border-line">
-              <IconSpark className="h-3.5 w-3.5" />
-              <span>Enrolled Learning Programs & Installments</span>
-            </div>
-            <h1 className="text-2xl sm:text-display font-extrabold tracking-tight text-ink">
-              My Courses
-            </h1>
-            <p className="text-body text-ink-secondary leading-relaxed">
-              View your courses, track your learning, and manage installment payments.
-            </p>
-          </div>
-
-          <div className="shrink-0">
-            <Link
-              href="/courses"
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand px-4 py-2.5 text-body font-bold text-white shadow-xs hover:bg-brand-hover transition-colors"
-            >
-              <span>Explore All Courses</span>
-              <IconArrowRight size={16} />
-            </Link>
-          </div>
-        </div>
-      </section>
-
+    <div className="store-container space-y-7 pb-16 max-w-7xl mx-auto pt-4">
       {/* ── Search & Filter Tabs Bar (§3) ──────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-card border border-line bg-surface p-3 shadow-xs">
         {/* Search Input */}
@@ -253,6 +206,17 @@ function StudentCoursesContent() {
           >
             <CheckCircle size={14} weight="bold" />
             <span>Fully Settled ({settledCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={loadCourses}
+            disabled={isLoading}
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-field border border-line bg-paper px-2.5 py-1.5 text-ink-secondary hover:bg-sky-tint hover:text-ink disabled:opacity-50 transition-colors shrink-0"
+            title="Refresh courses"
+            aria-label="Refresh courses"
+          >
+            <IconRefresh className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

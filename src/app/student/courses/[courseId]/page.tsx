@@ -18,7 +18,6 @@ import {
   type CourseDetailWorkspaceData,
 } from '@/services/student/studentCourseWebService';
 import { Skeleton, ErrorState } from '@/components/ui/mmt';
-import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 import { StudentCourseInstallmentSchedule } from '@/components/student/StudentCourseInstallmentSchedule';
 
 export default function StudentCourseDetailPage() {
@@ -112,26 +111,10 @@ export default function StudentCourseDetailPage() {
               </p>
             )}
 
-            {/* Course Progress */}
-            <div className="pt-2 max-w-md space-y-1.5">
-              <div className="flex items-center justify-between text-caption font-bold">
-                <span className="text-ink-secondary uppercase tracking-wider">Overall Syllabus Progress</span>
-                <span className="text-ink tabular-nums">{course.progress}%</span>
-              </div>
-              <ProgressBar
-                value={course.progress}
-                label={`${course.title} progress`}
-                tone={course.progress >= 80 ? 'success' : 'brand'}
-              />
-            </div>
           </div>
 
           {/* Quick Metrics Badge */}
-          <div className="grid grid-cols-2 gap-3 shrink-0">
-            <div className="rounded-card border border-line bg-sky-tint p-4 text-center min-w-[110px]">
-              <p className="text-caption font-bold text-brand-hover uppercase">Progress</p>
-              <p className="text-2xl font-black text-brand tabular-nums">{course.progress}%</p>
-            </div>
+          <div className="flex items-center gap-3 shrink-0">
             <div className="rounded-card border border-line bg-mint-tint p-4 text-center min-w-[110px]">
               <p className="text-caption font-bold text-mint-ink uppercase">Subjects</p>
               <p className="text-2xl font-black text-mint-ink tabular-nums">{subjects.length}</p>

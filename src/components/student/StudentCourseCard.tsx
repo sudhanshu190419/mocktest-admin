@@ -8,6 +8,7 @@ import {
   IconPlayCircle,
   IconGraduationCap,
   IconTest,
+  IconCalendar,
 } from '@/components/icons/student-icons';
 import {
   CreditCard,
@@ -23,7 +24,6 @@ import {
 } from '@phosphor-icons/react';
 import type { StudentCourseHubItem } from '@/services/student/studentCourseWebService';
 import { formatCoursePrice } from '@/services/courseCatalogService';
-import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 import { StudentCourseInstallmentSchedule } from '@/components/student/StudentCourseInstallmentSchedule';
 
 interface StudentCourseCardProps {
@@ -60,9 +60,8 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({
   const formatFriendlyDate = (dateStr?: string | null) => {
     if (!dateStr) return 'N/A';
     try {
-      const [year, month, day] = dateStr.split('-');
-      if (year && month && day) {
-        const d = new Date(Number(year), Number(month) - 1, Number(day));
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('en-IN', {
           day: 'numeric',
           month: 'short',
@@ -161,19 +160,14 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({
           </div>
         </div>
 
-        {/* Course Title & Description */}
+        {/* Course Title & Enrolled Date */}
         <h3 className="mt-3.5 text-h3 font-extrabold text-ink line-clamp-1 group-hover:text-brand transition-colors">
           {course.title}
         </h3>
-        {course.description ? (
-          <p className="mt-1 text-body text-ink-secondary line-clamp-2 leading-relaxed">
-            {course.description}
-          </p>
-        ) : (
-          <p className="mt-1 text-body text-ink-secondary">
-            Comprehensive curriculum, video lectures, revision notes & mock test series.
-          </p>
-        )}
+        <div className="mt-2 flex items-center gap-1.5 text-caption font-medium text-ink-secondary">
+          <IconCalendar className="h-3.5 w-3.5 text-ink-muted shrink-0" />
+          <span>Enrolled Date: <strong className="text-ink font-semibold">{formatFriendlyDate(course.enrolledAt || course.agreement?.agreement_date || course.agreement?.created_at)}</strong></span>
+        </div>
 
         {/* ── Unassigned Batch State Notice Banner (§4) ────────────────────── */}
         {!isAssigned && (
@@ -188,22 +182,9 @@ export const StudentCourseCard: React.FC<StudentCourseCardProps> = ({
           </div>
         )}
 
-        {/* ── Academic Progress & Content (Shown ONLY when batch is assigned) ── */}
+        {/* ── Academic Content (Shown ONLY when batch is assigned) ── */}
         {isAssigned && (
           <>
-            {/* Progress Bar */}
-            <div className="mt-4 space-y-1.5">
-              <div className="flex items-center justify-between text-caption font-bold">
-                <span className="text-ink-secondary uppercase tracking-wider">Course Progress</span>
-                <span className="text-ink tabular-nums">{course.progress}%</span>
-              </div>
-              <ProgressBar
-                value={course.progress}
-                label={`${course.title} progress`}
-                tone={course.progress >= 80 ? 'success' : 'brand'}
-              />
-            </div>
-
             {/* Subjects List */}
             {course.subjects && course.subjects.length > 0 && (
               <div className="mt-4">

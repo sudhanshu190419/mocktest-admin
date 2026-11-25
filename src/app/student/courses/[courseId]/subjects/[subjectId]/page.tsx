@@ -40,7 +40,6 @@ import {
 import { StudentWebContentPlayer } from '@/components/student/StudentWebContentPlayer';
 import { createContextQueryUrl } from '@/services/student/studentDoubtAcademicService';
 import { Skeleton, ErrorState, Sheet } from '@/components/ui/mmt';
-import { ProgressBar } from '@/components/ui/mmt/ProgressBar';
 
 export default function SubjectLearningWorkspacePage() {
   const params = useParams();
@@ -500,20 +499,8 @@ export default function SubjectLearningWorkspacePage() {
           </div>
         </div>
 
-        {/* Progress & Faculty Pill */}
+        {/* Faculty Pill */}
         <div className="flex flex-wrap items-center gap-4 border-t sm:border-t-0 sm:border-l border-line pt-3 sm:pt-0 sm:pl-5">
-          <div className="min-w-[120px] space-y-1">
-            <div className="flex items-center justify-between text-caption font-bold">
-              <span className="text-ink-secondary uppercase">Progress</span>
-              <span className="text-ink tabular-nums">{progress.percent}%</span>
-            </div>
-            <ProgressBar
-              value={progress.percent}
-              label={`${subject.subjectName} completion`}
-              tone={progress.percent >= 80 ? 'success' : 'brand'}
-            />
-          </div>
-
           <div className="flex items-center gap-2 rounded-field bg-paper px-3 py-2 text-body border border-line">
             <User className="h-4 w-4 text-ink-muted" weight="duotone" />
             <div>

@@ -608,10 +608,17 @@ Deno.serve(async (req: Request) => {
     note: 'Course visible on student home screen; batch_students not touched (manual admin batch assignment retained)',
   });
 
-  // 9. Enqueue Installment Transactional Email (INS-01 or INS-02)
+  // 9. Enqueue Installment Transactional Email (INS-01, INS-02, INS-07, INS-10)
   // Non-blocking: caught internally; failures never roll back settlement
   try {
+    const prevStatus = parsedSettlement?.previous_agreement_status;
+    const newStatus = parsedSettlement?.agreement_status;
+    const newOutstanding = Number(parsedSettlement?.outstanding_balance ?? 0);
+    const newOverdue = Number(parsedSettlement?.overdue_balance ?? 0);
+    const isCompleted = newOutstanding <= 0 || newStatus === 'completed';
+
     if (isInitialInstallment) {
+      // 1. Initial installment plan activation (INS-01)
       await enqueueEmailSafe(serviceClient, {
         recipientProfileId: body.profileId,
         studentId,
@@ -629,8 +636,27 @@ Deno.serve(async (req: Request) => {
         priority: 'high',
         idempotencyKey: `inst_init:${agreementId}`,
       });
+
+      // Edge case: single-installment plan where initial payment settles 100%
+      if (isCompleted) {
+        await enqueueEmailSafe(serviceClient, {
+          recipientProfileId: body.profileId,
+          studentId,
+          eventType: 'INS-07',
+          subject: `Congratulations! Your installment plan is complete — Make Me Topper`,
+          templateId: 'INS-07',
+          payload: {
+            courseName: courseTitle,
+            agreementId,
+            totalFee: plan.total_fee,
+            completionDate: new Date().toISOString(),
+          },
+          priority: 'high',
+          idempotencyKey: `inst_completed:${agreementId}`,
+        });
+      }
     } else {
-      const isCompleted = Number(parsedSettlement.outstanding_balance ?? 0) <= 0;
+      // 2. Subsequent installment payment receipt (INS-02)
       await enqueueEmailSafe(serviceClient, {
         recipientProfileId: body.profileId,
         studentId,
@@ -649,6 +675,48 @@ Deno.serve(async (req: Request) => {
         priority: 'high',
         idempotencyKey: `inst_payment:${body.paymentId}`,
       });
+
+      // 3. Mutually exclusive lifecycle transition: INS-07 vs INS-10
+      // INS-07 has absolute precedence upon full plan settlement
+      if (isCompleted) {
+        await enqueueEmailSafe(serviceClient, {
+          recipientProfileId: body.profileId,
+          studentId,
+          eventType: 'INS-07',
+          subject: `Congratulations! Your installment plan is complete — Make Me Topper`,
+          templateId: 'INS-07',
+          payload: {
+            courseName: courseTitle,
+            agreementId,
+            totalFee: plan.total_fee,
+            completionDate: new Date().toISOString(),
+          },
+          priority: 'high',
+          idempotencyKey: `inst_completed:${agreementId}`,
+        });
+      } else if (
+        prevStatus === 'in_arrears' &&
+        newStatus === 'active' &&
+        newOverdue <= 0 &&
+        newOutstanding > 0
+      ) {
+        await enqueueEmailSafe(serviceClient, {
+          recipientProfileId: body.profileId,
+          studentId,
+          eventType: 'INS-10',
+          subject: `Your Arrears Are Cleared — Course Access Restored — Make Me Topper`,
+          templateId: 'INS-10',
+          payload: {
+            courseName: courseTitle,
+            paymentId: body.paymentId,
+            amountPaid: parsedSettlement.allocated_amount,
+            remainingOutstandingBalance: newOutstanding,
+            nextDueDate: parsedSettlement.paid_through_end_date || 'According to schedule',
+          },
+          priority: 'high',
+          idempotencyKey: `arrears_cleared:${body.paymentId}`,
+        });
+      }
     }
   } catch (emailErr) {
     structuredLog('EMAIL_ENQUEUE_INSTALLMENT_FAILED_NON_BLOCKING', {

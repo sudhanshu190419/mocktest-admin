@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-import { useState, useCallback, useEffect, use, useRef } from 'react';
+import { useState, useCallback, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { usePyqPackage } from '@/hooks/pyq/usePyqPackages';
@@ -34,13 +34,6 @@ const emptyForm: FormData = {
   durationMin: '',
 };
 
-interface PdfUploadState {
-  file: File | null;
-  status: 'idle' | 'uploading' | 'done' | 'error';
-  progress: number;
-  error: string | null;
-}
-
 export default function EditPyqPaperPage({
   params,
 }: {
@@ -65,10 +58,6 @@ export default function EditPyqPaperPage({
   // Mock test status
   const { data: mockData, isLoading: mockLoading } = usePyqMockMappingWithTest(paperId);
 
-  // PDF upload state — for replacing existing PDFs
-  const [questionPdf, setQuestionPdf] = useState<PdfUploadState>({ file: null, status: 'idle', progress: 0, error: null });
-  const questionInputRef = useRef<HTMLInputElement>(null);
-
   // Populate form from fetched paper
   useEffect(() => {
     if (paper && !formData) {
@@ -81,26 +70,6 @@ export default function EditPyqPaperPage({
       });
     }
   }, [paper, formData]);
-
-  const handleFileSelect = useCallback(
-    (file: File | null) => {
-      if (!file) return;
-      if (file.type !== 'application/pdf') {
-        const errorState: PdfUploadState = { file: null, status: 'error', progress: 0, error: 'Only PDF files are accepted.' };
-        setQuestionPdf(errorState);
-        return;
-      }
-      const state: PdfUploadState = { file, status: 'idle', progress: 0, error: null };
-      setQuestionPdf(state);
-      setErrors((prev) => ({ ...prev, questionPdf: '' }));
-    },
-    [],
-  );
-
-  const handleRemoveFile = useCallback(() => {
-    setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
-    if (questionInputRef.current) questionInputRef.current.value = '';
-  }, []);
 
   const handleChange = useCallback(
     (field: keyof FormData, value: string) => {
@@ -155,16 +124,10 @@ export default function EditPyqPaperPage({
         durationMin: formData.durationMin ? parseInt(formData.durationMin) : null,
       };
 
-      // Attach PDF file replacement if selected
-      if (questionPdf.file) {
-        payload.questionPdfFile = questionPdf.file;
-      }
-
       updatePaper.mutate(
         { id: paperId, input: payload as any },
         {
           onSuccess: () => {
-            setQuestionPdf({ file: null, status: 'idle', progress: 0, error: null });
             setSuccessMessage('Paper saved successfully.');
             setTimeout(() => setSuccessMessage(''), 3000);
           },
@@ -174,7 +137,7 @@ export default function EditPyqPaperPage({
         },
       );
     },
-    [formData, validate, updatePaper, paperId, questionPdf.file],
+    [formData, validate, updatePaper, paperId],
   );
 
   const handlePublishToggle = () => {
@@ -208,141 +171,13 @@ export default function EditPyqPaperPage({
     );
   };
 
-  // ── Inline PDF Upload Section Component ──────────────────────────────
+  // ── Access Check ──────────────────────────────────────────────────────
 
-  function PdfUploadSection({
-    label,
-    state,
-    existingPath,
-    onFile,
-    onRemove,
-    inputRef,
-    error,
-  }: {
-    label: string;
-    state: PdfUploadState;
-    existingPath: string | null;
-    onFile: (file: File | null) => void;
-    onRemove: () => void;
-    inputRef: React.RefObject<HTMLInputElement | null>;
-    error?: string;
-  }) {
-    const hasExisting = !!existingPath;
-    const isReplaceMode = !!state.file;
-
-    // Show existing file info when no replacement is selected
-    if (hasExisting && !isReplaceMode) {
-      if (user?.role === 'teacher') {
+  if (user?.role === 'teacher') {
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/20">
         <h2 className="text-base font-semibold text-rose-700 dark:text-rose-400">Access Denied</h2>
         <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">Teachers do not have permission to manage PYQ packages or papers.</p>
-      </div>
-    );
-  }
-
-  return (
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
-          <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-950/10">
-            <svg className="h-5 w-5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                {existingPath.split('/').pop() || 'PDF'}
-              </p>
-              <p className="text-xs text-gray-500">Uploaded — ready for download</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="shrink-0 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
-            >
-              Replace
-            </button>
-          </div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => { if (e.target.files?.[0]) onFile(e.target.files[0]); }}
-            className="hidden"
-          />
-        </div>
-      );
-    }
-
-    // Show upload dropzone (no existing file, or user clicked Replace)
-    return (
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          {label} {!hasExisting && <span className="text-red-500">*</span>}
-          {isReplaceMode && (
-            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-              REPLACING
-            </span>
-          )}
-        </label>
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (e.dataTransfer.files.length > 0) {
-              onFile(e.dataTransfer.files[0]);
-            }
-          }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 text-sm transition-colors ${
-            state.file
-              ? 'border-emerald-300 bg-emerald-50/30 text-emerald-700 hover:border-emerald-400 dark:border-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-400'
-              : 'border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:hover:border-gray-500'
-          }`}
-          onClick={() => inputRef.current?.click()}
-        >
-          {state.file ? (
-            <div className="text-center">
-              <svg className="mx-auto mb-2 h-8 w-8 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="font-medium text-gray-900 dark:text-gray-100">{state.file.name}</p>
-              <p className="mt-1 text-xs text-gray-400">{(state.file.size / 1024 / 1024).toFixed(2)} MB</p>
-              {state.status === 'uploading' && (
-                <div className="mt-2 w-full max-w-[200px] mx-auto">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                    <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${state.progress}%` }} />
-                  </div>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="mt-2 text-xs text-red-500 hover:text-red-700"
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <>
-              <svg className="mb-2 h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M12 3v13.5m0 0l-4.5-4.5M12 16.5l4.5-4.5" />
-              </svg>
-              <span className="font-medium">
-                {hasExisting ? 'Click or drag to replace' : 'Click or drag to upload'}
-              </span>
-              <span className="mt-1 text-xs text-gray-400">PDF only, max 100 MB</span>
-            </>
-          )}
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => { if (e.target.files?.[0]) onFile(e.target.files[0]); }}
-          className="hidden"
-        />
-        {(error || state.error) && (
-          <p className="mt-1 text-xs text-red-500">{error || state.error}</p>
-        )}
       </div>
     );
   }
@@ -533,39 +368,6 @@ export default function EditPyqPaperPage({
             </div>
           </section>
         )}
-
-        {/* PDF Files */}
-        <section className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">Question Paper PDF</h2>
-            {paper.pdfStoragePath ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                PDF Attached
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                No PDF Uploaded
-              </span>
-            )}
-          </div>
-          <p className="mb-4 text-xs text-gray-500">
-            To replace the existing question paper PDF, select a new file — the system will
-            automatically update the storage path on save.
-          </p>
-          <div className="space-y-6">
-            <PdfUploadSection
-              label="Question Paper PDF"
-              state={questionPdf}
-              existingPath={paper.pdfStoragePath}
-              onFile={handleFileSelect}
-              onRemove={handleRemoveFile}
-              inputRef={questionInputRef}
-              error={errors.questionPdf}
-            />
-          </div>
-        </section>
 
         {/* Form error */}
         {errors.form && (
